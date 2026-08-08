@@ -14,3 +14,6 @@ path = "src/main.rs"
 
 [dependencies]
 interlace-cli-common.workspace = true
+
+[dev-dependencies]
+rusqlite.workspace = true
