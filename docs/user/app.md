@@ -15,7 +15,7 @@ cargo install interlace --locked
 The app binary is **not** published on crates.io (`interlace-tauri` is
 `publish = false`). Unsigned `.app` / `.dmg` is UI8.
 
-Dev: `cd crates/interlace-tauri && npm run tauri`. That is the same loop as
+Dev: `cd crates/interlace-tauri && npm run tauri:dev`. That is the same loop as
 other Tauri apps (`npm` drives Vite + the Tauri CLI, which still calls Cargo).
 
 ## Today (UI1 + UI3)
