@@ -5,11 +5,23 @@ Unpublished crate `crates/interlace-tauri` (`publish = false`).
 
 ## Run
 
+Frontend is **Svelte 5 + Vite** (`web/`). Dev (HMR):
+
 ```bash
+cd crates/interlace-tauri
+npm install
+npm run tauri
+```
+
+Release-like (static `dist/` + Rust):
+
+```bash
+cd crates/interlace-tauri && npm run build
 cargo run -p interlace-tauri
 ```
 
 Binary name: `interlace-app`. Not in workspace `default-members`.
+Production CSP is `connect-src 'none'`. Vite `localhost` is **dev only**.
 
 ## Deny
 
