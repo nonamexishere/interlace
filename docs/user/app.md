@@ -25,7 +25,9 @@ The app holds an **exclusive flock** on the archive for the session. A second
 Interlace window or a CLI writer (`import`, `doctor --gc-cas`) fails with the
 holder pid — close this window first.
 
-Search, timeline, and import are UI2–UI5. Until then:
+After open: **people list + timeline** (groups hidden unless you tick include
+groups). `j`/`k` move messages; `/` filters people. Merge/unlink/undo do not
+rewrite `messages.sender_identity_id`. Import is still CLI until UI5:
 
 ```bash
 interlace import whatsapp ./chat.zip

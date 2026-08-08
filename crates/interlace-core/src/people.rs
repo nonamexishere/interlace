@@ -1,0 +1,203 @@
+//! Person list / show / timeline rows for CLI and Tauri (D18).
+
+use serde::Serialize;
+
+use crate::db::Archive;
+use crate::model::CoreError;
+
+const TIMELINE_DEFAULT: u32 = 100;
+const TIMELINE_MAX: u32 = 200;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PersonSummary {
+    pub id: i64,
+    pub display_name: String,
+    pub is_self: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PersonIdentity {
+    pub id: i64,
+    pub platform: String,
+    pub kind: String,
+    pub value: String,
+    pub display_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TimelineRow {
+    pub message_id: i64,
+    pub sent_at: Option<String>,
+    pub conversation_id: i64,
+    pub conversation_title: Option<String>,
+    pub conversation_kind: String,
+    pub platform: String,
+    pub sender_identity_id: Option<i64>,
+    pub from_me: bool,
+    pub subject: Option<String>,
+    pub body_text: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LinkEvent {
+    pub id: i64,
+    pub ts: String,
+    pub op: String,
+}
+
+pub fn person_list(archive: &Archive) -> Result<Vec<PersonSummary>, CoreError> {
+    let mut stmt = archive.conn.prepare(
+        "SELECT id, display_name, is_self FROM persons
+         WHERE tombstoned_at IS NULL
+         ORDER BY is_self DESC, display_name COLLATE NOCASE, id",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok(PersonSummary {
+            id: r.get(0)?,
+            display_name: r.get(1)?,
+            is_self: r.get::<_, i64>(2)? == 1,
+        })
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
+pub fn person_identities(
+    archive: &Archive,
+    person_id: i64,
+) -> Result<Vec<PersonIdentity>, CoreError> {
+    let mut stmt = archive.conn.prepare(
+        "SELECT i.id, i.platform, i.kind, i.value_normalized, i.display_name
+         FROM person_identities pi
+         JOIN identities i ON i.id = pi.identity_id
+         WHERE pi.person_id = ?1
+         ORDER BY i.id",
+    )?;
+    let rows = stmt.query_map([person_id], |r| {
+        Ok(PersonIdentity {
+            id: r.get(0)?,
+            platform: r.get(1)?,
+            kind: r.get(2)?,
+            value: r.get(3)?,
+            display_name: r.get(4)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
+pub fn person_display_name(archive: &Archive, person_id: i64) -> Result<String, CoreError> {
+    archive
+        .conn
+        .query_row(
+            "SELECT display_name FROM persons WHERE id=?1 AND tombstoned_at IS NULL",
+            [person_id],
+            |r| r.get(0),
+        )
+        .map_err(|_| CoreError::Config(format!("no live person {person_id}")))
+}
+
+/// D18 timeline with optional `before` sent_at cursor (exclusive, descending).
+pub fn person_timeline_rows(
+    archive: &Archive,
+    person_id: i64,
+    include_groups: bool,
+    limit: u32,
+    before: Option<&str>,
+) -> Result<Vec<TimelineRow>, CoreError> {
+    let limit = limit.clamp(1, TIMELINE_MAX);
+    let limit = if limit == 0 { TIMELINE_DEFAULT } else { limit };
+    let group_sql = if include_groups {
+        ""
+    } else {
+        "AND c.kind IN ('dm','email_thread')"
+    };
+    let cursor_sql = if before.is_some() {
+        "AND m.sent_at IS NOT NULL AND m.sent_at < ?3"
+    } else {
+        ""
+    };
+    let sql = format!(
+        "SELECT m.id, m.sent_at, m.conversation_id, c.title, c.kind, c.platform,
+                m.sender_identity_id, m.subject, COALESCE(m.body_text, ''),
+                CASE WHEN m.sender_identity_id IS NOT NULL AND (
+                    EXISTS (SELECT 1 FROM self_identities si
+                            WHERE si.identity_id = m.sender_identity_id)
+                 OR EXISTS (
+                        SELECT 1 FROM person_identities pi
+                        JOIN persons p ON p.id = pi.person_id
+                        WHERE pi.identity_id = m.sender_identity_id
+                          AND p.is_self = 1 AND p.tombstoned_at IS NULL
+                    )
+                ) THEN 1 ELSE 0 END
+         FROM messages m
+         JOIN conversations c ON c.id = m.conversation_id
+         WHERE (
+                m.sender_identity_id IN (
+                    SELECT identity_id FROM person_identities WHERE person_id = ?1
+                )
+             OR (
+                    m.conversation_id IN (
+                      SELECT cp.conversation_id
+                      FROM conversation_participants cp
+                      JOIN person_identities pi ON pi.identity_id = cp.identity_id
+                      WHERE pi.person_id = ?1
+                    )
+                    {group_sql}
+                )
+              )
+           {cursor_sql}
+         ORDER BY m.sent_at IS NULL, m.sent_at DESC, m.id DESC
+         LIMIT ?2"
+    );
+    let mut stmt = archive.conn.prepare(&sql)?;
+    let map_row = |r: &rusqlite::Row<'_>| {
+        Ok(TimelineRow {
+            message_id: r.get(0)?,
+            sent_at: r.get(1)?,
+            conversation_id: r.get(2)?,
+            conversation_title: r.get(3)?,
+            conversation_kind: r.get(4)?,
+            platform: r.get(5)?,
+            sender_identity_id: r.get(6)?,
+            subject: r.get(7)?,
+            body_text: r.get(8)?,
+            from_me: r.get::<_, i64>(9)? == 1,
+        })
+    };
+    let rows = if let Some(b) = before {
+        stmt.query_map(rusqlite::params![person_id, limit as i64, b], map_row)?
+    } else {
+        stmt.query_map(rusqlite::params![person_id, limit as i64], map_row)?
+    };
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
+pub fn recent_link_events(archive: &Archive, limit: u32) -> Result<Vec<LinkEvent>, CoreError> {
+    let limit = limit.clamp(1, 50);
+    let mut stmt = archive
+        .conn
+        .prepare("SELECT id, ts, op FROM identity_link_events ORDER BY id DESC LIMIT ?1")?;
+    let rows = stmt.query_map([limit as i64], |r| {
+        Ok(LinkEvent {
+            id: r.get(0)?,
+            ts: r.get(1)?,
+            op: r.get(2)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}

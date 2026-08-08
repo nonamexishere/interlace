@@ -42,20 +42,39 @@
     </section>
 
     <section id="session" hidden>
-      <h1>Archive</h1>
-      <p id="path" class="path"></p>
-      <dl id="counts" class="counts"></dl>
-      <p id="last" class="note"></p>
-      <ul id="warns" class="warns"></ul>
-      <div class="row">
-        <button type="button" id="btn-other" class="secondary">Open other archive…</button>
+      <aside class="side">
+        <p id="path" class="path"></p>
+        <dl id="counts" class="counts"></dl>
+        <p id="last" class="note"></p>
+        <ul id="warns" class="warns"></ul>
+        <label class="filter">Filter people
+          <input id="person-filter" type="search" placeholder="name" />
+        </label>
+        <ul id="people" class="people"></ul>
+        <div class="merge">
+          <label>Merge into id
+            <input id="merge-into" inputmode="numeric" placeholder="person id" />
+          </label>
+          <button type="button" id="btn-merge">Merge selected →</button>
+        </div>
+        <ul id="events" class="events"></ul>
+        <div class="row">
+          <button type="button" id="btn-other" class="secondary">Open other archive…</button>
+        </div>
+      </aside>
+      <div class="maincol">
+        <div class="tl-head">
+          <h1 id="person-title">Select a person</h1>
+          <label class="chk"><input type="checkbox" id="include-groups" /> include groups</label>
+        </div>
+        <ul id="idents" class="idents"></ul>
+        <ol id="timeline" class="timeline" tabindex="0"></ol>
+        <button type="button" id="btn-more" class="secondary" hidden>Load older</button>
+        <p class="note">
+          Bodies are text only. <kbd>j</kbd>/<kbd>k</kbd> move. <kbd>/</kbd> filters
+          people (search comes in UI2). Exclusive lock — close before CLI import.
+        </p>
       </div>
-      <p class="note">
-        Search, timeline, and import land in UI2–UI5. CLI remains
-        <code>cargo install interlace</code>. This app holds an exclusive lock
-        for the session — close it before a second Interlace window or a CLI
-        writer.
-      </p>
     </section>
 
     <script src="app.js"></script>
