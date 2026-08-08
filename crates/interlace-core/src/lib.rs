@@ -14,7 +14,10 @@ pub use import::{
     TakeoutImporter, WhatsappImporter,
 };
 pub use model::*;
-pub use search::{person_timeline, search};
+pub use search::{
+    build_search_text, expand_query, extra_ascii_fold, index_import_run, person_timeline,
+    rebuild_fts, search, turkish_fold,
+};
 
 /// Placeholder kept from the 0.0.1 name-squat so existing tests stay green.
 pub fn add(left: u64, right: u64) -> u64 {
