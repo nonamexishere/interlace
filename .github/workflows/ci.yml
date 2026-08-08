@@ -1,0 +1,31 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+      - name: cargo clippy
+        run: cargo clippy -p interlace-core -p interlace -p interlace-cli -- -D warnings
+      - name: cargo test
+        run: cargo test --workspace
+      - name: install cargo-deny
+        run: cargo install cargo-deny --locked --version 0.18.2
+      - name: deny + bootstrap + spikes + selftest
+        run: |
+          python3 pipeline/tools/deny_toml_lock.py
+          python3 pipeline/tools/gate_bootstrap.py
+          python3 pipeline/tools/gate_deny.py
+          python3 pipeline/tools/gate_spikes.py
+          bash pipeline/selftest/run.sh
+          bash pipeline/run.sh
