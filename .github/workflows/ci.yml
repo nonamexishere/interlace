@@ -31,5 +31,6 @@ jobs:
           python3 pipeline/tools/gate_schema.py
           python3 pipeline/tools/gate_api.py
           python3 pipeline/tools/gate_fixtures.py
+          python3 pipeline/tools/gate_impl.py --stage 05a --must CAS1,CAS2,CAS3
           bash pipeline/selftest/run.sh
           bash pipeline/run.sh
