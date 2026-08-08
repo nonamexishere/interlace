@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WhatsApp name-only identities become their own people after import (not
   merged onto Contacts). Group-title identities stay unlinked. Re-import the
   same ZIP to backfill an existing archive (`skipped_dupes`).
+- WhatsApp locale probe: datetime ties (`tr-TR`/`de-DE`) break on unique
+  language tokens across all sample lines, then archive `phone-region`
+  (`TR`→`tr-TR`). `--locale` still overrides.
 
 ## [0.1.1] - 2026-08-09
 

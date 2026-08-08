@@ -418,6 +418,7 @@ fn cmd_import(path: Option<PathBuf>, source: ImportCmd) -> Result<(), CliError> 
                     resume_run_id: resume,
                     conversation_name,
                     max_bytes,
+                    ..ImportOpts::default()
                 },
             )
         }

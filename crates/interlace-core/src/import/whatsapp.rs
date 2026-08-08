@@ -53,7 +53,7 @@ impl SourceImporter for WhatsappImporter {
             let _ = load_pack(loc)?;
             Some(loc.clone())
         } else {
-            match vote_locale(&lines, Some(family)) {
+            match vote_locale(&lines, Some(family), self.opts.phone_region.as_deref()) {
                 Ok(id) => Some(id),
                 Err(e) => {
                     notes.push(e.to_string());
@@ -113,7 +113,7 @@ impl SourceImporter for WhatsappImporter {
             g.clone()
         } else {
             let lines: Vec<&str> = text.lines().collect();
-            vote_locale(&lines, Some(family))?
+            vote_locale(&lines, Some(family), self.opts.phone_region.as_deref())?
         };
         let pack = load_pack(&locale_id)?;
 

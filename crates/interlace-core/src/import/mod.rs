@@ -9,6 +9,8 @@ mod whatsapp;
 
 use std::path::Path;
 
+use rusqlite::OptionalExtension;
+
 use crate::db::Archive;
 use crate::identity::resolve_run;
 use crate::model::*;
@@ -135,6 +137,19 @@ pub fn run_import(
             path.display()
         )));
     }
+
+    let mut opts = opts.clone();
+    if opts.phone_region.is_none() {
+        opts.phone_region = archive
+            .conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'default_phone_region'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
+    }
+    let opts = &opts;
 
     let probe = probe_kind(kind, path, opts)?;
     let kind = probe.kind;
