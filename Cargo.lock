@@ -226,11 +226,14 @@ name = "interlace-core"
 version = "0.0.1"
 dependencies = [
  "blake3",
+ "interlace-fixtures",
  "libc",
  "rusqlite",
  "serde",
  "serde_json",
  "thiserror",
+ "toml",
+ "zip",
 ]
 
 [[package]]

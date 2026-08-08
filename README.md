@@ -44,6 +44,7 @@ It is **not** a fourth crates.io name.
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Security: [SECURITY.md](SECURITY.md)
 - Pipeline: [docs/hacking/pipeline.md](docs/hacking/pipeline.md)
+- Import WhatsApp: [docs/user/import-whatsapp.md](docs/user/import-whatsapp.md)
 
 ## License
 

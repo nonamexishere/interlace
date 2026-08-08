@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Frozen `interlace-core` public API (types + `unimplemented!` import/search/identity).
 - Unpublished `interlace-fixtures` locale packs + synthetic generators.
 - CAS put/get/gc + zip-slip checks (CAS1–CAS3).
+- WhatsApp Android/iOS ZIP importer (W1–W4), `ImportContext` persist, `resolve_run` no-op until PR8.
+- `docs/user/import-whatsapp.md`.
 
 ## [0.0.1] - 2026-08-08
 

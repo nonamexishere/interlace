@@ -1,0 +1,20 @@
+id = "en-US"
+family_hints = ["ios_bracket", "android_dash"]
+you_tokens = ["You"]
+date_time_patterns = [
+  "%Y-%m-%d, %H:%M:%S",
+  "%-m/%-d/%y, %-I:%M:%S %p",
+  "%-m/%-d/%y, %-I:%M %p",
+  "%-m/%-d/%Y, %-I:%M %p",
+]
+media_omitted = ["<Media omitted>", "image omitted", "video omitted", "audio omitted", "sticker omitted", "GIF omitted"]
+file_attached_pattern = '^(?P<filename>.+) \\(file attached\\)$'
+file_attached_alt = ["<attached: {filename}>"]
+forwarded_tokens = ["Forwarded"]
+title_prefixes_dm = ["WhatsApp Chat with "]
+title_prefixes_group = []
+system_created_group = ["created group"]
+system_added = ["added", "was added"]
+system_subject = ["changed the subject"]
+system_encryption = ["Messages and calls are end-to-end encrypted"]
+encryption_banner_startswith = "Messages and calls are end-to-end encrypted"

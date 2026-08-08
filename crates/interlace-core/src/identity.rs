@@ -3,8 +3,10 @@
 use crate::db::Archive;
 use crate::model::{CoreError, ImportStats, PersonMergeOpts};
 
+/// PR8 fills auto-link / auto person-merge. Until then a successful no-op so
+/// `run_import` can finish after WhatsApp (PR6) / Gmail (PR7).
 pub fn resolve_run(_archive: &mut Archive, _run_id: i64) -> Result<ImportStats, CoreError> {
-    unimplemented!("identity resolver lands in PR8")
+    Ok(ImportStats::default())
 }
 
 pub fn person_merge(

@@ -1,0 +1,122 @@
+# Import WhatsApp
+
+Interlace reads **official WhatsApp chat export ZIP** files. It does not log
+into WhatsApp and never invents JIDs.
+
+## Supported files
+
+| Platform | Typical contents |
+| --- | --- |
+| **iOS** | `_chat.txt` at zip root (or one level down) + optional media |
+| **Android** | exactly one `*.txt` such as `WhatsApp Chat with Alice.txt` + optional media |
+
+Both **with media** and **without media** exports are supported. A text-only
+export followed later by a with-media re-export of the same chat **upgrades**
+attachments onto the same `messages.id` (W9). The idempotency key does **not**
+include the media filename.
+
+Unsupported: `msgstore.db` / `*.crypt14` backups.
+
+## Locale detection
+
+The first ~50 dated headers vote across the five shipped packs:
+
+`en-US`, `en-GB`, `tr-TR`, `de-DE`, `pt-BR`.
+
+One pack is used for the whole file. A tie or no match is fatal — pass `--locale`.
+
+## `--locale`
+
+Must be one of the five ids above. Do not add other languages in 0.1.0.
+
+```bash
+interlace import whatsapp ./chat.zip --locale tr-TR
+```
+
+## With vs without media
+
+- `<Media omitted>` / locale equivalents → `attachments.omitted = 1`, no CAS blob.
+- `IMG-… (file attached)` / `<attached: FILENAME>` → look up that zip entry, store
+  in CAS (`cas/ab/cd/<blake3>`).
+- Referenced name missing from the ZIP → `attachments.missing = 1` and a warning.
+- Zip-slip paths (`../`, absolute, drive letters) are **rejected** per entry; other
+  entries continue.
+
+Binary media entries are capped at **512 MiB** each (D23). `_chat.txt` may be up
+to `--max-bytes` (default **60 GiB**). Total CAS writes per import also stay under
+`--max-bytes`. Entry count cap: 2 million.
+
+## Identity keying (D16)
+
+1. Strip WhatsApp’s leftover U+200E marks.
+2. Locale `you_tokens` (`You` / `Siz` / `Du` / `Você` / …) → self identity,
+   participant role later `me`.
+3. Sender token that parses as a phone (E.164, using archive
+   `default_phone_region` for national format) → `kind=phone`.
+4. **DM only:** if the chat **title** (after stripping `WhatsApp Chat with ` /
+   `WhatsApp Sohbeti: ` / …) parses as E.164, the counterpart is that **phone**
+   even when per-line senders are a saved name. The saved name is stored as
+   `display_name` on the same identity.
+5. Otherwise `kind=display_name`. These **never** auto-merge.
+6. **Never** insert `whatsapp_jid` from a ZIP. That kind is reserved for a future
+   `msgstore` source.
+
+`default_phone_region` is required at `interlace init` (D20). No silent country
+default.
+
+## Groups vs DM (D18)
+
+`conversations.kind = group` if any of:
+
+- (a) ≥ 2 distinct non-self, non-system senders, or
+- (b) a group system template matches (created group / added / subject change), or
+- (c) the locale lists an explicit group title prefix.
+
+Else `kind = dm`. Person timelines hide groups unless `--include-groups`.
+
+Two different chats that share a title collide on
+`native_id = whatsapp:<folded_title>`. Pass `--conversation-name` to disambiguate.
+iOS `_chat.txt` has no title in the filename; Interlace falls back to the ZIP
+stem unless you pass `--conversation-name`.
+
+## Resume
+
+ZIP entries are DEFLATE. Interlace **never seeks inside a compressed entry**.
+
+Resume re-reads `_chat.txt` from the start and skips lines with
+`line_no <= checkpoint`. Cursor:
+
+```json
+{"entry": "_chat.txt", "line_no": 9000, "seq_bucket": "2020-01-01T10:15:00Z", "seq": 3}
+```
+
+```bash
+interlace import whatsapp ./chat.zip --resume <run_id>
+```
+
+Interrupted runs (`SIGINT`, or `running` with heartbeat older than 15 minutes)
+are safe to resume. Kill -9 leaves `status=running` until doctor/import notices.
+
+## Ceiling warning
+
+WhatsApp’s own export often stops around **~40 000** recent messages (less with
+media). Interlace cannot recover older history from a ZIP. When an import hits
+that many messages it records a warning and prints the earliest `sent_at`. This
+is WhatsApp’s limit, not Interlace’s.
+
+A first message that is a “you were added / created group” line sets
+`conversations.extra_json.join_cutoff` so you know the export started mid-chat.
+
+## Limits
+
+| Cap | Value |
+| --- | --- |
+| Attachment / binary zip entry | 512 MiB |
+| `_chat.txt` uncompressed | `--max-bytes` (default 60 GiB) |
+| Total CAS write per import | `--max-bytes` |
+| Zip entries | 2 000 000 |
+| No network | cargo-deny bans HTTP clients; this importer is file-only |
+
+Re-import of the same ZIP reuses the `sources` row and records a new
+`import_runs` row. Messages hit `UNIQUE(idempotency_key)` and are counted as
+`skipped_dupes`.
