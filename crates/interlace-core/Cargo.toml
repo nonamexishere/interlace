@@ -28,3 +28,7 @@ data-encoding.workspace = true
 [dev-dependencies]
 rusqlite.workspace = true
 interlace-fixtures = { path = "../interlace-fixtures", version = "0.0.1" }
+
+[[bench]]
+name = "search"
+harness = false
