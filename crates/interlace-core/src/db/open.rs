@@ -114,14 +114,34 @@ impl Archive {
                 },
             )
             .optional()?;
+        let owner_display_name: Option<String> = self.conn.query_row(
+            "SELECT owner_display_name FROM archive_meta WHERE id = 1",
+            [],
+            |r| r.get(0),
+        )?;
+        let default_phone_region: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'default_phone_region'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let mut warnings = Vec::new();
+        if let Some(w) = crate::session::cloud_warning(&self.root) {
+            warnings.push(w);
+        }
         Ok(serde_json::json!({
             "archive_id": archive_id,
             "path": self.root,
+            "owner_display_name": owner_display_name,
+            "default_phone_region": default_phone_region,
             "messages": messages,
             "identities": identities,
             "persons_live": persons_live,
             "review_open": review_open,
             "last_import": last_import,
+            "warnings": warnings,
         }))
     }
 

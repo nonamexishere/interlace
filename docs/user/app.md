@@ -15,13 +15,19 @@ cargo install interlace --locked
 The app binary is **not** published on crates.io (`interlace-tauri` is
 `publish = false`). Unsigned `.app` / `.dmg` is UI8.
 
-## Today (UI0)
+## Today (UI1)
 
-Placeholder window only. Init, import, search, and timelines are the next
-issues (UI1–UI5). Until then use the CLI:
+You can **create or open** an archive from the window (folder picker, no URLs).
+`--phone-region` is still required (no silent TR/US default). Status shows
+message / identity / person / review counts.
+
+The app holds an **exclusive flock** on the archive for the session. A second
+Interlace window or a CLI writer (`import`, `doctor --gc-cas`) fails with the
+holder pid — close this window first.
+
+Search, timeline, and import are UI2–UI5. Until then:
 
 ```bash
-interlace init --path ~/Interlace --phone-region TR --name "Your Name"
 interlace import whatsapp ./chat.zip
 ```
 

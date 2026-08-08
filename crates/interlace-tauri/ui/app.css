@@ -2,18 +2,30 @@
   color-scheme: light dark;
   font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
   line-height: 1.45;
+  --pad: 1.25rem;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  display: grid;
-  place-items: center;
 }
 
-main {
-  max-width: 36rem;
-  padding: 2rem;
+.bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem var(--pad);
+  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  font-size: 0.9rem;
+}
+
+.muted {
+  opacity: 0.65;
+}
+
+section {
+  max-width: 40rem;
+  padding: var(--pad);
 }
 
 h1 {
@@ -22,8 +34,64 @@ h1 {
   margin: 0 0 0.75rem;
 }
 
-.lede {
-  font-size: 1.05rem;
+label {
+  display: block;
+  margin: 0.75rem 0;
+  font-size: 0.9rem;
+}
+
+input {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.4rem 0.5rem;
+  box-sizing: border-box;
+  font: inherit;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+button {
+  font: inherit;
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+}
+
+button.secondary {
+  opacity: 0.9;
+}
+
+.err {
+  margin: 0;
+  padding: 0.6rem var(--pad);
+  background: color-mix(in srgb, tomato 25%, transparent);
+}
+
+.path {
+  word-break: break-all;
+}
+
+.counts {
+  display: grid;
+  grid-template-columns: 10rem 1fr;
+  gap: 0.25rem 0.75rem;
+}
+
+.counts dt {
+  opacity: 0.7;
+}
+
+.counts dd {
+  margin: 0;
+}
+
+.warns {
+  color: darkorange;
+  padding-left: 1.2rem;
 }
 
 .note {
@@ -33,4 +101,8 @@ h1 {
 
 code {
   font-size: 0.9em;
+}
+
+[hidden] {
+  display: none !important;
 }

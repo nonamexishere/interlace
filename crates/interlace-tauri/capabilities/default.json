@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "UI0 empty shell: window only. No fs, no http, no shell.",
+  "description": "UI1 archive session. No http, no shell, no remote paths.",
   "windows": ["main"],
   "permissions": ["core:default"]
 }

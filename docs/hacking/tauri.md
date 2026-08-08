@@ -31,6 +31,12 @@ python3 pipeline/tools/gate_tauri.py
   `network.client` / `network.server`.
 - Message bodies in later PRs are text nodes only (never unsanitized HTML).
 
+## Commands (UI1)
+
+`remembered_path`, `pick_folder` (rfd on the main thread), `init`, `open`,
+`status`. `init` / `open` take a **local folder path** only. Session state
+holds `Archive` with `LockMode::Exclusive`.
+
 ## Issue DAG
 
-Epic #37. Start UI0 (#38) → UI1 archive → UI3 timeline / UI2 search / UI4 review / UI5 import.
+Epic #37. UI0 (#38) → UI1 archive (#39) → UI3 timeline / UI2 search / UI4 review / UI5 import.
