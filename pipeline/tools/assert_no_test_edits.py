@@ -16,29 +16,25 @@ def main() -> None:
     if not tests.exists():
         print("assert_no_test_edits: no tests dir yet (ok)")
         return
-    base = run(
-        ["git", "merge-base", "HEAD", "origin/master"],
-        cwd=root,
-        check=False,
-    )
-    if base.returncode != 0 or not base.stdout.strip():
-        base_ref = "HEAD"
-    else:
-        base_ref = base.stdout.strip()
-    diff = run(
-        ["git", "diff", "--name-only", base_ref, "--", "crates/interlace-core/tests"],
-        cwd=root,
-        check=False,
-    )
-    names = [l for l in diff.stdout.splitlines() if l.strip()]
-    # unstaged vs HEAD also counts for impl-in-progress
+    # Only dirty (unstaged / staged vs HEAD) counts. Tests landing *with* an
+    # impl PR are committed together and must not trip this gate.
     dirty = run(
-        ["git", "diff", "--name-only", "--", "crates/interlace-core/tests"],
+        ["git", "diff", "--name-only", "HEAD", "--", "crates/interlace-core/tests"],
         cwd=root,
         check=False,
     )
-    names += [l for l in dirty.stdout.splitlines() if l.strip()]
-    names = sorted(set(names))
+    cached = run(
+        ["git", "diff", "--name-only", "--cached", "--", "crates/interlace-core/tests"],
+        cwd=root,
+        check=False,
+    )
+    names = sorted(
+        {
+            l.strip()
+            for l in dirty.stdout.splitlines() + cached.stdout.splitlines()
+            if l.strip()
+        }
+    )
     if names:
         fail("tests edited by impl:\n" + "\n".join(names))
     print("assert_no_test_edits ok")

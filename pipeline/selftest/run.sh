@@ -15,9 +15,9 @@ if python3 "$TOOLS/check_schema.py" "$ROOT/pipeline/contracts/spike_report.schem
 fi
 pass F1
 
-# F2: gate_impl without must-pass tests must be red
-if python3 "$TOOLS/gate_impl.py" --stage 05a --must CAS1,CAS2,CAS3 >/dev/null 2>&1; then
-  fail "F2 expected gate_impl red (no CAS tests yet)"
+# F2: missing must-ID keeps the impl gate red
+if python3 "$TOOLS/gate_impl.py" --stage 05a --must DOES_NOT_EXIST >/dev/null 2>&1; then
+  fail "F2 expected gate_impl red (unknown must-ID)"
 fi
 pass F2
 
