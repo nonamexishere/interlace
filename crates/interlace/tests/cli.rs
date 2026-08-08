@@ -163,3 +163,63 @@ fn doctor_exit_3_on_stale_heartbeat() {
     assert!(String::from_utf8_lossy(&doc.stderr).contains("heartbeat"));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn import_whatsapp_zip_is_not_treated_as_archive() {
+    use interlace_fixtures::{write_whatsapp_zip, WaGenConfig};
+    let dir = tmp();
+    let arch = dir.join("arch");
+    let cfg = dir.join("cfg");
+    std::fs::create_dir_all(&cfg).unwrap();
+    let init = bin()
+        .env("INTERLACE_CONFIG_DIR", &cfg)
+        .args([
+            "init",
+            "--path",
+            arch.to_str().unwrap(),
+            "--phone-region",
+            "TR",
+        ])
+        .output()
+        .unwrap();
+    assert!(init.status.success());
+
+    let zip = write_whatsapp_zip(
+        &dir.join("zips"),
+        &WaGenConfig {
+            locale: "en-US",
+            ios: true,
+            with_media: false,
+            n_messages: 20,
+            n_participants: 2,
+            corrupt_line_every: None,
+            missing_media_every: None,
+            multiline_ratio: 0.0,
+            system_every: None,
+            seed: 1,
+        },
+    );
+    let imp = bin()
+        .env("INTERLACE_CONFIG_DIR", &cfg)
+        .args([
+            "--path",
+            arch.to_str().unwrap(),
+            "import",
+            "whatsapp",
+            zip.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        imp.status.success(),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&imp.stdout),
+        String::from_utf8_lossy(&imp.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&imp.stdout).contains("inserted="),
+        "stdout={}",
+        String::from_utf8_lossy(&imp.stdout)
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

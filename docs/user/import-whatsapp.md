@@ -17,6 +17,17 @@ include the media filename.
 
 Unsupported: `msgstore.db` / `*.crypt14` backups.
 
+## Archive vs export path
+
+`--path` is the **archive directory** (global). The ZIP is the positional export:
+
+```bash
+interlace --path ~/Interlace import whatsapp ./chat.zip
+interlace import whatsapp ./chat.zip   # uses last-archive-path
+```
+
+Do not pass the ZIP to `--path`.
+
 ## Locale detection
 
 The first ~50 dated headers vote across the five shipped packs:
