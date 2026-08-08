@@ -1,5 +1,7 @@
 //! Identity resolve / merge / undo / review (PR8).
 
+use std::collections::HashSet;
+
 use rusqlite::OptionalExtension;
 
 use crate::db::Archive;
@@ -7,7 +9,9 @@ use crate::import::{name_fold, name_fold_join};
 use crate::model::{CoreError, ImportStats, PersonMergeOpts};
 
 /// Auto-link exact phone/email and auto person-merge (rules A/B). Display names
-/// only go to the review queue (never auto).
+/// never attach onto an existing phone/email/contacts person (I2). After
+/// name-similarity review is enqueued, leftover name-only identities get their
+/// own person so WA-first archives have a people list.
 pub fn resolve_run(archive: &mut Archive, _run_id: i64) -> Result<ImportStats, CoreError> {
     let mut stats = ImportStats::default();
     attach_high_conf(archive, &mut stats)?;
@@ -18,6 +22,7 @@ pub fn resolve_run(archive: &mut Archive, _run_id: i64) -> Result<ImportStats, C
         }
     }
     enqueue_name_reviews(archive, &mut stats)?;
+    promote_unlinked_names(archive)?;
     Ok(stats)
 }
 
@@ -342,6 +347,62 @@ fn enqueue_name_reviews(archive: &Archive, stats: &mut ImportStats) -> Result<()
                 serde_json::json!({"left": iname, "score": score}),
             )?;
         }
+    }
+    Ok(())
+}
+
+/// One new person per leftover `display_name` / `username`. Never link onto
+/// an existing person (that is I2). Skip names that fold-equal a group title
+/// (ZIP stem often becomes a participant identity).
+fn promote_unlinked_names(archive: &Archive) -> Result<(), CoreError> {
+    let group_folds: HashSet<String> = {
+        let mut stmt = archive
+            .conn
+            .prepare("SELECT COALESCE(title, '') FROM conversations WHERE kind = 'group'")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        let mut set = HashSet::new();
+        for t in rows {
+            let f = name_fold_join(&t?);
+            if !f.is_empty() {
+                set.insert(f);
+            }
+        }
+        set
+    };
+    let idents: Vec<(i64, String, String)> = {
+        let mut stmt = archive.conn.prepare(
+            "SELECT i.id, COALESCE(NULLIF(trim(i.display_name), ''), i.value_raw), i.value_normalized
+             FROM identities i
+             WHERE i.kind IN ('display_name', 'username')
+               AND NOT EXISTS (
+                    SELECT 1 FROM person_identities pi WHERE pi.identity_id = i.id
+               )",
+        )?;
+        let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        it.collect::<Result<Vec<_>, _>>()?
+    };
+    for (id, name, norm) in idents {
+        let nf = name_fold_join(&name);
+        if (!norm.is_empty() && group_folds.contains(&norm))
+            || (!nf.is_empty() && group_folds.contains(&nf))
+        {
+            continue;
+        }
+        let label = if name.trim().is_empty() {
+            norm.as_str()
+        } else {
+            name.as_str()
+        };
+        if label.trim().is_empty() {
+            continue;
+        }
+        archive.conn.execute(
+            "INSERT INTO persons(display_name, is_self) VALUES (?1, 0)",
+            [label],
+        )?;
+        let pid = archive.conn.last_insert_rowid();
+        // Existing CHECK has no name-only reason; `manual` + system = stub, not a user merge.
+        link_identity(archive, pid, id, "manual", 1.0, "system")?;
     }
     Ok(())
 }

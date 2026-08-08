@@ -181,15 +181,30 @@ fn identity_i2_same_display_name_review_not_auto() {
         Some("Ahmet Yılmaz"),
     );
     let stats = resolve_run(&mut arch, 0).unwrap();
-    assert_eq!(
-        count(
-            &arch,
-            "SELECT COUNT(*) FROM person_identities pi
+    let contacts_pid: i64 = arch
+        .conn
+        .query_row(
+            "SELECT p.id FROM persons p
+             JOIN person_identities pi ON pi.person_id = p.id
              JOIN identities i ON i.id = pi.identity_id
-             WHERE i.kind = 'display_name'"
-        ),
-        0,
-        "I2 display_name must not auto-link"
+             WHERE i.platform = 'contacts' AND i.kind = 'email'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let wa_pid: i64 = arch
+        .conn
+        .query_row(
+            "SELECT pi.person_id FROM person_identities pi
+             JOIN identities i ON i.id = pi.identity_id
+             WHERE i.platform = 'whatsapp' AND i.kind = 'display_name'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_ne!(
+        wa_pid, contacts_pid,
+        "I2 display_name must not auto-link onto the vCard person"
     );
     assert!(
         stats.review_enqueued >= 1
@@ -198,6 +213,100 @@ fn identity_i2_same_display_name_review_not_auto() {
                 "SELECT COUNT(*) FROM merge_review_queue WHERE status='open'"
             ) >= 1,
         "I2 expected review"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn identity_wa_only_display_name_gets_own_person() {
+    let root = tmp_root();
+    let mut arch = init_archive(&root).unwrap();
+    insert_ident(
+        &arch,
+        "whatsapp",
+        "display_name",
+        "Anıl Dervişoğlu",
+        "anıl dervişoğlu",
+        Some("Anıl Dervişoğlu"),
+    );
+    insert_ident(
+        &arch,
+        "whatsapp",
+        "display_name",
+        "Mehmet Can Kul",
+        "can kul mehmet",
+        Some("Mehmet Can Kul"),
+    );
+    resolve_run(&mut arch, 0).unwrap();
+    assert_eq!(
+        count(
+            &arch,
+            "SELECT COUNT(*) FROM persons WHERE tombstoned_at IS NULL AND is_self = 0"
+        ),
+        2,
+        "each leftover display_name is its own person"
+    );
+    assert_eq!(
+        count(&arch, "SELECT COUNT(*) FROM merge_review_queue"),
+        0,
+        "no counterpart → no review"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn identity_skip_group_title_display_name() {
+    let root = tmp_root();
+    let mut arch = init_archive(&root).unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('whatsapp_ios_zip', 'g', '/g.zip')",
+            [],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('whatsapp', 'group', 'whatsapp:pretests', 'pretests passed (4)')",
+            [],
+        )
+        .unwrap();
+    insert_ident(
+        &arch,
+        "whatsapp",
+        "display_name",
+        "pretests passed (4)",
+        "passed pretests",
+        Some("pretests passed (4)"),
+    );
+    insert_ident(
+        &arch,
+        "whatsapp",
+        "display_name",
+        "Enes Saçak",
+        "enes saçak",
+        Some("Enes Saçak"),
+    );
+    resolve_run(&mut arch, 0).unwrap();
+    assert_eq!(
+        count(
+            &arch,
+            "SELECT COUNT(*) FROM person_identities pi
+             JOIN identities i ON i.id = pi.identity_id
+             WHERE i.value_normalized = 'passed pretests'"
+        ),
+        0,
+        "group title identity is not a person"
+    );
+    assert_eq!(
+        count(
+            &arch,
+            "SELECT COUNT(*) FROM person_identities pi
+             JOIN identities i ON i.id = pi.identity_id
+             WHERE i.display_name = 'Enes Saçak'"
+        ),
+        1,
+        "group peer still becomes a person"
     );
     let _ = std::fs::remove_dir_all(&root);
 }
