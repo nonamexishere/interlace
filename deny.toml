@@ -1,0 +1,56 @@
+[graph]
+all-features = false
+no-default-features = false
+
+[advisories]
+yanked = "deny"
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "BSD-2-Clause",
+    "0BSD",
+    "Unicode-DFS-2016",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+    "MPL-2.0",
+]
+# 0BSD: mailparse. Unicode-DFS-2016: older unicode-ident. Do not add "ANY".
+confidence-threshold = 0.93
+private = { ignore = true }
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Phase 1 CLI is sync: ban tokio entirely until Tauri (Phase 2).
+deny = [
+    { crate = "reqwest", wrappers = [] },
+    { crate = "hyper" },
+    { crate = "hyper-util" },
+    { crate = "hyper-tls" },
+    { crate = "hyper-rustls" },
+    { crate = "h2" },
+    { crate = "h3" },
+    { crate = "ureq" },
+    { crate = "attohttpc" },
+    { crate = "minreq" },
+    { crate = "ehttp" },
+    { crate = "isahc" },
+    { crate = "surf" },
+    { crate = "awc" },
+    { crate = "curl" },
+    { crate = "tungstenite" },
+    { crate = "tokio-tungstenite" },
+    { crate = "async-tungstenite" },
+    { crate = "tokio" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

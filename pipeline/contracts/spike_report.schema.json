@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://interlace.local/schemas/spike_report.json",
+  "title": "SpikeReport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["spikes", "blocked"],
+  "properties": {
+    "blocked": { "type": "boolean" },
+    "spikes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["1", "2", "3", "4"],
+      "properties": {
+        "1": { "$ref": "#/$defs/spike" },
+        "2": { "$ref": "#/$defs/spike" },
+        "3": { "$ref": "#/$defs/spike" },
+        "4": { "$ref": "#/$defs/spike" }
+      }
+    }
+  },
+  "$defs": {
+    "spike": {
+      "type": "object",
+      "required": ["pass", "caveats"],
+      "additionalProperties": false,
+      "properties": {
+        "pass": { "type": "boolean" },
+        "caveats": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

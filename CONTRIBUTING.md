@@ -1,0 +1,43 @@
+# Contributing to Interlace
+
+## Before you write code
+
+1. Read `docs/design/DESIGN.md` (normative). Key Decisions are not reopened in drive-by PRs.
+2. Read `docs/hacking/add-a-source.md` if you are adding a parser (file lands with later PRs).
+3. Do not send real personal exports. Tests use `interlace-fixtures` only.
+
+## Dev setup (macOS)
+
+```bash
+git clone https://github.com/nonamexishere/interlace
+cd interlace
+rustup show   # rust-toolchain.toml pins stable
+cargo test --workspace
+python3 pipeline/tools/gate_bootstrap.py
+python3 pipeline/tools/gate_deny.py
+```
+
+Phase 1 target is macOS. Other OSes may compile; they are unsupported.
+
+## PR rules
+
+- One concern per PR. Follow the PR plan in DESIGN.md when possible.
+- **Docs in the same PR** as the behavior (D24).
+- Phase 1 must-pass IDs cannot be `#[ignore]`.
+- No `reqwest`, `hyper`, `tokio` in `interlace-core` / `interlace` / `interlace-cli`.
+- Open Questions 1–10 are decided in DESIGN.md; do not re-open them.
+- `cargo fmt`, `clippy -D warnings`, `cargo deny check bans` + `licenses` must pass.
+- Reference the GitHub issue: `Fixes #N`.
+
+## Agent / pipeline contributors
+
+Humans may run `pipeline/run.sh`. Subagents communicate via files only. See
+`docs/hacking/pipeline.md`. Do not give agents a spawn-agent tool.
+
+## Commit messages
+
+Conventional, present tense: `feat(core): whatsapp locale voter`, `docs(user): resume flock`.
+
+## Code of conduct
+
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).

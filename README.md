@@ -40,7 +40,10 @@ It is **not** a fourth crates.io name.
 
 ## Docs
 
-Architecture: [docs/design/DESIGN.md](docs/design/DESIGN.md)
+- Architecture: [docs/design/DESIGN.md](docs/design/DESIGN.md)
+- Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Security: [SECURITY.md](SECURITY.md)
+- Pipeline: [docs/hacking/pipeline.md](docs/hacking/pipeline.md)
 
 ## License
 

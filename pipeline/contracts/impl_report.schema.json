@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://interlace.local/schemas/impl_report.json",
+  "title": "ImplReport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["stage", "status", "tests_edited", "modules_added", "open_gaps", "gate_command", "gate_exit", "notes"],
+  "properties": {
+    "stage": { "type": "string" },
+    "status": { "enum": ["ok", "fail", "blocked", "skipped"] },
+    "tests_edited": { "type": "array", "items": { "type": "string" }, "maxItems": 0 },
+    "modules_added": { "type": "array", "items": { "type": "string" } },
+    "open_gaps": { "type": "array", "items": { "type": "string" } },
+    "gate_command": { "type": "string" },
+    "gate_exit": { "type": "integer" },
+    "notes": { "type": "string" },
+    "fix_turn": { "type": "integer", "minimum": 0, "maximum": 3 }
+  }
+}
