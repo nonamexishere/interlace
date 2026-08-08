@@ -29,5 +29,6 @@ jobs:
           python3 pipeline/tools/gate_deny.py
           python3 pipeline/tools/gate_spikes.py
           python3 pipeline/tools/gate_schema.py
+          python3 pipeline/tools/gate_api.py
           bash pipeline/selftest/run.sh
           bash pipeline/run.sh
