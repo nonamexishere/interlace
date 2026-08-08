@@ -15,7 +15,7 @@ pub enum SourceKind {
     ContactsCsv,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IdentityKind {
     Phone,
     Email,
@@ -198,7 +198,7 @@ pub struct ProbeResult {
     pub notes: Vec<String>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ImportStats {
     pub inserted_messages: u64,
     pub skipped_dupes: u64,

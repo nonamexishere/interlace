@@ -101,11 +101,11 @@ impl Archive {
 
     pub fn run_import(
         &mut self,
-        _kind: SourceKind,
-        _path: &std::path::Path,
-        _opts: &ImportOpts,
+        kind: SourceKind,
+        path: &std::path::Path,
+        opts: &ImportOpts,
     ) -> Result<ImportStats> {
-        unimplemented!("run_import lands in PR6–PR8")
+        crate::import::run_import(self, kind, path, opts)
     }
 }
 
