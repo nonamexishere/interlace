@@ -7,21 +7,57 @@
     <link rel="stylesheet" href="app.css" />
   </head>
   <body>
-    <main>
-      <h1>Interlace</h1>
+    <header class="bar">
+      <strong>Interlace</strong>
+      <span class="muted">offline · no account · no HTTP client</span>
+    </header>
+
+    <p id="err" class="err" hidden></p>
+
+    <section id="setup" hidden>
+      <h1>Open an archive</h1>
       <p class="lede">
         Offline archive. No account. No sync. This window never phones home.
       </p>
-      <p>
-        Interlace never phones home and contains no HTTP
-        <strong>client</strong> capable of doing so. The archive is a folder on
-        this Mac. Phase 1 CLI still lives in the terminal
-        (<code>cargo install interlace</code>). This app is the Phase 2 shell —
-        import, search, and timelines land in the next PRs.
-      </p>
+      <label>Phone region (ISO 3166-1 alpha-2, required)
+        <input id="region" maxlength="2" placeholder="TR" autocomplete="off" />
+      </label>
+      <label>Your name
+        <input id="name" placeholder="optional" />
+      </label>
+      <label>Emails (comma-separated)
+        <input id="emails" placeholder="optional" />
+      </label>
+      <label>Phones (comma-separated)
+        <input id="phones" placeholder="optional" />
+      </label>
+      <div class="row">
+        <button type="button" id="btn-create">Create archive…</button>
+        <button type="button" id="btn-open" class="secondary">Open existing…</button>
+      </div>
       <p class="note">
-        Not encrypted at rest. The folder is the backup unit. Use FileVault.
+        Folder picker only — no URLs. Phone-region has no silent default.
+        The folder is the backup unit. Not encrypted at rest; use FileVault.
       </p>
-    </main>
+    </section>
+
+    <section id="session" hidden>
+      <h1>Archive</h1>
+      <p id="path" class="path"></p>
+      <dl id="counts" class="counts"></dl>
+      <p id="last" class="note"></p>
+      <ul id="warns" class="warns"></ul>
+      <div class="row">
+        <button type="button" id="btn-other" class="secondary">Open other archive…</button>
+      </div>
+      <p class="note">
+        Search, timeline, and import land in UI2–UI5. CLI remains
+        <code>cargo install interlace</code>. This app holds an exclusive lock
+        for the session — close it before a second Interlace window or a CLI
+        writer.
+      </p>
+    </section>
+
+    <script src="app.js"></script>
   </body>
 </html>

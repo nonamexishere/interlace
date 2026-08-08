@@ -9,6 +9,7 @@ pub mod identity;
 pub mod import;
 pub mod model;
 pub mod search;
+pub mod session;
 
 pub use db::{init_archive, migrate, open_archive, open_with_options, Archive, LockMode};
 pub use identity::{person_merge, person_undo, person_unlink, resolve_run, review_resolve};
@@ -20,6 +21,9 @@ pub use model::*;
 pub use search::{
     build_search_text, expand_query, extra_ascii_fold, index_import_run, person_timeline,
     rebuild_fts, search, turkish_fold,
+};
+pub use session::{
+    cloud_warning, init_owner_archive, read_last_path, validate_phone_region, write_last_path,
 };
 
 /// Placeholder kept from the 0.0.1 name-squat so existing tests stay green.

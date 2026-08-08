@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unpublished `interlace-tauri` macOS placeholder window (UI0): CSP, sandbox
   entitlements without network, darwin-only deny exception (`tokio` without
   `net`; still no `reqwest` / `hyper` / updater).
+- App init / open / status (UI1): rfd folder picker, required phone-region,
+  exclusive session lock, same status JSON as the CLI.
 
 ### Fixed
 

@@ -11,8 +11,9 @@ use std::process::ExitCode;
 use clap::error::ErrorKind;
 use clap::{Parser, Subcommand, ValueEnum};
 
-use crate::db::{init_archive, open_archive, LockMode};
-use crate::import::{normalize_email, parse_phone, ImporterRegistry};
+use crate::db::{open_archive, LockMode};
+use crate::import::ImporterRegistry;
+use crate::session::{init_owner_archive, read_last_path, write_last_path};
 use crate::{
     person_merge, person_timeline, person_undo, person_unlink, review_resolve, search, CoreError,
     ImportOpts, ImportStats, PersonMergeOpts, Platform, SearchQuery, SourceKind,
@@ -338,78 +339,15 @@ fn cmd_init(
     emails: Vec<String>,
     phones: Vec<String>,
 ) -> Result<(), CliError> {
-    let region = phone_region.to_ascii_uppercase();
-    if region.len() != 2 || !region.chars().all(|c| c.is_ascii_alphabetic()) {
-        return Err(CliError::user(
-            "--phone-region must be ISO 3166-1 alpha-2 (e.g. TR, US)",
-        ));
-    }
-    if path.join("INTERLACE.toml").is_file() {
-        return Err(CliError::user(format!(
-            "already an archive: {}",
-            path.display()
-        )));
-    }
-    let arch = init_archive(&path)?;
-    arch.conn.execute(
-        "INSERT INTO settings(key, value) VALUES ('default_phone_region', ?1)",
-        [&region],
-    )?;
-    let display = name.clone().unwrap_or_else(|| "Me".into());
-    if let Some(ref n) = name {
-        arch.conn.execute(
-            "UPDATE archive_meta SET owner_display_name = ?1 WHERE id = 1",
-            [n],
-        )?;
-    }
-    arch.conn.execute(
-        "INSERT INTO persons(display_name, is_self) VALUES (?1, 1)",
-        [&display],
-    )?;
-    let person_id = arch.conn.last_insert_rowid();
-    for e in emails {
-        let Some(norm) = normalize_email(&e) else {
-            return Err(CliError::user(format!("invalid --email {e}")));
-        };
-        arch.conn.execute(
-            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
-             VALUES ('owner', 'email', ?1, ?2, ?3)",
-            rusqlite::params![e, norm, &display],
-        )?;
-        let iid = arch.conn.last_insert_rowid();
-        arch.conn.execute(
-            "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
-             VALUES (?1, ?2, 'self_declared', 1.0, 'user')",
-            rusqlite::params![person_id, iid],
-        )?;
-        arch.conn.execute(
-            "INSERT INTO self_identities(identity_id) VALUES (?1)",
-            [iid],
-        )?;
-    }
-    for p in phones {
-        let Some(e164) = parse_phone(&p, Some(&region)) else {
-            return Err(CliError::user(format!(
-                "invalid --phone {p} (need E.164 or national for {region})"
-            )));
-        };
-        arch.conn.execute(
-            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
-             VALUES ('owner', 'phone', ?1, ?2, ?3)",
-            rusqlite::params![p, e164, &display],
-        )?;
-        let iid = arch.conn.last_insert_rowid();
-        arch.conn.execute(
-            "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
-             VALUES (?1, ?2, 'self_declared', 1.0, 'user')",
-            rusqlite::params![person_id, iid],
-        )?;
-        arch.conn.execute(
-            "INSERT INTO self_identities(identity_id) VALUES (?1)",
-            [iid],
-        )?;
-    }
-    write_last_path(&path)?;
+    let arch = init_owner_archive(&path, &phone_region, name, emails, phones)?;
+    let person_id: i64 = arch
+        .conn
+        .query_row(
+            "SELECT id FROM persons WHERE is_self = 1 ORDER BY id LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(1);
     println!("created archive {} (mode 0700)", path.display());
     println!("backup unit: this entire directory");
     println!("self person id={person_id}");
@@ -851,35 +789,6 @@ fn resolve_path(explicit: Option<PathBuf>) -> Result<PathBuf, CliError> {
     })
 }
 
-fn config_dir() -> PathBuf {
-    if let Ok(p) = std::env::var("INTERLACE_CONFIG_DIR") {
-        return PathBuf::from(p);
-    }
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join("Library/Application Support/Interlace")
-}
-
-fn write_last_path(path: &Path) -> Result<(), CliError> {
-    let dir = config_dir();
-    fs::create_dir_all(&dir)?;
-    let abs = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let body = format!(
-        "last_archive_path = {}\n",
-        toml::Value::String(abs.display().to_string())
-    );
-    fs::write(dir.join("config.toml"), body)?;
-    Ok(())
-}
-
-fn read_last_path() -> Option<PathBuf> {
-    let p = config_dir().join("config.toml");
-    let text = fs::read_to_string(p).ok()?;
-    let v: toml::Value = toml::from_str(&text).ok()?;
-    v.get("last_archive_path")
-        .and_then(|x| x.as_str())
-        .map(PathBuf::from)
-}
-
 fn warn_mode(root: &Path) {
     #[cfg(unix)]
     if let Ok(meta) = fs::metadata(root) {
@@ -895,9 +804,8 @@ fn warn_mode(root: &Path) {
 }
 
 fn warn_cloud(root: &Path) {
-    let s = root.to_string_lossy();
-    if s.contains("Mobile Documents") || s.contains("Dropbox") || s.contains("Google Drive") {
-        eprintln!("warning: archive looks like it sits on iCloud/Dropbox; see docs/user/backup.md");
+    if let Some(w) = crate::session::cloud_warning(root) {
+        eprintln!("warning: {w}");
     }
 }
 
