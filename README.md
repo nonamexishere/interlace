@@ -46,6 +46,7 @@ It is **not** a fourth crates.io name.
 - Pipeline: [docs/hacking/pipeline.md](docs/hacking/pipeline.md)
 - Import WhatsApp: [docs/user/import-whatsapp.md](docs/user/import-whatsapp.md)
 - Import Takeout / Gmail / Contacts: [docs/user/import-takeout.md](docs/user/import-takeout.md)
+- People / review / undo: [docs/user/identity-and-review.md](docs/user/identity-and-review.md)
 
 ## License
 
