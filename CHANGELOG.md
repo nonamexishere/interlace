@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   merge/unlink/undo, j/k navigation.
 - Desktop UI is Svelte 5 + Vite + Tailwind (`npm run tauri:dev`); vanilla `ui/`
   removed. Production still ships static files, no CDN.
+- Owned shadcn-svelte (New York / zinc) primitives under
+  `web/lib/components/ui/`; merge/unlink/undo use Dialog, not `confirm()`.
 
 ### Fixed
 
