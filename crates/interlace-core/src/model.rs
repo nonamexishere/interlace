@@ -262,6 +262,9 @@ pub struct ImportOpts {
     pub resume_run_id: Option<i64>,
     pub conversation_name: Option<String>,
     pub max_bytes: u64,
+    /// Archive `default_phone_region` (ISO 3166-1 alpha-2). Probe uses it to
+    /// break a datetime locale tie (tr-TR vs de-DE). `--locale` still wins.
+    pub phone_region: Option<String>,
 }
 
 impl Default for ImportOpts {
@@ -271,6 +274,7 @@ impl Default for ImportOpts {
             resume_run_id: None,
             conversation_name: None,
             max_bytes: 60 * 1024 * 1024 * 1024,
+            phone_region: None,
         }
     }
 }

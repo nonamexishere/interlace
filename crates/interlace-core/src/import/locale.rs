@@ -381,7 +381,11 @@ fn take_digits(
     s.parse().ok()
 }
 
-pub fn vote_locale(lines: &[&str], family: Option<HeaderFamily>) -> Result<String, CoreError> {
+pub fn vote_locale(
+    lines: &[&str],
+    family: Option<HeaderFamily>,
+    phone_region: Option<&str>,
+) -> Result<String, CoreError> {
     let packs = all_packs()?;
     let mut scores = vec![0u32; packs.len()];
     let mut sampled: Vec<ParsedHeader> = Vec::new();
@@ -433,11 +437,21 @@ pub fn vote_locale(lines: &[&str], family: Option<HeaderFamily>) -> Result<Strin
         return Ok(packs[tied[0]].id.clone());
     }
     // Datetime tie (typical: tr-TR vs de-DE on `d.mm.yyyy, HH:MM:SS`).
-    // Score pack-unique language tokens on the same sample.
+    // Score pack-unique language tokens on header rests *and* raw lines
+    // (undated encryption banners).
     let mut lang = vec![0u32; packs.len()];
     for h in &sampled {
         for &i in &tied {
             lang[i] += lang_hits(&packs[i], &h.rest);
+        }
+    }
+    for line in lines.iter().take(80) {
+        let raw = strip_cf(line);
+        if parse_header_line(&raw).is_some() {
+            continue;
+        }
+        for &i in &tied {
+            lang[i] += lang_hits(&packs[i], &raw);
         }
     }
     let lang_max = tied.iter().map(|&i| lang[i]).max().unwrap_or(0);
@@ -449,11 +463,27 @@ pub fn vote_locale(lines: &[&str], family: Option<HeaderFamily>) -> Result<Strin
     if lang_winners.len() == 1 {
         return Ok(packs[lang_winners[0]].id.clone());
     }
+    if let Some(want) = pack_id_for_region(phone_region) {
+        if let Some(&i) = tied.iter().find(|&&i| packs[i].id == want) {
+            return Ok(packs[i].id.clone());
+        }
+    }
     let names: Vec<&str> = tied.iter().map(|&i| packs[i].id.as_str()).collect();
     Err(CoreError::Probe(format!(
         "locale vote tied between {}; pass --locale",
         names.join(", ")
     )))
+}
+
+fn pack_id_for_region(region: Option<&str>) -> Option<&'static str> {
+    match region?.trim().to_ascii_uppercase().as_str() {
+        "TR" => Some("tr-TR"),
+        "DE" => Some("de-DE"),
+        "GB" => Some("en-GB"),
+        "US" => Some("en-US"),
+        "BR" => Some("pt-BR"),
+        _ => None,
+    }
 }
 
 /// Hits on *pack-unique* strings only. Shared English fallbacks (`You`,
@@ -698,9 +728,9 @@ mod tests {
             "[26.03.2025, 10:24:15] Mustafa: merhaba",
             "[26.03.2025, 10:24:20] Alice: hi",
         ];
-        let refs: Vec<&str> = lines.iter().copied().collect();
+        let refs: Vec<&str> = lines.to_vec();
         assert_eq!(
-            vote_locale(&refs, Some(HeaderFamily::Ios)).unwrap(),
+            vote_locale(&refs, Some(HeaderFamily::Ios), None).unwrap(),
             "tr-TR"
         );
     }
@@ -712,9 +742,9 @@ mod tests {
             "[26.03.2025, 10:24:15] Mustafa: hallo",
             "[26.03.2025, 10:24:20] Alice: hi",
         ];
-        let refs: Vec<&str> = lines.iter().copied().collect();
+        let refs: Vec<&str> = lines.to_vec();
         assert_eq!(
-            vote_locale(&refs, Some(HeaderFamily::Ios)).unwrap(),
+            vote_locale(&refs, Some(HeaderFamily::Ios), None).unwrap(),
             "de-DE"
         );
     }
@@ -726,9 +756,42 @@ mod tests {
             "[26.03.2025, 10:24:07] Mustafa: a",
             "[7.04.2025, 23:21:09] Alice: b",
         ];
-        let refs: Vec<&str> = lines.iter().copied().collect();
+        let refs: Vec<&str> = lines.to_vec();
         assert_eq!(
-            vote_locale(&refs, Some(HeaderFamily::Ios)).unwrap(),
+            vote_locale(&refs, Some(HeaderFamily::Ios), None).unwrap(),
+            "tr-TR"
+        );
+    }
+
+    #[test]
+    fn vote_english_banner_unpadded_uses_phone_region() {
+        let lines = [
+            "[3.08.2025, 02:31:13] Messages and calls are end-to-end encrypted",
+            "[3.08.2025, 02:31:14] Mustafa: a",
+            "[3.08.2025, 02:31:15] Alice: b",
+        ];
+        let refs: Vec<&str> = lines.to_vec();
+        assert_eq!(
+            vote_locale(&refs, Some(HeaderFamily::Ios), Some("TR")).unwrap(),
+            "tr-TR"
+        );
+        assert_eq!(
+            vote_locale(&refs, Some(HeaderFamily::Ios), Some("DE")).unwrap(),
+            "de-DE"
+        );
+        assert!(vote_locale(&refs, Some(HeaderFamily::Ios), None).is_err());
+    }
+
+    #[test]
+    fn vote_undated_tr_banner_breaks_tie() {
+        let lines = [
+            "Mesajlar ve aramalar uçtan uca şifrelidir",
+            "[3.08.2025, 02:31:13] Mustafa: a",
+            "[3.08.2025, 02:31:15] Alice: b",
+        ];
+        let refs: Vec<&str> = lines.to_vec();
+        assert_eq!(
+            vote_locale(&refs, Some(HeaderFamily::Ios), None).unwrap(),
             "tr-TR"
         );
     }
