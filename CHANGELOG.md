@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `deny.toml`, CI, and deterministic pipeline gates (`pipeline/tools`).
 - SQLite archive open/migrate/`0001_init.sql` + exclusive flock.
 - Frozen `interlace-core` public API (types + `unimplemented!` import/search/identity).
+- Unpublished `interlace-fixtures` locale packs + synthetic generators.
 
 ## [0.0.1] - 2026-08-08
 

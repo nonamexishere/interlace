@@ -16,7 +16,7 @@ jobs:
       - name: cargo fmt
         run: cargo fmt --all -- --check
       - name: cargo clippy
-        run: cargo clippy -p interlace-core -p interlace -p interlace-cli -- -D warnings
+        run: cargo clippy -p interlace-core -p interlace -p interlace-cli -p interlace-fixtures -- -D warnings
       - name: cargo test
         run: cargo test --workspace
       - uses: taiki-e/install-action@v2
@@ -30,5 +30,6 @@ jobs:
           python3 pipeline/tools/gate_spikes.py
           python3 pipeline/tools/gate_schema.py
           python3 pipeline/tools/gate_api.py
+          python3 pipeline/tools/gate_fixtures.py
           bash pipeline/selftest/run.sh
           bash pipeline/run.sh
