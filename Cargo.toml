@@ -1,0 +1,11 @@
+[package]
+name = "interlace"
+version = "0.0.1"
+edition = "2021"
+description = "Local-first archive that unifies your conversations across platforms"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/nonamexishere/interlace"
+readme = "README.md"
+
+[dependencies]
+
