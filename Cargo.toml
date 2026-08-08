@@ -36,3 +36,4 @@ blake3 = "1"
 mailparse = "0.16"
 encoding_rs = "0.8"
 data-encoding = "2"
+clap = { version = "4.5", default-features = false, features = ["std", "help", "usage", "error-context", "suggestions", "derive"] }
