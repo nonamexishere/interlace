@@ -23,3 +23,6 @@ version = "0.0.1"
 [workspace.dependencies]
 interlace-core = { path = "crates/interlace-core", version = "0.0.1" }
 interlace-cli-common = { path = "crates/interlace-cli-common", version = "0.0.1" }
+rusqlite = { version = "0.32", default-features = false, features = ["bundled", "blob", "backup", "hooks"] }
+thiserror = "2"
+libc = "0.2"

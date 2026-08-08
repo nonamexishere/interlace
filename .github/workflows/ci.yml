@@ -22,11 +22,12 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny@0.18.2
-      - name: deny + bootstrap + spikes + selftest
+      - name: deny + bootstrap + spikes + schema + selftest
         run: |
           python3 pipeline/tools/deny_toml_lock.py
           python3 pipeline/tools/gate_bootstrap.py
           python3 pipeline/tools/gate_deny.py
           python3 pipeline/tools/gate_spikes.py
+          python3 pipeline/tools/gate_schema.py
           bash pipeline/selftest/run.sh
           bash pipeline/run.sh

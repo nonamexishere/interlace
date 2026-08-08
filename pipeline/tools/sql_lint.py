@@ -20,7 +20,11 @@ def main() -> None:
         sql_path = root / sql_path
     if not sql_path.is_file():
         fail(f"missing {sql_path}")
-    text = sql_path.read_text()
+    raw = sql_path.read_text()
+    # Strip -- comments so narrative mentions of forbidden names do not trip the lint.
+    text = "\n".join(
+        line.split("--", 1)[0] for line in raw.splitlines()
+    )
     if re.search(r"(?i)DROP\s+TABLE\s+(messages|persons|identities|attachments)", text):
         fail("DROP TABLE of user data forbidden in 0001")
     for needle in ("heartbeat_at", "photo_dhash"):

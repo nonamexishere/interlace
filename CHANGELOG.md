@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Virtual Cargo workspace (`interlace-core`, `interlace`, `interlace-cli`).
 - `deny.toml`, CI, and deterministic pipeline gates (`pipeline/tools`).
+- SQLite archive open/migrate/`0001_init.sql` + exclusive flock.
 
 ## [0.0.1] - 2026-08-08
 
