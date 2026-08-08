@@ -8,4 +8,14 @@ rust-version.workspace = true
 description = "Core library for Interlace, a local-first archive that unifies conversations across platforms"
 readme = "README.md"
 
+[features]
+default = ["bundled-sqlite"]
+bundled-sqlite = ["rusqlite/bundled"]
+
 [dependencies]
+rusqlite.workspace = true
+thiserror.workspace = true
+libc.workspace = true
+
+[dev-dependencies]
+rusqlite.workspace = true
