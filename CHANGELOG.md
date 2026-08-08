@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Identity `resolve_run` auto-link/merge + undo/review (I1–I6, I6b) and `docs/user/identity-and-review.md`.
 - FTS5 search + person timeline with dual Turkish/ASCII fold (S1–S3) and `docs/user/search.md`.
 - CLI `init/open/import/search/person/review/doctor/log` (silent `interlace-cli` twin) plus `docs/user/doctor.md` and `docs/user/backup.md`.
+- Doctor smoke (exit 3, stale heartbeat → interrupted) and 10k search bench in PR CI (S4 proxy).
 
 ## [0.0.1] - 2026-08-08
 

@@ -24,11 +24,22 @@ Fix loop: max 3 per stage (`pipeline/state/FIX_TURN_<stage>`), then
 python3 pipeline/tools/gate_bootstrap.py
 python3 pipeline/tools/gate_deny.py
 python3 pipeline/tools/gate_spikes.py
+python3 pipeline/tools/gate_schema.py
+python3 pipeline/tools/gate_api.py
+python3 pipeline/tools/gate_fixtures.py
+python3 pipeline/tools/gate_impl.py --stage 05a --must CAS1,CAS2,CAS3
+python3 pipeline/tools/gate_impl.py --stage 05b --must W1,W2,W3,W4
+python3 pipeline/tools/gate_impl.py --stage 05c --must M1,M2,M3,C1
+python3 pipeline/tools/gate_impl.py --stage 05d --must I1,I2,I3,I4,I5,I6,I6b
+python3 pipeline/tools/gate_impl.py --stage 05e --must S1,S2,S3
+python3 pipeline/tools/gate_cli.py
+python3 pipeline/tools/gate_bench.py   # 10k only; do not set INTERLACE_BENCH in PR
 bash pipeline/selftest/run.sh
 bash pipeline/run.sh
 ```
 
-Later stages (`gate_schema`, `gate_api`, `gate_impl`, …) turn green as those PRs land.
+Nightly (not PR): `INTERLACE_BENCH=1M|10M cargo bench -p interlace-core --bench search`
+then `python3 pipeline/tools/bench_gate.py pipeline/stages/07-bench/OUT.json`.
 
 ## Blindness
 
