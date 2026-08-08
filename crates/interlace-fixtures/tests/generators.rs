@@ -1,7 +1,10 @@
 use std::fs;
 use std::io::Read;
 use std::process;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+static SEQ: AtomicU64 = AtomicU64::new(0);
 
 use interlace_fixtures::{
     load_pack, write_contacts_csv, write_contacts_vcf, write_mbox, write_takeout_tree,
@@ -14,7 +17,8 @@ fn tmp() -> std::path::PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let p = std::env::temp_dir().join(format!("il-fix-{}-{n}", process::id()));
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let p = std::env::temp_dir().join(format!("il-fix-{}-{n}-{seq}", process::id()));
     let _ = fs::remove_dir_all(&p);
     fs::create_dir_all(&p).unwrap();
     p
