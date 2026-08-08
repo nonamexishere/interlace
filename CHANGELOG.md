@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Desktop UI is Svelte 5 + Vite + Tailwind (`npm run tauri`); vanilla `ui/`
   removed. Production still ships static files, no CDN.
 
+## [0.1.1] - 2026-08-09
+
+Dogfood patch for the published CLI. If you imported WhatsApp under 0.1.0,
+wipe the archive and re-import (unknown rows + sticky `group`). The desktop
+app is unpublished and not in this crate release.
+
 ### Fixed
 
 - Global `--path` no longer collides with `import` positionals; a WhatsApp ZIP
