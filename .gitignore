@@ -2,4 +2,5 @@
 __pycache__/
 *.pyc
 .DS_Store
+pipeline/stages/07-bench/OUT.json
 

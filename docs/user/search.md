@@ -75,9 +75,18 @@ Target: **warm p95 < 200 ms** on 1–2 term product queries, LIMIT 50 (Spike 1:
 ~50–100 ms at 1 M / 10 M on this machine class). Cold start after reboot with a
 multi-GB DB may exceed 200 ms on the first mmap fault-in; benches warm up first.
 
-PR CI uses a **10k** fixture proxy (S4, Phase 1.1). 1 M / 10 M benches are
-**nightly**, not PR. Adversarial `NOT` / huge `OR` / unanchored `*` are not the
-gate.
+PR CI uses a **10k** fixture proxy (S4): `cargo bench -p interlace-core --bench search`
+then `gate_bench.py` (p95 ≤ 50 ms). 1 M / 10 M benches are **nightly**, not PR:
+
+```bash
+INTERLACE_BENCH=1M cargo bench -p interlace-core --bench search
+INTERLACE_BENCH=10M cargo bench -p interlace-core --bench search
+```
+
+Nightly fails if 1M p95 > 200 ms after 3 warmups. High-DF `merhaba AND yarın` is
+recorded with the Spike 1 caveat (almost every TR doc can match) and is **not**
+part of the gated p95. Adversarial `NOT` / huge `OR` / unanchored `*` are not
+the gate.
 
 Triggers stay installed (D17). Import bulk-inserts `search_doc` then
 `messages_fts … 'rebuild'`. `doctor --rebuild-fts` rebuilds without DROP.

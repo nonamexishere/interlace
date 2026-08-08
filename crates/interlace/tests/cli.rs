@@ -115,3 +115,51 @@ fn init_status_search_doctor_roundtrip() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn doctor_exit_3_on_stale_heartbeat() {
+    let dir = tmp();
+    let arch = dir.join("arch");
+    let cfg = dir.join("cfg");
+    std::fs::create_dir_all(&cfg).unwrap();
+    let init = bin()
+        .env("INTERLACE_CONFIG_DIR", &cfg)
+        .args([
+            "init",
+            "--path",
+            arch.to_str().unwrap(),
+            "--phone-region",
+            "TR",
+        ])
+        .output()
+        .unwrap();
+    assert!(init.status.success());
+
+    let db = rusqlite::Connection::open(arch.join("archive.sqlite")).unwrap();
+    db.execute(
+        "INSERT INTO sources(kind, label, origin_path) VALUES ('gmail_mbox', 't', '/t.mbox')",
+        [],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO import_runs(source_id, status, heartbeat_at)
+         VALUES (1, 'running', '2000-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    drop(db);
+
+    let doc = bin()
+        .env("INTERLACE_CONFIG_DIR", &cfg)
+        .args(["doctor", "--integrity", "--path", arch.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert_eq!(
+        doc.status.code(),
+        Some(3),
+        "stderr={}",
+        String::from_utf8_lossy(&doc.stderr)
+    );
+    assert!(String::from_utf8_lossy(&doc.stderr).contains("heartbeat"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
