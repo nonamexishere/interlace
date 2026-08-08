@@ -1,13 +1,15 @@
-use std::fs::{self, OpenOptions};
+use std::fs::{self, OpenOptions as FsOpenOptions};
 use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
 
+use crate::model::{CoreError, ImportOpts, ImportStats, OpenOptions, SourceKind};
+
 use super::lock::{ArchiveLock, LockMode};
 use super::migrate::migrate;
-use super::{DbError, Result};
+use super::Result;
 
 /// Open archive connection plus the held flock.
 pub struct Archive {
@@ -47,7 +49,7 @@ pub fn init_archive(root: &Path) -> Result<Archive> {
 pub fn open_archive(root: &Path, mode: LockMode) -> Result<Archive> {
     let marker = root.join("INTERLACE.toml");
     if !marker.is_file() {
-        return Err(DbError::Config(format!(
+        return Err(CoreError::Config(format!(
             "not an Interlace archive (missing INTERLACE.toml): {}",
             root.display()
         )));
@@ -63,6 +65,34 @@ pub fn open_archive(root: &Path, mode: LockMode) -> Result<Archive> {
         root: root.to_path_buf(),
         _lock: lock,
     })
+}
+
+/// DESIGN `OpenOptions` wrapper: `create` → init, else exclusive open.
+pub fn open_with_options(opts: &OpenOptions) -> Result<Archive> {
+    if opts.create {
+        init_archive(&opts.path)
+    } else {
+        open_archive(&opts.path, LockMode::Exclusive)
+    }
+}
+
+impl Archive {
+    pub fn status(&self) -> Result<serde_json::Value> {
+        unimplemented!("status lands in PR10")
+    }
+
+    pub fn doctor(&self, _rebuild_fts: bool, _gc_cas: bool, _integrity: bool) -> Result<()> {
+        unimplemented!("doctor lands in PR11")
+    }
+
+    pub fn run_import(
+        &mut self,
+        _kind: SourceKind,
+        _path: &std::path::Path,
+        _opts: &ImportOpts,
+    ) -> Result<ImportStats> {
+        unimplemented!("run_import lands in PR6–PR8")
+    }
 }
 
 fn apply_pragmas(conn: &Connection) -> Result<()> {
@@ -99,7 +129,7 @@ fn ensure_fts_triggers(conn: &Connection) -> Result<()> {
 }
 
 fn write_mode_600(path: PathBuf, bytes: &[u8]) -> Result<()> {
-    let mut opts = OpenOptions::new();
+    let mut opts = FsOpenOptions::new();
     opts.write(true).create(true).truncate(true);
     #[cfg(unix)]
     opts.mode(0o600);

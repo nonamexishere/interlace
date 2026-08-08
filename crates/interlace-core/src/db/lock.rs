@@ -3,7 +3,9 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
-use super::{DbError, Result};
+use crate::model::CoreError;
+
+use super::Result;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LockMode {
@@ -33,7 +35,7 @@ impl ArchiveLock {
         let rc = unsafe { libc::flock(file.as_raw_fd(), op) };
         if rc != 0 {
             let (pid, cmd) = read_holder(&mut file);
-            return Err(DbError::Lock { pid, cmd });
+            return Err(CoreError::Lock { pid, cmd });
         }
         if matches!(mode, LockMode::Exclusive) {
             file.set_len(0)?;
