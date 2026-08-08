@@ -8,7 +8,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import fail, repo_root  # noqa: E402
 
 ALLOWED = {"en-US", "en-GB", "tr-TR", "de-DE", "pt-BR"}
-REQUIRED = ("you_tokens", "date_format", "header_family")
+REQUIRED = (
+    "you_tokens",
+    "date_time_patterns",
+    "family_hints",
+    "media_omitted",
+    "file_attached_pattern",
+)
 
 
 def main() -> None:

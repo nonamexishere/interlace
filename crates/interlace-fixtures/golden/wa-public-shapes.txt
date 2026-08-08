@@ -1,0 +1,11 @@
+# Invented golden WhatsApp header lines for Spike 2 (not copied from user chats or GPL corpora).
+[2024-03-15, 14:32:18] John Doe: Hello
+[3/15/24, 2:32:18 PM] John Doe: Hello
+[15.03.2024, 14:32:18] John Doe: Hello
+[15.03.2024 14:32:18] John Doe: Merhaba
+3/15/24, 2:32 PM - John Doe: Hello
+15/03/2024, 14:32 - John Doe: Hello
+15.03.2024 14:32 - John Doe: Merhaba
+15.03.2024, 14:32 - John: x
+01.04.26, 09:15 - Anna: Datei angehängt
+[15/03/2024, 14:32:18] You: Hi
