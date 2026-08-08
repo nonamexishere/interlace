@@ -81,8 +81,22 @@ impl Archive {
         unimplemented!("status lands in PR10")
     }
 
-    pub fn doctor(&self, _rebuild_fts: bool, _gc_cas: bool, _integrity: bool) -> Result<()> {
-        unimplemented!("doctor lands in PR11")
+    pub fn doctor(&self, rebuild_fts: bool, gc_cas: bool, integrity: bool) -> Result<()> {
+        if gc_cas {
+            crate::cas::gc_cas(self)?;
+        }
+        if integrity {
+            let ok: String = self
+                .conn
+                .query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
+            if ok != "ok" {
+                return Err(CoreError::Fatal(format!("integrity_check: {ok}")));
+            }
+        }
+        if rebuild_fts {
+            unimplemented!("FTS rebuild lands in PR9/PR11");
+        }
+        Ok(())
     }
 
     pub fn run_import(
