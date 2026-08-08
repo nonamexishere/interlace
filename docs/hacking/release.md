@@ -14,16 +14,27 @@ first usable CLI.
 ```bash
 git checkout master
 git pull
-git tag -a v0.1.0 -m "interlace 0.1.0"
-git push origin v0.1.0
+git tag -a v0.1.1 -m "interlace 0.1.1"
+git push origin v0.1.1
 ```
 
 `.github/workflows/publish.yml` then `cargo publish -p` each package and
 attaches **unsigned** macOS `interlace` / `interlace-cli` binaries to a GitHub
-Release. Codesign is later.
+Release. Notes come from the matching `CHANGELOG.md` section (not Unreleased).
+Codesign is later.
 
 Do **not** publish 0.0.1 again. Do **not** invent a fourth crates.io name
 (`interlace-cli-common` and `interlace-fixtures` stay `publish = false`).
+`interlace-tauri` stays unpublished.
+
+## Patch releases
+
+1. Bump `[workspace.package] version` and the path `version =` pins in the
+   root `Cargo.toml` (e.g. `0.1.0` → `0.1.1`).
+2. Move shipped bullets out of `[Unreleased]` into a dated `## [0.1.1]` section.
+3. Merge that PR to `master` with gates green.
+4. Annotated tag `v0.1.1` as above. Do not retag; if publish fails mid-way,
+   retry the remaining `-p` (see below).
 
 ## Mirror READMEs (satellite GitHub repos)
 

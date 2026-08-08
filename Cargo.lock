@@ -1855,7 +1855,7 @@ dependencies = [
 
 [[package]]
 name = "interlace"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "interlace-core",
  "interlace-fixtures",
@@ -1864,21 +1864,21 @@ dependencies = [
 
 [[package]]
 name = "interlace-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "interlace-core",
 ]
 
 [[package]]
 name = "interlace-cli-common"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "interlace-core",
 ]
 
 [[package]]
 name = "interlace-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "blake3",
  "clap",
@@ -1897,7 +1897,7 @@ dependencies = [
 
 [[package]]
 name = "interlace-fixtures"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1907,7 +1907,7 @@ dependencies = [
 
 [[package]]
 name = "interlace-tauri"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "interlace-core",
  "rfd",

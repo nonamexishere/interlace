@@ -42,7 +42,12 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
-          notes=$(awk '/^## \[/{if(seen++)exit} seen' CHANGELOG.md || true)
+          ver="${tag#v}"
+          notes=$(awk -v ver="$ver" '
+            $0 ~ "^## \\[" ver "\\]" {p=1; next}
+            p && /^## \[/ {exit}
+            p
+          ' CHANGELOG.md || true)
           gh release create "$tag" \
             target/release/interlace \
             target/release/interlace-cli \

@@ -14,7 +14,7 @@ All issues, PRs, and source live in the monorepo:
 
 ```toml
 # crates/interlace-core in the monorepo
-interlace-core = "0.1.0"
+interlace-core = "0.1.1"
 ```
 
 Do not open PRs here. `cargo publish` runs from annotated tags on the monorepo
