@@ -1,0 +1,34 @@
+{
+  "spikes": {
+    "1": {
+      "pass": true,
+      "caveats": [
+        "high-DF unigram + ORDER BY rank LIMIT 50 was p95~705ms at 10M",
+        "person+date join not measured",
+        "system sqlite FTS5, not rusqlite bundled — recheck in PR9"
+      ]
+    },
+    "2": {
+      "pass": true,
+      "caveats": [
+        "whatstk 96 formats cited as census only (GPL — do not vendor code)",
+        "year-day-month and mixed 12h/24h require --locale / unknown_row"
+      ]
+    },
+    "3": {
+      "pass": true,
+      "caveats": [
+        "dummy crate needs a license field for cargo deny check licenses",
+        "re-run deny after every new dependency"
+      ]
+    },
+    "4": {
+      "pass": true,
+      "caveats": [
+        "no real Takeout dumps; public docs + synthetic zips only",
+        "same-path multi-zip is fatal (extract-then-dir), not mbox concat"
+      ]
+    }
+  },
+  "blocked": false
+}
