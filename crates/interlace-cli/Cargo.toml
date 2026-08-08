@@ -13,4 +13,4 @@ name = "interlace-cli"
 path = "src/main.rs"
 
 [dependencies]
-interlace-cli-common.workspace = true
+interlace-core.workspace = true

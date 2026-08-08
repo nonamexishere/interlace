@@ -33,7 +33,7 @@ pub fn init_archive(root: &Path) -> Result<Archive> {
     let archive_id = new_archive_id();
     let created_at = now_rfc3339();
     let toml = format!(
-        "format = 1\narchive_id = \"{archive_id}\"\ncreated_at = \"{created_at}\"\napp_min_version = \"0.0.1\"\n"
+        "format = 1\narchive_id = \"{archive_id}\"\ncreated_at = \"{created_at}\"\napp_min_version = \"0.1.0\"\n"
     );
     write_mode_600(root.join("INTERLACE.toml"), toml.as_bytes())?;
     write_mode_600(root.join("INTERLACE.lock"), b"")?;

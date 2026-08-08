@@ -27,6 +27,8 @@ private = { ignore = true }
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Unpublished workspace path deps (interlace-fixtures) have no crates.io version.
+allow-wildcard-paths = true
 # Phase 1 CLI is sync: ban tokio entirely until Tauri (Phase 2).
 deny = [
     { crate = "reqwest", wrappers = [] },

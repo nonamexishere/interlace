@@ -5,13 +5,8 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Shared CLI entry for the interlace and interlace-cli binaries (unpublished)"
+description = "Optional unpublished re-export of interlace_core::cli (not a crates.io name)"
 publish = false
 
 [dependencies]
 interlace-core.workspace = true
-clap.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-toml.workspace = true
-rusqlite.workspace = true
