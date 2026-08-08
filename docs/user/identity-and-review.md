@@ -27,9 +27,12 @@ Non-Gmail domains stay exact: `a+x@corp.com` ≠ `a@corp.com`.
 Import order does not matter (D15). WhatsApp-then-Contacts and Contacts-then-WhatsApp
 end as one live person for the same E.164/email (I5).
 
-Name-only WhatsApp senders (`kind=display_name`) go to the **review queue**,
-never auto-merge (I2). Two contact cards that share a phone but have
-incompatible names block auto-link and enqueue review (I3).
+Name-only WhatsApp senders (`kind=display_name`) **never auto-merge** onto a
+Contacts/phone/email person (I2). After that review row is enqueued (when a
+similar live person already exists), each leftover name gets its **own**
+person so a WA-first archive has a people list. A name that fold-equals a
+group conversation title is not promoted. Two contact cards that share a
+phone but have incompatible names block auto-link and enqueue review (I3).
 
 `persist_contact` creates one person per vCard (`takeout_vcard`) and does **not**
 merge across cards. **`resolve_run`** (after every import) is the only place

@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Desktop UI is Svelte 5 + Vite + Tailwind (`npm run tauri:dev`); vanilla `ui/`
   removed. Production still ships static files, no CDN.
 
+### Fixed
+
+- WhatsApp name-only identities become their own people after import (not
+  merged onto Contacts). Group-title identities stay unlinked. Re-import the
+  same ZIP to backfill an existing archive (`skipped_dupes`).
+
 ## [0.1.1] - 2026-08-09
 
 Dogfood patch for the published CLI. If you imported WhatsApp under 0.1.0,
