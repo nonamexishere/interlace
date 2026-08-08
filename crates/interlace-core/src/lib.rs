@@ -8,6 +8,7 @@ pub mod db;
 pub mod identity;
 pub mod import;
 pub mod model;
+pub mod people;
 pub mod search;
 pub mod session;
 
@@ -18,6 +19,10 @@ pub use import::{
     TakeoutImporter, WhatsappImporter,
 };
 pub use model::*;
+pub use people::{
+    person_display_name, person_identities, person_list, person_timeline_rows, recent_link_events,
+    LinkEvent, PersonIdentity, PersonSummary, TimelineRow,
+};
 pub use search::{
     build_search_text, expand_query, extra_ascii_fold, index_import_run, person_timeline,
     rebuild_fts, search, turkish_fold,

@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `net`; still no `reqwest` / `hyper` / updater).
 - App init / open / status (UI1): rfd folder picker, required phone-region,
   exclusive session lock, same status JSON as the CLI.
+- Person list + D18 timeline in the app (UI3): groups off by default,
+  merge/unlink/undo, j/k navigation.
 
 ### Fixed
 

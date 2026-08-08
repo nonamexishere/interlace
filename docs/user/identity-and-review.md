@@ -72,6 +72,10 @@ messages remain.
 
 ## Self person
 
+The desktop app (UI3) shows the same person list and D18 timeline (groups
+hidden until toggled). Merge / unlink / undo in the window call the same
+core functions as the CLI.
+
 `interlace init` creates `persons.is_self=1` even with zero emails/phones, plus
 owner identities for the addresses you typed. WhatsApp `You` / `Siz` / `Du` /
 `Você` tokens are locale-pack self senders, not automatically the owner person
