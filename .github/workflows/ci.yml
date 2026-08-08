@@ -19,8 +19,9 @@ jobs:
         run: cargo clippy -p interlace-core -p interlace -p interlace-cli -- -D warnings
       - name: cargo test
         run: cargo test --workspace
-      - name: install cargo-deny
-        run: cargo install cargo-deny --locked --version 0.18.2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.18.2
       - name: deny + bootstrap + spikes + selftest
         run: |
           python3 pipeline/tools/deny_toml_lock.py
