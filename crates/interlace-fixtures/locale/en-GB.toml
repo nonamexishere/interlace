@@ -2,10 +2,10 @@ id = "en-GB"
 family_hints = ["ios_bracket", "android_dash"]
 you_tokens = ["You"]
 date_time_patterns = [
-  "%d/%m/%Y, %H:%M:%S",
-  "%d/%m/%Y, %H:%M",
-  "%d/%m/%y, %H:%M:%S",
-  "%d/%m/%y, %H:%M",
+  "%-d/%-m/%Y, %H:%M:%S",
+  "%-d/%-m/%Y, %H:%M",
+  "%-d/%-m/%y, %H:%M:%S",
+  "%-d/%-m/%y, %H:%M",
 ]
 media_omitted = ["<Media omitted>", "image omitted", "video omitted", "audio omitted", "sticker omitted", "GIF omitted"]
 file_attached_pattern = '^(?P<filename>.+) \\(file attached\\)$'

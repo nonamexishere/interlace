@@ -1460,12 +1460,13 @@ Line shapes to accept (fixtures lock these):
 | iOS bracket US | `[3/15/24, 2:32:18 PM] John Doe: Hello` |
 | iOS bracket EU | `[15.03.2024, 14:32:18] John Doe: Hello` |
 | iOS bracket TR | `[15.03.2024 14:32:18] John Doe: Merhaba` |
+| iOS bracket TR unpadded day | `[3.08.2025, 02:31:13] John Doe: Merhaba` |
 | Android dash US | `3/15/24, 2:32 PM - John Doe: Hello` |
 | Android dash EU | `15/03/2024, 14:32 - John Doe: Hello` |
 | Android dash TR | `15.03.2024 14:32 - John Doe: Merhaba` |
 | Android dash comma-time | `15.03.2024, 14:32 - John: x` |
 
-Date parse: try locale pack list in probe-ranked order; require **one pack for the whole file** after the first 50 lines vote. If vote is tied, abort with "pass `--locale tr-TR`".
+Date parse: try locale pack list in probe-ranked order; require **one pack for the whole file** after the first 50 lines vote. Day/month tokens are `%-d` / `%-m` (1–2 digits; iOS TR emits `3.08.2025` and `26.03.2025`). If datetime scores tie (typical: `tr-TR` vs `de-DE` on comma-time), score **pack-unique** language tokens on the same sample (native encryption banner, unique media/you/system strings — not shared English fallbacks). Still tied → abort with "pass `--locale`".
 
 Multiline: a line that does **not** match a header continues the previous message body.
 
@@ -3251,10 +3252,10 @@ id = "en-GB"
 family_hints = ["ios_bracket", "android_dash"]
 you_tokens = ["You"]
 date_time_patterns = [
-  "%d/%m/%Y, %H:%M:%S",
-  "%d/%m/%Y, %H:%M",
-  "%d/%m/%y, %H:%M:%S",
-  "%d/%m/%y, %H:%M",
+  "%-d/%-m/%Y, %H:%M:%S",
+  "%-d/%-m/%Y, %H:%M",
+  "%-d/%-m/%y, %H:%M:%S",
+  "%-d/%-m/%y, %H:%M",
 ]
 media_omitted = ["<Media omitted>", "image omitted", "video omitted", "audio omitted", "sticker omitted", "GIF omitted"]
 file_attached_pattern = '^(?P<filename>.+) \\(file attached\\)$'
@@ -3276,10 +3277,10 @@ id = "tr-TR"
 family_hints = ["ios_bracket", "android_dash"]
 you_tokens = ["Siz", "Sen", "You"]
 date_time_patterns = [
-  "%d.%m.%Y %H:%M:%S",
-  "%d.%m.%Y, %H:%M:%S",
-  "%d.%m.%Y %H:%M",
-  "%d.%m.%Y, %H:%M",
+  "%-d.%-m.%Y, %H:%M:%S",
+  "%-d.%-m.%Y %H:%M:%S",
+  "%-d.%-m.%Y, %H:%M",
+  "%-d.%-m.%Y %H:%M",
 ]
 media_omitted = ["<Medya dahil edilmedi>", "<Media omitted>", "görüntü dahil edilmedi", "video dahil edilmedi"]
 file_attached_pattern = '^(?P<filename>.+) \\(dosya ekli\\)$'
@@ -3301,9 +3302,9 @@ id = "de-DE"
 family_hints = ["ios_bracket", "android_dash"]
 you_tokens = ["Du", "Ihr", "You"]
 date_time_patterns = [
-  "%d.%m.%Y, %H:%M:%S",
-  "%d.%m.%Y, %H:%M",
-  "%d.%m.%y, %H:%M:%S",
+  "%-d.%-m.%Y, %H:%M:%S",
+  "%-d.%-m.%Y, %H:%M",
+  "%-d.%-m.%y, %H:%M:%S",
 ]
 media_omitted = ["<Medien weggelassen>", "<Media omitted>", "Bild weggelassen", "Video weggelassen"]
 file_attached_pattern = '^(?P<filename>.+) \\(Datei angehängt\\)$'
@@ -3325,9 +3326,9 @@ id = "pt-BR"
 family_hints = ["ios_bracket", "android_dash"]
 you_tokens = ["Você", "You"]
 date_time_patterns = [
-  "%d/%m/%Y %H:%M:%S",
-  "%d/%m/%Y, %H:%M:%S",
-  "%d/%m/%Y %H:%M",
+  "%-d/%-m/%Y %H:%M:%S",
+  "%-d/%-m/%Y, %H:%M:%S",
+  "%-d/%-m/%Y %H:%M",
 ]
 media_omitted = ["<Mídia omitida>", "<Media omitted>", "imagem omitida", "vídeo omitido"]
 file_attached_pattern = '^(?P<filename>.+) \\(arquivo anexado\\)$'

@@ -34,7 +34,14 @@ The first ~50 dated headers vote across the five shipped packs:
 
 `en-US`, `en-GB`, `tr-TR`, `de-DE`, `pt-BR`.
 
-One pack is used for the whole file. A tie or no match is fatal — pass `--locale`.
+Day/month may be 1 or 2 digits (`3.08.2025` and `26.03.2025`). One pack is
+used for the whole file. A datetime tie (common for Turkish vs German comma
+dates) is broken by the chat’s native language tokens (encryption banner,
+`Siz`/`Du`, media-omitted wording). Still tied or no match — pass `--locale`.
+
+A 0.1.0 import that stored many `kind=unknown` rows (unpadded day) needs
+**re-init + re-import**. A second import after this fix would duplicate those
+rows (idempotency includes `sent_at` + sender).
 
 ## `--locale`
 
