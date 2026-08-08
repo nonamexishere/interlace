@@ -24,6 +24,7 @@ use crate::{
 #[derive(Parser, Debug)]
 #[command(
     name = "interlace",
+    version,
     about = "Local-first archive that unifies conversations across platforms",
     long_about = "Interlace is an offline, single-user archive. Import WhatsApp ZIPs and Google Takeout (Contacts + Gmail mbox), resolve people, and search locally.\n\nThe archive folder is the backup unit. Phase 1 is not encrypted at rest."
 )]
