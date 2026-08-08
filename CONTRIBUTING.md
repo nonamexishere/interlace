@@ -12,9 +12,10 @@
 git clone https://github.com/nonamexishere/interlace
 cd interlace
 rustup show   # rust-toolchain.toml pins stable
-cargo test --workspace
+cargo test --workspace --exclude interlace-tauri
 python3 pipeline/tools/gate_bootstrap.py
 python3 pipeline/tools/gate_deny.py
+python3 pipeline/tools/gate_tauri.py   # Phase 2 shell; needs cargo-deny
 ```
 
 Phase 1 target is macOS. Other OSes may compile; they are unsupported.
@@ -25,6 +26,7 @@ Phase 1 target is macOS. Other OSes may compile; they are unsupported.
 - **Docs in the same PR** as the behavior (D24).
 - Phase 1 must-pass IDs cannot be `#[ignore]`.
 - No `reqwest`, `hyper`, `tokio` in `interlace-core` / `interlace` / `interlace-cli`.
+  `interlace-tauri` may use `tokio` without `net`; still no HTTP client plugins.
 - Open Questions 1–10 are decided in DESIGN.md; do not re-open them.
 - `cargo fmt`, `clippy -D warnings`, `cargo deny check bans` + `licenses` must pass.
 - Reference the GitHub issue: `Fixes #N`.

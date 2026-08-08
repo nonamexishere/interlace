@@ -22,7 +22,7 @@ jobs:
       - name: cargo clippy
         run: cargo clippy -p interlace-core -p interlace -p interlace-cli -p interlace-fixtures -- -D warnings
       - name: cargo test
-        run: cargo test --workspace
+        run: cargo test --workspace --exclude interlace-tauri
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny@0.18.2
@@ -44,3 +44,16 @@ jobs:
           python3 pipeline/tools/gate_bench.py
           bash pipeline/selftest/run.sh
           bash pipeline/run.sh
+
+  tauri:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.18.2
+      - name: gate_tauri
+        run: python3 pipeline/tools/gate_tauri.py

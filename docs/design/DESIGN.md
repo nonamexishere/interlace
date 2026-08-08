@@ -1778,7 +1778,7 @@ members = [
   "crates/interlace-cli",
   "crates/interlace-cli-common",
   "crates/interlace-fixtures",
-  # "crates/interlace-tauri"  # added Phase 2, default-members exclude it
+  "crates/interlace-tauri",
 ]
 default-members = [
   "crates/interlace-core",
@@ -1931,7 +1931,9 @@ Phase 2 `crates/interlace-tauri/deny.toml` (or `deny.toml` with `[bans.skip]` sc
 # additional allows vs root:
 # crate "http"   # types only, pulled by tauri
 # crate "url"
+# crate "tokio"  # rt/fs/sync only on macOS desktop; no `net` feature
 # still DENY reqwest, hyper, tauri-plugin-http, tauri-plugin-updater
+# [graph].targets = darwin only (mobile/wasm optional reqwest must not fail the gate)
 ```
 
 Root CI:
@@ -4075,7 +4077,15 @@ Incremental, each PR independently reviewable and mergeable. Aligns with pipelin
 | PR11 | test: doctor integrity + 10k search proxy in PR CI | benches, `gate_bench.py` | PR10 | PR CI = 10k p95 ≤ 50 ms. 1 M / 10 M **nightly only**. |
 | PR12 | release: bump 0.1.0 + publish workflow + mirror README | versions, CHANGELOG, `publish.yml` | PR11 | First real crates.io publish; `repository` → monorepo. |
 | PR1.1-* | Phase 1.1 polish | W5–W9, M4–M6, C2–C3, S4, resume/spill edge | PR12 | Same CLI, not a new product. |
-| PR13 (Phase 2) | feat(tauri): macOS shell, person timeline, review UI | `interlace-tauri/**`, deny exception (allow tokio, still deny reqwest) | PR12 | No network entitlement; CSP. |
+| UI0 | unpublished `interlace-tauri` shell + deny/CSP/sandbox | `crates/interlace-tauri/**`, `gate_tauri.py` | PR12 / #38 | Empty window; no network entitlement. |
+| UI1 | archive init/open/status | tauri commands + rfd | UI0 / #39 | Session lock (D19). |
+| UI2 | search view | search DTO | UI1 / #40 | D18 hide groups; text nodes. |
+| UI3 | person list + timeline | `person_timeline` | UI1 / #41 | Product surface. |
+| UI4 | merge review queue | review DTOs | UI1 / #42 | Name-only WA → people. |
+| UI5 | import + progress | `import_start`/`import_progress` | UI1 / #43 | rfd only. |
+| UI6 | CAS attachment viewer | custom protocol, no remote asset | UI3 / #45 | |
+| UI7 | doctor + backup warn | doctor + banner | UI1 / #44 | No encryption claim. |
+| UI8 | unsigned `.app`/`.dmg` | GitHub Release, no updater | UI2–UI5 / #46 | `interlace` crates.io stays CLI. |
 | PR14 (Phase 2) | feat: custom FTS tokenizer or Tantivy **only if Spike 1 failed** | search module | Spike 1 report | Skip if Phase 1 search passed. |
 
 Pipeline mapping: PR-S = 01; PR0–1 = 00+08; PR2 = 02; PR2b = 02b; PR4 = 04; PR5–9 = 05a–05e (each own fix-loop); PR10 = 06; PR11 = 07. Fixloop max 3 agent turns **per stage** then human.

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Unpublished `interlace-tauri` macOS placeholder window (UI0): CSP, sandbox
+  entitlements without network, darwin-only deny exception (`tokio` without
+  `net`; still no `reqwest` / `hyper` / updater).
+
 ### Fixed
 
 - Global `--path` no longer collides with `import` positionals; a WhatsApp ZIP
