@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"UI0 empty shell: window only. No fs, no http, no shell.","local":true,"windows":["main"],"permissions":["core:default"]}}

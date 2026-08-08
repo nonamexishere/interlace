@@ -6,6 +6,7 @@ members = [
     "crates/interlace-cli",
     "crates/interlace-cli-common",
     "crates/interlace-fixtures",
+    "crates/interlace-tauri",
 ]
 default-members = [
     "crates/interlace-core",

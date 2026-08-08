@@ -10,8 +10,10 @@ the same human across channels, and searches millions of messages locally.
 Google Takeout Contacts + Gmail mbox.
 
 The app does not phone home. There is no account, no sync, no updater.
-CI denies HTTP *clients* (`reqwest`, `hyper`, `tokio` in Phase 1). A future
-Tauri build may contain the `http`/`url` *type* crates; that is not a network client.
+CI denies HTTP *clients* (`reqwest`, `hyper`, `tokio` on core+cli). The
+unpublished Tauri shell (`cargo run -p interlace-tauri`) may contain the
+`http`/`url` *type* crates and `tokio` **without** `net`; that is not a
+network client.
 
 ## Install
 
@@ -50,7 +52,8 @@ Development is **this monorepo**. Satellite GitHub repos
 | `interlace-cli` | `crates/interlace-cli` | silent alias binary |
 
 `interlace-cli-common` is unpublished shared CLI code (`publish = false`).
-It is **not** a fourth crates.io name.
+It is **not** a fourth crates.io name. `interlace-tauri` is the unpublished
+macOS window (also `publish = false`; not `cargo install interlace`).
 
 ## Docs
 
@@ -64,6 +67,8 @@ It is **not** a fourth crates.io name.
 - Search: [docs/user/search.md](docs/user/search.md)
 - Doctor / locks / resume: [docs/user/doctor.md](docs/user/doctor.md)
 - Backup / move: [docs/user/backup.md](docs/user/backup.md)
+- Desktop app (Phase 2): [docs/user/app.md](docs/user/app.md)
+- Tauri hacking: [docs/hacking/tauri.md](docs/hacking/tauri.md)
 - Release / publish: [docs/hacking/release.md](docs/hacking/release.md)
 
 ## License

@@ -1,0 +1,64 @@
+# Phase 2 exception: tokio (no net if possible) is allowed for the Tauri runtime.
+# Still no HTTP *client*. Do not run the repo-root deny.toml against this package.
+[graph]
+all-features = false
+no-default-features = false
+# Phase 2 is macOS only. tauri 2 still lists reqwest/hyper for mobile/wasm
+# targets; those must not enter the darwin graph (D8).
+targets = [
+    { triple = "aarch64-apple-darwin" },
+    { triple = "x86_64-apple-darwin" },
+]
+
+[advisories]
+yanked = "deny"
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "BSD-2-Clause",
+    "0BSD",
+    "Unicode-DFS-2016",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+    "MPL-2.0",
+]
+confidence-threshold = 0.93
+private = { ignore = true }
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+    { crate = "reqwest", wrappers = [] },
+    { crate = "hyper" },
+    { crate = "hyper-util" },
+    { crate = "hyper-tls" },
+    { crate = "hyper-rustls" },
+    { crate = "h2" },
+    { crate = "h3" },
+    { crate = "ureq" },
+    { crate = "attohttpc" },
+    { crate = "minreq" },
+    { crate = "ehttp" },
+    { crate = "isahc" },
+    { crate = "surf" },
+    { crate = "awc" },
+    { crate = "curl" },
+    { crate = "tungstenite" },
+    { crate = "tokio-tungstenite" },
+    { crate = "async-tungstenite" },
+    { crate = "tauri-plugin-http" },
+    { crate = "tauri-plugin-updater" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

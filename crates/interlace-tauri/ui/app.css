@@ -1,0 +1,36 @@
+:root {
+  color-scheme: light dark;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  line-height: 1.45;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+}
+
+main {
+  max-width: 36rem;
+  padding: 2rem;
+}
+
+h1 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.75rem;
+}
+
+.lede {
+  font-size: 1.05rem;
+}
+
+.note {
+  opacity: 0.75;
+  font-size: 0.9rem;
+}
+
+code {
+  font-size: 0.9em;
+}

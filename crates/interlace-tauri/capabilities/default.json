@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "UI0 empty shell: window only. No fs, no http, no shell.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

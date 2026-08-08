@@ -34,6 +34,7 @@ python3 pipeline/tools/gate_impl.py --stage 05d --must I1,I2,I3,I4,I5,I6,I6b
 python3 pipeline/tools/gate_impl.py --stage 05e --must S1,S2,S3
 python3 pipeline/tools/gate_cli.py
 python3 pipeline/tools/gate_bench.py   # 10k only; do not set INTERLACE_BENCH in PR
+python3 pipeline/tools/gate_tauri.py   # Phase 2 shell; separate CI job
 bash pipeline/selftest/run.sh
 bash pipeline/run.sh
 ```
