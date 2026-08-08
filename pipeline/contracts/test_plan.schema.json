@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://interlace.local/schemas/test_plan.json",
+  "title": "TestPlan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["stage", "cases"],
+  "properties": {
+    "stage": { "const": "03-test-author" },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "file", "asserts", "source_spec_section"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^(CAS|W|M|C|I|S)[0-9]+[a-z]?$" },
+          "file": { "type": "string" },
+          "asserts": { "type": "string" },
+          "source_spec_section": { "type": "string" }
+        }
+      }
+    }
+  }
+}

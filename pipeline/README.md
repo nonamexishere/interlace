@@ -1,7 +1,14 @@
 # Interlace agent pipeline
 
-File-only stages. Orchestrator is `pipeline/run.sh` (lands in PR1). Until then the human/Grok orchestrator runs gates by hand.
+File-only stages. Sequencer: `./pipeline/run.sh` (does **not** spawn agents).
 
-Stage 01 (PR-S) is the first real stage: spikes only, no product code.
+| Tool | When it is green |
+| --- | --- |
+| `gate_bootstrap.py` | workspace + 0.0.1 + `cargo check -p interlace-core` + deny lock |
+| `gate_deny.py` | bans+licenses ×3 pkgs, no reqwest/hyper/tokio |
+| `gate_spikes.py` | stage 01 OUT.json + reports |
+| `gate_schema.py` / `gate_api.py` / `gate_impl.py` / … | later PRs |
 
-See `docs/design/DESIGN.md` § Development pipeline design.
+Selftest: `bash pipeline/selftest/run.sh` (F1–F6).
+
+See `docs/hacking/pipeline.md` and DESIGN.md § Development pipeline.
