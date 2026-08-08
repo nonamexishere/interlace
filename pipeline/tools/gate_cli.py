@@ -44,9 +44,12 @@ def main() -> None:
     if clip.returncode != 0:
         fail(clip.stderr or clip.stdout)
     help_ = run(["cargo", "run", "-p", "interlace", "--", "--help"], cwd=root, check=False)
-    # Until clap lands, binary may ignore --help; still must exit 0.
     if help_.returncode != 0:
         fail(f"interlace --help failed\n{help_.stderr}")
+    text = (help_.stdout or "") + (help_.stderr or "")
+    for w in ("init", "import", "search", "person", "review", "doctor"):
+        if w not in text:
+            fail(f"interlace --help missing {w}")
     print("gate_cli ok")
 
 
