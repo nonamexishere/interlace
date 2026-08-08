@@ -21,14 +21,26 @@ def main() -> None:
     )
     if lint.returncode != 0:
         fail(lint.stderr or lint.stdout)
-    apply = subprocess.run(
-        ["sqlite3", ":memory:", f".read {sql}"],
+    # Host `sqlite3` on GitHub macOS runners often lacks the fts5 module.
+    # Product sqlite is rusqlite bundled (asserted by migrate_empty). Apply
+    # via CLI only when FTS5 is present.
+    compile_opts = subprocess.run(
+        ["sqlite3", ":memory:", "PRAGMA compile_options;"],
         cwd=root,
         text=True,
         capture_output=True,
     )
-    if apply.returncode != 0:
-        fail(f"sqlite3 apply failed\n{apply.stderr}")
+    if compile_opts.returncode == 0 and "ENABLE_FTS5" in compile_opts.stdout:
+        apply = subprocess.run(
+            ["sqlite3", ":memory:", f".read {sql}"],
+            cwd=root,
+            text=True,
+            capture_output=True,
+        )
+        if apply.returncode != 0:
+            fail(f"sqlite3 apply failed\n{apply.stderr}")
+    else:
+        print("gate_schema: host sqlite3 has no FTS5; skip CLI apply")
     t = run(
         ["cargo", "test", "-p", "interlace-core", "migrate_empty", "--", "--exact"],
         cwd=root,
