@@ -579,3 +579,22 @@ pub fn title_has_group_prefix(pack: &LocalePack, title: &str) -> bool {
         .iter()
         .any(|p| !p.is_empty() && t.starts_with(p.as_str()))
 }
+
+/// True if any candidate starts with a locale DM title prefix (incl. iOS
+/// `WhatsApp Chat - `).
+pub fn title_looks_like_dm(pack: &LocalePack, titles: &[&str]) -> bool {
+    for title in titles {
+        let t = strip_cf(title.trim());
+        if t.is_empty() {
+            continue;
+        }
+        if pack
+            .title_prefixes_dm
+            .iter()
+            .any(|p| !p.is_empty() && t.starts_with(p.as_str()))
+        {
+            return true;
+        }
+    }
+    false
+}

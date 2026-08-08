@@ -61,7 +61,9 @@ to `--max-bytes` (default **60 GiB**). Total CAS writes per import also stay und
 
 1. Strip WhatsApp’s leftover U+200E marks.
 2. Locale `you_tokens` (`You` / `Siz` / `Du` / `Você` / …) → self identity,
-   participant role later `me`.
+   participant role `me`. On a DM-shaped 2-sender iOS chat, a sender whose
+   folded name equals `init --name` (or a self identity display name) is also
+   treated as you — see Groups vs DM.
 3. Sender token that parses as a phone (E.164, using archive
    `default_phone_region` for national format) → `kind=phone`.
 4. **DM only:** if the chat **title** (after stripping `WhatsApp Chat with ` /
@@ -84,6 +86,15 @@ default.
 - (c) the locale lists an explicit group title prefix.
 
 Else `kind = dm`. Person timelines hide groups unless `--include-groups`.
+
+iOS 1:1 exports often name **both** sides with address-book names (no `You` /
+`Siz`). That would trip (a). **Exception (D18-C):** if there are exactly two
+human senders, one folded-equals your `init --name` (or a self identity
+display name), the ZIP/title starts with a DM prefix (`WhatsApp Chat with `,
+`WhatsApp Chat - `, `WhatsApp Sohbeti: `, …), and (b)/(c) did not fire →
+`dm`. That sender is linked to the self person. A 2-person **group** with a
+“created group” / added / subject line stays `group`. Peer names still never
+auto-merge.
 
 Two different chats that share a title collide on
 `native_id = whatsapp:<folded_title>`. Pass `--conversation-name` to disambiguate.

@@ -10,8 +10,8 @@ use zip::ZipArchive;
 use super::locale::{
     is_encryption_banner, is_you_token, load_pack, looks_like_group_system, match_media,
     name_fold_join, parse_dt_with_pack, parse_header_line, parse_phone, split_sender_body,
-    strip_cf, strip_forwarded, strip_title_prefix, title_has_group_prefix, vote_locale,
-    HeaderFamily, LocalePack, MediaMatch,
+    strip_cf, strip_forwarded, strip_title_prefix, title_has_group_prefix, title_looks_like_dm,
+    vote_locale, HeaderFamily, LocalePack, MediaMatch,
 };
 use super::{ImportContext, SourceImporter};
 use crate::cas::validate_zip_entry_name;
@@ -130,13 +130,18 @@ impl SourceImporter for WhatsappImporter {
         );
 
         let parsed = parse_chat(&text, &pack, family, &chat_name, ctx)?;
+        let self_folds = ctx.owner_self_folds()?;
 
+        let mut humans: HashSet<String> = HashSet::new();
         let mut non_self: HashSet<String> = HashSet::new();
-        let mut group = title_has_group_prefix(&pack, &raw_title);
+        let group_prefix = title_has_group_prefix(&pack, &raw_title);
+        let mut group_system = false;
+        let mut group = group_prefix;
         let mut join_cutoff = false;
         for (i, m) in parsed.iter().enumerate() {
             if m.kind == MessageKind::System {
                 if looks_like_group_system(&pack, &m.rest_raw) {
+                    group_system = true;
                     group = true;
                     if i == 0
                         || (i == 1 && parsed.first().map(|x| x.kind) == Some(MessageKind::System))
@@ -150,6 +155,7 @@ impl SourceImporter for WhatsappImporter {
                 continue;
             }
             if let Some(ref s) = m.sender_raw {
+                humans.insert(s.clone());
                 if !is_you_token(&pack, s) {
                     non_self.insert(s.clone());
                 }
@@ -157,6 +163,29 @@ impl SourceImporter for WhatsappImporter {
         }
         if non_self.len() >= 2 {
             group = true;
+        }
+        // D18-C: iOS 1:1 with owner display name (not you_token) stays DM.
+        let zip_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let chat_stem = Path::new(&chat_name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        let dm_shaped = title_looks_like_dm(&pack, &[zip_stem, chat_stem, raw_title.as_str()]);
+        let owner_named: Vec<String> = humans
+            .iter()
+            .filter(|s| !is_you_token(&pack, s) && sender_matches_self(s, &self_folds))
+            .cloned()
+            .collect();
+        let mut owner_self_token: Option<String> = None;
+        if group
+            && !group_system
+            && !group_prefix
+            && dm_shaped
+            && humans.len() == 2
+            && owner_named.len() == 1
+        {
+            group = false;
+            owner_self_token = owner_named.into_iter().next();
         }
         let conv_kind = if group {
             ConversationKind::Group
@@ -225,8 +254,12 @@ impl SourceImporter for WhatsappImporter {
                 continue;
             }
 
+            let sender_is_me = m
+                .sender_raw
+                .as_deref()
+                .is_some_and(|s| is_you_token(&pack, s) || owner_self_token.as_deref() == Some(s));
             let sender_id = if let Some(ref s) = m.sender_raw {
-                Some(persist_sender(
+                let id = persist_sender(
                     ctx,
                     &pack,
                     s,
@@ -234,7 +267,11 @@ impl SourceImporter for WhatsappImporter {
                     dm_phone.as_deref(),
                     region,
                     &mut ident_cache,
-                )?)
+                )?;
+                if owner_self_token.as_deref() == Some(s.as_str()) {
+                    ctx.link_identity_to_self_person(id)?;
+                }
+                Some(id)
             } else {
                 None
             };
@@ -262,6 +299,11 @@ impl SourceImporter for WhatsappImporter {
                 PersistOutcome::Inserted { message_id } => message_id,
                 PersistOutcome::Duplicate { message_id } => message_id,
             };
+            if sender_is_me {
+                if let Some(sid) = sender_id {
+                    ctx.set_participant_role(conv_id, sid, "me")?;
+                }
+            }
 
             match &m.media {
                 MediaMatch::None => {}
@@ -494,6 +536,11 @@ fn parse_chat(
         }
     }
     Ok(out)
+}
+
+fn sender_matches_self(sender: &str, folds: &[String]) -> bool {
+    let n = name_fold_join(sender);
+    !n.is_empty() && folds.iter().any(|f| f == &n)
 }
 
 fn persist_sender(

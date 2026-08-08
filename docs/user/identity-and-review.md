@@ -75,4 +75,6 @@ messages remain.
 `interlace init` creates `persons.is_self=1` even with zero emails/phones, plus
 owner identities for the addresses you typed. WhatsApp `You` / `Siz` / `Du` /
 `Você` tokens are locale-pack self senders, not automatically the owner person
-until you link them.
+until you link them. **Exception:** on a DM-shaped 2-sender iOS chat, a sender
+matching `init --name` (exact name fold) is linked to the self person
+(`self_declared` / system). See `docs/user/import-whatsapp.md`.

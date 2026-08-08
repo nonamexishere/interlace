@@ -44,6 +44,26 @@ pub trait ImportContext {
     fn heartbeat(&mut self) -> Result<(), CoreError>;
     fn maybe_commit(&mut self) -> Result<(), CoreError>;
     fn cas_put(&mut self, bytes: &[u8], mime_hint: Option<&str>) -> Result<String, CoreError>;
+
+    /// Folded owner / self-identity names for D18-C. Default: none.
+    fn owner_self_folds(&self) -> Result<Vec<String>, CoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Link a WhatsApp display_name identity onto `persons.is_self` (D18-C).
+    fn link_identity_to_self_person(&mut self, _identity_id: i64) -> Result<(), CoreError> {
+        Ok(())
+    }
+
+    /// Set `conversation_participants.role` (e.g. `me`).
+    fn set_participant_role(
+        &mut self,
+        _conversation_id: i64,
+        _identity_id: i64,
+        _role: &str,
+    ) -> Result<(), CoreError> {
+        Ok(())
+    }
 }
 
 pub trait SourceImporter: Send + Sync {

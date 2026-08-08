@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Global `--path` no longer collides with `import` positionals; a WhatsApp ZIP
   is not treated as the archive root.
+- iOS WhatsApp 1:1 chats whose senders are address-book names (no `You`/`Siz`)
+  classify as `dm` when one name matches `init --name` and the ZIP title looks
+  like a DM (D18-C).
 
 ## [0.1.0] - 2026-08-08
 

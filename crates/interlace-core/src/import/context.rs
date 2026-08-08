@@ -2,6 +2,8 @@
 
 use std::path::Path;
 
+use rusqlite::OptionalExtension;
+
 use super::ImportContext;
 use crate::cas::cas_put;
 use crate::db::Archive;
@@ -468,6 +470,100 @@ impl ImportContext for DbImportContext<'_> {
             self.msgs_since = 0;
             self.cas_since = 0;
         }
+        Ok(())
+    }
+
+    fn owner_self_folds(&self) -> Result<Vec<String>, CoreError> {
+        use super::locale::name_fold_join;
+        let mut out = Vec::new();
+        let owner: Option<String> = self.archive.conn.query_row(
+            "SELECT owner_display_name FROM archive_meta WHERE id = 1",
+            [],
+            |r| r.get(0),
+        )?;
+        if let Some(n) = owner {
+            let f = name_fold_join(&n);
+            if !f.is_empty() {
+                out.push(f);
+            }
+        }
+        let mut stmt = self.archive.conn.prepare(
+            "SELECT COALESCE(i.display_name, ''), i.value_normalized, i.kind
+             FROM self_identities s
+             JOIN identities i ON i.id = s.identity_id",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?;
+        for row in rows {
+            let (disp, norm, _kind) = row?;
+            for cand in [disp.as_str(), norm.as_str()] {
+                if cand.is_empty() {
+                    continue;
+                }
+                let f = name_fold_join(cand);
+                if !f.is_empty() && !out.contains(&f) {
+                    out.push(f);
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    fn link_identity_to_self_person(&mut self, identity_id: i64) -> Result<(), CoreError> {
+        let pid: Option<i64> = self
+            .archive
+            .conn
+            .query_row(
+                "SELECT id FROM persons WHERE is_self = 1 AND tombstoned_at IS NULL LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(pid) = pid else {
+            return Ok(());
+        };
+        self.archive.conn.execute(
+            "INSERT OR IGNORE INTO self_identities(identity_id) VALUES (?1)",
+            [identity_id],
+        )?;
+        let n = self.archive.conn.execute(
+            "INSERT OR IGNORE INTO person_identities(
+                person_id, identity_id, link_reason, confidence, created_by
+             ) VALUES (?1, ?2, 'self_declared', 1.0, 'system')",
+            rusqlite::params![pid, identity_id],
+        )?;
+        if n == 1 {
+            let payload = serde_json::json!({
+                "person_id": pid,
+                "identity_id": identity_id,
+                "link_reason": "self_declared",
+                "confidence": 1.0,
+            })
+            .to_string();
+            self.archive.conn.execute(
+                "INSERT INTO identity_link_events(actor, op, payload_json) VALUES ('system', 'link', ?1)",
+                [payload],
+            )?;
+        }
+        Ok(())
+    }
+
+    fn set_participant_role(
+        &mut self,
+        conversation_id: i64,
+        identity_id: i64,
+        role: &str,
+    ) -> Result<(), CoreError> {
+        self.archive.conn.execute(
+            "UPDATE conversation_participants SET role = ?3
+             WHERE conversation_id = ?1 AND identity_id = ?2",
+            rusqlite::params![conversation_id, identity_id, role],
+        )?;
         Ok(())
     }
 
