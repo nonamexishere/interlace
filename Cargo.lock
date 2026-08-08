@@ -287,36 +287,32 @@ dependencies = [
 
 [[package]]
 name = "interlace"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
- "interlace-cli-common",
+ "interlace-core",
  "rusqlite",
 ]
 
 [[package]]
 name = "interlace-cli"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
- "interlace-cli-common",
+ "interlace-core",
 ]
 
 [[package]]
 name = "interlace-cli-common"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
- "clap",
  "interlace-core",
- "rusqlite",
- "serde",
- "serde_json",
- "toml",
 ]
 
 [[package]]
 name = "interlace-core"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "blake3",
+ "clap",
  "data-encoding",
  "encoding_rs",
  "interlace-fixtures",
@@ -332,7 +328,7 @@ dependencies = [
 
 [[package]]
 name = "interlace-fixtures"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",

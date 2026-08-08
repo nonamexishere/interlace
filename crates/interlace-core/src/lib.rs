@@ -1,6 +1,9 @@
-//! Core library for Interlace. Import, identity, search, and CAS live here.
+//! Core library for Interlace, a local-first offline archive.
+//!
+//! Message → Identity → Person. No network client. See `docs/design/DESIGN.md`.
 
 pub mod cas;
+pub mod cli;
 pub mod db;
 pub mod identity;
 pub mod import;

@@ -8,7 +8,7 @@ in Phase 1 or Phase 2 (no SQLCipher; do not claim encryption).
 | Version | Supported |
 | --- | --- |
 | 0.0.1 name-squat | no (hello-world / workspace) |
-| 0.1.x (first real CLI, after PR12) | yes |
+| 0.1.x (first real CLI) | yes |
 | git `master` | best effort |
 
 ## What to report

@@ -19,7 +19,7 @@ on that GitHub profile.
 ## Crates.io publishing
 
 `cargo publish` only from annotated tags via `.github/workflows/publish.yml`
-(lands with PR12). Do not publish 0.0.1 again.
+(tag `vX.Y.Z`). Do not publish 0.0.1 again. See [docs/hacking/release.md](docs/hacking/release.md).
 
 ## Archive of satellites
 

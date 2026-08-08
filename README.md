@@ -16,10 +16,11 @@ Tauri build may contain the `http`/`url` *type* crates; that is not a network cl
 ## Install
 
 ```bash
-# after 0.1.0; until then build from this repo
+cargo install interlace --locked
+# silent twin (same binary surface):
+cargo install interlace-cli --locked
+# or from this repo:
 cargo install --path crates/interlace --locked
-# silent twin:
-cargo install --path crates/interlace-cli --locked
 ```
 
 macOS only in Phase 1.
@@ -63,6 +64,7 @@ It is **not** a fourth crates.io name.
 - Search: [docs/user/search.md](docs/user/search.md)
 - Doctor / locks / resume: [docs/user/doctor.md](docs/user/doctor.md)
 - Backup / move: [docs/user/backup.md](docs/user/backup.md)
+- Release / publish: [docs/hacking/release.md](docs/hacking/release.md)
 
 ## License
 

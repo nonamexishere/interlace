@@ -4,5 +4,5 @@ Core library for Interlace. Developed in the [interlace monorepo](https://github
 
 ```toml
 [dependencies]
-interlace-core = "0.0.1"
+interlace-core = "0.1.0"
 ```

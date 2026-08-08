@@ -24,10 +24,11 @@ toml.workspace = true
 mailparse.workspace = true
 encoding_rs.workspace = true
 data-encoding.workspace = true
+clap.workspace = true
 
 [dev-dependencies]
 rusqlite.workspace = true
-interlace-fixtures = { path = "../interlace-fixtures", version = "0.0.1" }
+interlace-fixtures = { path = "../interlace-fixtures" }
 
 [[bench]]
 name = "search"
