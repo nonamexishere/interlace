@@ -1,0 +1,78 @@
+# People, review queue, and undo
+
+Interlace never stores a message as “belonging to a person.” The chain is
+always **Message → Identity → Person**. Merges move identity links; they do
+not rewrite `messages.sender_identity_id`.
+
+## Auto-merge rule
+
+Automation is an assistant. The **only** auto actions are exact identifier
+matches:
+
+| Identifier | Normalized form | Auto? |
+| --- | --- | --- |
+| Phone | E.164 (`+` and country code, no spaces) | yes, 0.99 |
+| Email | lowercase; **Gmail/googlemail** fold (D25) | yes, 0.99 |
+| Display name / username | `name_fold` | **never** auto |
+
+`default_phone_region` (ISO 3166-1 alpha-2) is **required at `interlace init`**.
+There is no silent default (D20). National numbers that cannot be parsed are
+left un-normalized and **do not** auto-merge.
+
+**Gmail fold (D25):** for `gmail.com` / `googlemail.com` only: map
+`googlemail.com` → `gmail.com`, drop `+tag`, delete `.` from the local part.
+So `a.b+x@gmail.com` ≡ `ab@googlemail.com` ≡ `ab@gmail.com`.
+Non-Gmail domains stay exact: `a+x@corp.com` ≠ `a@corp.com`.
+
+Import order does not matter (D15). WhatsApp-then-Contacts and Contacts-then-WhatsApp
+end as one live person for the same E.164/email (I5).
+
+Name-only WhatsApp senders (`kind=display_name`) go to the **review queue**,
+never auto-merge (I2). Two contact cards that share a phone but have
+incompatible names block auto-link and enqueue review (I3).
+
+`persist_contact` creates one person per vCard (`takeout_vcard`) and does **not**
+merge across cards. **`resolve_run`** (after every import) is the only place
+that auto-links and auto person-merges.
+
+## Review queue
+
+```
+interlace review list
+interlace review show <id>
+interlace review accept <id>
+interlace review reject <id>
+```
+
+`review show` prints both display names, identifiers, each evidence line, and a
+few sample messages. Accept links the left identity with
+`link_reason=review_accepted`. Reject suppresses that pair for this archive
+(the matcher skips `rejected` rows).
+
+Name similarity scores 0.40–0.70 go to review. Nothing name-based auto-merges.
+
+## Undo
+
+```
+interlace person merge A B [--keep ID]
+interlace person unlink IDENTITY
+interlace person undo EVENT
+```
+
+`person merge` survivors default to `min(A,B)` unless `--keep`. The loser is
+tombstoned (`merged_into` set); all `person_identities` rows move. **Zero
+`messages` rows are touched.**
+
+`person undo <event_id>` inverts `identity_link_events.payload_json` (revive
+loser, move identities back). **I4:** every `messages.sender_identity_id` is
+bitwise unchanged.
+
+`person unlink` drops the `person_identities` row only. The identity and its
+messages remain.
+
+## Self person
+
+`interlace init` creates `persons.is_self=1` even with zero emails/phones, plus
+owner identities for the addresses you typed. WhatsApp `You` / `Siz` / `Du` /
+`Você` tokens are locale-pack self senders, not automatically the owner person
+until you link them.
