@@ -310,10 +310,91 @@ impl ImportContext for DbImportContext<'_> {
         Ok(())
     }
 
-    fn persist_contact(&mut self, _rec: NewContact) -> Result<i64, CoreError> {
-        Err(CoreError::Fatal(
-            "persist_contact lands in PR7 (Takeout/Contacts)".into(),
-        ))
+    fn persist_contact(&mut self, rec: NewContact) -> Result<i64, CoreError> {
+        let existing: Option<i64> = {
+            let mut stmt = self
+                .archive
+                .conn
+                .prepare("SELECT id FROM contacts_raw WHERE source_id = ?1 AND uid = ?2 LIMIT 1")?;
+            let mut rows = stmt.query(rusqlite::params![self.source_id(), rec.uid])?;
+            match rows.next()? {
+                Some(r) => Some(r.get(0)?),
+                None => None,
+            }
+        };
+        if let Some(id) = existing {
+            return Ok(id);
+        }
+
+        let photo_hash = match rec.photo_bytes.as_deref() {
+            Some(b) if !b.is_empty() => Some(self.cas_put(b, Some("image/jpeg"))?),
+            _ => None,
+        };
+
+        self.archive.conn.execute(
+            "INSERT INTO contacts_raw(
+                source_id, uid, fn, n_family, n_given, org, photo_cas_hash, raw_excerpt
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                self.source_id(),
+                rec.uid,
+                rec.fn_,
+                rec.n_family,
+                rec.n_given,
+                rec.org,
+                photo_hash,
+                rec.raw_excerpt
+            ],
+        )?;
+        let contact_id = self.archive.conn.last_insert_rowid();
+
+        let display = rec
+            .fn_
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .or_else(|| rec.channels.first().map(|c| c.value_raw.clone()))
+            .unwrap_or_else(|| "Unnamed contact".into());
+
+        self.archive.conn.execute(
+            "INSERT INTO persons(display_name, is_self) VALUES (?1, 0)",
+            [&display],
+        )?;
+        let person_id = self.archive.conn.last_insert_rowid();
+
+        for ch in &rec.channels {
+            if !matches!(ch.kind, IdentityKind::Phone | IdentityKind::Email) {
+                continue;
+            }
+            let iid = self.persist_identity(NewIdentity {
+                platform: Platform::Contacts,
+                kind: ch.kind,
+                value_raw: ch.value_raw.clone(),
+                value_normalized: ch.value_normalized.clone(),
+                display_name: rec.fn_.clone(),
+            })?;
+            self.archive.conn.execute(
+                "INSERT INTO contact_channels(
+                    contact_id, kind, value_raw, value_normalized, pref, identity_id
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    contact_id,
+                    identity_kind_sql(ch.kind),
+                    ch.value_raw,
+                    ch.value_normalized,
+                    ch.pref as i64,
+                    iid
+                ],
+            )?;
+            self.archive.conn.execute(
+                "INSERT OR IGNORE INTO person_identities(
+                    person_id, identity_id, link_reason, confidence, created_by
+                 ) VALUES (?1, ?2, 'takeout_vcard', 1.0, 'system')",
+                rusqlite::params![person_id, iid],
+            )?;
+        }
+        Ok(contact_id)
     }
 
     fn warn(&mut self, w: Warning) -> Result<(), CoreError> {

@@ -9,7 +9,10 @@ pub mod search;
 
 pub use db::{init_archive, migrate, open_archive, open_with_options, Archive, LockMode};
 pub use identity::{person_merge, person_undo, person_unlink, resolve_run, review_resolve};
-pub use import::{ImportContext, ImporterRegistry, SourceImporter, WhatsappImporter};
+pub use import::{
+    ContactsImporter, GmailMboxImporter, ImportContext, ImporterRegistry, SourceImporter,
+    TakeoutImporter, WhatsappImporter,
+};
 pub use model::*;
 pub use search::{person_timeline, search};
 

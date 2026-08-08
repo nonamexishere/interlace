@@ -167,6 +167,29 @@ pub fn name_fold_join(s: &str) -> String {
     name_fold(s).join(" ")
 }
 
+/// D25: Gmail/googlemail fold +tag and dots; other domains exact lowercase.
+pub fn normalize_email(raw: &str) -> Option<String> {
+    let t = strip_cf(raw).trim().to_lowercase();
+    let (local, domain) = t.split_once('@')?;
+    if local.is_empty() || domain.is_empty() || !domain.contains('.') {
+        return None;
+    }
+    let domain = if domain == "googlemail.com" {
+        "gmail.com"
+    } else {
+        domain
+    };
+    if domain == "gmail.com" {
+        let local = local.split('+').next().unwrap_or(local).replace('.', "");
+        if local.is_empty() {
+            return None;
+        }
+        Some(format!("{local}@{domain}"))
+    } else {
+        Some(format!("{local}@{domain}"))
+    }
+}
+
 /// E.164 with optional `default_phone_region`. None if unparseable (D20).
 pub fn parse_phone(raw: &str, region: Option<&str>) -> Option<String> {
     let cleaned = strip_cf(raw);
