@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Workspace exists, 0.0.1 versions, cargo check core, deny.toml lock."""
+"""Workspace exists, published crate versions match workspace, cargo check core."""
 
 from __future__ import annotations
 
@@ -35,8 +35,9 @@ def main() -> None:
         if not p.is_file():
             fail(f"missing {p}")
         v = pkg_version(p)
-        if v != "0.0.1":
-            fail(f"{p} version is {v}, want 0.0.1")
+        ws_ver = pkg_version(root / "Cargo.toml")
+        if v != ws_ver:
+            fail(f"{p} version is {v}, want workspace {ws_ver}")
     if not (root / "deny.toml").is_file():
         fail("missing deny.toml")
     r = run(["cargo", "check", "-p", "interlace-core"], cwd=root, check=False)
