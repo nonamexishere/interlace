@@ -290,6 +290,7 @@ name = "interlace"
 version = "0.0.1"
 dependencies = [
  "interlace-cli-common",
+ "rusqlite",
 ]
 
 [[package]]
