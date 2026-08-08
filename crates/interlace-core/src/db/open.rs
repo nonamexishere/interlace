@@ -94,7 +94,7 @@ impl Archive {
             }
         }
         if rebuild_fts {
-            unimplemented!("FTS rebuild lands in PR9/PR11");
+            crate::search::rebuild_fts(self)?;
         }
         Ok(())
     }

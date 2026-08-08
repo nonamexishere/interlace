@@ -181,7 +181,7 @@ pub fn run_import(
         }
     }
 
-    if let Err(e) = bulk_search_doc(archive, run_id) {
+    if let Err(e) = crate::search::index_import_run(archive, run_id) {
         mark_run(
             archive,
             run_id,
@@ -322,24 +322,6 @@ fn mark_run(
                 error = ?3
          WHERE id = ?4",
         rusqlite::params![status, stats_json, error, run_id],
-    )?;
-    Ok(())
-}
-
-fn bulk_search_doc(archive: &Archive, run_id: i64) -> Result<(), CoreError> {
-    archive.conn.execute(
-        "INSERT INTO search_doc (message_id, sent_at, platform, conversation_id, sender_identity_id, search_text)
-         SELECT m.id, m.sent_at, c.platform, m.conversation_id, m.sender_identity_id,
-                trim(COALESCE(m.subject, '') || ' ' || COALESCE(m.body_text, ''))
-         FROM messages m
-         JOIN conversations c ON c.id = m.conversation_id
-         WHERE m.import_run_id = ?1
-           AND NOT EXISTS (SELECT 1 FROM search_doc s WHERE s.message_id = m.id)",
-        [run_id],
-    )?;
-    archive.conn.execute(
-        "INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')",
-        [],
     )?;
     Ok(())
 }
