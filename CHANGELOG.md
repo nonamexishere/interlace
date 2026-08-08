@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CAS put/get/gc + zip-slip checks (CAS1–CAS3).
 - WhatsApp Android/iOS ZIP importer (W1–W4), `ImportContext` persist, `resolve_run` no-op until PR8.
 - `docs/user/import-whatsapp.md`.
+- Gmail mboxrd + Takeout + Contacts importers (M1–M3, C1) and `docs/user/import-takeout.md`.
 
 ## [0.0.1] - 2026-08-08
 

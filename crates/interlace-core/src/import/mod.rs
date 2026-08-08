@@ -1,20 +1,23 @@
-//! Importer plugin interface + WhatsApp (PR6). Gmail/Contacts land in PR7.
+//! Importer plugin interface + WhatsApp / Gmail / Takeout / Contacts.
 
+mod contacts;
 mod context;
+mod gmail;
 mod locale;
+mod takeout;
 mod whatsapp;
 
-use std::fs::File;
 use std::path::Path;
-
-use zip::ZipArchive;
 
 use crate::db::Archive;
 use crate::identity::resolve_run;
 use crate::model::*;
 
+pub use contacts::ContactsImporter;
 pub use context::DbImportContext;
-pub use locale::{load_pack, name_fold, parse_phone, PACK_IDS};
+pub use gmail::GmailMboxImporter;
+pub use locale::{load_pack, name_fold, normalize_email, parse_phone, PACK_IDS};
+pub use takeout::TakeoutImporter;
 pub use whatsapp::WhatsappImporter;
 
 use context::source_kind_sql;
@@ -58,11 +61,13 @@ impl ImporterRegistry {
 }
 
 pub fn detect(path: &Path) -> Result<SourceKind, CoreError> {
+    takeout::check_spanned(path)?;
     if path.is_dir() {
-        if path.join("Takeout").is_dir()
-            || path.join("Takeout/Mail").is_dir()
-            || path.join("Takeout/Contacts").is_dir()
-        {
+        if takeout::is_takeout_tree(path) {
+            return Ok(SourceKind::TakeoutDir);
+        }
+        // directory of independent takeout-*.zip
+        if TakeoutImporter::default().probe(path).is_ok() {
             return Ok(SourceKind::TakeoutDir);
         }
         return Err(CoreError::Probe(format!(
@@ -84,28 +89,10 @@ pub fn detect(path: &Path) -> Result<SourceKind, CoreError> {
     if ext == "csv" {
         return Ok(SourceKind::ContactsCsv);
     }
-    if looks_like_takeout_zip(path)? {
+    if takeout::looks_like_takeout_zip(path)? {
         return Ok(SourceKind::TakeoutZip);
     }
     Ok(WhatsappImporter::default().probe(path)?.kind)
-}
-
-fn looks_like_takeout_zip(path: &Path) -> Result<bool, CoreError> {
-    let f = File::open(path)?;
-    let mut zip = match ZipArchive::new(f) {
-        Ok(z) => z,
-        Err(_) => return Ok(false),
-    };
-    let n = zip.len().min(128);
-    for i in 0..n {
-        if let Ok(e) = zip.by_index(i) {
-            let name = e.name().replace('\\', "/");
-            if name.starts_with("Takeout/") || name.contains("/Takeout/") {
-                return Ok(true);
-            }
-        }
-    }
-    Ok(false)
 }
 
 pub fn run_import(
@@ -114,30 +101,22 @@ pub fn run_import(
     path: &Path,
     opts: &ImportOpts,
 ) -> Result<ImportStats, CoreError> {
-    match kind {
-        SourceKind::WhatsappAndroidZip | SourceKind::WhatsappIosZip => {}
-        other => {
+    if path.is_file() {
+        let zip_len = std::fs::metadata(path)?.len();
+        if zip_len > opts.max_bytes {
             return Err(CoreError::Fatal(format!(
-                "{other:?} importer is not implemented in this PR"
-            )))
+                "file {} bytes exceeds --max-bytes {}",
+                zip_len, opts.max_bytes
+            )));
         }
-    }
-    if !path.is_file() {
+    } else if !path.is_dir() {
         return Err(CoreError::Probe(format!(
-            "import path is not a file: {}",
+            "import path is not a file or directory: {}",
             path.display()
         )));
     }
-    let zip_len = std::fs::metadata(path)?.len();
-    if zip_len > opts.max_bytes {
-        return Err(CoreError::Fatal(format!(
-            "file {} bytes exceeds --max-bytes {}",
-            zip_len, opts.max_bytes
-        )));
-    }
 
-    let importer = WhatsappImporter { opts: opts.clone() };
-    let probe = importer.probe(path)?;
+    let probe = probe_kind(kind, path, opts)?;
     let kind = probe.kind;
     let kind_sql = source_kind_sql(kind);
     let origin = path
@@ -161,7 +140,7 @@ pub fn run_import(
     let import_err;
     let mut stats = {
         let mut ctx = DbImportContext::new(archive, run_id, source_id)?;
-        match importer.import(path, &mut ctx) {
+        match dispatch_import(kind, path, opts, &mut ctx) {
             Ok(_) => {
                 let s = ctx.stats.clone();
                 if let Err(e) = ctx.commit() {
@@ -214,7 +193,52 @@ pub fn run_import(
     }
 
     mark_run(archive, run_id, "done", Some(&stats), None)?;
+    let spill = archive
+        .root
+        .join("imports")
+        .join(run_id.to_string())
+        .join("spill");
+    let _ = std::fs::remove_dir_all(spill);
     Ok(stats)
+}
+
+fn probe_kind(kind: SourceKind, path: &Path, opts: &ImportOpts) -> Result<ProbeResult, CoreError> {
+    match kind {
+        SourceKind::WhatsappAndroidZip | SourceKind::WhatsappIosZip => {
+            WhatsappImporter { opts: opts.clone() }.probe(path)
+        }
+        SourceKind::GmailMbox => GmailMboxImporter { opts: opts.clone() }.probe(path),
+        SourceKind::ContactsVcf | SourceKind::ContactsCsv => ContactsImporter {
+            opts: opts.clone(),
+            kind: Some(kind),
+        }
+        .probe(path),
+        SourceKind::TakeoutZip | SourceKind::TakeoutDir => {
+            TakeoutImporter { opts: opts.clone() }.probe(path)
+        }
+    }
+}
+
+fn dispatch_import(
+    kind: SourceKind,
+    path: &Path,
+    opts: &ImportOpts,
+    ctx: &mut dyn ImportContext,
+) -> Result<ImportStats, CoreError> {
+    match kind {
+        SourceKind::WhatsappAndroidZip | SourceKind::WhatsappIosZip => {
+            WhatsappImporter { opts: opts.clone() }.import(path, ctx)
+        }
+        SourceKind::GmailMbox => GmailMboxImporter { opts: opts.clone() }.import(path, ctx),
+        SourceKind::ContactsVcf | SourceKind::ContactsCsv => ContactsImporter {
+            opts: opts.clone(),
+            kind: Some(kind),
+        }
+        .import(path, ctx),
+        SourceKind::TakeoutZip | SourceKind::TakeoutDir => {
+            TakeoutImporter { opts: opts.clone() }.import(path, ctx)
+        }
+    }
 }
 
 fn upsert_source(
