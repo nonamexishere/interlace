@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Gmail mboxrd + Takeout + Contacts importers (M1–M3, C1) and `docs/user/import-takeout.md`.
 - Identity `resolve_run` auto-link/merge + undo/review (I1–I6, I6b) and `docs/user/identity-and-review.md`.
 - FTS5 search + person timeline with dual Turkish/ASCII fold (S1–S3) and `docs/user/search.md`.
+- CLI `init/open/import/search/person/review/doctor/log` (silent `interlace-cli` twin) plus `docs/user/doctor.md` and `docs/user/backup.md`.
 
 ## [0.0.1] - 2026-08-08
 
