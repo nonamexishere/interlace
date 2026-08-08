@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Global `--path` no longer collides with `import` positionals; a WhatsApp ZIP
+  is not treated as the archive root.
+
 ## [0.1.0] - 2026-08-08
 
 First usable Phase 1 macOS CLI. crates.io names `interlace`, `interlace-core`,

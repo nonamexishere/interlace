@@ -28,8 +28,8 @@ use crate::{
 )]
 struct Cli {
     /// Override last-archive-path pointer
-    #[arg(long, global = true)]
-    path: Option<PathBuf>,
+    #[arg(long = "path", global = true, value_name = "DIR")]
+    archive: Option<PathBuf>,
     /// JSON on commands that support it
     #[arg(long, global = true)]
     json: bool,
@@ -44,9 +44,6 @@ struct Cli {
 enum Commands {
     /// Create a new archive directory (mode 0700)
     Init {
-        /// Archive directory (required)
-        #[arg(long)]
-        path: PathBuf,
         /// ISO 3166-1 alpha-2 (required; no default)
         #[arg(long = "phone-region")]
         phone_region: String,
@@ -61,10 +58,7 @@ enum Commands {
         phones: Vec<String>,
     },
     /// Set last-archive-path pointer (shared lock)
-    Open {
-        #[arg(long)]
-        path: PathBuf,
-    },
+    Open,
     /// Counts, last import, open review rows
     Status,
     /// Import a platform export
@@ -118,7 +112,8 @@ enum Commands {
 enum ImportCmd {
     /// WhatsApp Android/iOS ZIP
     Whatsapp {
-        path: PathBuf,
+        /// Export ZIP
+        file: PathBuf,
         #[arg(long)]
         locale: Option<String>,
         #[arg(long)]
@@ -130,7 +125,8 @@ enum ImportCmd {
     },
     /// Takeout directory or independent zip
     Takeout {
-        path: PathBuf,
+        /// Takeout directory or zip
+        file: PathBuf,
         #[arg(long)]
         resume: Option<i64>,
         #[arg(long = "max-bytes", default_value_t = 60 * 1024 * 1024 * 1024)]
@@ -138,14 +134,18 @@ enum ImportCmd {
     },
     /// Standalone Gmail mbox
     Gmail {
-        path: PathBuf,
+        /// Standalone .mbox
+        file: PathBuf,
         #[arg(long)]
         resume: Option<i64>,
         #[arg(long = "max-bytes", default_value_t = 60 * 1024 * 1024 * 1024)]
         max_bytes: u64,
     },
     /// Contacts vCard or CSV
-    Contacts { path: PathBuf },
+    Contacts {
+        /// .vcf or .csv
+        file: PathBuf,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -280,15 +280,26 @@ impl From<rusqlite::Error> for CliError {
 fn dispatch(cli: Cli) -> Result<(), CliError> {
     match cli.cmd {
         Commands::Init {
-            path,
             phone_region,
             name,
             emails,
             phones,
-        } => cmd_init(path, phone_region, name, emails, phones),
-        Commands::Open { path } => cmd_open(path),
-        Commands::Status => cmd_status(cli.path, cli.json),
-        Commands::Import { source } => cmd_import(cli.path, source),
+        } => {
+            let path = cli
+                .archive
+                .clone()
+                .ok_or_else(|| CliError::user("init requires --path DIR"))?;
+            cmd_init(path, phone_region, name, emails, phones)
+        }
+        Commands::Open => {
+            let path = cli
+                .archive
+                .clone()
+                .ok_or_else(|| CliError::user("open requires --path DIR"))?;
+            cmd_open(path)
+        }
+        Commands::Status => cmd_status(cli.archive, cli.json),
+        Commands::Import { source } => cmd_import(cli.archive, source),
         Commands::Search {
             query,
             person,
@@ -298,7 +309,7 @@ fn dispatch(cli: Cli) -> Result<(), CliError> {
             include_groups,
             limit,
         } => cmd_search(
-            cli.path,
+            cli.archive,
             cli.json,
             cli.verbose,
             query,
@@ -309,14 +320,14 @@ fn dispatch(cli: Cli) -> Result<(), CliError> {
             include_groups,
             limit,
         ),
-        Commands::Person { cmd } => cmd_person(cli.path, cli.json, cli.verbose, cmd),
-        Commands::Review { cmd } => cmd_review(cli.path, cli.json, cmd),
+        Commands::Person { cmd } => cmd_person(cli.archive, cli.json, cli.verbose, cmd),
+        Commands::Review { cmd } => cmd_review(cli.archive, cli.json, cmd),
         Commands::Doctor {
             rebuild_fts,
             gc_cas,
             integrity,
-        } => cmd_doctor(cli.path, rebuild_fts, gc_cas, integrity),
-        Commands::Log { tail } => cmd_log(cli.path, tail),
+        } => cmd_doctor(cli.archive, rebuild_fts, gc_cas, integrity),
+        Commands::Log { tail } => cmd_log(cli.archive, tail),
     }
 }
 
@@ -450,20 +461,20 @@ fn cmd_import(path: Option<PathBuf>, source: ImportCmd) -> Result<(), CliError> 
     warn_mode(&arch.root);
     let (kind, file, opts) = match source {
         ImportCmd::Whatsapp {
-            path,
+            file,
             locale,
             resume,
             conversation_name,
             max_bytes,
         } => {
-            let probed = ImporterRegistry::detect(&path).unwrap_or(SourceKind::WhatsappAndroidZip);
+            let probed = ImporterRegistry::detect(&file).unwrap_or(SourceKind::WhatsappAndroidZip);
             let kind = match probed {
                 SourceKind::WhatsappIosZip => SourceKind::WhatsappIosZip,
                 _ => SourceKind::WhatsappAndroidZip,
             };
             (
                 kind,
-                path,
+                file,
                 ImportOpts {
                     locale,
                     resume_run_id: resume,
@@ -473,18 +484,18 @@ fn cmd_import(path: Option<PathBuf>, source: ImportCmd) -> Result<(), CliError> 
             )
         }
         ImportCmd::Takeout {
-            path,
+            file,
             resume,
             max_bytes,
         } => {
-            let kind = if path.is_dir() {
+            let kind = if file.is_dir() {
                 SourceKind::TakeoutDir
             } else {
                 SourceKind::TakeoutZip
             };
             (
                 kind,
-                path,
+                file,
                 ImportOpts {
                     resume_run_id: resume,
                     max_bytes,
@@ -493,20 +504,20 @@ fn cmd_import(path: Option<PathBuf>, source: ImportCmd) -> Result<(), CliError> 
             )
         }
         ImportCmd::Gmail {
-            path,
+            file,
             resume,
             max_bytes,
         } => (
             SourceKind::GmailMbox,
-            path,
+            file,
             ImportOpts {
                 resume_run_id: resume,
                 max_bytes,
                 ..ImportOpts::default()
             },
         ),
-        ImportCmd::Contacts { path } => {
-            let kind = match path
+        ImportCmd::Contacts { file } => {
+            let kind = match file
                 .extension()
                 .and_then(|e| e.to_str())
                 .unwrap_or("")
@@ -516,7 +527,7 @@ fn cmd_import(path: Option<PathBuf>, source: ImportCmd) -> Result<(), CliError> 
                 "csv" => SourceKind::ContactsCsv,
                 _ => SourceKind::ContactsVcf,
             };
-            (kind, path, ImportOpts::default())
+            (kind, file, ImportOpts::default())
         }
     };
     println!("probing… {kind:?}");
