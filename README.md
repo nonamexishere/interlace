@@ -11,7 +11,7 @@ Google Takeout Contacts + Gmail mbox.
 
 The app does not phone home. There is no account, no sync, no updater.
 CI denies HTTP *clients* (`reqwest`, `hyper`, `tokio` on core+cli). The
-unpublished Tauri shell (`cargo run -p interlace-tauri`) may contain the
+unpublished Tauri shell (`npm run tauri` in `crates/interlace-tauri`) may contain the
 `http`/`url` *type* crates and `tokio` **without** `net`; that is not a
 network client.
 

@@ -43,9 +43,27 @@ def main() -> None:
     if "com.apple.security.app-sandbox" not in ent:
         fail("sandbox entitlement required")
 
-    ui = (crate / "ui" / "index.html").read_text()
-    if "phones home" not in ui or "HTTP" not in ui:
-        fail("placeholder UI must state no phone-home and no HTTP client")
+    app = (crate / "web" / "App.svelte").read_text()
+    if "phones home" not in app or "HTTP" not in app:
+        fail("Svelte UI must state no phone-home and no HTTP client")
+    if (crate / "ui" / "app.js").is_file():
+        fail("vanilla ui/app.js must be gone after UI-FE")
+    if not (crate / "package-lock.json").is_file():
+        fail("package-lock.json must be committed")
+
+    npm = run(
+        ["npm", "ci"],
+        cwd=crate,
+        check=False,
+    )
+    if npm.returncode != 0:
+        fail(npm.stderr or npm.stdout)
+    built = run(["npm", "run", "build"], cwd=crate, check=False)
+    if built.returncode != 0:
+        fail(built.stderr or built.stdout)
+    dist = (crate / "dist" / "index.html").read_text()
+    if "cdn." in dist or "unpkg.com" in dist:
+        fail("production bundle must not load a CDN")
 
     chk = run(["cargo", "check", "-p", "interlace-tauri"], cwd=root, check=False)
     if chk.returncode != 0:

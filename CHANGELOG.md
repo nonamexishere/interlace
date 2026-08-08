@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exclusive session lock, same status JSON as the CLI.
 - Person list + D18 timeline in the app (UI3): groups off by default,
   merge/unlink/undo, j/k navigation.
+- Desktop UI is Svelte 5 + Vite + Tailwind (`npm run tauri`); vanilla `ui/`
+  removed. Production still ships static files, no CDN.
 
 ### Fixed
 

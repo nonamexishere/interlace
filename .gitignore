@@ -4,4 +4,6 @@ __pycache__/
 .DS_Store
 pipeline/stages/07-bench/OUT.json
 crates/interlace-tauri/gen/
+crates/interlace-tauri/node_modules/
+crates/interlace-tauri/dist/
 
