@@ -1,0 +1,20 @@
+id = "tr-TR"
+family_hints = ["ios_bracket", "android_dash"]
+you_tokens = ["Siz", "Sen", "You"]
+date_time_patterns = [
+  "%d.%m.%Y %H:%M:%S",
+  "%d.%m.%Y, %H:%M:%S",
+  "%d.%m.%Y %H:%M",
+  "%d.%m.%Y, %H:%M",
+]
+media_omitted = ["<Medya dahil edilmedi>", "<Media omitted>", "görüntü dahil edilmedi", "video dahil edilmedi"]
+file_attached_pattern = '^(?P<filename>.+) \\(dosya ekli\\)$'
+file_attached_alt = ["<attached: {filename}>"]
+forwarded_tokens = ["İletildi", "Forwarded"]
+title_prefixes_dm = ["WhatsApp Sohbeti: ", "WhatsApp Chat with "]
+title_prefixes_group = []   # OQ9 decided: empty unless a listed pack has a real group prefix
+system_created_group = ["grubunu oluşturdu", "created group"]
+system_added = ["ekledi", "gruba eklendi", "added"]
+system_subject = ["konuyu değiştirdi", "changed the subject"]
+system_encryption = ["Mesajlar ve aramalar uçtan uca şifrelidir", "Messages and calls are end-to-end encrypted"]
+encryption_banner_startswith = "Mesajlar ve aramalar uçtan uca şifrelidir"

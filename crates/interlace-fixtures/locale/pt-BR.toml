@@ -1,0 +1,19 @@
+id = "pt-BR"
+family_hints = ["ios_bracket", "android_dash"]
+you_tokens = ["Você", "You"]
+date_time_patterns = [
+  "%d/%m/%Y %H:%M:%S",
+  "%d/%m/%Y, %H:%M:%S",
+  "%d/%m/%Y %H:%M",
+]
+media_omitted = ["<Mídia omitida>", "<Media omitted>", "imagem omitida", "vídeo omitido"]
+file_attached_pattern = '^(?P<filename>.+) \\(arquivo anexado\\)$'
+file_attached_alt = ["<attached: {filename}>"]
+forwarded_tokens = ["Encaminhada", "Forwarded"]
+title_prefixes_dm = ["Conversa do WhatsApp com ", "WhatsApp Chat with "]
+title_prefixes_group = []
+system_created_group = ["criou o grupo", "created group"]
+system_added = ["adicionou", "added"]
+system_subject = ["mudou o assunto", "changed the subject"]
+system_encryption = ["As mensagens e as ligações são protegidas com a criptografia de ponta a ponta"]
+encryption_banner_startswith = "As mensagens e as ligações são protegidas"

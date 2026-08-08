@@ -5,12 +5,14 @@ members = [
     "crates/interlace",
     "crates/interlace-cli",
     "crates/interlace-cli-common",
+    "crates/interlace-fixtures",
 ]
 default-members = [
     "crates/interlace-core",
     "crates/interlace",
     "crates/interlace-cli",
     "crates/interlace-cli-common",
+    "crates/interlace-fixtures",
 ]
 
 [workspace.package]
@@ -28,3 +30,5 @@ thiserror = "2"
 libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+toml = "0.8"
