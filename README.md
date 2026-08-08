@@ -47,6 +47,7 @@ It is **not** a fourth crates.io name.
 - Import WhatsApp: [docs/user/import-whatsapp.md](docs/user/import-whatsapp.md)
 - Import Takeout / Gmail / Contacts: [docs/user/import-takeout.md](docs/user/import-takeout.md)
 - People / review / undo: [docs/user/identity-and-review.md](docs/user/identity-and-review.md)
+- Search: [docs/user/search.md](docs/user/search.md)
 
 ## License
 
