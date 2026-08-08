@@ -1,11 +1,25 @@
-[package]
-name = "interlace"
-version = "0.0.1"
+[workspace]
+resolver = "2"
+members = [
+    "crates/interlace-core",
+    "crates/interlace",
+    "crates/interlace-cli",
+    "crates/interlace-cli-common",
+]
+default-members = [
+    "crates/interlace-core",
+    "crates/interlace",
+    "crates/interlace-cli",
+    "crates/interlace-cli-common",
+]
+
+[workspace.package]
 edition = "2021"
-description = "Local-first archive that unifies your conversations across platforms"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/nonamexishere/interlace"
-readme = "README.md"
+rust-version = "1.80"
+version = "0.0.1"
 
-[dependencies]
-
+[workspace.dependencies]
+interlace-core = { path = "crates/interlace-core", version = "0.0.1" }
+interlace-cli-common = { path = "crates/interlace-cli-common", version = "0.0.1" }

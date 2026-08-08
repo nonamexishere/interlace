@@ -1,0 +1,11 @@
+[package]
+name = "interlace-cli-common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Shared CLI entry for the interlace and interlace-cli binaries (unpublished)"
+publish = false
+
+[dependencies]

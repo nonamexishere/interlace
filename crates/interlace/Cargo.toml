@@ -1,0 +1,16 @@
+[package]
+name = "interlace"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Local-first archive that unifies your conversations across platforms"
+readme = "../../README.md"
+
+[[bin]]
+name = "interlace"
+path = "src/main.rs"
+
+[dependencies]
+interlace-cli-common.workspace = true
