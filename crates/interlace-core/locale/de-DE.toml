@@ -2,9 +2,9 @@ id = "de-DE"
 family_hints = ["ios_bracket", "android_dash"]
 you_tokens = ["Du", "Ihr", "You"]
 date_time_patterns = [
-  "%d.%m.%Y, %H:%M:%S",
-  "%d.%m.%Y, %H:%M",
-  "%d.%m.%y, %H:%M:%S",
+  "%-d.%-m.%Y, %H:%M:%S",
+  "%-d.%-m.%Y, %H:%M",
+  "%-d.%-m.%y, %H:%M:%S",
 ]
 media_omitted = ["<Medien weggelassen>", "<Media omitted>", "Bild weggelassen", "Video weggelassen"]
 file_attached_pattern = '^(?P<filename>.+) \\(Datei angehängt\\)$'

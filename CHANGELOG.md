@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iOS WhatsApp 1:1 chats whose senders are address-book names (no `You`/`Siz`)
   classify as `dm` when one name matches `init --name` and the ZIP title looks
   like a DM (D18-C).
+- WhatsApp locale packs accept unpadded day/month (`3.08.2025, 02:31:13`);
+  datetime ties between `tr-TR` and `de-DE` break on native language tokens.
 
 ## [0.1.0] - 2026-08-08
 

@@ -426,3 +426,36 @@ fn whatsapp_d18c_three_senders_stays_group() {
     assert_eq!(conv_kind(&arch), "group");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// #32: iOS TR unpadded day + padded day; vote tr-TR; no unknown_row.
+#[test]
+fn whatsapp_unpadded_day_ios_tr_no_unknown() {
+    let root = tmp_root();
+    let chat = "\
+[3.08.2025, 02:31:13] Mesajlar ve aramalar uçtan uca şifrelidir
+[26.03.2025, 10:24:07] Mustafa: merhaba
+[7.04.2025, 23:21:09] Alice: hi
+[15.03.2024, 14:32:18] Mustafa: <Medya dahil edilmedi>
+";
+    let zip = write_named_ios_zip(&root.join("zips"), "WhatsApp Chat - Alice", chat);
+    let probe = WhatsappImporter::default().probe(&zip).unwrap();
+    assert_eq!(probe.kind, SourceKind::WhatsappIosZip);
+    assert_eq!(probe.locale_guess.as_deref(), Some("tr-TR"));
+
+    let mut arch = archive_with_owner(&root.join("arch"), "Mustafa");
+    let stats = arch
+        .run_import(SourceKind::WhatsappIosZip, &zip, &ImportOpts::default())
+        .unwrap();
+    assert_eq!(stats.warnings, 0, "unpadded day must not unknown_row");
+    let unknown = count(
+        &arch,
+        "SELECT COUNT(*) FROM messages WHERE kind = 'unknown'",
+    );
+    assert_eq!(unknown, 0);
+    let dated = count(
+        &arch,
+        "SELECT COUNT(*) FROM messages WHERE sent_at IS NOT NULL",
+    );
+    assert_eq!(dated, count(&arch, "SELECT COUNT(*) FROM messages"));
+    let _ = std::fs::remove_dir_all(&root);
+}
