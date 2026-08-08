@@ -9,3 +9,9 @@ description = "Shared CLI entry for the interlace and interlace-cli binaries (un
 publish = false
 
 [dependencies]
+interlace-core.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+rusqlite.workspace = true

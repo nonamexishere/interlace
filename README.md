@@ -24,6 +24,19 @@ cargo install --path crates/interlace-cli --locked
 
 macOS only in Phase 1.
 
+## Quick start
+
+```bash
+interlace init --path ~/Interlace --phone-region TR --name "Your Name"
+interlace import whatsapp ~/Downloads/WhatsApp\ Chat\ with\ Alice.zip
+interlace import takeout ~/Downloads/Takeout
+interlace search "fatura"
+interlace doctor --integrity
+```
+
+`--phone-region` is required (ISO 3166-1 alpha-2; no silent default). Back up
+the entire archive directory.
+
 ## Crate layout
 
 Development is **this monorepo**. Satellite GitHub repos
@@ -48,6 +61,8 @@ It is **not** a fourth crates.io name.
 - Import Takeout / Gmail / Contacts: [docs/user/import-takeout.md](docs/user/import-takeout.md)
 - People / review / undo: [docs/user/identity-and-review.md](docs/user/identity-and-review.md)
 - Search: [docs/user/search.md](docs/user/search.md)
+- Doctor / locks / resume: [docs/user/doctor.md](docs/user/doctor.md)
+- Backup / move: [docs/user/backup.md](docs/user/backup.md)
 
 ## License
 

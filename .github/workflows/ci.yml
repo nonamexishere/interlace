@@ -40,5 +40,6 @@ jobs:
           python3 pipeline/tools/gate_impl.py --stage 05c --must M1,M2,M3,C1
           python3 pipeline/tools/gate_impl.py --stage 05d --must I1,I2,I3,I4,I5,I6,I6b
           python3 pipeline/tools/gate_impl.py --stage 05e --must S1,S2,S3
+          python3 pipeline/tools/gate_cli.py
           bash pipeline/selftest/run.sh
           bash pipeline/run.sh

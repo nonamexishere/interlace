@@ -3,7 +3,7 @@ use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use crate::model::{CoreError, ImportOpts, ImportStats, OpenOptions, SourceKind};
 
@@ -78,7 +78,51 @@ pub fn open_with_options(opts: &OpenOptions) -> Result<Archive> {
 
 impl Archive {
     pub fn status(&self) -> Result<serde_json::Value> {
-        unimplemented!("status lands in PR10")
+        let archive_id: String = self.conn.query_row(
+            "SELECT archive_id FROM archive_meta WHERE id = 1",
+            [],
+            |r| r.get(0),
+        )?;
+        let messages: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM messages", [], |r| r.get(0))?;
+        let identities: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM identities", [], |r| r.get(0))?;
+        let persons_live: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM persons WHERE tombstoned_at IS NULL",
+            [],
+            |r| r.get(0),
+        )?;
+        let review_open: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM merge_review_queue WHERE status = 'open'",
+            [],
+            |r| r.get(0),
+        )?;
+        let last_import = self
+            .conn
+            .query_row(
+                "SELECT id, status, finished_at, stats_json FROM import_runs ORDER BY id DESC LIMIT 1",
+                [],
+                |r| {
+                    Ok(serde_json::json!({
+                        "id": r.get::<_, i64>(0)?,
+                        "status": r.get::<_, String>(1)?,
+                        "finished_at": r.get::<_, Option<String>>(2)?,
+                        "stats_json": r.get::<_, Option<String>>(3)?,
+                    }))
+                },
+            )
+            .optional()?;
+        Ok(serde_json::json!({
+            "archive_id": archive_id,
+            "path": self.root,
+            "messages": messages,
+            "identities": identities,
+            "persons_live": persons_live,
+            "review_open": review_open,
+            "last_import": last_import,
+        }))
     }
 
     pub fn doctor(&self, rebuild_fts: bool, gc_cas: bool, integrity: bool) -> Result<()> {
@@ -97,6 +141,60 @@ impl Archive {
             crate::search::rebuild_fts(self)?;
         }
         Ok(())
+    }
+
+    /// Non-mutating scan used by `interlace doctor`. Empty = healthy.
+    pub fn doctor_issues(&self) -> Result<Vec<String>> {
+        let mut issues = Vec::new();
+        let ok: String = self
+            .conn
+            .query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
+        if ok != "ok" {
+            issues.push(format!("integrity_check: {ok}"));
+        }
+        if let Err(e) = self.conn.execute(
+            "INSERT INTO messages_fts(messages_fts) VALUES('integrity-check')",
+            [],
+        ) {
+            issues.push(format!("fts integrity-check: {e}"));
+        }
+        let trig: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='search_doc_ai'",
+            [],
+            |r| r.get(0),
+        )?;
+        if trig == 0 {
+            issues.push("missing search_doc_ai trigger".into());
+        }
+        let stale: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM import_runs
+             WHERE status = 'running'
+               AND heartbeat_at < strftime('%Y-%m-%dT%H:%M:%fZ','now','-15 minutes')",
+            [],
+            |r| r.get(0),
+        )?;
+        if stale > 0 {
+            issues.push(format!(
+                "{stale} import run(s) running with heartbeat older than 15 minutes"
+            ));
+            let _ = self.conn.execute(
+                "UPDATE import_runs SET status = 'interrupted'
+                 WHERE status = 'running'
+                   AND heartbeat_at < strftime('%Y-%m-%dT%H:%M:%fZ','now','-15 minutes')",
+                [],
+            );
+        }
+        let mut stmt = self
+            .conn
+            .prepare("SELECT DISTINCT cas_hash FROM attachments WHERE cas_hash IS NOT NULL")?;
+        let hashes = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        for h in hashes {
+            let h = h?;
+            if self.cas_get(&h).is_err() {
+                issues.push(format!("CAS blob missing: {h}"));
+            }
+        }
+        Ok(issues)
     }
 
     pub fn run_import(
