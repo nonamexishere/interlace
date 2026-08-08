@@ -10,8 +10,10 @@ Frontend is **Svelte 5 + Vite** (`web/`). Dev (HMR):
 ```bash
 cd crates/interlace-tauri
 npm install
-npm run tauri
+npm run tauri:dev
 ```
+
+(`npm run tauri -- dev` is the same; bare `npm run tauri` only prints CLI help.)
 
 Release-like (static `dist/` + Rust):
 
