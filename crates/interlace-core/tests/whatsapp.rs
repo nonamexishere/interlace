@@ -266,3 +266,163 @@ fn whatsapp_w4_android_pt_br_multiline_system() {
     assert_eq!(count(&arch, "SELECT COUNT(*) FROM attachments"), 0);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+fn write_named_ios_zip(dir: &std::path::Path, stem: &str, chat: &str) -> std::path::PathBuf {
+    use std::io::Write;
+    std::fs::create_dir_all(dir).unwrap();
+    let p = dir.join(format!("{stem}.zip"));
+    let f = std::fs::File::create(&p).unwrap();
+    let mut z = zip::ZipWriter::new(f);
+    z.start_file(
+        "_chat.txt",
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored),
+    )
+    .unwrap();
+    z.write_all(chat.as_bytes()).unwrap();
+    z.finish().unwrap();
+    p
+}
+
+fn archive_with_owner(root: &std::path::Path, name: &str) -> interlace_core::db::Archive {
+    let arch = init_archive(root).unwrap();
+    arch.conn
+        .execute(
+            "UPDATE archive_meta SET owner_display_name = ?1 WHERE id = 1",
+            [name],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO persons(display_name, is_self) VALUES (?1, 1)",
+            [name],
+        )
+        .unwrap();
+    arch
+}
+
+fn conv_kind(arch: &interlace_core::db::Archive) -> String {
+    arch.conn
+        .query_row("SELECT kind FROM conversations LIMIT 1", [], |r| r.get(0))
+        .unwrap()
+}
+
+/// D18-C: iOS 1:1, no you_token, owner display name + DM ZIP stem → dm + self link.
+#[test]
+fn whatsapp_d18c_ios_owner_name_is_dm() {
+    let root = tmp_root();
+    let chat = "\
+[2024-03-15, 14:32:18] Messages and calls are end-to-end encrypted
+[2024-03-15, 14:32:19] Mustafa: hey alice
+[2024-03-15, 14:32:20] Alice: hi
+";
+    let zip = write_named_ios_zip(&root.join("zips"), "WhatsApp Chat - Alice", chat);
+    let mut arch = archive_with_owner(&root.join("arch"), "Mustafa");
+    arch.run_import(
+        SourceKind::WhatsappIosZip,
+        &zip,
+        &ImportOpts {
+            locale: Some("en-US".into()),
+            ..ImportOpts::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(conv_kind(&arch), "dm");
+    let me_role: i64 = arch
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM conversation_participants cp
+             JOIN identities i ON i.id = cp.identity_id
+             WHERE cp.role = 'me' AND i.display_name = 'Mustafa'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(me_role, 1, "owner sender should be role=me");
+    let linked: i64 = arch
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM person_identities pi
+             JOIN persons p ON p.id = pi.person_id
+             JOIN identities i ON i.id = pi.identity_id
+             WHERE p.is_self = 1 AND i.display_name = 'Mustafa'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(linked, 1, "owner-named WA identity linked to self person");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// D18-C negative: same two senders, ZIP stem not a DM prefix → stay group.
+#[test]
+fn whatsapp_d18c_no_dm_prefix_stays_group() {
+    let root = tmp_root();
+    let chat = "\
+[2024-03-15, 14:32:18] Messages and calls are end-to-end encrypted
+[2024-03-15, 14:32:19] Mustafa: hey
+[2024-03-15, 14:32:20] Alice: hi
+";
+    let zip = write_named_ios_zip(&root.join("zips"), "random-export", chat);
+    let mut arch = archive_with_owner(&root.join("arch"), "Mustafa");
+    arch.run_import(
+        SourceKind::WhatsappIosZip,
+        &zip,
+        &ImportOpts {
+            locale: Some("en-US".into()),
+            ..ImportOpts::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(conv_kind(&arch), "group");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// D18-C negative: DM-shaped title but group system line → stay group.
+#[test]
+fn whatsapp_d18c_group_system_stays_group() {
+    let root = tmp_root();
+    let chat = "\
+[2024-03-15, 14:32:18] Messages and calls are end-to-end encrypted
+[2024-03-15, 14:32:19] Alice created group
+[2024-03-15, 14:32:20] Mustafa: hey
+[2024-03-15, 14:32:21] Alice: hi
+";
+    let zip = write_named_ios_zip(&root.join("zips"), "WhatsApp Chat - Alice", chat);
+    let mut arch = archive_with_owner(&root.join("arch"), "Mustafa");
+    arch.run_import(
+        SourceKind::WhatsappIosZip,
+        &zip,
+        &ImportOpts {
+            locale: Some("en-US".into()),
+            ..ImportOpts::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(conv_kind(&arch), "group");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// D18-C negative: three human senders even with owner name + DM stem → group.
+#[test]
+fn whatsapp_d18c_three_senders_stays_group() {
+    let root = tmp_root();
+    let chat = "\
+[2024-03-15, 14:32:18] Messages and calls are end-to-end encrypted
+[2024-03-15, 14:32:19] Mustafa: hey
+[2024-03-15, 14:32:20] Alice: hi
+[2024-03-15, 14:32:21] Bob: yo
+";
+    let zip = write_named_ios_zip(&root.join("zips"), "WhatsApp Chat - Book Club", chat);
+    let mut arch = archive_with_owner(&root.join("arch"), "Mustafa");
+    arch.run_import(
+        SourceKind::WhatsappIosZip,
+        &zip,
+        &ImportOpts {
+            locale: Some("en-US".into()),
+            ..ImportOpts::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(conv_kind(&arch), "group");
+    let _ = std::fs::remove_dir_all(&root);
+}
