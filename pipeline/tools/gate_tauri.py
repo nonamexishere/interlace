@@ -46,10 +46,23 @@ def main() -> None:
     app = (crate / "web" / "App.svelte").read_text()
     if "phones home" not in app or "HTTP" not in app:
         fail("Svelte UI must state no phone-home and no HTTP client")
+    if "confirm(" in app:
+        fail("App.svelte must not use window.confirm after UI primitives")
+    for rel in (
+        "web/lib/components/ui/button/button.svelte",
+        "web/lib/components/ui/input/input.svelte",
+        "web/lib/components/ui/dialog/dialog.svelte",
+        "web/lib/components/ui/scroll-area/scroll-area.svelte",
+    ):
+        if not (crate / rel).is_file():
+            fail(f"missing owned primitive {rel}")
     if (crate / "ui" / "app.js").is_file():
         fail("vanilla ui/app.js must be gone after UI-FE")
     if not (crate / "package-lock.json").is_file():
         fail("package-lock.json must be committed")
+    pkg = (crate / "package.json").read_text()
+    if "bits-ui" not in pkg:
+        fail("bits-ui must be a local dependency (no CDN theme)")
 
     npm = run(
         ["npm", "ci"],

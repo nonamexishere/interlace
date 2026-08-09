@@ -8,7 +8,12 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "verbatimModuleSyntax": true,
-    "types": ["svelte"]
+    "types": ["svelte"],
+    "baseUrl": ".",
+    "paths": {
+      "$lib": ["web/lib"],
+      "$lib/*": ["web/lib/*"]
+    }
   },
   "include": ["web/**/*.ts", "web/**/*.svelte", "vite.config.ts"]
 }
