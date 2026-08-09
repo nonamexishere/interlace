@@ -40,6 +40,54 @@ export type TimelineRow = {
 
 export type LinkEvent = { id: number; ts: string; op: string };
 
+export type SearchHit = {
+  message_id: number;
+  sent_at?: string | null;
+  conversation_id: number;
+  subject?: string | null;
+  snippet: string;
+  score: number;
+  platform: string;
+  conversation_kind: string;
+  conversation_title?: string | null;
+  person_id?: number | null;
+  person_name?: string | null;
+};
+
+export type ReviewRow = {
+  id: number;
+  score: number;
+  reason: string;
+  left_identity_id: number;
+  right_person_id?: number | null;
+  right_identity_id?: number | null;
+  left_name: string;
+  right_name?: string | null;
+};
+
+export type ReviewShow = {
+  review: ReviewRow & { status: string };
+  evidence: { type: string; score: number; detail: string }[];
+  samples: { sent_at?: string | null; body_text: string }[];
+};
+
+export type ImportProgress = {
+  status: "idle" | "running" | "done" | "failed" | string;
+  path?: string | null;
+  kind?: string | null;
+  error?: string | null;
+  stats?: {
+    inserted_messages: number;
+    skipped_dupes: number;
+    warnings: number;
+    rejected: number;
+    inserted_identities: number;
+    attachments_stored: number;
+    review_enqueued: number;
+    auto_person_merges: number;
+  } | null;
+};
+
 export const api = {
   rememberedPath: () => invoke<string | null>("remembered_path"),
   pickFolder: () => invoke<string | null>("pick_folder"),
@@ -74,4 +122,23 @@ export const api = {
     invoke<void>("person_unlink_cmd", { identityId }),
   undo: (eventId: number) => invoke<void>("person_undo_cmd", { eventId }),
   linkEvents: () => invoke<LinkEvent[]>("link_events"),
+  pickImportPath: (folder: boolean) =>
+    invoke<string | null>("pick_import_path", { folder }),
+  search: (args: {
+    q: string;
+    personId?: number | null;
+    from?: string | null;
+    to?: string | null;
+    platform?: string | null;
+    includeGroups: boolean;
+    limit?: number;
+  }) => invoke<SearchHit[]>("search_cmd", { args }),
+  searchBody: (messageId: number) => invoke<string>("search_body", { messageId }),
+  reviewList: () => invoke<ReviewRow[]>("review_list_cmd"),
+  reviewShow: (id: number) => invoke<ReviewShow>("review_show_cmd", { id }),
+  reviewAccept: (id: number) => invoke<void>("review_accept_cmd", { id }),
+  reviewReject: (id: number) => invoke<void>("review_reject_cmd", { id }),
+  importStart: (args: { path: string; kind?: string | null; locale?: string | null }) =>
+    invoke<void>("import_start", args),
+  importProgress: () => invoke<ImportProgress>("import_progress"),
 };

@@ -51,11 +51,13 @@ python3 pipeline/tools/gate_tauri.py
 
 ## Commands (UI1)
 
-`remembered_path`, `pick_folder` (rfd on the main thread), `init`, `open`,
-`status`, `people`, `person_show`, `person_timeline`, `person_merge_cmd`,
-`person_unlink_cmd`, `person_undo_cmd`, `link_events`.
+`remembered_path`, `pick_folder` / `pick_import_path` (rfd on the main thread),
+`init`, `open`, `status`, `people`, `person_show`, `person_timeline`,
+`person_merge_cmd`, `person_unlink_cmd`, `person_undo_cmd`, `link_events`,
+`search_cmd`, `search_body`, `review_list_cmd` / `review_show_cmd` /
+`review_accept_cmd` / `review_reject_cmd`, `import_start`, `import_progress`.
 `init` / `open` take a **local folder path** only. Session state holds
-`Archive` with `LockMode::Exclusive`. Timeline bodies are text nodes.
+`Archive` with `LockMode::Exclusive`. Timeline/search bodies are text nodes.
 
 ## Issue DAG
 

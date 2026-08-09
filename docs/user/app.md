@@ -30,11 +30,11 @@ holder pid — close this window first.
 
 After open: **people list + timeline** (groups hidden unless you tick include
 groups). `j`/`k` move messages; `/` filters people. Merge/unlink/undo do not
-rewrite `messages.sender_identity_id`. Import is still CLI until UI5:
+rewrite `messages.sender_identity_id`.
 
-```bash
-interlace import whatsapp ./chat.zip
-```
+Tabs: **Search** (same FTS as CLI; expand a hit for the full body), **Review**
+(accept/reject name-only pairs), **Import** (ZIP/mbox/vcf/Takeout via the
+folder picker; progress in-window).
 
 ## Encryption
 
