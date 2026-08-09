@@ -10,8 +10,8 @@ use std::thread;
 
 use data_encoding::BASE64;
 use interlace_core::people::{
-    attachments_for, person_display_name, person_identities, person_list, person_timeline_rows,
-    recent_link_events,
+    attachments_for, complete_attachments, person_display_name, person_identities, person_list,
+    person_timeline_rows, recent_link_events,
 };
 use interlace_core::session::{init_owner_archive, read_last_path, write_last_path};
 use interlace_core::{
@@ -508,7 +508,21 @@ fn search_cmd(
                     |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
                 )
                 .unwrap_or_else(|_| ("unknown".into(), "dm".into(), None, None, None));
-            let attachments = atts.get(&h.message_id).cloned().unwrap_or_default();
+            let body: String = arch
+                .conn
+                .query_row(
+                    "SELECT COALESCE(body_text, '') FROM messages WHERE id = ?1",
+                    [h.message_id],
+                    |r| r.get(0),
+                )
+                .unwrap_or_default();
+            let attachments = complete_attachments(
+                arch,
+                h.message_id,
+                &body,
+                atts.get(&h.message_id).cloned().unwrap_or_default(),
+            )
+            .map_err(err)?;
             out.push(serde_json::json!({
                 "message_id": h.message_id,
                 "sent_at": h.sent_at,

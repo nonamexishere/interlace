@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use rusqlite::OptionalExtension;
 use serde::Serialize;
 
 use crate::db::Archive;
@@ -186,6 +187,7 @@ pub fn person_timeline_rows(
             attachments: Vec::new(),
         })
     };
+    // helper kept below attach_attachments
     let rows = if let Some(b) = before {
         stmt.query_map(rusqlite::params![person_id, limit as i64, b], map_row)?
     } else {
@@ -196,7 +198,115 @@ pub fn person_timeline_rows(
         out.push(row?);
     }
     attach_attachments(archive, &mut out)?;
+    enrich_from_body_tokens(archive, &mut out)?;
     Ok(out)
+}
+
+/// iOS `<attached: file.jpg>` in body (same line or continuation).
+pub fn extract_attached_filenames(body: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut s = body;
+    while let Some(i) = s.find("<attached:") {
+        s = s[i + "<attached:".len()..].trim_start();
+        let Some(j) = s.find('>') else {
+            break;
+        };
+        let name = s[..j].trim();
+        if !name.is_empty() && !name.contains("..") && !name.contains('/') {
+            out.push(name.to_string());
+        }
+        s = &s[j + 1..];
+    }
+    out
+}
+
+fn guess_kind(filename: &str) -> String {
+    let n = filename.to_ascii_lowercase();
+    if n.contains("PHOTO")
+        || n.contains("photo")
+        || n.ends_with(".jpg")
+        || n.ends_with(".jpeg")
+        || n.ends_with(".png")
+        || n.ends_with(".webp")
+        || n.ends_with(".gif")
+    {
+        "image".into()
+    } else if n.contains("STICKER") || n.contains("sticker") {
+        "sticker".into()
+    } else if n.contains("AUDIO")
+        || n.contains("PTT")
+        || n.ends_with(".opus")
+        || n.ends_with(".mp3")
+        || n.ends_with(".m4a")
+    {
+        "voice".into()
+    } else {
+        "file".into()
+    }
+}
+
+fn lookup_filename(archive: &Archive, name: &str) -> Result<Option<AttachmentRef>, CoreError> {
+    archive
+        .conn
+        .query_row(
+            "SELECT id, cas_hash, filename, mime, kind, omitted, missing
+             FROM attachments WHERE filename = ?1 AND cas_hash IS NOT NULL LIMIT 1",
+            [name],
+            |r| {
+                Ok(AttachmentRef {
+                    id: r.get(0)?,
+                    cas_hash: r.get(1)?,
+                    filename: r.get(2)?,
+                    mime: r.get(3)?,
+                    kind: r.get(4)?,
+                    omitted: r.get::<_, i64>(5)? != 0,
+                    missing: r.get::<_, i64>(6)? != 0,
+                })
+            },
+        )
+        .optional()
+        .map_err(Into::into)
+}
+
+pub fn complete_attachments(
+    archive: &Archive,
+    message_id: i64,
+    body: &str,
+    mut v: Vec<AttachmentRef>,
+) -> Result<Vec<AttachmentRef>, CoreError> {
+    for name in extract_attached_filenames(body) {
+        if v.iter()
+            .any(|a| a.filename.as_deref() == Some(name.as_str()))
+        {
+            continue;
+        }
+        if let Some(found) = lookup_filename(archive, &name)? {
+            v.push(found);
+        } else {
+            v.push(AttachmentRef {
+                id: -message_id,
+                cas_hash: None,
+                filename: Some(name.clone()),
+                mime: None,
+                kind: guess_kind(&name),
+                omitted: false,
+                missing: true,
+            });
+        }
+    }
+    Ok(v)
+}
+
+fn enrich_from_body_tokens(archive: &Archive, rows: &mut [TimelineRow]) -> Result<(), CoreError> {
+    for row in rows {
+        row.attachments = complete_attachments(
+            archive,
+            row.message_id,
+            &row.body_text,
+            std::mem::take(&mut row.attachments),
+        )?;
+    }
+    Ok(())
 }
 
 /// Attachments for a set of messages (timeline + search).

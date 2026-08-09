@@ -30,20 +30,32 @@
     return a.kind === "voice" || m.startsWith("audio/") || /\.(opus|ogg|mp3|m4a|aac|wav)$/.test(n);
   }
 
-  let srcs = $state<Record<number, string>>({});
-  let broken = $state<Record<number, boolean>>({});
+  let srcs = $state<Record<string, string>>({});
+  let broken = $state<Record<string, boolean>>({});
+  const requested = new Set<string>();
+
+  function hashOf(a: Attachment): string | null {
+    const h = a.cas_hash ?? (a as { casHash?: string | null }).casHash;
+    return h || null;
+  }
+
+  function keyOf(a: Attachment): string {
+    return hashOf(a) || a.filename || String(a.id);
+  }
 
   $effect(() => {
     for (const a of items || []) {
-      if (!a.cas_hash || srcs[a.id] || broken[a.id]) continue;
-      const id = a.id;
+      const hash = hashOf(a);
+      const k = keyOf(a);
+      if (!hash || requested.has(k)) continue;
+      requested.add(k);
       api
-        .casDataUrl(a.cas_hash)
+        .casDataUrl(hash)
         .then((url) => {
-          srcs = { ...srcs, [id]: url };
+          srcs = { ...srcs, [k]: url };
         })
         .catch(() => {
-          broken = { ...broken, [id]: true };
+          broken = { ...broken, [k]: true };
         });
     }
   });
@@ -55,37 +67,38 @@
       <li>
         {#if a.omitted}
           <p class="text-xs text-muted-foreground">Media omitted in this export</p>
-        {:else if a.missing}
-          <p class="text-xs text-muted-foreground">Referenced media was not in the ZIP</p>
-        {:else if a.cas_hash && isImage(a) && srcs[a.id]}
+        {:else if a.missing || !hashOf(a)}
+          <p class="text-xs text-muted-foreground">
+            Photo/file not stored ({a.filename || "attachment"}). Re-import the WhatsApp ZIP from the
+            Import tab (old messages stay, missing files are added).
+          </p>
+        {:else if isImage(a) && srcs[keyOf(a)]}
           <img
-            src={srcs[a.id]}
+            src={srcs[keyOf(a)]}
             alt={a.filename || "image"}
             class="max-h-64 max-w-full rounded-md border border-border"
             onerror={() => {
-              broken = { ...broken, [a.id]: true };
+              broken = { ...broken, [keyOf(a)]: true };
             }}
           />
-        {:else if a.cas_hash && isAudio(a) && srcs[a.id]}
+        {:else if isAudio(a) && srcs[keyOf(a)]}
           <audio
             class="w-full"
             controls
-            src={srcs[a.id]}
+            src={srcs[keyOf(a)]}
             onerror={() => {
-              broken = { ...broken, [a.id]: true };
+              broken = { ...broken, [keyOf(a)]: true };
             }}
           ></audio>
-        {:else if a.cas_hash && !broken[a.id] && !srcs[a.id]}
+        {:else if !broken[keyOf(a)] && !srcs[keyOf(a)]}
           <p class="text-xs text-muted-foreground">Loading {a.filename || "attachment"}…</p>
-        {:else if a.cas_hash}
+        {:else}
           <p class="text-xs text-muted-foreground">
             Stored locally: {a.filename || a.kind}
             {#if a.mime}
               ({a.mime})
             {/if}
           </p>
-        {:else}
-          <p class="text-xs text-muted-foreground">Attachment recorded, no bytes in CAS</p>
         {/if}
       </li>
     {/each}

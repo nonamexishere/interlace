@@ -159,6 +159,22 @@ fn timeline_hides_groups_by_default() {
     assert_eq!(dm.attachments.len(), 1);
     assert!(dm.attachments[0].omitted);
     assert_eq!(dm.attachments[0].filename.as_deref(), Some("pic.jpg"));
+
+    arch.conn
+        .execute(
+            "UPDATE messages SET body_text = 'hi <attached: orphan-photo.jpg>' WHERE id = ?1",
+            [dm_msg],
+        )
+        .unwrap();
+    let with_tok = person_timeline_rows(&arch, pid, false, 50, None).unwrap();
+    let dm2 = with_tok.iter().find(|r| r.message_id == dm_msg).unwrap();
+    assert!(
+        dm2.attachments
+            .iter()
+            .any(|a| a.filename.as_deref() == Some("orphan-photo.jpg") && a.missing),
+        "{:?}",
+        dm2.attachments
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
