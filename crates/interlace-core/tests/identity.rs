@@ -225,17 +225,17 @@ fn identity_wa_only_display_name_gets_own_person() {
         &arch,
         "whatsapp",
         "display_name",
-        "Anıl Dervişoğlu",
-        "anıl dervişoğlu",
-        Some("Anıl Dervişoğlu"),
+        "Ada Yılmaz",
+        "ada yılmaz",
+        Some("Ada Yılmaz"),
     );
     insert_ident(
         &arch,
         "whatsapp",
         "display_name",
-        "Mehmet Can Kul",
-        "can kul mehmet",
-        Some("Mehmet Can Kul"),
+        "Eren Kaya",
+        "eren kaya",
+        Some("Eren Kaya"),
     );
     resolve_run(&mut arch, 0).unwrap();
     assert_eq!(
@@ -267,7 +267,7 @@ fn identity_skip_group_title_display_name() {
     arch.conn
         .execute(
             "INSERT INTO conversations(platform, kind, native_id, title)
-             VALUES ('whatsapp', 'group', 'whatsapp:pretests', 'pretests passed (4)')",
+             VALUES ('whatsapp', 'group', 'whatsapp:bookclub', 'Book Club')",
             [],
         )
         .unwrap();
@@ -275,17 +275,17 @@ fn identity_skip_group_title_display_name() {
         &arch,
         "whatsapp",
         "display_name",
-        "pretests passed (4)",
-        "passed pretests",
-        Some("pretests passed (4)"),
+        "Book Club",
+        "book club",
+        Some("Book Club"),
     );
     insert_ident(
         &arch,
         "whatsapp",
         "display_name",
-        "Enes Saçak",
-        "enes saçak",
-        Some("Enes Saçak"),
+        "Deniz Koç",
+        "deniz koç",
+        Some("Deniz Koç"),
     );
     resolve_run(&mut arch, 0).unwrap();
     assert_eq!(
@@ -293,7 +293,7 @@ fn identity_skip_group_title_display_name() {
             &arch,
             "SELECT COUNT(*) FROM person_identities pi
              JOIN identities i ON i.id = pi.identity_id
-             WHERE i.value_normalized = 'passed pretests'"
+             WHERE i.value_normalized = 'book club'"
         ),
         0,
         "group title identity is not a person"
@@ -303,7 +303,7 @@ fn identity_skip_group_title_display_name() {
             &arch,
             "SELECT COUNT(*) FROM person_identities pi
              JOIN identities i ON i.id = pi.identity_id
-             WHERE i.display_name = 'Enes Saçak'"
+             WHERE i.display_name = 'Deniz Koç'"
         ),
         1,
         "group peer still becomes a person"
