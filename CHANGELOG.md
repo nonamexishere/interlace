@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - App search (UI2), review queue (UI4), and import-with-progress (UI5).
   Snippets/bodies stay text nodes. CI `check` job runs on Ubuntu (1× minutes);
   `tauri` stays macOS.
+- Empty/loading/error copy for people, timeline, search, review, lock, locale
+  probe, and doctor issues (no blank white flash).
 
 ### Fixed
 

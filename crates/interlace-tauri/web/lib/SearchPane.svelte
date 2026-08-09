@@ -4,6 +4,7 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import EmptyState from "./EmptyState.svelte";
 
   let { people, onError }: { people: Person[]; onError: (e: unknown) => void } = $props();
 
@@ -17,9 +18,13 @@
   let expanded = $state<number | null>(null);
   let body = $state("");
   let empty = $state(false);
+  let searched = $state(false);
+  let searching = $state(false);
 
   async function run() {
     empty = false;
+    searched = true;
+    searching = true;
     expanded = null;
     body = "";
     try {
@@ -35,6 +40,8 @@
       empty = hits.length === 0;
     } catch (e) {
       onError(e);
+    } finally {
+      searching = false;
     }
   }
 
@@ -100,11 +107,21 @@
       <input type="checkbox" bind:checked={includeGroups} />
       include groups
     </label>
-    <Button type="submit">Search</Button>
+    <Button type="submit" disabled={searching}>{searching ? "Searching…" : "Search"}</Button>
   </form>
 
-  {#if empty}
-    <p class="text-sm text-muted-foreground">No hits. Groups are hidden unless include groups is on.</p>
+  {#if searching}
+    <p class="text-sm text-muted-foreground">Searching…</p>
+  {:else if !searched}
+    <EmptyState
+      title="Type a query"
+      body="Same full-text search as the CLI. Group chats stay hidden until you tick include groups."
+    />
+  {:else if empty}
+    <EmptyState
+      title="No hits"
+      body="Try another token, widen the date range, or enable include groups if the match is only in a group."
+    />
   {/if}
 
   <ol class="divide-y divide-border">

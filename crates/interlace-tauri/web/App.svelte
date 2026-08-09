@@ -9,6 +9,7 @@
   import SearchPane from "$lib/SearchPane.svelte";
   import ReviewPane from "$lib/ReviewPane.svelte";
   import ImportPane from "$lib/ImportPane.svelte";
+  import EmptyState from "$lib/EmptyState.svelte";
 
   let err = $state("");
   let setup = $state(true);
@@ -33,6 +34,10 @@
   let confirmDesc = $state("");
   let confirmRun = $state<(() => Promise<void>) | null>(null);
   let view = $state<"people" | "search" | "review" | "import">("people");
+  let booting = $state(true);
+  let opening = $state(false);
+  let tlLoading = $state(false);
+  let doctor = $state<string[]>([]);
 
   const filtered = $derived(
     people.filter((p) => {
@@ -42,8 +47,24 @@
     }),
   );
 
+  function friendly(raw: string): string {
+    if (raw.includes("archive in use")) {
+      return `Archive is locked by another Interlace window or CLI writer. Close that process and try again.\n${raw}`;
+    }
+    if (raw.includes("pass --locale") || raw.includes("locale vote")) {
+      return `Could not guess the WhatsApp language pack. Set Locale (for example tr-TR) on the Import tab and retry.\n${raw}`;
+    }
+    if (raw.includes("not an Interlace archive")) {
+      return `That folder is not an archive (no INTERLACE.toml). Create one or open your existing archive folder.\n${raw}`;
+    }
+    if (raw.includes("no archive open")) {
+      return "No archive is open. An import may still be running — wait for it, or open a folder.";
+    }
+    return raw;
+  }
+
   function showErr(e: unknown) {
-    err = e instanceof Error ? e.message : String(e ?? "");
+    err = friendly(e instanceof Error ? e.message : String(e ?? ""));
   }
 
   function csv(s: string) {
@@ -70,11 +91,21 @@
     setup = false;
     await refreshPeople();
     await refreshEvents();
+    try {
+      doctor = await api.doctorIssues();
+    } catch {
+      doctor = [];
+    }
   }
 
   async function openPath(path: string) {
     err = "";
-    await applyStatus(await api.open(path));
+    opening = true;
+    try {
+      await applyStatus(await api.open(path));
+    } finally {
+      opening = false;
+    }
   }
 
   async function createArchive() {
@@ -114,6 +145,7 @@
 
   async function selectPerson(id: number, append = false) {
     selectedId = id;
+    tlLoading = true;
     try {
       const show = await api.personShow(id);
       personTitle = show.display_name || `person ${id}`;
@@ -129,6 +161,8 @@
       tlIndex = 0;
     } catch (e) {
       showErr(e);
+    } finally {
+      tlLoading = false;
     }
   }
 
@@ -201,6 +235,8 @@
         }
       } catch (e) {
         showErr(e);
+      } finally {
+        booting = false;
       }
       setup = true;
     })();
@@ -231,10 +267,17 @@
   {/if}
 
   {#if err}
-    <p class="bg-destructive/15 px-4 py-2 text-sm text-destructive">{err}</p>
+    <p class="whitespace-pre-wrap bg-destructive/15 px-4 py-2 text-sm text-destructive">{err}</p>
   {/if}
 
-  {#if setup}
+  {#if booting || opening}
+    <main class="mx-auto w-full max-w-lg space-y-2 p-6">
+      <p class="text-sm text-muted-foreground">
+        {opening ? "Opening archive…" : "Opening last archive…"}
+      </p>
+      <p class="text-xs text-muted-foreground">If this hangs, another Interlace or CLI writer may hold the lock.</p>
+    </main>
+  {:else if setup}
     <main class="mx-auto w-full max-w-lg space-y-4 p-6">
       <h1 class="text-2xl font-semibold tracking-tight">Open an archive</h1>
       <p class="text-muted-foreground">
@@ -311,6 +354,17 @@
             {/each}
           </ul>
         {/if}
+        {#if doctor.length}
+          <div class="mt-2 rounded-md border border-amber-700/40 bg-amber-950/20 p-2 text-sm text-amber-800 dark:text-amber-300">
+            <p class="font-medium">Doctor found issues</p>
+            <ul class="mt-1 list-disc pl-4">
+              {#each doctor as d}
+                <li>{d}</li>
+              {/each}
+            </ul>
+            <p class="mt-1 text-xs">Run `interlace doctor --integrity` in a terminal after closing this window. UI7 will run doctor in-app.</p>
+          </div>
+        {/if}
         <div class="mt-4 space-y-1.5">
           <Label for="person-filter">Filter people</Label>
           <Input id="person-filter" type="search" bind:value={filter} placeholder="name" />
@@ -331,6 +385,18 @@
             </li>
           {/each}
         </ul>
+        {#if people.length === 0}
+          <div class="mt-3">
+            <EmptyState
+              title="No people yet"
+              body="Import a WhatsApp ZIP or Takeout from the Import tab. Name-only chats become people after import."
+            />
+          </div>
+        {:else if filtered.length === 0}
+          <div class="mt-3">
+            <EmptyState title="No match" body="Clear the filter or try another spelling." />
+          </div>
+        {/if}
         <div class="mt-4 space-y-2">
           <div class="space-y-1.5">
             <Label for="merge-into">Merge into id</Label>
@@ -368,6 +434,19 @@
             </li>
           {/each}
         </ul>
+        {#if tlLoading}
+          <p class="text-sm text-muted-foreground">Loading timeline…</p>
+        {:else if !selectedId}
+          <EmptyState
+            title="Select a person"
+            body="Click a name on the left. Groups stay hidden until you tick include groups."
+          />
+        {:else if timeline.length === 0}
+          <EmptyState
+            title="No messages in this view"
+            body="This person may only appear in groups. Tick include groups, or import more sources."
+          />
+        {/if}
         <ol class="divide-y divide-border">
           {#each timeline as row, i}
             <li>

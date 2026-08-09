@@ -36,6 +36,9 @@ Tabs: **Search** (same FTS as CLI; expand a hit for the full body), **Review**
 (accept/reject name-only pairs), **Import** (ZIP/mbox/vcf/Takeout via the
 folder picker; progress in-window).
 
+Empty lists, loading, lock conflicts, and doctor findings are shown as copy
+in the window (not only in the terminal).
+
 ## Encryption
 
 Not encrypted at rest. The folder is the backup unit. Use FileVault. See

@@ -250,6 +250,11 @@ fn status(state: tauri::State<AppState>) -> Result<serde_json::Value, String> {
     arch.status().map_err(err)
 }
 
+#[tauri::command]
+fn doctor_issues_cmd(state: tauri::State<AppState>) -> Result<Vec<String>, String> {
+    with_arch(&state, |arch| arch.doctor_issues().map_err(err))
+}
+
 fn with_arch<T>(
     state: &AppState,
     f: impl FnOnce(&Archive) -> Result<T, String>,
@@ -567,6 +572,7 @@ fn main() {
             init,
             open,
             status,
+            doctor_issues_cmd,
             people,
             person_show,
             person_timeline,

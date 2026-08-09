@@ -55,7 +55,8 @@ python3 pipeline/tools/gate_tauri.py
 `init`, `open`, `status`, `people`, `person_show`, `person_timeline`,
 `person_merge_cmd`, `person_unlink_cmd`, `person_undo_cmd`, `link_events`,
 `search_cmd`, `search_body`, `review_list_cmd` / `review_show_cmd` /
-`review_accept_cmd` / `review_reject_cmd`, `import_start`, `import_progress`.
+`review_accept_cmd` / `review_reject_cmd`, `import_start`, `import_progress`,
+`doctor_issues_cmd`.
 `init` / `open` take a **local folder path** only. Session state holds
 `Archive` with `LockMode::Exclusive`. Timeline/search bodies are text nodes.
 
