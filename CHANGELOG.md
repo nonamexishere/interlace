@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Import “Pick folder” on a directory of WhatsApp ZIPs imports each zip
+  (auto-detect no longer assumes Takeout).
+
+### Fixed
+
 - WhatsApp name-only identities become their own people after import (not
   merged onto Contacts). Group-title identities stay unlinked. Re-import the
   same ZIP to backfill an existing archive (`skipped_dupes`).

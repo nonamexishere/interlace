@@ -79,7 +79,8 @@
 <ScrollArea class="p-4">
   <h1 class="mb-3 text-xl font-semibold tracking-tight">Import</h1>
   <p class="mb-4 text-sm text-muted-foreground">
-    Folder/file picker only — no URLs. Same catalog as the CLI. Bodies are not dumped here.
+    Folder/file picker only — no URLs. WhatsApp: pick one .zip <em>or</em> a folder of zips.
+    Takeout: pick the Takeout directory. Bodies are not dumped here.
   </p>
   <div class="max-w-lg space-y-3">
     <div class="space-y-1.5">
@@ -110,6 +111,9 @@
       Status: <strong>{progress.status}</strong>
       {#if progress.kind}
         · {progress.kind}
+      {/if}
+      {#if progress.detail}
+        · {progress.detail}
       {/if}
     </p>
     {#if progress.stats}
