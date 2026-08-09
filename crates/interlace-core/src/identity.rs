@@ -182,6 +182,91 @@ pub fn review_resolve(
     Ok(())
 }
 
+pub fn review_list(archive: &Archive) -> Result<Vec<serde_json::Value>, CoreError> {
+    let mut stmt = archive.conn.prepare(
+        "SELECT q.id, q.suggested_score, q.reason_summary, q.left_identity_id, q.right_person_id,
+                q.right_identity_id,
+                COALESCE(li.display_name, li.value_raw),
+                rp.display_name
+         FROM merge_review_queue q
+         JOIN identities li ON li.id = q.left_identity_id
+         LEFT JOIN persons rp ON rp.id = q.right_person_id
+         WHERE q.status = 'open'
+         ORDER BY q.suggested_score DESC, q.id",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok(serde_json::json!({
+            "id": r.get::<_, i64>(0)?,
+            "score": r.get::<_, f64>(1)?,
+            "reason": r.get::<_, String>(2)?,
+            "left_identity_id": r.get::<_, i64>(3)?,
+            "right_person_id": r.get::<_, Option<i64>>(4)?,
+            "right_identity_id": r.get::<_, Option<i64>>(5)?,
+            "left_name": r.get::<_, String>(6)?,
+            "right_name": r.get::<_, Option<String>>(7)?,
+        }))
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+pub fn review_show(archive: &Archive, id: i64) -> Result<serde_json::Value, CoreError> {
+    let review: serde_json::Value = archive.conn.query_row(
+        "SELECT q.id, q.status, q.suggested_score, q.reason_summary,
+                q.left_identity_id, q.right_person_id, q.right_identity_id,
+                COALESCE(li.display_name, li.value_raw),
+                rp.display_name
+         FROM merge_review_queue q
+         JOIN identities li ON li.id = q.left_identity_id
+         LEFT JOIN persons rp ON rp.id = q.right_person_id
+         WHERE q.id = ?1",
+        [id],
+        |r| {
+            Ok(serde_json::json!({
+                "id": r.get::<_, i64>(0)?,
+                "status": r.get::<_, String>(1)?,
+                "score": r.get::<_, f64>(2)?,
+                "reason": r.get::<_, String>(3)?,
+                "left_identity_id": r.get::<_, i64>(4)?,
+                "right_person_id": r.get::<_, Option<i64>>(5)?,
+                "right_identity_id": r.get::<_, Option<i64>>(6)?,
+                "left_name": r.get::<_, String>(7)?,
+                "right_name": r.get::<_, Option<String>>(8)?,
+            }))
+        },
+    )?;
+    let mut ev = archive.conn.prepare(
+        "SELECT evidence_type, score, detail_json FROM merge_evidence WHERE review_id=?1",
+    )?;
+    let evidence: Vec<serde_json::Value> = ev
+        .query_map([id], |r| {
+            Ok(serde_json::json!({
+                "type": r.get::<_, String>(0)?,
+                "score": r.get::<_, f64>(1)?,
+                "detail": r.get::<_, String>(2)?,
+            }))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    let left_id = review["left_identity_id"].as_i64().unwrap_or(0);
+    let mut msg_stmt = archive.conn.prepare(
+        "SELECT sent_at, COALESCE(substr(body_text, 1, 240), '')
+         FROM messages WHERE sender_identity_id = ?1
+         ORDER BY sent_at IS NULL, sent_at DESC LIMIT 3",
+    )?;
+    let samples: Vec<serde_json::Value> = msg_stmt
+        .query_map([left_id], |r| {
+            Ok(serde_json::json!({
+                "sent_at": r.get::<_, Option<String>>(0)?,
+                "body_text": r.get::<_, String>(1)?,
+            }))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(serde_json::json!({
+        "review": review,
+        "evidence": evidence,
+        "samples": samples,
+    }))
+}
+
 fn attach_high_conf(archive: &Archive, stats: &mut ImportStats) -> Result<(), CoreError> {
     let rows: Vec<(i64, String, String, Option<String>)> = {
         let mut stmt = archive.conn.prepare(

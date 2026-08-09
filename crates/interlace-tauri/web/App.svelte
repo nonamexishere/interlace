@@ -6,6 +6,9 @@
   import { Label } from "$lib/components/ui/label/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
+  import SearchPane from "$lib/SearchPane.svelte";
+  import ReviewPane from "$lib/ReviewPane.svelte";
+  import ImportPane from "$lib/ImportPane.svelte";
 
   let err = $state("");
   let setup = $state(true);
@@ -29,6 +32,7 @@
   let confirmTitle = $state("");
   let confirmDesc = $state("");
   let confirmRun = $state<(() => Promise<void>) | null>(null);
+  let view = $state<"people" | "search" | "review" | "import">("people");
 
   const filtered = $derived(
     people.filter((p) => {
@@ -209,6 +213,22 @@
     <strong>Interlace</strong>
     <span class="text-muted-foreground">offline · no account · no HTTP client</span>
   </header>
+  {#if !setup && st}
+    <nav class="flex flex-wrap gap-1 border-b border-border px-3 py-1 text-sm">
+      <Button size="sm" variant={view === "people" ? "default" : "ghost"} onclick={() => (view = "people")}
+        >People</Button
+      >
+      <Button size="sm" variant={view === "search" ? "default" : "ghost"} onclick={() => (view = "search")}
+        >Search</Button
+      >
+      <Button size="sm" variant={view === "review" ? "default" : "ghost"} onclick={() => (view = "review")}
+        >Review{#if st.review_open} ({st.review_open}){/if}</Button
+      >
+      <Button size="sm" variant={view === "import" ? "default" : "ghost"} onclick={() => (view = "import")}
+        >Import</Button
+      >
+    </nav>
+  {/if}
 
   {#if err}
     <p class="bg-destructive/15 px-4 py-2 text-sm text-destructive">{err}</p>
@@ -245,6 +265,22 @@
         unit. Not encrypted at rest; use FileVault.
       </p>
     </main>
+  {:else if st && view === "search"}
+    <SearchPane {people} onError={showErr} />
+  {:else if st && view === "review"}
+    <ReviewPane
+      onError={showErr}
+      onChanged={async () => {
+        await applyStatus(await api.status());
+      }}
+    />
+  {:else if st && view === "import"}
+    <ImportPane
+      onError={showErr}
+      onDone={async () => {
+        await applyStatus(await api.status());
+      }}
+    />
   {:else if st}
     <div class="grid min-h-0 flex-1 grid-cols-[18rem_1fr]">
       <ScrollArea class="border-r border-border p-4">

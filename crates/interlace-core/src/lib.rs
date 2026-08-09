@@ -13,7 +13,9 @@ pub mod search;
 pub mod session;
 
 pub use db::{init_archive, migrate, open_archive, open_with_options, Archive, LockMode};
-pub use identity::{person_merge, person_undo, person_unlink, resolve_run, review_resolve};
+pub use identity::{
+    person_merge, person_undo, person_unlink, resolve_run, review_list, review_resolve, review_show,
+};
 pub use import::{
     ContactsImporter, GmailMboxImporter, ImportContext, ImporterRegistry, SourceImporter,
     TakeoutImporter, WhatsappImporter,

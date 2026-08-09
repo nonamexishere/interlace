@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed. Production still ships static files, no CDN.
 - Owned shadcn-svelte (New York / zinc) primitives under
   `web/lib/components/ui/`; merge/unlink/undo use Dialog, not `confirm()`.
+- App search (UI2), review queue (UI4), and import-with-progress (UI5).
+  Snippets/bodies stay text nodes. CI `check` job runs on Ubuntu (1× minutes);
+  `tauri` stays macOS.
 
 ### Fixed
 
