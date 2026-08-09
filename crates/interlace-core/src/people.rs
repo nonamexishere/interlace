@@ -1,5 +1,7 @@
 //! Person list / show / timeline rows for CLI and Tauri (D18).
 
+use std::collections::HashMap;
+
 use serde::Serialize;
 
 use crate::db::Archive;
@@ -25,6 +27,17 @@ pub struct PersonIdentity {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct AttachmentRef {
+    pub id: i64,
+    pub cas_hash: Option<String>,
+    pub filename: Option<String>,
+    pub mime: Option<String>,
+    pub kind: String,
+    pub omitted: bool,
+    pub missing: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct TimelineRow {
     pub message_id: i64,
     pub sent_at: Option<String>,
@@ -36,6 +49,7 @@ pub struct TimelineRow {
     pub from_me: bool,
     pub subject: Option<String>,
     pub body_text: String,
+    pub attachments: Vec<AttachmentRef>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -169,6 +183,7 @@ pub fn person_timeline_rows(
             subject: r.get(7)?,
             body_text: r.get(8)?,
             from_me: r.get::<_, i64>(9)? == 1,
+            attachments: Vec::new(),
         })
     };
     let rows = if let Some(b) = before {
@@ -180,7 +195,53 @@ pub fn person_timeline_rows(
     for row in rows {
         out.push(row?);
     }
+    attach_attachments(archive, &mut out)?;
     Ok(out)
+}
+
+/// Attachments for a set of messages (timeline + search).
+pub fn attachments_for(
+    archive: &Archive,
+    message_ids: &[i64],
+) -> Result<HashMap<i64, Vec<AttachmentRef>>, CoreError> {
+    let mut map: HashMap<i64, Vec<AttachmentRef>> = HashMap::new();
+    let mut stmt = archive.conn.prepare(
+        "SELECT id, message_id, cas_hash, filename, mime, kind, omitted, missing
+         FROM attachments WHERE message_id = ?1 ORDER BY id",
+    )?;
+    for id in message_ids {
+        let rows = stmt.query_map([id], |r| {
+            Ok(AttachmentRef {
+                id: r.get(0)?,
+                cas_hash: r.get(2)?,
+                filename: r.get(3)?,
+                mime: r.get(4)?,
+                kind: r.get(5)?,
+                omitted: r.get::<_, i64>(6)? != 0,
+                missing: r.get::<_, i64>(7)? != 0,
+            })
+        })?;
+        let mut v = Vec::new();
+        for row in rows {
+            v.push(row?);
+        }
+        if !v.is_empty() {
+            map.insert(*id, v);
+        }
+    }
+    Ok(map)
+}
+
+fn attach_attachments(archive: &Archive, rows: &mut [TimelineRow]) -> Result<(), CoreError> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<i64> = rows.iter().map(|r| r.message_id).collect();
+    let mut map = attachments_for(archive, &ids)?;
+    for row in rows.iter_mut() {
+        row.attachments = map.remove(&row.message_id).unwrap_or_default();
+    }
+    Ok(())
 }
 
 pub fn recent_link_events(archive: &Archive, limit: u32) -> Result<Vec<LinkEvent>, CoreError> {

@@ -10,6 +10,7 @@
   import ReviewPane from "$lib/ReviewPane.svelte";
   import ImportPane from "$lib/ImportPane.svelte";
   import EmptyState from "$lib/EmptyState.svelte";
+  import CasAttach from "$lib/CasAttach.svelte";
 
   let err = $state("");
   let setup = $state(true);
@@ -467,6 +468,7 @@
                     .join(" · ")}
                 </div>
                 <p class="mt-1 whitespace-pre-wrap text-sm text-foreground">{row.body_text || row.subject || ""}</p>
+                <CasAttach items={row.attachments || []} />
               </button>
             </li>
           {/each}

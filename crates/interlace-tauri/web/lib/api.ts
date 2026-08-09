@@ -26,6 +26,16 @@ export type Identity = {
   display_name?: string | null;
 };
 
+export type Attachment = {
+  id: number;
+  cas_hash?: string | null;
+  filename?: string | null;
+  mime?: string | null;
+  kind: string;
+  omitted: boolean;
+  missing: boolean;
+};
+
 export type TimelineRow = {
   message_id: number;
   sent_at?: string | null;
@@ -36,6 +46,7 @@ export type TimelineRow = {
   from_me: boolean;
   subject?: string | null;
   body_text: string;
+  attachments?: Attachment[];
 };
 
 export type LinkEvent = { id: number; ts: string; op: string };
@@ -52,6 +63,7 @@ export type SearchHit = {
   conversation_title?: string | null;
   person_id?: number | null;
   person_name?: string | null;
+  attachments?: Attachment[];
 };
 
 export type ReviewRow = {

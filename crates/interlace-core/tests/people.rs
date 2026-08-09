@@ -147,6 +147,19 @@ fn timeline_hides_groups_by_default() {
     assert_eq!(rows[0].body_text, "dm hi");
     let with_g = person_timeline_rows(&arch, pid, true, 50, None).unwrap();
     assert!(with_g.iter().any(|r| r.message_id == grp_msg));
+    arch
+        .conn
+        .execute(
+            "INSERT INTO attachments(message_id, filename, kind, omitted, missing)
+             VALUES (?1, 'pic.jpg', 'image', 1, 0)",
+            [dm_msg],
+        )
+        .unwrap();
+    let with_a = person_timeline_rows(&arch, pid, false, 50, None).unwrap();
+    let dm = with_a.iter().find(|r| r.message_id == dm_msg).unwrap();
+    assert_eq!(dm.attachments.len(), 1);
+    assert!(dm.attachments[0].omitted);
+    assert_eq!(dm.attachments[0].filename.as_deref(), Some("pic.jpg"));
     let _ = std::fs::remove_dir_all(&root);
 }
 

@@ -5,6 +5,7 @@
   import { Label } from "$lib/components/ui/label/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import EmptyState from "./EmptyState.svelte";
+  import CasAttach from "./CasAttach.svelte";
 
   let { people, onError }: { people: Person[]; onError: (e: unknown) => void } = $props();
 
@@ -134,6 +135,7 @@
               .join(" · ")}
           </div>
           <p class="mt-1 whitespace-pre-wrap text-sm">{h.snippet || h.subject || ""}</p>
+          <CasAttach items={h.attachments || []} />
         </button>
         {#if expanded === h.message_id}
           <p class="bg-muted px-2 py-2 text-sm whitespace-pre-wrap">{body}</p>

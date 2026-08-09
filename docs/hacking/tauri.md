@@ -44,7 +44,8 @@ python3 pipeline/tools/gate_tauri.py
 
 ## Security
 
-- CSP is the DESIGN string (`connect-src 'none'`).
+- CSP is the DESIGN string (`connect-src 'none'`). `img-src` / `media-src`
+  allow `cas:` for the local CAS protocol only (64-hex path under `$ARCHIVE/cas/`).
 - `Interlace.entitlements`: app sandbox, user-selected files, **no**
   `network.client` / `network.server`.
 - Message bodies in later PRs are text nodes only (never unsanitized HTML).
