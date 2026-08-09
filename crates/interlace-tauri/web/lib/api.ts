@@ -75,6 +75,7 @@ export type ImportProgress = {
   status: "idle" | "running" | "done" | "failed" | string;
   path?: string | null;
   kind?: string | null;
+  detail?: string | null;
   error?: string | null;
   stats?: {
     inserted_messages: number;

@@ -3,6 +3,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -23,6 +24,7 @@ struct ImportProgress {
     status: String,
     path: Option<String>,
     kind: Option<String>,
+    detail: Option<String>,
     error: Option<String>,
     stats: Option<interlace_core::ImportStats>,
 }
@@ -80,6 +82,80 @@ fn parse_kind(s: &str, path: &Path) -> Result<SourceKind, String> {
     }
 }
 
+fn is_zip(path: &Path) -> bool {
+    path.extension()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("zip"))
+}
+
+fn list_whatsapp_zips(dir: &Path) -> Vec<PathBuf> {
+    let Ok(rd) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for e in rd.flatten() {
+        let p = e.path();
+        if !p.is_file() || !is_zip(&p) {
+            continue;
+        }
+        if let Ok(k) = ImporterRegistry::detect(&p) {
+            if matches!(
+                k,
+                SourceKind::WhatsappAndroidZip | SourceKind::WhatsappIosZip
+            ) {
+                out.push(p);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+fn zip_kind(path: &Path) -> SourceKind {
+    ImporterRegistry::detect(path).unwrap_or(SourceKind::WhatsappIosZip)
+}
+
+/// One or more (kind, path) jobs. A folder of WA ZIPs is the dogfood path.
+fn plan_import(kind_s: &str, path: &Path) -> Result<Vec<(SourceKind, PathBuf)>, String> {
+    let k = kind_s.trim().to_ascii_lowercase();
+    if path.is_dir() {
+        if matches!(k.as_str(), "gmail" | "contacts") {
+            return Err("gmail/contacts need a file, not a folder".into());
+        }
+        if k == "takeout" {
+            return Ok(vec![(SourceKind::TakeoutDir, path.to_path_buf())]);
+        }
+        if matches!(ImporterRegistry::detect(path), Ok(SourceKind::TakeoutDir))
+            && matches!(k.as_str(), "" | "auto" | "takeout")
+        {
+            return Ok(vec![(SourceKind::TakeoutDir, path.to_path_buf())]);
+        }
+        let zips = list_whatsapp_zips(path);
+        if !zips.is_empty() && matches!(k.as_str(), "" | "auto" | "whatsapp") {
+            return Ok(zips.into_iter().map(|p| (zip_kind(&p), p)).collect());
+        }
+        return Err(format!(
+            "folder is not a Google Takeout tree and has no WhatsApp ZIPs: {}",
+            path.display()
+        ));
+    }
+    Ok(vec![(parse_kind(&k, path)?, path.to_path_buf())])
+}
+
+fn add_stats(into: &mut interlace_core::ImportStats, add: &interlace_core::ImportStats) {
+    into.inserted_messages += add.inserted_messages;
+    into.skipped_dupes += add.skipped_dupes;
+    into.upgraded_attachments += add.upgraded_attachments;
+    into.inserted_identities += add.inserted_identities;
+    into.attachments_stored += add.attachments_stored;
+    into.attachments_omitted += add.attachments_omitted;
+    into.attachments_missing += add.attachments_missing;
+    into.warnings += add.warnings;
+    into.rejected += add.rejected;
+    into.auto_person_merges += add.auto_person_merges;
+    into.review_enqueued += add.review_enqueued;
+}
+
 fn parse_platform(s: &str) -> Result<Option<Platform>, String> {
     match s.trim().to_ascii_lowercase().as_str() {
         "" | "any" => Ok(None),
@@ -115,7 +191,7 @@ fn pick_import_path(app: AppHandle, folder: bool) -> Result<Option<String>, Stri
     app.run_on_main_thread(move || {
         let picked = if folder {
             rfd::FileDialog::new()
-                .set_title("Takeout folder")
+                .set_title("Import folder (Takeout or WhatsApp ZIPs)")
                 .pick_folder()
         } else {
             rfd::FileDialog::new()
@@ -398,8 +474,15 @@ fn import_start(
     if pth.as_os_str().is_empty() {
         return Err("import path required".into());
     }
-    let kind_e = parse_kind(kind.as_deref().unwrap_or("auto"), &pth)?;
-    let kind_label = format!("{kind_e:?}");
+    let jobs = plan_import(kind.as_deref().unwrap_or("auto"), &pth)?;
+    if jobs.is_empty() {
+        return Err("nothing to import".into());
+    }
+    let kind_label = if jobs.len() == 1 {
+        format!("{:?}", jobs[0].0)
+    } else {
+        format!("{} WhatsApp ZIPs", jobs.len())
+    };
     let mut slot = state.archive.lock().map_err(err)?;
     let Some(arch) = slot.take() else {
         return Err("no archive open".into());
@@ -409,6 +492,7 @@ fn import_start(
         status: "running".into(),
         path: Some(path.clone()),
         kind: Some(kind_label.clone()),
+        detail: Some(format!("0/{} starting", jobs.len())),
         error: None,
         stats: None,
     };
@@ -428,19 +512,38 @@ fn import_start(
             ..ImportOpts::default()
         };
         let mut arch = arch;
-        let res = arch.run_import(kind_e, &pth, &opts);
+        let total = jobs.len();
+        let mut acc = interlace_core::ImportStats::default();
+        let mut failed: Option<String> = None;
+        for (i, (kind_e, file)) in jobs.into_iter().enumerate() {
+            {
+                let mut p = progress.lock().unwrap_or_else(|e| e.into_inner());
+                let name = file
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("import");
+                p.detail = Some(format!("{}/{} {}", i + 1, total, name));
+                p.path = Some(file.display().to_string());
+            }
+            match arch.run_import(kind_e, &file, &opts) {
+                Ok(s) => add_stats(&mut acc, &s),
+                Err(e) => {
+                    failed = Some(format!("{}: {e}", file.display()));
+                    break;
+                }
+            }
+        }
         {
             let mut p = progress.lock().unwrap_or_else(|e| e.into_inner());
-            match res {
-                Ok(stats) => {
-                    p.status = "done".into();
-                    p.stats = Some(stats);
-                    p.error = None;
-                }
-                Err(e) => {
-                    p.status = "failed".into();
-                    p.error = Some(e.to_string());
-                }
+            if let Some(e) = failed {
+                p.status = "failed".into();
+                p.error = Some(e);
+                p.stats = Some(acc);
+            } else {
+                p.status = "done".into();
+                p.error = None;
+                p.stats = Some(acc);
+                p.detail = Some(format!("{total}/{total} done"));
             }
         }
         *archives.lock().unwrap_or_else(|e| e.into_inner()) = Some(arch);
