@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import fail, repo_root, run  # noqa: E402
 
 CSP = (
-    "default-src 'self'; img-src 'self' asset: data: cas:; media-src 'self' cas:; "
+    "default-src 'self'; img-src 'self' asset: data: cas:; media-src 'self' cas: data:; "
     "style-src 'self' 'unsafe-inline'; connect-src 'none'; frame-src 'none'; font-src 'self'"
 )
 
@@ -62,8 +62,8 @@ def main() -> None:
     if "Opening last archive" not in app:
         fail("boot screen must say Opening last archive (no blank flash)")
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
-    if "cas://localhost/" not in cas:
-        fail("CAS viewer must use cas://localhost/<hash>")
+    if "casDataUrl" not in cas:
+        fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
     if "http://" in cas or "https://" in cas:
         fail("CAS viewer must not use remote URLs")
     if "protocol-asset" in toml or "dangerousRemoteDomainIpcAccess" in conf:

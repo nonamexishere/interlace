@@ -114,6 +114,7 @@ export const api = {
   open: (path: string) => invoke<Status>("open", { path }),
   status: () => invoke<Status>("status"),
   doctorIssues: () => invoke<string[]>("doctor_issues_cmd"),
+  casDataUrl: (hash: string) => invoke<string>("cas_data_url", { hash }),
   people: () => invoke<Person[]>("people"),
   personShow: (id: number) =>
     invoke<{ id: number; display_name: string; identities: Identity[] }>(

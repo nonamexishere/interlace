@@ -134,7 +134,7 @@
               .filter(Boolean)
               .join(" · ")}
           </div>
-          <p class="mt-1 whitespace-pre-wrap text-sm">{h.snippet || h.subject || ""}</p>
+          <p class="mt-1 whitespace-pre-wrap text-sm">{(h.snippet || h.subject || "").replace(/<attached:\s*[^>]+>/gi, "").trim()}</p>
           <CasAttach items={h.attachments || []} />
         </button>
         {#if expanded === h.message_id}

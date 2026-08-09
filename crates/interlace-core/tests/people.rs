@@ -147,8 +147,7 @@ fn timeline_hides_groups_by_default() {
     assert_eq!(rows[0].body_text, "dm hi");
     let with_g = person_timeline_rows(&arch, pid, true, 50, None).unwrap();
     assert!(with_g.iter().any(|r| r.message_id == grp_msg));
-    arch
-        .conn
+    arch.conn
         .execute(
             "INSERT INTO attachments(message_id, filename, kind, omitted, missing)
              VALUES (?1, 'pic.jpg', 'image', 1, 0)",

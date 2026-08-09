@@ -72,6 +72,10 @@
     return s.split(",").map((x) => x.trim()).filter(Boolean);
   }
 
+  function displayBody(s: string) {
+    return s.replace(/<attached:\s*[^>]+>/gi, "").trim();
+  }
+
   function ask(title: string, description: string, run: () => Promise<void>) {
     confirmTitle = title;
     confirmDesc = description;
@@ -467,7 +471,7 @@
                     .filter(Boolean)
                     .join(" · ")}
                 </div>
-                <p class="mt-1 whitespace-pre-wrap text-sm text-foreground">{row.body_text || row.subject || ""}</p>
+                <p class="mt-1 whitespace-pre-wrap text-sm text-foreground">{displayBody(row.body_text || row.subject || "")}</p>
                 <CasAttach items={row.attachments || []} />
               </button>
             </li>

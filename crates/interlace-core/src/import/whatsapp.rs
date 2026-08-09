@@ -535,6 +535,26 @@ fn parse_chat(
             })?;
         }
     }
+    // Continuation lines may append `<attached: file>` after match_media ran
+    // on the header-only body.
+    for m in &mut out {
+        if m.kind == MessageKind::System {
+            continue;
+        }
+        if matches!(m.media, MediaMatch::None) {
+            m.media = match_media(pack, &m.body);
+        }
+        match &m.media {
+            MediaMatch::File(_) | MediaMatch::Omitted => {
+                m.kind = if body_without_media_token(pack, &m.body).is_empty() {
+                    MessageKind::Media
+                } else {
+                    MessageKind::Mixed
+                };
+            }
+            MediaMatch::None => {}
+        }
+    }
     Ok(out)
 }
 

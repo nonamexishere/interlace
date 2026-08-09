@@ -1909,6 +1909,7 @@ dependencies = [
 name = "interlace-tauri"
 version = "0.1.1"
 dependencies = [
+ "data-encoding",
  "interlace-core",
  "rfd",
  "serde",

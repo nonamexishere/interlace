@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use data_encoding::BASE64;
 use interlace_core::people::{
     attachments_for, person_display_name, person_identities, person_list, person_timeline_rows,
     recent_link_events,
@@ -330,6 +331,30 @@ fn status(state: tauri::State<AppState>) -> Result<serde_json::Value, String> {
 #[tauri::command]
 fn doctor_issues_cmd(state: tauri::State<AppState>) -> Result<Vec<String>, String> {
     with_arch(&state, |arch| arch.doctor_issues().map_err(err))
+}
+
+/// Inline preview for the webview (Vite `http://localhost` cannot load `cas://`).
+#[tauri::command]
+fn cas_data_url(state: tauri::State<AppState>, hash: String) -> Result<String, String> {
+    const MAX: usize = 12 * 1024 * 1024;
+    let root = state
+        .archive_root
+        .lock()
+        .map_err(err)?
+        .clone()
+        .ok_or_else(|| "no archive open".to_string())?;
+    let path = interlace_core::cas::cas_blob_path(&root, &hash).map_err(err)?;
+    let cas_root = root.join("cas").canonicalize().map_err(err)?;
+    let canon = path.canonicalize().map_err(err)?;
+    if !canon.starts_with(&cas_root) {
+        return Err("path outside cas".into());
+    }
+    let bytes = fs::read(&canon).map_err(err)?;
+    if bytes.len() > MAX {
+        return Err("attachment too large to preview in-window".into());
+    }
+    let mime = sniff_mime(&bytes);
+    Ok(format!("data:{mime};base64,{}", BASE64.encode(&bytes)))
 }
 
 fn with_arch<T>(
@@ -662,6 +687,7 @@ fn main() {
             open,
             status,
             doctor_issues_cmd,
+            cas_data_url,
             people,
             person_show,
             person_timeline,
