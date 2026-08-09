@@ -56,6 +56,11 @@ def main() -> None:
     ):
         if not (crate / rel).is_file():
             fail(f"missing owned primitive {rel}")
+    empty = crate / "web" / "lib" / "EmptyState.svelte"
+    if not empty.is_file():
+        fail("EmptyState.svelte required for UI empty/loading copy")
+    if "Opening last archive" not in app:
+        fail("boot screen must say Opening last archive (no blank flash)")
     if (crate / "ui" / "app.js").is_file():
         fail("vanilla ui/app.js must be gone after UI-FE")
     if not (crate / "package-lock.json").is_file():

@@ -4,6 +4,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import EmptyState from "./EmptyState.svelte";
 
   let {
     onError,
@@ -16,8 +17,10 @@
   let confirmTitle = $state("");
   let confirmDesc = $state("");
   let confirmRun = $state<(() => Promise<void>) | null>(null);
+  let loading = $state(true);
 
   async function reload() {
+    loading = true;
     try {
       rows = await api.reviewList();
       if (detail) {
@@ -26,6 +29,8 @@
       }
     } catch (e) {
       onError(e);
+    } finally {
+      loading = false;
     }
   }
 
@@ -71,8 +76,13 @@
 
 <ScrollArea class="p-4">
   <h1 class="mb-3 text-xl font-semibold tracking-tight">Review</h1>
-  {#if rows.length === 0}
-    <p class="text-sm text-muted-foreground">Nothing to review. Name-only matches appear here; they never auto-merge.</p>
+  {#if loading}
+    <p class="text-sm text-muted-foreground">Loading review queue…</p>
+  {:else if rows.length === 0}
+    <EmptyState
+      title="Nothing to review"
+      body="Name-only WhatsApp matches show up here. They never auto-merge. Import Contacts if you expect a queue."
+    />
   {:else}
     <ul class="mb-4 space-y-1">
       {#each rows as r}

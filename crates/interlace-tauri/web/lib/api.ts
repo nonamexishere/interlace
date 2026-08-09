@@ -101,6 +101,7 @@ export const api = {
   }) => invoke<Status>("init", args),
   open: (path: string) => invoke<Status>("open", { path }),
   status: () => invoke<Status>("status"),
+  doctorIssues: () => invoke<string[]>("doctor_issues_cmd"),
   people: () => invoke<Person[]>("people"),
   personShow: (id: number) =>
     invoke<{ id: number; display_name: string; identities: Identity[] }>(
