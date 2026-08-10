@@ -23,6 +23,17 @@ fn bin() -> Command {
 }
 
 #[test]
+fn version_flag_prints_semver() {
+    for flag in ["--version", "-V"] {
+        let out = bin().arg(flag).output().unwrap();
+        assert!(out.status.success(), "{flag} {:?}", out);
+        let s = String::from_utf8_lossy(&out.stdout);
+        assert!(s.contains(env!("CARGO_PKG_VERSION")), "{flag} stdout={s}");
+        assert!(s.to_lowercase().contains("interlace"), "{flag} stdout={s}");
+    }
+}
+
+#[test]
 fn help_exits_zero_and_lists_catalog() {
     let out = bin().arg("--help").output().unwrap();
     assert!(out.status.success(), "{:?}", out);
