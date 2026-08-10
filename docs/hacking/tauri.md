@@ -61,8 +61,10 @@ python3 pipeline/tools/gate_tauri.py
 
 - CSP is the DESIGN string (IPC-only `connect-src`, no general `http`/`https`).
   `img-src` / `media-src` allow `cas:` for the local CAS protocol only.
-- `Interlace.entitlements`: app sandbox, user-selected files, **no**
-  `network.client` / `network.server`.
+- `Interlace.entitlements`: sandbox, `allow-jit`, user-selected files,
+  **`network.client`** (WKWebView will not paint `tauri://localhost` without
+  it — measured blank `.app`). **No `network.server`.** Still no `reqwest` /
+  http plugin; CSP cannot connect to the internet.
 - Message bodies in later PRs are text nodes only (never unsanitized HTML).
 
 ## Commands (UI1)

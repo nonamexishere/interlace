@@ -61,11 +61,17 @@ def main() -> None:
         fail("icons/icon.icns missing")
 
     ent = (crate / "Interlace.entitlements").read_text()
-    for bad in ("network.client", "network.server"):
-        if bad in ent:
-            fail(f"entitlements must omit {bad}")
     if "com.apple.security.app-sandbox" not in ent:
         fail("sandbox entitlement required")
+    if "network.server" in ent:
+        fail("entitlements must omit network.server")
+    # WKWebView will not paint tauri://localhost in a sandbox without this.
+    # Measured 2026-08-10: sandbox-only and sandbox+JIT = blank .app;
+    # sandbox+network.client shows the UI. Still no HTTP client crate.
+    if "network.client" not in ent:
+        fail("entitlements must include network.client (WKWebView local UI)")
+    if "allow-jit" not in ent:
+        fail("entitlements must include cs.allow-jit for WKWebView")
 
     app = (crate / "web" / "App.svelte").read_text()
     if "phones home" not in app or "HTTP" not in app:

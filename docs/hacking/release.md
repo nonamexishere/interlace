@@ -40,7 +40,8 @@ git push origin app-v0.1.1
 ```
 
 `.github/workflows/app-release.yml` runs `npm run tauri:build` on macOS,
-checks the `.app` still has no `network.client` / `network.server`
+checks the `.app` still has sandbox + `network.client` and **no**
+`network.server`
 entitlement, and attaches `Interlace.app.zip` + `.dmg` to that GitHub
 Release. Ad-hoc sign (`signingIdentity: "-"`). No notarization, no updater.
 

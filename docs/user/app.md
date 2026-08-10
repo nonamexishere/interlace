@@ -5,6 +5,10 @@ Phase 2 desktop window. **Offline.** No account. No sync. No updater.
 The archive is still a folder you own (same `~/Interlace` as the CLI). This
 app does not phone home and contains no HTTP **client**. A Tauri build may
 contain the `http` and `url` **type** crates; that is not a network client.
+The sandboxed `.app` includes macOS `network.client` because WKWebView will
+not load the local `tauri://` UI without it (otherwise a blank window). It
+still cannot listen (`network.server` omitted) and CSP cannot reach the
+public internet.
 
 Phase 1 CLI remains:
 

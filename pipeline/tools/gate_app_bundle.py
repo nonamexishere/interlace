@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""UI8: built Interlace.app must keep sandbox and omit network entitlements."""
+"""UI8: built Interlace.app keeps sandbox, allows WKWebView client, omits server."""
 
 from __future__ import annotations
 
@@ -46,12 +46,10 @@ def main() -> None:
     data = plistlib.loads(xml)
     if not data.get("com.apple.security.app-sandbox"):
         fail("built app lost app-sandbox")
-    for bad in (
-        "com.apple.security.network.client",
-        "com.apple.security.network.server",
-    ):
-        if data.get(bad):
-            fail(f"built app has {bad}")
+    if data.get("com.apple.security.network.server"):
+        fail("built app must not have network.server")
+    if not data.get("com.apple.security.network.client"):
+        fail("built app must have network.client (WKWebView; else blank window)")
     print(f"gate_app_bundle ok ({app.name})")
 
 

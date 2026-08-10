@@ -34,8 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unsigned macOS `.app` / `.dmg` (UI8): `npm run tauri:build`; GitHub
   Release on `app-v*` tags (not crates.io `v*`). Ad-hoc sign, no updater,
   no network entitlement. CLI remains `cargo install interlace`.
-- Bundled `.app` loads the UI: Vite `base: './'` and CSP `connect-src` only
-  for Tauri IPC (`ipc.localhost`). `connect-src 'none'` was a blank window.
+- Bundled `.app` loads the UI: Vite `base: './'`; CSP `connect-src` is
+  IPC-only; sandboxed WKWebView needs `network.client` (without it the
+  window is blank). `network.server` still omitted; no HTTP client crate.
 
 ### Fixed
 
