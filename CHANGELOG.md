@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Import “Pick folder” on a directory of WhatsApp ZIPs imports each zip
   (auto-detect no longer assumes Takeout).
+- Name review requires a strong token match. Unrelated two-word names no
+  longer land in the queue from whole-string Jaro–Winkler (~0.41). Shared
+  surname + different given name (John/James Smith) is also not a
+  suggestion. Exact names and one-letter typos still review; never
+  auto-merge on name.
 
 ### Fixed
 

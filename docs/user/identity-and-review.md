@@ -53,6 +53,9 @@ few sample messages. Accept links the left identity with
 (the matcher skips `rejected` rows).
 
 Name similarity scores 0.40–0.70 go to review. Nothing name-based auto-merges.
+A suggestion needs a **strong token** (same given name or surname, or a
+one-letter typo on a 4+ letter token). Two unrelated two-word names are not
+similar just because Jaro–Winkler on the whole string is 0.41.
 
 ## Undo
 

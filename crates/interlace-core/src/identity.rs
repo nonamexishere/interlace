@@ -927,10 +927,82 @@ fn score_tokens(ta: &[String], tb: &[String]) -> f64 {
         }
         return 0.60;
     }
-    let ja = name_fold_join(&ta.join(" "));
-    let jb = name_fold_join(&tb.join(" "));
-    let jw = jaro_winkler(&ja, &jb);
-    (jw * 0.70).clamp(0.0, 0.68)
+    // Align tokens. Whole-string JW on the joined name was scoring ~0.41 for
+    // two unrelated 2-token names (no shared given name or surname).
+    token_align_score(ta, tb)
+}
+
+/// Strong pair: exact, or JW ≥ 0.92 with both tokens ≥ 4 letters (typo).
+const STRONG_JW: f64 = 0.92;
+const MIN_JW_CHARS: usize = 4;
+
+fn token_sim(a: &str, b: &str) -> f64 {
+    if a == b {
+        1.0
+    } else {
+        jaro_winkler(a, b)
+    }
+}
+
+fn is_strong_pair(a: &str, b: &str, sim: f64) -> bool {
+    if a == b {
+        return true;
+    }
+    let na = a.chars().count();
+    let nb = b.chars().count();
+    sim >= STRONG_JW && na >= MIN_JW_CHARS && nb >= MIN_JW_CHARS
+}
+
+fn token_align_score(ta: &[String], tb: &[String]) -> f64 {
+    let (short, long) = if ta.len() <= tb.len() {
+        (ta, tb)
+    } else {
+        (tb, ta)
+    };
+    let mut used = vec![false; long.len()];
+    let mut strong = 0usize;
+    let mut strong_sim_sum = 0.0;
+    for s in short {
+        let mut best: Option<(usize, f64)> = None;
+        for (i, l) in long.iter().enumerate() {
+            if used[i] {
+                continue;
+            }
+            let sim = token_sim(s, l);
+            if best.map(|(_, b)| sim > b).unwrap_or(true) {
+                best = Some((i, sim));
+            }
+        }
+        let Some((i, sim)) = best else {
+            continue;
+        };
+        if is_strong_pair(s, &long[i], sim) {
+            used[i] = true;
+            strong += 1;
+            strong_sim_sum += sim;
+        }
+    }
+    if strong == 0 {
+        return 0.0;
+    }
+    let unmatched_short = short.len() - strong;
+    let unmatched_long = used.iter().filter(|u| !*u).count();
+    // Shared surname, different given names (N10 John Smith / James Smith).
+    if unmatched_short > 0 && unmatched_long > 0 {
+        return 0.0;
+    }
+    if unmatched_short == 0 && unmatched_long == 0 {
+        let mean = strong_sim_sum / strong as f64;
+        return (mean * 0.70).clamp(0.60, 0.68);
+    }
+    // Fuzzy subset: every short token has a strong partner.
+    if unmatched_short == 0 && unmatched_long > 0 {
+        if short.len() == 1 && long.len() >= 2 {
+            return 0.45;
+        }
+        return 0.60;
+    }
+    0.0
 }
 
 fn ascii_fold(s: &str) -> String {
@@ -1000,4 +1072,47 @@ fn jaro_winkler(s1: &str, s2: &str) -> f64 {
         }
     }
     jaro + prefix as f64 * 0.1 * (1.0 - jaro)
+}
+
+#[cfg(test)]
+mod name_score_tests {
+    use super::name_score;
+
+    fn band(got: f64, lo: f64, hi: f64) {
+        assert!(
+            got + 1e-9 >= lo && got <= hi + 1e-9,
+            "score {got} not in [{lo}, {hi}]"
+        );
+    }
+
+    #[test]
+    fn n_table_exact_and_subset() {
+        assert!((name_score("Ahmet Yılmaz", "Yılmaz Ahmet") - 0.70).abs() < 1e-9);
+        band(name_score("AHMET YILMAZ", "ahmet yilmaz"), 0.60, 0.68);
+        assert!((name_score("İstanbul", "istanbul") - 0.70).abs() < 1e-9);
+        assert!((name_score("ISLAK", "ıslak") - 0.70).abs() < 1e-9);
+        assert!((name_score("Mehmet Ali", "Mhmt Ali") - 0.70).abs() < 1e-9);
+        assert!((name_score("Sayın Dr. Ahmet Yılmaz", "Ahmet Yılmaz") - 0.70).abs() < 1e-9);
+        assert!((name_score("\u{200e}Ahmet Yılmaz", "Ahmet Yılmaz") - 0.70).abs() < 1e-9);
+        assert!((name_score("Ali", "Ali Veli Yılmaz") - 0.45).abs() < 1e-9);
+        band(name_score("Ayşe", "Ayse"), 0.60, 0.68);
+    }
+
+    #[test]
+    fn unrelated_two_token_names_below_review_floor() {
+        // Concat-JW * 0.70 is ~0.41 on this pair; token align must not review.
+        assert!(
+            name_score("Cemre Yıldız", "Berk Özdemir") < 0.40,
+            "got {}",
+            name_score("Cemre Yıldız", "Berk Özdemir")
+        );
+        assert!(name_score("Can Yılmaz", "Cem Yılmaz") < 0.40);
+        assert!(name_score("John Smith", "James Smith") < 0.40);
+    }
+
+    #[test]
+    fn one_letter_surname_typo_still_reviews() {
+        assert!(name_score("Ahmet Yılmaz", "Ahmet Yilmas") >= 0.40);
+        assert!(name_score("Ada Yıldız", "Ada Yildiz") >= 0.40);
+    }
 }
