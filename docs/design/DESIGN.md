@@ -989,9 +989,13 @@ fn name_score(a, b) -> f64:
         # "Ahmet Yılmaz" vs "Ahmet"
         if min_len == 1 and max_len >= 2: return 0.45   # weak; review
         return 0.60
-    # token-level Levenshtein on the rarer token pairs
-    jw = jaro_winkler(join(ta), join(tb))
-    return clamp(jw * 0.70, 0.0, 0.68)
+    # Align tokens (greedy best Jaro-Winkler, no reuse).
+    # Strong pair = exact, or JW ≥ 0.92 with both tokens ≥ 4 letters.
+    # Zero strong pairs → 0.0. Do **not** JW the joined full name
+    # (that scored ~0.41 for two unrelated 2-token names).
+    # Leftover tokens on **both** sides (John Smith / James Smith) → 0.0.
+    # Equal arity, all strong (one-letter typo) → clamp(mean(JW)*0.70, 0.60, 0.68).
+    # All of the shorter side strong (fuzzy subset) → 0.45 / 0.60.
 ```
 
 **Test-case table** (fixtures crate; these are the lock tests):
@@ -1007,9 +1011,11 @@ fn name_score(a, b) -> f64:
 | N7 | ‎Ahmet Yılmaz (U+200E) | Ahmet Yılmaz | CF stripped | 0.70 | no |
 | N8 | Ali | Ali Veli Yılmaz | subset | 0.45 | no |
 | N9 | Ayşe | Ayse | diacritic: ş vs s — name_fold does **not** strip diacritics (only İ/I map). Score ~0.60 via Jaro if we also apply a diacritic-insensitive compare. **Do both:** primary fold keeps diacritics; scorer also computes a diacritic-stripped secondary and takes max ≤ 0.68. | 0.60–0.68 | no |
-| N10 | John Smith | James Smith | no | < 0.40 likely | no |
+| N10 | John Smith | James Smith | no | 0.0 (shared surname, different given) | no |
 | N11 | +905321112233 vs same on contact card | — | phone exact | 0.99 | **yes** |
 | N12 | a@x.com vs a@x.com on two cards named "Bank" and "Ali Bankası" with name_fold ratio < 0.85 | — | conflict | review | no |
+| N13 | Cemre Yıldız | Berk Özdemir | no | 0.0 (no shared token; concat-JW used to be ~0.41) | no |
+| N14 | Can Yılmaz | Cem Yılmaz | no | 0.0 | no |
 | I5 | WA-first phone person, then Contacts vCard same E.164, names compatible | — | auto person-merge | 0.99 | **yes** (zero review rows) |
 | I6 | Gmail `a+x@gmail.com` vs Contacts `a.b@gmail.com` vs `ab@googlemail.com` | — | D25 canon `ab@gmail.com` | 0.99 | **yes** (one person) |
 | I6b | `a+x@corp.com` vs `a@corp.com` | — | non-Gmail exact | — | **no** auto (separate identities) |

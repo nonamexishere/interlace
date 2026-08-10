@@ -533,3 +533,62 @@ fn identity_i6b_corp_plus_tag_does_not_automerge() {
     assert_eq!(live, 2, "I6b separate persons");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn identity_unrelated_display_names_do_not_enqueue_review() {
+    let root = tmp_root();
+    let mut arch = init_archive(&root).unwrap();
+    persist_card(
+        &mut arch,
+        "c-ada",
+        "Cemre Yıldız",
+        None,
+        Some("ada@ornek.tld"),
+    );
+    insert_ident(
+        &arch,
+        "whatsapp",
+        "display_name",
+        "Berk Özdemir",
+        "berk özdemir",
+        Some("Berk Özdemir"),
+    );
+    let stats = resolve_run(&mut arch, 0).unwrap();
+    assert_eq!(
+        stats.review_enqueued, 0,
+        "unrelated 2-token names must not review"
+    );
+    assert_eq!(count(&arch, "SELECT COUNT(*) FROM merge_review_queue"), 0);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn identity_surname_typo_still_enqueues_review() {
+    let root = tmp_root();
+    let mut arch = init_archive(&root).unwrap();
+    persist_card(
+        &mut arch,
+        "c-typo",
+        "Ahmet Yılmaz",
+        None,
+        Some("ahmet@ornek.tld"),
+    );
+    insert_ident(
+        &arch,
+        "whatsapp",
+        "display_name",
+        "Ahmet Yilmas",
+        "ahmet yilmas",
+        Some("Ahmet Yilmas"),
+    );
+    let stats = resolve_run(&mut arch, 0).unwrap();
+    assert!(
+        stats.review_enqueued >= 1
+            || count(
+                &arch,
+                "SELECT COUNT(*) FROM merge_review_queue WHERE status='open'"
+            ) >= 1,
+        "one-letter surname typo must still review"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
