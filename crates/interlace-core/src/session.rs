@@ -134,7 +134,11 @@ pub fn init_owner_archive(
 
 pub fn cloud_warning(root: &Path) -> Option<String> {
     let s = root.to_string_lossy();
-    if s.contains("Mobile Documents") || s.contains("Dropbox") || s.contains("Google Drive") {
+    if s.contains("Mobile Documents")
+        || s.contains("iCloud Drive")
+        || s.contains("Dropbox")
+        || s.contains("Google Drive")
+    {
         Some("archive looks like it sits on iCloud/Dropbox; see docs/user/backup.md".into())
     } else {
         None

@@ -6,7 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 static ENV: Mutex<()> = Mutex::new(());
 
-use interlace_core::session::{init_owner_archive, read_last_path, validate_phone_region};
+use interlace_core::session::{
+    cloud_warning, init_owner_archive, read_last_path, validate_phone_region,
+};
 use interlace_core::{open_archive, LockMode};
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -70,5 +72,40 @@ fn init_owner_rejects_existing_archive() {
         Err(e) => assert!(e.to_string().contains("already an archive")),
         Ok(_) => panic!("expected already-an-archive"),
     }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn cloud_warning_flags_icloud_dropbox_google_not_local() {
+    use std::path::Path;
+    assert!(cloud_warning(Path::new(
+        "/Users/x/Library/Mobile Documents/com~apple~CloudDocs/Interlace"
+    ))
+    .is_some());
+    assert!(cloud_warning(Path::new("/Users/x/iCloud Drive/Interlace")).is_some());
+    assert!(cloud_warning(Path::new("/Users/x/Dropbox/Interlace")).is_some());
+    assert!(cloud_warning(Path::new("/Users/x/Google Drive/Interlace")).is_some());
+    assert!(cloud_warning(Path::new("/Users/x/Interlace")).is_none());
+    assert!(cloud_warning(Path::new("/Volumes/Time Machine/Interlace")).is_none());
+}
+
+#[test]
+fn status_warnings_include_cloud_path() {
+    let _g = ENV.lock().unwrap();
+    let root = tmp();
+    let cfg = root.join("cfg");
+    std::fs::create_dir_all(&cfg).unwrap();
+    std::env::set_var("INTERLACE_CONFIG_DIR", &cfg);
+    let arch_path = root.join("Dropbox").join("Interlace");
+    let arch = init_owner_archive(&arch_path, "TR", None, vec![], vec![]).unwrap();
+    let st = arch.status().unwrap();
+    let warnings = st["warnings"].as_array().expect("warnings array");
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.as_str().unwrap_or("").contains("iCloud/Dropbox")),
+        "status.warnings must surface cloud_warning: {warnings:?}"
+    );
+    drop(arch);
     let _ = std::fs::remove_dir_all(&root);
 }

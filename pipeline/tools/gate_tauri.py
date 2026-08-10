@@ -61,6 +61,20 @@ def main() -> None:
         fail("EmptyState.svelte required for UI empty/loading copy")
     if "Opening last archive" not in app:
         fail("boot screen must say Opening last archive (no blank flash)")
+    doctor = crate / "web" / "lib" / "DoctorPane.svelte"
+    if not doctor.is_file():
+        fail("DoctorPane.svelte required for UI7")
+    dtxt = doctor.read_text()
+    if "Not encrypted at rest" not in dtxt or "FileVault" not in dtxt:
+        fail("Doctor pane must say not encrypted at rest; FileVault is encryption")
+    if "database is encrypted" in dtxt or "your data is encrypted" in dtxt.lower():
+        fail("UI must not claim the DB is encrypted at rest")
+    if "doctorRun" not in dtxt:
+        fail("Doctor pane must call doctorRun (not only CLI copy)")
+    if "data-cloud-warning" not in app:
+        fail("App.svelte must show a persistent cloud-path banner")
+    if "UI7 will run doctor" in app:
+        fail("placeholder UI7 CLI-only copy must be gone")
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")

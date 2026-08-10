@@ -57,10 +57,10 @@ python3 pipeline/tools/gate_tauri.py
 `person_merge_cmd`, `person_unlink_cmd`, `person_undo_cmd`, `link_events`,
 `search_cmd`, `search_body`, `review_list_cmd` / `review_show_cmd` /
 `review_accept_cmd` / `review_reject_cmd`, `import_start`, `import_progress`,
-`doctor_issues_cmd`.
+`doctor_issues_cmd`, `doctor_run_cmd` (integrity / rebuild FTS / GC CAS).
 `init` / `open` take a **local folder path** only. Session state holds
 `Archive` with `LockMode::Exclusive`. Timeline/search bodies are text nodes.
 
 ## Issue DAG
 
-Epic #37. UI0 (#38) → UI1 archive (#39) → UI3 timeline / UI2 search / UI4 review / UI5 import.
+Epic #37. UI0–UI6 done. UI7 (#44) Doctor tab + cloud-path banner. UI8 unsigned dmg.
