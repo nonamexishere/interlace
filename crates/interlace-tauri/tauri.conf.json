@@ -1,6 +1,6 @@
 {
   "productName": "Interlace",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "app.interlace.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -18,20 +18,24 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: data: cas:; media-src 'self' cas: data:; style-src 'self' 'unsafe-inline'; connect-src 'none'; frame-src 'none'; font-src 'self'"
+      "csp": "default-src 'self'; img-src 'self' asset: data: cas:; media-src 'self' cas: data:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost https://ipc.localhost; frame-src 'none'; font-src 'self'"
     }
   },
   "bundle": {
-    "active": false,
-    "targets": [],
+    "active": true,
+    "targets": ["app", "dmg"],
+    "createUpdaterArtifacts": false,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
       "icons/icon.png"
     ],
     "macOS": {
       "entitlements": "Interlace.entitlements",
-      "minimumSystemVersion": "12.0"
+      "minimumSystemVersion": "12.0",
+      "signingIdentity": "-"
     }
   }
 }

@@ -1,0 +1,62 @@
+# Unsigned macOS .app / .dmg. Tags: app-v0.1.1
+# Separate from crates.io (v* / publish.yml). Never uploads crates.
+# No updater, no network.server. network.client is WKWebView-only.
+# Ad-hoc sign only (signingIdentity "-").
+name: app-release
+
+on:
+  push:
+    tags:
+      - "app-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  macos-app:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: crates/interlace-tauri/package-lock.json
+      - name: tauri build (app + dmg)
+        working-directory: crates/interlace-tauri
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run tauri:build
+      - name: assert no network entitlement on .app
+        run: python3 pipeline/tools/gate_app_bundle.py
+      - name: GitHub Release (unsigned .app.zip + .dmg)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          ver="${tag#app-v}"
+          app=$(find target/release/bundle/macos -maxdepth 1 -name '*.app' | head -n1)
+          dmg=$(find target/release/bundle/dmg -maxdepth 1 -name '*.dmg' | head -n1)
+          test -n "$app"
+          test -n "$dmg"
+          zip_path="target/release/bundle/macos/Interlace.app.zip"
+          ditto -c -k --keepParent "$app" "$zip_path"
+          notes=$(awk -v ver="$ver" '
+            $0 ~ "^## \\[" ver "\\]" {p=1; next}
+            p && /^## \[/ {exit}
+            p
+          ' CHANGELOG.md || true)
+          extra="Unsigned macOS app (ad-hoc). Not notarized.
+          After download: xattr -dr com.apple.quarantine Interlace.app
+          CLI remains: cargo install interlace --locked
+          This tag does **not** publish crates.io."
+          gh release create "$tag" \
+            "$zip_path" \
+            "$dmg" \
+            --title "$tag" \
+            --notes "${notes:-$extra}
+
+          $extra"

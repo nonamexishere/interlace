@@ -9,6 +9,9 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
+  // Relative URLs so the bundled webview (custom protocol) can load JS/CSS.
+  // Absolute `/assets/…` is a blank white window in the .app (UI8 / #107).
+  base: "./",
   plugins: [tailwindcss(), svelte()],
   resolve: {
     alias: {

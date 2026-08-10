@@ -17,6 +17,18 @@ network client.
 
 ## Install
 
+**Desktop app (macOS, unsigned):** GitHub Releases on `app-v*` tags
+(`Interlace_*.dmg` or `Interlace.app.zip`). Not notarized.
+
+```bash
+# after you copy Interlace.app out of the DMG / zip:
+xattr -dr com.apple.quarantine /Applications/Interlace.app
+```
+
+Gatekeeper will complain once; that is expected until codesign. The app
+never phones home. **`cargo install interlace` is still the CLI** — the
+`.dmg` does not replace that crates.io name.
+
 ```bash
 cargo install interlace --locked
 # silent twin (same binary surface):
@@ -25,7 +37,7 @@ cargo install interlace-cli --locked
 cargo install --path crates/interlace --locked
 ```
 
-macOS only in Phase 1.
+macOS only in Phase 1. Dev UI: `cd crates/interlace-tauri && npm run tauri:dev`.
 
 ## Quick start
 
