@@ -1,7 +1,9 @@
 # Doctor, locks, and resume
 
 `interlace doctor` checks archive health. **Exit 3** means a problem was found
-(exit codes do not change with `--json`).
+(exit codes do not change with `--json`). The desktop **Doctor** tab runs the
+same integrity / rebuild-FTS / GC-CAS actions (confirm first). Close the app
+before running the CLI against the same folder (exclusive flock).
 
 ```bash
 interlace doctor                 # integrity implied if no flags

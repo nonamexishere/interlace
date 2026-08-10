@@ -333,6 +333,22 @@ fn doctor_issues_cmd(state: tauri::State<AppState>) -> Result<Vec<String>, Strin
     with_arch(&state, |arch| arch.doctor_issues().map_err(err))
 }
 
+#[tauri::command]
+fn doctor_run_cmd(
+    state: tauri::State<AppState>,
+    integrity: bool,
+    rebuild_fts: bool,
+    gc_cas: bool,
+) -> Result<Vec<String>, String> {
+    if !integrity && !rebuild_fts && !gc_cas {
+        return Err("pick integrity, rebuild FTS, or GC CAS".into());
+    }
+    with_arch(&state, |arch| {
+        arch.doctor(rebuild_fts, gc_cas, integrity).map_err(err)?;
+        arch.doctor_issues().map_err(err)
+    })
+}
+
 /// Inline preview for the webview (Vite `http://localhost` cannot load `cas://`).
 #[tauri::command]
 fn cas_data_url(state: tauri::State<AppState>, hash: String) -> Result<String, String> {
@@ -701,6 +717,7 @@ fn main() {
             open,
             status,
             doctor_issues_cmd,
+            doctor_run_cmd,
             cas_data_url,
             people,
             person_show,

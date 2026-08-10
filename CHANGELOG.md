@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   probe, and doctor issues (no blank white flash).
 - Local CAS attachment viewer (`cas://` protocol): photos/audio in timeline
   and search; omitted/missing placeholders; no remote URLs.
+- In-app Doctor tab (UI7): integrity, rebuild FTS, and GC CAS with confirm.
+  Persistent banner if the archive path looks like iCloud/Dropbox/Google
+  Drive. Copy states the folder is the backup unit and FileVault is
+  encryption; no “encrypted DB” claim.
 
 ### Fixed
 

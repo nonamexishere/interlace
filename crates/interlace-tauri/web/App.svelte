@@ -9,6 +9,7 @@
   import SearchPane from "$lib/SearchPane.svelte";
   import ReviewPane from "$lib/ReviewPane.svelte";
   import ImportPane from "$lib/ImportPane.svelte";
+  import DoctorPane from "$lib/DoctorPane.svelte";
   import EmptyState from "$lib/EmptyState.svelte";
   import CasAttach from "$lib/CasAttach.svelte";
 
@@ -34,11 +35,17 @@
   let confirmTitle = $state("");
   let confirmDesc = $state("");
   let confirmRun = $state<(() => Promise<void>) | null>(null);
-  let view = $state<"people" | "search" | "review" | "import">("people");
+  let view = $state<"people" | "search" | "review" | "import" | "doctor">("people");
   let booting = $state(true);
   let opening = $state(false);
   let tlLoading = $state(false);
   let doctor = $state<string[]>([]);
+
+  const cloudWarning = $derived(
+    (st?.warnings ?? []).find((w) =>
+      /iCloud|Mobile Documents|Dropbox|Google Drive/i.test(w),
+    ),
+  );
 
   const filtered = $derived(
     people.filter((p) => {
@@ -268,11 +275,27 @@
       <Button size="sm" variant={view === "import" ? "default" : "ghost"} onclick={() => (view = "import")}
         >Import</Button
       >
+      <Button size="sm" variant={view === "doctor" ? "default" : "ghost"} onclick={() => (view = "doctor")}
+        >Doctor{#if doctor.length} ({doctor.length}){/if}</Button
+      >
     </nav>
   {/if}
 
   {#if err}
     <p class="whitespace-pre-wrap bg-destructive/15 px-4 py-2 text-sm text-destructive">{err}</p>
+  {/if}
+
+  {#if st && cloudWarning}
+    <div
+      class="border-b border-amber-700/40 bg-amber-950/15 px-4 py-2 text-sm text-amber-900 dark:text-amber-200"
+      data-cloud-warning
+    >
+      <p class="font-medium">This archive looks like it sits on iCloud, Dropbox, or Google Drive.</p>
+      <p class="mt-0.5">
+        The folder is the backup unit. Not encrypted at rest — FileVault is your encryption. Move the
+        live folder off cloud sync; see <code class="text-xs">docs/user/backup.md</code>.
+      </p>
+    </div>
   {/if}
 
   {#if booting || opening}
@@ -329,6 +352,14 @@
         await applyStatus(await api.status());
       }}
     />
+  {:else if st && view === "doctor"}
+    <DoctorPane
+      bind:issues={doctor}
+      onError={showErr}
+      onDone={async () => {
+        await applyStatus(await api.status());
+      }}
+    />
   {:else if st}
     <div class="grid min-h-0 flex-1 grid-cols-[18rem_1fr]">
       <ScrollArea class="border-r border-border p-4">
@@ -361,13 +392,13 @@
         {/if}
         {#if doctor.length}
           <div class="mt-2 rounded-md border border-amber-700/40 bg-amber-950/20 p-2 text-sm text-amber-800 dark:text-amber-300">
-            <p class="font-medium">Doctor found issues</p>
+            <p class="font-medium">Doctor found {doctor.length} issue{doctor.length === 1 ? "" : "s"}</p>
             <ul class="mt-1 list-disc pl-4">
               {#each doctor as d}
                 <li>{d}</li>
               {/each}
             </ul>
-            <p class="mt-1 text-xs">Run `interlace doctor --integrity` in a terminal after closing this window. UI7 will run doctor in-app.</p>
+            <p class="mt-1 text-xs">Open the Doctor tab to run integrity, rebuild FTS, or GC CAS in-app.</p>
           </div>
         {/if}
         <div class="mt-4 space-y-1.5">
