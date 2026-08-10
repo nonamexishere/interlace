@@ -1,6 +1,7 @@
 # Unsigned macOS .app / .dmg. Tags: app-v0.1.1
 # Separate from crates.io (v* / publish.yml). Never uploads crates.
-# No updater, no network entitlement. Ad-hoc sign only (signingIdentity "-").
+# No updater, no network.server. network.client is WKWebView-only.
+# Ad-hoc sign only (signingIdentity "-").
 name: app-release
 
 on:
