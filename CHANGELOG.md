@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tauri` stays macOS.
 - Empty/loading/error copy for people, timeline, search, review, lock, locale
   probe, and doctor issues (no blank white flash).
+- Local CAS attachment viewer (`cas://` protocol): photos/audio in timeline
+  and search; omitted/missing placeholders; no remote URLs.
 
 ### Fixed
 

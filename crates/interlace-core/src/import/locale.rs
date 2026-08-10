@@ -598,11 +598,36 @@ pub fn match_media(pack: &LocalePack, body: &str) -> MediaMatch {
                 return MediaMatch::File(name);
             }
         }
+        if let Some(name) = find_template(alt, &t) {
+            if !name.is_empty() {
+                return MediaMatch::File(name);
+            }
+        }
     }
     if let Some(name) = match_file_attached_pattern(&pack.file_attached_pattern, &t) {
         return MediaMatch::File(name);
     }
     MediaMatch::None
+}
+
+/// `<attached: file.jpg>` anywhere in a caption + attachment line.
+fn find_template(tpl: &str, body: &str) -> Option<String> {
+    let (pre, post) = tpl.split_once("{filename}")?;
+    if pre.is_empty() {
+        return None;
+    }
+    let start = body.find(pre)?;
+    let after = &body[start + pre.len()..];
+    let end = if post.is_empty() {
+        after.len()
+    } else {
+        after.find(post)?
+    };
+    let name = after[..end].trim();
+    if name.is_empty() || name.contains('<') || name.contains("..") {
+        return None;
+    }
+    Some(name.to_string())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -706,6 +731,24 @@ pub fn title_looks_like_dm(pack: &LocalePack, titles: &[&str]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn match_media_finds_attached_after_caption() {
+        let pack = load_pack("tr-TR").unwrap();
+        match match_media(
+            &pack,
+            "hello\n<attached: 00000663-PHOTO-2026-08-08-06-24-05.jpg>",
+        ) {
+            MediaMatch::File(n) => {
+                assert_eq!(n, "00000663-PHOTO-2026-08-08-06-24-05.jpg");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(
+            match_media(&pack, "<attached: sticker.webp>"),
+            MediaMatch::File("sticker.webp".into())
+        );
+    }
 
     #[test]
     fn unpadded_day_matches_tr_and_de() {

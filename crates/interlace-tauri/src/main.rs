@@ -8,8 +8,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use data_encoding::BASE64;
 use interlace_core::people::{
-    person_display_name, person_identities, person_list, person_timeline_rows, recent_link_events,
+    attachments_for, complete_attachments, person_display_name, person_identities, person_list,
+    person_timeline_rows, recent_link_events,
 };
 use interlace_core::session::{init_owner_archive, read_last_path, write_last_path};
 use interlace_core::{
@@ -17,6 +19,7 @@ use interlace_core::{
     review_show, search, Archive, ImportOpts, ImporterRegistry, LockMode, PersonMergeOpts,
     Platform, SearchQuery, SourceKind,
 };
+use tauri::http::{header, StatusCode};
 use tauri::AppHandle;
 
 #[derive(Clone, Default, serde::Serialize)]
@@ -31,6 +34,7 @@ struct ImportProgress {
 
 struct AppState {
     archive: Arc<Mutex<Option<Archive>>>,
+    archive_root: Arc<Mutex<Option<PathBuf>>>,
     import: Arc<Mutex<ImportProgress>>,
 }
 
@@ -40,8 +44,82 @@ fn err(e: impl std::fmt::Display) -> String {
 
 fn hold(state: &AppState, arch: Archive) -> Result<serde_json::Value, String> {
     let st = arch.status().map_err(err)?;
+    *state.archive_root.lock().map_err(err)? = Some(arch.root.clone());
     *state.archive.lock().map_err(err)? = Some(arch);
     Ok(st)
+}
+
+fn sniff_mime(bytes: &[u8]) -> &'static str {
+    if bytes.len() >= 3 && bytes[0] == 0xff && bytes[1] == 0xd8 && bytes[2] == 0xff {
+        return "image/jpeg";
+    }
+    if bytes.len() >= 8 && bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        return "image/png";
+    }
+    if bytes.len() >= 6 && (bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a")) {
+        return "image/gif";
+    }
+    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        return "image/webp";
+    }
+    if bytes.len() >= 12 && bytes[4..8] == *b"ftyp" {
+        return "video/mp4";
+    }
+    if bytes.starts_with(b"ID3") {
+        return "audio/mpeg";
+    }
+    if bytes.len() >= 2 && bytes[0] == 0xff && bytes[1] & 0xe0 == 0xe0 {
+        return "audio/mpeg";
+    }
+    if bytes.len() >= 4 && bytes.starts_with(b"OggS") {
+        return "audio/ogg";
+    }
+    "application/octet-stream"
+}
+
+fn cas_response(root: Option<PathBuf>, uri_path: &str) -> tauri::http::Response<Vec<u8>> {
+    let deny = |status: StatusCode, msg: &str| {
+        tauri::http::Response::builder()
+            .status(status)
+            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+            .body(msg.as_bytes().to_vec())
+            .unwrap()
+    };
+    let hash = uri_path
+        .trim_start_matches('/')
+        .split('?')
+        .next()
+        .unwrap_or("");
+    if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return deny(StatusCode::BAD_REQUEST, "invalid cas hash");
+    }
+    let Some(root) = root else {
+        return deny(StatusCode::NOT_FOUND, "no archive open");
+    };
+    let Ok(path) = interlace_core::cas::cas_blob_path(&root, hash) else {
+        return deny(StatusCode::BAD_REQUEST, "invalid cas hash");
+    };
+    let Ok(cas_root) = root.join("cas").canonicalize() else {
+        return deny(StatusCode::NOT_FOUND, "cas missing");
+    };
+    let Ok(canon) = path.canonicalize() else {
+        return deny(StatusCode::NOT_FOUND, "blob missing");
+    };
+    if !canon.starts_with(&cas_root) {
+        return deny(StatusCode::FORBIDDEN, "path outside cas");
+    }
+    match fs::read(&canon) {
+        Ok(bytes) => tauri::http::Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, sniff_mime(&bytes))
+            .header(
+                header::CACHE_CONTROL,
+                "private, max-age=31536000, immutable",
+            )
+            .body(bytes)
+            .unwrap(),
+        Err(_) => deny(StatusCode::NOT_FOUND, "blob missing"),
+    }
 }
 
 fn parse_kind(s: &str, path: &Path) -> Result<SourceKind, String> {
@@ -255,6 +333,30 @@ fn doctor_issues_cmd(state: tauri::State<AppState>) -> Result<Vec<String>, Strin
     with_arch(&state, |arch| arch.doctor_issues().map_err(err))
 }
 
+/// Inline preview for the webview (Vite `http://localhost` cannot load `cas://`).
+#[tauri::command]
+fn cas_data_url(state: tauri::State<AppState>, hash: String) -> Result<String, String> {
+    const MAX: usize = 12 * 1024 * 1024;
+    let root = state
+        .archive_root
+        .lock()
+        .map_err(err)?
+        .clone()
+        .ok_or_else(|| "no archive open".to_string())?;
+    let path = interlace_core::cas::cas_blob_path(&root, &hash).map_err(err)?;
+    let cas_root = root.join("cas").canonicalize().map_err(err)?;
+    let canon = path.canonicalize().map_err(err)?;
+    if !canon.starts_with(&cas_root) {
+        return Err("path outside cas".into());
+    }
+    let bytes = fs::read(&canon).map_err(err)?;
+    if bytes.len() > MAX {
+        return Err("attachment too large to preview in-window".into());
+    }
+    let mime = sniff_mime(&bytes);
+    Ok(format!("data:{mime};base64,{}", BASE64.encode(&bytes)))
+}
+
 fn with_arch<T>(
     state: &AppState,
     f: impl FnOnce(&Archive) -> Result<T, String>,
@@ -385,6 +487,8 @@ fn search_cmd(
             limit: args.limit.unwrap_or(50),
         };
         let hits = search(arch, &query).map_err(err)?;
+        let ids: Vec<i64> = hits.iter().map(|h| h.message_id).collect();
+        let atts = attachments_for(arch, &ids).map_err(err)?;
         let mut out = Vec::new();
         for h in hits {
             let meta: (String, String, Option<String>, Option<i64>, Option<String>) = arch
@@ -404,6 +508,21 @@ fn search_cmd(
                     |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
                 )
                 .unwrap_or_else(|_| ("unknown".into(), "dm".into(), None, None, None));
+            let body: String = arch
+                .conn
+                .query_row(
+                    "SELECT COALESCE(body_text, '') FROM messages WHERE id = ?1",
+                    [h.message_id],
+                    |r| r.get(0),
+                )
+                .unwrap_or_default();
+            let attachments = complete_attachments(
+                arch,
+                h.message_id,
+                &body,
+                atts.get(&h.message_id).cloned().unwrap_or_default(),
+            )
+            .map_err(err)?;
             out.push(serde_json::json!({
                 "message_id": h.message_id,
                 "sent_at": h.sent_at,
@@ -416,6 +535,7 @@ fn search_cmd(
                 "conversation_title": meta.2,
                 "person_id": meta.3,
                 "person_name": meta.4,
+                "attachments": attachments,
             }));
         }
         Ok(serde_json::Value::Array(out))
@@ -557,13 +677,21 @@ fn import_start(
 }
 
 fn main() {
+    let archive_root: Arc<Mutex<Option<PathBuf>>> = Arc::new(Mutex::new(None));
+    let proto_root = Arc::clone(&archive_root);
     tauri::Builder::default()
         .manage(AppState {
             archive: Arc::new(Mutex::new(None)),
+            archive_root: Arc::clone(&archive_root),
             import: Arc::new(Mutex::new(ImportProgress {
                 status: "idle".into(),
                 ..ImportProgress::default()
             })),
+        })
+        .register_uri_scheme_protocol("cas", move |_ctx, req| {
+            let path = req.uri().path().to_string();
+            let root = proto_root.lock().ok().and_then(|g| g.clone());
+            cas_response(root, &path)
         })
         .invoke_handler(tauri::generate_handler![
             remembered_path,
@@ -573,6 +701,7 @@ fn main() {
             open,
             status,
             doctor_issues_cmd,
+            cas_data_url,
             people,
             person_show,
             person_timeline,

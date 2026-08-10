@@ -130,6 +130,11 @@ fn parse_hash(hash: &str) -> Result<(), CoreError> {
     Ok(())
 }
 
+/// `$ARCHIVE/cas/ab/cd/<64 hex>`. Rejects anything that is not a blake3 hex.
+pub fn cas_blob_path(root: &Path, hash: &str) -> Result<PathBuf, CoreError> {
+    blob_path(root, hash)
+}
+
 fn blob_path(root: &Path, hash: &str) -> Result<PathBuf, CoreError> {
     parse_hash(hash)?;
     let a = &hash[0..2];

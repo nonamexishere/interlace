@@ -39,6 +39,10 @@ folder picker; progress in-window).
 Empty lists, loading, lock conflicts, and doctor findings are shown as copy
 in the window (not only in the terminal).
 
+Photos and voice notes stored in the archive `cas/` folder open in the
+timeline (and search). Exports that omitted media show a placeholder — nothing
+is fetched from the network.
+
 ## Encryption
 
 Not encrypted at rest. The folder is the backup unit. Use FileVault. See
