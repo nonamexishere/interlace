@@ -13,10 +13,38 @@ cargo install interlace --locked
 ```
 
 The app binary is **not** published on crates.io (`interlace-tauri` is
-`publish = false`). Unsigned `.app` / `.dmg` is UI8.
+`publish = false`). `cargo install interlace` stays the CLI (D3).
 
-Dev: `cd crates/interlace-tauri && npm run tauri:dev`. That is the same loop as
-other Tauri apps (`npm` drives Vite + the Tauri CLI, which still calls Cargo).
+## Install the .app (unsigned)
+
+GitHub Releases for tags `app-v*` (example `app-v0.1.1`) attach:
+
+- `Interlace.app.zip`
+- `Interlace_<version>_<arch>.dmg`
+
+No Sparkle, no updater, no network entitlement. Ad-hoc signed only — not
+notarized. After you put `Interlace.app` in `/Applications` (or anywhere):
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Interlace.app
+```
+
+Then open it, pick or create `~/Interlace`, import a WhatsApp ZIP. You do
+**not** need a Rust toolchain.
+
+Ship a new build:
+
+```bash
+git checkout master && git pull
+git tag -a app-v0.1.1 -m "Interlace.app 0.1.1"
+git push origin app-v0.1.1
+```
+
+That runs `.github/workflows/app-release.yml` only. It does **not** publish
+crates.io (`v*` tags still do that).
+
+Dev: `cd crates/interlace-tauri && npm run tauri:dev`. Release-like local
+bundle: `npm run tauri:build` (writes `target/release/bundle/`).
 
 ## Today (UI1 + UI3)
 

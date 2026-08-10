@@ -1,5 +1,6 @@
-# Publish crates.io packages + unsigned macOS bins from annotated tags.
+# Publish crates.io packages + unsigned macOS CLI bins from annotated tags.
 # Tags: v0.1.0  →  core, then interlace-cli, then interlace (D7).
+# Desktop .app/.dmg is app-v* → app-release.yml (never this file).
 # Secrets: CARGO_REGISTRY_TOKEN
 name: publish
 

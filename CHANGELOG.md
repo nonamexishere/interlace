@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Persistent banner if the archive path looks like iCloud/Dropbox/Google
   Drive. Copy states the folder is the backup unit and FileVault is
   encryption; no “encrypted DB” claim.
+- Unsigned macOS `.app` / `.dmg` (UI8): `npm run tauri:build`; GitHub
+  Release on `app-v*` tags (not crates.io `v*`). Ad-hoc sign, no updater,
+  no network entitlement. CLI remains `cargo install interlace`.
 
 ### Fixed
 

@@ -25,7 +25,29 @@ Codesign is later.
 
 Do **not** publish 0.0.1 again. Do **not** invent a fourth crates.io name
 (`interlace-cli-common` and `interlace-fixtures` stay `publish = false`).
-`interlace-tauri` stays unpublished.
+`interlace-tauri` stays unpublished. The macOS **.app / .dmg** is a different
+tag (`app-v*`); see below.
+
+## Unsigned desktop app (`app-v*`)
+
+Separate from crates.io. After UI8 is on `master`:
+
+```bash
+git checkout master
+git pull
+git tag -a app-v0.1.1 -m "Interlace.app 0.1.1"
+git push origin app-v0.1.1
+```
+
+`.github/workflows/app-release.yml` runs `npm run tauri:build` on macOS,
+checks the `.app` still has no `network.client` / `network.server`
+entitlement, and attaches `Interlace.app.zip` + `.dmg` to that GitHub
+Release. Ad-hoc sign (`signingIdentity: "-"`). No notarization, no updater.
+
+Users: `xattr -dr com.apple.quarantine` then open. CLI remains
+`cargo install interlace`.
+
+Do **not** put the `.dmg` on a `v*` crates.io tag.
 
 ## Patch releases
 

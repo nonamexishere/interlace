@@ -26,8 +26,21 @@ cd crates/interlace-tauri && npm run build
 cargo run -p interlace-tauri
 ```
 
+Unsigned `.app` / `.dmg` (UI8):
+
+```bash
+cd crates/interlace-tauri
+npm run tauri:build
+# → ../../target/release/bundle/macos/Interlace.app
+# → ../../target/release/bundle/dmg/*.dmg
+python3 ../../pipeline/tools/gate_app_bundle.py
+```
+
+Tags `app-v*` (not `v*`) upload those artifacts. See [release.md](release.md).
+
 Binary name: `interlace-app`. Not in workspace `default-members`.
 Production CSP is `connect-src 'none'`. Vite `localhost` is **dev only**.
+`bundle.createUpdaterArtifacts` stays false.
 
 ## Deny
 
@@ -63,4 +76,4 @@ python3 pipeline/tools/gate_tauri.py
 
 ## Issue DAG
 
-Epic #37. UI0–UI6 done. UI7 (#44) Doctor tab + cloud-path banner. UI8 unsigned dmg.
+Epic #37. UI0–UI7 done. UI8 (#46) unsigned `.app`/`.dmg` on `app-v*` tags.
