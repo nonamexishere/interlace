@@ -9,9 +9,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import fail, repo_root, run  # noqa: E402
 
+# IPC-only connect-src (no general http/https). 'none' blanks the .app (#107).
 CSP = (
     "default-src 'self'; img-src 'self' asset: data: cas:; media-src 'self' cas: data:; "
-    "style-src 'self' 'unsafe-inline'; connect-src 'none'; frame-src 'none'; font-src 'self'"
+    "style-src 'self' 'unsafe-inline'; "
+    "connect-src ipc: http://ipc.localhost https://ipc.localhost; "
+    "frame-src 'none'; font-src 'self'"
 )
 
 
@@ -110,6 +113,9 @@ def main() -> None:
     pkg = (crate / "package.json").read_text()
     if "bits-ui" not in pkg:
         fail("bits-ui must be a local dependency (no CDN theme)")
+    vite = (crate / "vite.config.ts").read_text()
+    if 'base: "./"' not in vite and "base: './'" not in vite:
+        fail("vite.config.ts must set base: './' so the .app loads JS")
     if "tauri:build" not in pkg:
         fail("package.json must expose tauri:build")
 
@@ -124,7 +130,7 @@ def main() -> None:
     if "tauri-plugin-updater" in wtxt or "plugin-updater" in wtxt:
         fail("app-release.yml must not install an updater")
     pub = (root / ".github" / "workflows" / "publish.yml").read_text()
-    if "app-v" in pub:
+    if "tauri:build" in pub or "bundle/dmg" in pub or "Interlace.app" in pub:
         fail("publish.yml is crates.io v* only; do not attach the .dmg there")
 
     npm = run(
@@ -140,6 +146,10 @@ def main() -> None:
     dist = (crate / "dist" / "index.html").read_text()
     if "cdn." in dist or "unpkg.com" in dist:
         fail("production bundle must not load a CDN")
+    if 'src="/assets/' in dist or "href=\"/assets/" in dist:
+        fail("dist/index.html must use relative asset URLs (vite base ./); absolute /assets blanks the .app")
+    if "connect-src 'none'" in conf:
+        fail("connect-src 'none' blocks Tauri IPC and blanks the bundled .app")
 
     chk = run(["cargo", "check", "-p", "interlace-tauri"], cwd=root, check=False)
     if chk.returncode != 0:

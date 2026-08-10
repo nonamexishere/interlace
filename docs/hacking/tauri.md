@@ -39,7 +39,9 @@ python3 ../../pipeline/tools/gate_app_bundle.py
 Tags `app-v*` (not `v*`) upload those artifacts. See [release.md](release.md).
 
 Binary name: `interlace-app`. Not in workspace `default-members`.
-Production CSP is `connect-src 'none'`. Vite `localhost` is **dev only**.
+Production CSP allows **only** Tauri IPC (`ipc:` / `ipc.localhost`), not the
+network. `connect-src 'none'` blanks the `.app`. Vite `base: './'` so bundled
+JS is relative. Dev URL `localhost:1420` is **dev only**.
 `bundle.createUpdaterArtifacts` stays false.
 
 ## Deny
@@ -57,8 +59,8 @@ python3 pipeline/tools/gate_tauri.py
 
 ## Security
 
-- CSP is the DESIGN string (`connect-src 'none'`). `img-src` / `media-src`
-  allow `cas:` for the local CAS protocol only (64-hex path under `$ARCHIVE/cas/`).
+- CSP is the DESIGN string (IPC-only `connect-src`, no general `http`/`https`).
+  `img-src` / `media-src` allow `cas:` for the local CAS protocol only.
 - `Interlace.entitlements`: app sandbox, user-selected files, **no**
   `network.client` / `network.server`.
 - Message bodies in later PRs are text nodes only (never unsanitized HTML).

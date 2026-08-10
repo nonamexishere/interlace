@@ -3811,7 +3811,8 @@ Command surface is **1:1 with CLI** (same names, same JSON DTOs):
 
 No command accepts a URL. Paths via `rfd` file dialog only.
 
-**CSP** (tauri.conf): `default-src 'self'; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline'; connect-src 'none'; frame-src 'none'; font-src 'self'`.
+**CSP** (tauri.conf): `default-src 'self'; img-src 'self' asset: data: cas:; media-src 'self' cas: data:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost https://ipc.localhost; frame-src 'none'; font-src 'self'`.
+`connect-src 'none'` blanks the bundled `.app` (blocks Tauri IPC). `ipc.localhost` is the webview’s local IPC host, not the public internet.
 
 **Attachments:** `asset:` protocol scoped to `$ARCHIVE/cas/**` only. Do **not** enable Tauri `protocol-asset` if it pulls `http-range` and we can stream via a custom converter that reads CAS by hash. If `protocol-asset` is required, still deny `reqwest`/`hyper`.
 
