@@ -1,4 +1,4 @@
-//! Person list + D18 timeline rows (UI3).
+//! Person list + D18 timeline rows (UI3). Last-activity sort + preview (#110).
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -123,6 +123,187 @@ fn plant(arch: &interlace_core::db::Archive) -> (i64, i64, i64) {
     (pid, dm_msg, arch.conn.last_insert_rowid())
 }
 
+/// Self + Ada (newer DM) + Ali (older DM + newer group-only) + Cemre (no messages).
+struct ActivityPlant {
+    ada_id: i64,
+    ali_id: i64,
+    cemre_id: i64,
+}
+
+const ADA_LATEST_AT: &str = "2024-03-20T10:00:00Z";
+const ADA_LATEST_BODY: &str = "Ada latest note";
+const ADA_LATEST_HTML: &str = "<p>Ada latest note</p>";
+const ALI_DM_AT: &str = "2024-03-15T14:32:00Z";
+const ALI_GROUP_AT: &str = "2024-03-25T10:00:00Z";
+
+fn plant_activity(arch: &interlace_core::db::Archive) -> ActivityPlant {
+    arch.conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('gmail_mbox', 't', '/t.mbox')",
+            [],
+        )
+        .unwrap();
+    let src = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO import_runs(source_id, status) VALUES (?1, 'done')",
+            [src],
+        )
+        .unwrap();
+    let run = arch.conn.last_insert_rowid();
+
+    arch.conn
+        .execute(
+            "INSERT INTO persons(display_name, is_self) VALUES ('Me', 1)",
+            [],
+        )
+        .unwrap();
+
+    let person = |arch: &interlace_core::db::Archive,
+                  name: &str,
+                  platform: &str,
+                  kind: &str,
+                  raw: &str,
+                  norm: &str|
+     -> (i64, i64) {
+        arch.conn
+            .execute(
+                "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![platform, kind, raw, norm, name],
+            )
+            .unwrap();
+        let iid = arch.conn.last_insert_rowid();
+        arch.conn
+            .execute(
+                "INSERT INTO persons(display_name, is_self) VALUES (?1, 0)",
+                [name],
+            )
+            .unwrap();
+        let pid = arch.conn.last_insert_rowid();
+        arch.conn
+            .execute(
+                "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
+                 VALUES (?1, ?2, 'auto_email', 0.99, 'system')",
+                rusqlite::params![pid, iid],
+            )
+            .unwrap();
+        (pid, iid)
+    };
+
+    let (ada_id, ada_iid) = person(arch, "Ada", "whatsapp", "display_name", "Ada", "ada");
+    let (ali_id, ali_iid) = person(arch, "Ali", "gmail", "email", "a@x.com", "a@x.com");
+    let (cemre_id, _) = person(arch, "Cemre", "contacts", "email", "c@x.com", "c@x.com");
+
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('whatsapp', 'dm', 'whatsapp:ada', 'Ada')",
+            [],
+        )
+        .unwrap();
+    let ada_dm = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![ada_dm, ada_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('gmail', 'email_thread', 'gmail-ali', 'hello')",
+            [],
+        )
+        .unwrap();
+    let ali_dm = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![ali_dm, ali_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('whatsapp', 'group', 'whatsapp:g', 'Project')",
+            [],
+        )
+        .unwrap();
+    let grp = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![grp, ali_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('whatsapp', 'display_name', 'Other', 'other', 'Other')",
+            [],
+        )
+        .unwrap();
+    let other = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![grp, other],
+        )
+        .unwrap();
+
+    arch.conn
+        .execute(
+            "INSERT INTO messages(conversation_id, source_id, import_run_id, sender_identity_id,
+                sent_at, sent_at_precision, kind, body_text, idempotency_key)
+             VALUES (?1, ?2, ?3, ?4, '2024-01-01T09:00:00Z', 'second', 'text', 'Ada old note', 'k-ada-old')",
+            rusqlite::params![ada_dm, src, run, ada_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO messages(conversation_id, source_id, import_run_id, sender_identity_id,
+                sent_at, sent_at_precision, kind, body_text, body_html, idempotency_key)
+             VALUES (?1, ?2, ?3, ?4, ?5, 'second', 'text', ?6, ?7, 'k-ada-new')",
+            rusqlite::params![
+                ada_dm,
+                src,
+                run,
+                ada_iid,
+                ADA_LATEST_AT,
+                ADA_LATEST_BODY,
+                ADA_LATEST_HTML
+            ],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO messages(conversation_id, source_id, import_run_id, sender_identity_id,
+                sent_at, sent_at_precision, kind, body_text, idempotency_key)
+             VALUES (?1, ?2, ?3, ?4, ?5, 'second', 'text', 'ali dm hi', 'k-ali-dm')",
+            rusqlite::params![ali_dm, src, run, ali_iid, ALI_DM_AT],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO messages(conversation_id, source_id, import_run_id, sender_identity_id,
+                sent_at, sent_at_precision, kind, body_text, idempotency_key)
+             VALUES (?1, ?2, ?3, ?4, ?5, 'second', 'text', 'ali group hi', 'k-ali-g')",
+            rusqlite::params![grp, src, run, other, ALI_GROUP_AT],
+        )
+        .unwrap();
+
+    ActivityPlant {
+        ada_id,
+        ali_id,
+        cemre_id,
+    }
+}
+
 #[test]
 fn list_live_persons_only() {
     let root = tmp();
@@ -232,5 +413,72 @@ fn merge_undo_leaves_sender_identity_id() {
         )
         .unwrap();
     assert_eq!(before, after);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn list_pins_self_then_newer_activity_then_null() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let planted = plant_activity(&arch);
+    let list = person_list(&arch).unwrap();
+    assert_eq!(
+        list.len(),
+        4,
+        "{:?}",
+        list.iter().map(|p| &p.display_name).collect::<Vec<_>>()
+    );
+    assert!(list[0].is_self, "{:?}", list[0].display_name);
+    assert!(list.iter().skip(1).all(|p| !p.is_self));
+    assert_eq!(list[1].id, planted.ada_id);
+    assert_eq!(list[1].display_name, "Ada");
+    assert_eq!(list[2].id, planted.ali_id);
+    assert_eq!(list[2].display_name, "Ali");
+    assert_eq!(list[3].id, planted.cemre_id);
+    assert_eq!(list[3].display_name, "Cemre");
+    assert_eq!(list[1].last_activity_at.as_deref(), Some(ADA_LATEST_AT));
+    assert_eq!(list[2].last_activity_at.as_deref(), Some(ALI_DM_AT));
+    assert_eq!(list[3].last_activity_at, None);
+    assert_eq!(list[0].last_activity_at, None);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn list_preview_is_plain_prefix_of_latest_body() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let planted = plant_activity(&arch);
+    let list = person_list(&arch).unwrap();
+    let ada = list.iter().find(|p| p.id == planted.ada_id).unwrap();
+    let preview = ada.preview.as_deref().expect("Ada preview");
+    assert!(
+        !preview.is_empty() && ADA_LATEST_BODY.starts_with(preview),
+        "preview {preview:?} is not a prefix of {ADA_LATEST_BODY:?}"
+    );
+    assert!(
+        !preview.contains('<') && !preview.contains('>'),
+        "preview must be plain text, got {preview:?}"
+    );
+    assert_ne!(preview, ADA_LATEST_HTML);
+    let cemre = list.iter().find(|p| p.id == planted.cemre_id).unwrap();
+    assert_eq!(cemre.preview, None);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn list_group_only_activity_does_not_reorder_when_groups_off() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let planted = plant_activity(&arch);
+    let list = person_list(&arch).unwrap();
+    let names: Vec<&str> = list.iter().map(|p| p.display_name.as_str()).collect();
+    let ada = list.iter().position(|p| p.id == planted.ada_id).unwrap();
+    let ali = list.iter().position(|p| p.id == planted.ali_id).unwrap();
+    assert!(
+        ada < ali,
+        "Ada must sort before Ali when Ali's newer row is group-only; got {names:?}"
+    );
+    assert_eq!(list[ali].last_activity_at.as_deref(), Some(ALI_DM_AT));
+    assert_ne!(list[ali].last_activity_at.as_deref(), Some(ALI_GROUP_AT));
     let _ = std::fs::remove_dir_all(&root);
 }

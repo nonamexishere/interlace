@@ -79,8 +79,12 @@ messages remain.
 ## Self person
 
 The desktop app (UI3) shows the same person list and D18 timeline (groups
-hidden until toggled). Merge / unlink / undo in the window call the same
-core functions as the CLI.
+hidden until toggled). The list is recent-first by last DM / email-thread
+activity (or any message that person sent). A one-line plain preview sits
+under the name. Silent contacts — people with no matching messages — stay
+on the list, sorted last. Merge / unlink / undo in the window call the same
+core functions as the CLI. `interlace person list --json` includes
+`last_activity_at` and `preview`.
 
 `interlace init` creates `persons.is_self=1` even with zero emails/phones, plus
 owner identities for the addresses you typed. WhatsApp `You` / `Siz` / `Du` /

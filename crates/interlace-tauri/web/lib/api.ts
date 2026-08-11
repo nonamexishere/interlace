@@ -16,6 +16,8 @@ export type Person = {
   id: number;
   display_name: string;
   is_self: boolean;
+  last_activity_at?: string | null;
+  preview?: string | null;
 };
 
 export type Identity = {

@@ -15,8 +15,8 @@ use crate::db::{open_archive, LockMode};
 use crate::import::ImporterRegistry;
 use crate::session::{init_owner_archive, read_last_path, write_last_path};
 use crate::{
-    person_merge, person_timeline, person_undo, person_unlink, review_resolve, search, CoreError,
-    ImportOpts, ImportStats, PersonMergeOpts, Platform, SearchQuery, SourceKind,
+    person_list, person_merge, person_timeline, person_undo, person_unlink, review_resolve, search,
+    CoreError, ImportOpts, ImportStats, PersonMergeOpts, Platform, SearchQuery, SourceKind,
 };
 
 /// Local-first archive that unifies conversations across platforms.
@@ -550,29 +550,15 @@ fn cmd_person(
         PersonCmd::List => {
             let root = resolve_path(path)?;
             let arch = open_archive(&root, LockMode::Shared)?;
-            let mut stmt = arch.conn.prepare(
-                "SELECT id, display_name, is_self FROM persons WHERE tombstoned_at IS NULL ORDER BY id",
-            )?;
-            let rows = stmt.query_map([], |r| {
-                Ok((
-                    r.get::<_, i64>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, i64>(2)?,
-                ))
-            })?;
-            let mut list = Vec::new();
-            for row in rows {
-                let (id, name, self_) = row?;
-                if json {
-                    list.push(
-                        serde_json::json!({"id": id, "display_name": name, "is_self": self_ == 1}),
-                    );
-                } else {
-                    println!("{id}\t{name}{}", if self_ == 1 { "  (self)" } else { "" });
-                }
-            }
+            let rows = person_list(&arch)?;
             if json {
-                println!("{}", serde_json::to_string(&list).unwrap());
+                println!("{}", serde_json::to_string(&rows).unwrap());
+            } else {
+                for p in rows {
+                    let act = p.last_activity_at.as_deref().unwrap_or("-");
+                    let self_mark = if p.is_self { "  (self)" } else { "" };
+                    println!("{}\t{}{}\t{}", p.id, p.display_name, self_mark, act);
+                }
             }
         }
         PersonCmd::Show { id, include_groups } => {

@@ -423,7 +423,12 @@
                   : ''} {p.is_self ? 'font-semibold' : ''}"
                 onclick={() => selectPerson(p.id)}
               >
-                {p.is_self ? `${p.display_name} (self)` : p.display_name}
+                <span>{p.is_self ? `${p.display_name} (self)` : p.display_name}</span>
+                {#if p.last_activity_at || p.preview}
+                  <span class="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+                    {p.last_activity_at ?? ""}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
+                  </span>
+                {/if}
               </button>
             </li>
           {/each}
