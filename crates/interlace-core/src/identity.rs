@@ -11,7 +11,8 @@ use crate::model::{CoreError, ImportStats, PersonMergeOpts};
 /// Auto-link exact phone/email and auto person-merge (rules A/B). Display names
 /// never attach onto an existing phone/email/contacts person (I2). After
 /// name-similarity review is enqueued, leftover name-only identities get their
-/// own person so WA-first archives have a people list.
+/// own person so WA-first archives have a people list. Then exact
+/// `name_fold_join` Contacts vs WhatsApp `display_name` pairs enqueue review.
 pub fn resolve_run(archive: &mut Archive, _run_id: i64) -> Result<ImportStats, CoreError> {
     let mut stats = ImportStats::default();
     attach_high_conf(archive, &mut stats)?;
@@ -23,6 +24,7 @@ pub fn resolve_run(archive: &mut Archive, _run_id: i64) -> Result<ImportStats, C
     }
     enqueue_name_reviews(archive, &mut stats)?;
     promote_unlinked_names(archive)?;
+    enqueue_exact_name_fold_reviews(archive, &mut stats)?;
     Ok(stats)
 }
 
@@ -488,6 +490,74 @@ fn promote_unlinked_names(archive: &Archive) -> Result<(), CoreError> {
         let pid = archive.conn.last_insert_rowid();
         // Existing CHECK has no name-only reason; `manual` + system = stub, not a user merge.
         link_identity(archive, pid, id, "manual", 1.0, "system")?;
+    }
+    Ok(())
+}
+
+/// I2: exact `name_fold_join` between a live Contacts/`takeout_vcard` person and
+/// a live WhatsApp `display_name` person goes to review. Never auto-merge.
+fn enqueue_exact_name_fold_reviews(
+    archive: &Archive,
+    stats: &mut ImportStats,
+) -> Result<(), CoreError> {
+    let contacts: Vec<(i64, String)> = {
+        let mut stmt = archive.conn.prepare(
+            "SELECT DISTINCT p.id, p.display_name
+             FROM persons p
+             JOIN person_identities pi ON pi.person_id = p.id
+             LEFT JOIN identities i ON i.id = pi.identity_id
+             WHERE p.tombstoned_at IS NULL AND p.is_self = 0
+               AND (i.platform = 'contacts' OR pi.link_reason = 'takeout_vcard')",
+        )?;
+        let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        it.collect::<Result<Vec<_>, _>>()?
+    };
+    let wa: Vec<(i64, i64, String)> = {
+        let mut stmt = archive.conn.prepare(
+            "SELECT p.id, MIN(i.id), p.display_name
+             FROM persons p
+             JOIN person_identities pi ON pi.person_id = p.id
+             JOIN identities i ON i.id = pi.identity_id
+             WHERE p.tombstoned_at IS NULL AND p.is_self = 0
+               AND i.platform = 'whatsapp' AND i.kind = 'display_name'
+             GROUP BY p.id, p.display_name",
+        )?;
+        let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        it.collect::<Result<Vec<_>, _>>()?
+    };
+    let mut seen_pairs: HashSet<(i64, i64)> = HashSet::new();
+    for (wa_pid, wa_iid, wa_name) in &wa {
+        let wa_fold = name_fold_join(wa_name);
+        if wa_fold.is_empty() {
+            continue;
+        }
+        for (c_pid, c_name) in &contacts {
+            if c_pid == wa_pid {
+                continue;
+            }
+            if name_fold_join(c_name) != wa_fold {
+                continue;
+            }
+            let key = (*wa_pid.min(c_pid), *wa_pid.max(c_pid));
+            if !seen_pairs.insert(key) {
+                continue;
+            }
+            enqueue_review(
+                archive,
+                stats,
+                *wa_iid,
+                Some(*c_pid),
+                None,
+                0.70,
+                "exact_name_fold",
+                "name_similarity",
+                serde_json::json!({
+                    "fold": wa_fold,
+                    "left_person": wa_pid,
+                    "right_person": c_pid,
+                }),
+            )?;
+        }
     }
     Ok(())
 }

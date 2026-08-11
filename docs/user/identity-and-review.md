@@ -30,9 +30,14 @@ end as one live person for the same E.164/email (I5).
 Name-only WhatsApp senders (`kind=display_name`) **never auto-merge** onto a
 Contacts/phone/email person (I2). After that review row is enqueued (when a
 similar live person already exists), each leftover name gets its **own**
-person so a WA-first archive has a people list. A name that fold-equals a
-group conversation title is not promoted. Two contact cards that share a
-phone but have incompatible names block auto-link and enqueue review (I3).
+person so a WA-first archive has a people list. After promotion, two live
+non-self persons whose `name_fold_join(display_name)` is **exact equal** —
+one Contacts (`identities.platform = 'contacts'` or a `takeout_vcard` link),
+the other WhatsApp `display_name` — also enqueue **one** open review per pair
+(score 0.70, reason `exact_name_fold`). Rejected/suppressed pairs are skipped.
+A name that fold-equals a group conversation title is not promoted. Two
+contact cards that share a phone but have incompatible names block auto-link
+and enqueue review (I3).
 
 `persist_contact` creates one person per vCard (`takeout_vcard`) and does **not**
 merge across cards. **`resolve_run`** (after every import) is the only place
@@ -52,7 +57,9 @@ few sample messages. Accept links the left identity with
 `link_reason=review_accepted`. Reject suppresses that pair for this archive
 (the matcher skips `rejected` rows).
 
-Name similarity scores 0.40–0.70 go to review. Nothing name-based auto-merges.
+Name similarity scores 0.40–0.70 go to review. An exact folded-name pair
+(Contacts vs WhatsApp `display_name`, after leftover names are promoted) is
+score 0.70 / `exact_name_fold`. Nothing name-based auto-merges.
 A suggestion needs a **strong token** (same given name or surname, or a
 one-letter typo on a 4+ letter token). Two unrelated two-word names are not
 similar just because Jaro–Winkler on the whole string is 0.41.
