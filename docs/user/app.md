@@ -78,9 +78,13 @@ a one-line **plain-text** preview (the last message’s subject if it has one,
 otherwise a truncated body — never HTML). Contacts with no matching messages
 stay listed at the bottom. `/` still filters by name only. `j`/`k` move
 messages. Merge by picking a name: select a person, **Merge…**, search the
-list (display name only — typing an id matches nobody), then confirm. Self is
-hidden unless you tick **Allow merge into self**. Confirm shows display names,
-not ids. Names never auto-merge. Unlink stays on each identity row.
+list (display name only — typing an id matches nobody), then confirm. Targets
+show the same last-activity preview as the sidebar so same-name cards differ.
+Self is hidden unless you tick **Allow absorbing self into this person** (that
+absorbs self into the selected person; it does not copy `is_self`). Confirm
+names are taken from the people list at Merge… time, not the header. Confirm
+shows display names, not ids. Names never auto-merge. Unlink stays on each
+identity row.
 Merge/unlink/undo do not rewrite `messages.sender_identity_id`.
 
 Tabs: **Search** (same FTS as CLI; expand a hit for the full body), **Review**

@@ -34,6 +34,8 @@
   let allowSelf = $state(false);
   let mergeList = $state<Person[]>([]);
   let mergeLoading = $state(false);
+  let mergeKeepId = $state<number | null>(null);
+  let mergeKeepName = $state("");
   let events = $state<LinkEvent[]>([]);
 
   let confirmOpen = $state(false);
@@ -193,9 +195,14 @@
     return p.is_self ? `${p.display_name} (self)` : p.display_name;
   }
 
+  function personById(id: number | null): Person | undefined {
+    if (id == null) return undefined;
+    return people.find((p) => p.id === id);
+  }
+
   $effect(() => {
-    if (!mergeOpen || selectedId == null) return;
-    const id = selectedId;
+    if (!mergeOpen || mergeKeepId == null) return;
+    const id = mergeKeepId;
     const self = allowSelf;
     const q = mergeQuery;
     let cancelled = false;
@@ -217,11 +224,14 @@
   });
 
   function openMerge() {
-    if (!selectedId) {
+    const keep = personById(selectedId);
+    if (!keep) {
       err = "select a person first";
       return;
     }
     err = "";
+    mergeKeepId = keep.id;
+    mergeKeepName = personLabel(keep);
     mergeQuery = "";
     allowSelf = false;
     mergeList = [];
@@ -229,14 +239,17 @@
   }
 
   function pickMergeTarget(other: Person) {
-    if (!selectedId) return;
-    const keep = selectedId;
-    const keepName = personTitle;
+    if (mergeKeepId == null || !mergeKeepName) return;
+    const keep = mergeKeepId;
+    const keepName = mergeKeepName;
     const otherName = personLabel(other);
     mergeOpen = false;
+    const extra = other.is_self
+      ? `This absorbs the self person into ${keepName}. The self flag is not copied onto the survivor. `
+      : "";
     ask(
       `Merge ${otherName} into ${keepName}?`,
-      "Identity links move. Message rows are not rewritten. Names never auto-merge.",
+      `${extra}Identity links move. Message rows are not rewritten. Names never auto-merge.`,
       async () => {
         const out = await api.merge(keep, other.id, keep);
         await refreshPeople();
@@ -502,7 +515,9 @@
         <div class="mb-3 flex items-baseline justify-between gap-3">
           <h1 class="text-xl font-semibold tracking-tight">{personTitle}</h1>
           <div class="flex items-center gap-3">
-            <Button variant="outline" size="sm" disabled={!selectedId} onclick={openMerge}>Merge…</Button>
+            <Button variant="outline" size="sm" disabled={!personById(selectedId)} onclick={openMerge}
+              >Merge…</Button
+            >
             <label class="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -579,9 +594,9 @@
 <Dialog.Root bind:open={mergeOpen}>
   <Dialog.Content>
     <Dialog.Header>
-      <Dialog.Title>Merge into {personTitle}</Dialog.Title>
+      <Dialog.Title>Merge into {mergeKeepName}</Dialog.Title>
       <Dialog.Description>
-        Pick a person by name. {personTitle} is kept. Names never auto-merge.
+        Pick a person by name. {mergeKeepName} is kept. Names never auto-merge.
       </Dialog.Description>
     </Dialog.Header>
     <div class="space-y-1.5">
@@ -595,12 +610,15 @@
     </div>
     <label class="flex items-center gap-2 text-sm">
       <input type="checkbox" bind:checked={allowSelf} />
-      Allow merge into self
+      Allow absorbing self into this person
     </label>
     {#if mergeLoading && mergeList.length === 0}
       <p class="text-sm text-muted-foreground">Loading people…</p>
     {:else if mergeList.length === 0}
-      <EmptyState title="No match" body="Try another spelling, or tick Allow merge into self." />
+      <EmptyState
+        title="No match"
+        body="Try another spelling, or tick Allow absorbing self into this person."
+      />
     {:else}
       <ul class="max-h-64 space-y-0.5 overflow-y-auto">
         {#each mergeList as p}
@@ -612,7 +630,12 @@
                 : ''}"
               onclick={() => pickMergeTarget(p)}
             >
-              {personLabel(p)}
+              <span>{personLabel(p)}</span>
+              {#if p.last_activity_at || p.preview}
+                <span class="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+                  {p.last_activity_at ?? ""}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
+                </span>
+              {/if}
             </button>
           </li>
         {/each}

@@ -86,8 +86,10 @@ on the list, sorted last. Merge / unlink / undo in the window call the same
 core functions as the CLI. App merge is pick-by-name: select a person, choose
 **Merge…**, search the remaining people by display name (case-insensitive
 substring; a query that looks like a numeric id matches nobody), then confirm
-with both names. Tick **Allow merge into self** to include the self person as
-a target. There is no “merge into id” box. Names never auto-merge. Unlink
+with both names (the kept name is snapshotted when you open Merge…, so a
+slow person-load cannot rename the survivor). Picker rows show last activity
+and preview. Tick **Allow absorbing self into this person** to include the
+self person as a merge *source* (loser). There is no “merge into id” box. Names never auto-merge. Unlink
 stays on identity rows. `interlace person list --json` includes
 `last_activity_at` and `preview`.
 
