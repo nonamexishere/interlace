@@ -36,8 +36,10 @@ Contacts is the identity bridge between WhatsApp phones and Gmail addresses.
 
 ## Gmail mbox
 
-mboxrd: record starts at byte 0 or a blank line then `From `. Body lines
-`>From ` lose one leading `>`.
+mboxrd: record starts at byte 0 or a newline then `From ` (space, no colon)
+at column 0. Takeout All-mail uses that shape — no blank line is required
+between records. `\r\nFrom ` is also a record start. Body lines `>From `
+are not separators; they lose one leading `>` when the body is read.
 
 | Header | Use |
 | --- | --- |

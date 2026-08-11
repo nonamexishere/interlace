@@ -211,3 +211,69 @@ fn gmail_c1_vcard_multi_tel_email_photo_uid() {
     assert!(stats.warnings >= 1, "OQ5 raw-rfc822 warning");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// Takeout All-mail uses `\nFrom ` at column 0 with no blank line between
+/// records. `>From` in a body is not a fourth envelope.
+#[test]
+fn gmail_mbox_from_split_without_blank_line() {
+    let root = tmp_root();
+    let mbox = root.join("takeout-style.mbox");
+    // Three messages joined only by newline+From (space, no colon). No blank
+    // line before the next envelope. Body `>From` must not split.
+    std::fs::write(
+        &mbox,
+        "\
+From alice@example.com Sat Jan 01 00:00:00 2024
+From: alice@example.com
+To: bob@example.com
+Subject: one
+Message-ID: <one@example.com>
+
+body one
+From alice@example.com Sat Jan 01 00:00:01 2024
+From: alice@example.com
+To: bob@example.com
+Subject: two
+Message-ID: <two@example.com>
+
+body two
+>From someone quoted
+From alice@example.com Sat Jan 01 00:00:02 2024
+From: alice@example.com
+To: bob@example.com
+Subject: three
+Message-ID: <three@example.com>
+
+body three
+",
+    )
+    .unwrap();
+
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    let stats = arch
+        .run_import(SourceKind::GmailMbox, &mbox, &ImportOpts::default())
+        .unwrap();
+    assert_eq!(stats.inserted_messages, 3, "newline+From must split three");
+    assert_eq!(
+        count(&arch, "SELECT COUNT(*) FROM messages"),
+        3,
+        ">From in a body must not create a fourth message"
+    );
+    for subj in ["one", "two", "three"] {
+        assert_eq!(
+            count(
+                &arch,
+                &format!("SELECT COUNT(*) FROM messages WHERE subject = '{subj}'"),
+            ),
+            1,
+            "subject {subj} must appear once"
+        );
+    }
+
+    let stats2 = arch
+        .run_import(SourceKind::GmailMbox, &mbox, &ImportOpts::default())
+        .unwrap();
+    assert_eq!(stats2.inserted_messages, 0);
+    assert_eq!(stats2.skipped_dupes, 3);
+    let _ = std::fs::remove_dir_all(&root);
+}
