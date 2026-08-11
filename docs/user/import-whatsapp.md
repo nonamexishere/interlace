@@ -137,6 +137,29 @@ is WhatsApp’s limit, not Interlace’s.
 A first message that is a “you were added / created group” line sets
 `conversations.extra_json.join_cutoff` so you know the export started mid-chat.
 
+## Later export of the same chat
+
+A later official export of the **same** chat (old lines plus newer ones)
+**unions** into the existing conversation:
+
+- only new rows insert
+- overlapping messages keep the same `messages.id`
+- you still have **one** conversation
+
+Importing the **same ZIP twice** is unchanged: the `sources` row is reused, a
+new `import_runs` row is recorded, and every message hits
+`UNIQUE(idempotency_key)` and is counted as `skipped_dupes`.
+
+Sameness is the folded chat title after stripping locale prefixes
+(`WhatsApp Chat with `, `WhatsApp Sohbeti: `, …), or `--conversation-name` if
+you passed it. That value is `native_id = whatsapp:<folded_title>`. Two ZIPs
+that fold to different titles (or use different `--conversation-name`) are
+different conversations. iOS `_chat.txt` has no title in the filename;
+Interlace falls back to the ZIP stem unless you pass `--conversation-name`.
+
+`<Media omitted>` later replaced by a real file is W9 / #60 (attachment
+upgrade on the same `messages.id`), not this union.
+
 ## Limits
 
 | Cap | Value |
@@ -147,6 +170,5 @@ A first message that is a “you were added / created group” line sets
 | Zip entries | 2 000 000 |
 | No network | cargo-deny bans HTTP clients; this importer is file-only |
 
-Re-import of the same ZIP reuses the `sources` row and records a new
-`import_runs` row. Messages hit `UNIQUE(idempotency_key)` and are counted as
-`skipped_dupes`.
+Same ZIP twice and a later overlapping export of the same chat: see
+[Later export of the same chat](#later-export-of-the-same-chat).

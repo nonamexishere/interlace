@@ -28,6 +28,50 @@ fn count(arch: &interlace_core::db::Archive, sql: &str) -> i64 {
     arch.conn.query_row(sql, [], |r| r.get(0)).unwrap()
 }
 
+/// iOS en-US DM, no media — same seed + larger `n_messages` prefixes the smaller export.
+fn wa_later_reexport_cfg(n_messages: usize) -> WaGenConfig {
+    WaGenConfig {
+        locale: "en-US",
+        ios: true,
+        with_media: false,
+        n_messages,
+        n_participants: 2,
+        corrupt_line_every: None,
+        missing_media_every: None,
+        multiline_ratio: 0.0,
+        system_every: None,
+        seed: 100,
+    }
+}
+
+fn user_message_id(arch: &interlace_core::db::Archive, i: usize) -> i64 {
+    arch.conn
+        .query_row(
+            "SELECT id FROM messages WHERE body_text LIKE ?1",
+            [format!("msg-{i} %")],
+            |r| r.get(0),
+        )
+        .unwrap_or_else(|e| panic!("expected user row msg-{i}: {e}"))
+}
+
+fn user_message_ids(arch: &interlace_core::db::Archive, last: usize) -> Vec<i64> {
+    (1..=last).map(|i| user_message_id(arch, i)).collect()
+}
+
+fn assert_each_user_row_once(arch: &interlace_core::db::Archive, last: usize) {
+    for i in 1..=last {
+        let n: i64 = arch
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE body_text LIKE ?1",
+                [format!("msg-{i} %")],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 1, "user row msg-{i} should exist once, got {n}");
+    }
+}
+
 #[test]
 fn whatsapp_w1_ios_en_us_dm_no_media() {
     let root = tmp_root();
@@ -457,5 +501,163 @@ fn whatsapp_unpadded_day_ios_tr_no_unknown() {
         "SELECT COUNT(*) FROM messages WHERE sent_at IS NOT NULL",
     );
     assert_eq!(dated, count(&arch, "SELECT COUNT(*) FROM messages"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// #100: later re-export of the same chat must union — A then newer B.
+/// Second import inserts only the M newer user rows; overlapping N keep the same `messages.id`.
+#[test]
+fn whatsapp_later_reexport_a_then_b_unions() {
+    const N: usize = 40;
+    const M: usize = 12;
+    let root = tmp_root();
+    // Generator uses a fixed zip filename; write the two archives in different dirs.
+    let zip_a = write_whatsapp_zip(&root.join("zip-a"), &wa_later_reexport_cfg(N));
+    let zip_b = write_whatsapp_zip(&root.join("zip-b"), &wa_later_reexport_cfg(N + M));
+
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    let stats_a = arch
+        .run_import(
+            SourceKind::WhatsappIosZip,
+            &zip_a,
+            &ImportOpts {
+                locale: Some("en-US".into()),
+                ..ImportOpts::default()
+            },
+        )
+        .unwrap();
+    // N user fixture lines + encryption banner (W1-style)
+    assert!(
+        stats_a.inserted_messages >= N as u64,
+        "A inserted {}",
+        stats_a.inserted_messages
+    );
+    assert_eq!(stats_a.skipped_dupes, 0);
+    let n_after_a = count(&arch, "SELECT COUNT(*) FROM messages");
+    assert!(n_after_a >= N as i64, "messages after A={n_after_a}");
+    assert_eq!(count(&arch, "SELECT COUNT(*) FROM conversations"), 1);
+    let kind: String = arch
+        .conn
+        .query_row("SELECT kind FROM conversations LIMIT 1", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(kind, "dm", "#100 fixture must be a DM");
+    let overlap_ids = user_message_ids(&arch, N);
+
+    let stats_b = arch
+        .run_import(
+            SourceKind::WhatsappIosZip,
+            &zip_b,
+            &ImportOpts {
+                locale: Some("en-US".into()),
+                ..ImportOpts::default()
+            },
+        )
+        .unwrap();
+    // Banner already present from A; only the M newer user rows insert.
+    assert_eq!(
+        stats_b.inserted_messages, M as u64,
+        "A-then-B must insert only the M newer user rows, inserted={}",
+        stats_b.inserted_messages
+    );
+    assert!(
+        stats_b.skipped_dupes >= N as u64,
+        "A-then-B skipped_dupes {} < N={N}",
+        stats_b.skipped_dupes
+    );
+    let n_after_b = count(&arch, "SELECT COUNT(*) FROM messages");
+    assert_eq!(
+        n_after_b,
+        n_after_a + M as i64,
+        "delta after B must be exactly M user messages"
+    );
+    assert!(
+        n_after_b >= (N + M) as i64,
+        "total messages after A-then-B={n_after_b}"
+    );
+    assert_eq!(count(&arch, "SELECT COUNT(*) FROM conversations"), 1);
+    assert_eq!(
+        count(
+            &arch,
+            "SELECT COUNT(DISTINCT conversation_id) FROM messages"
+        ),
+        1
+    );
+    assert_eq!(user_message_ids(&arch, N), overlap_ids);
+    assert_each_user_row_once(&arch, N + M);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// #100: later re-export of the same chat must union — newer B then older A.
+/// Second import inserts nothing; A's rows are all dupes; ids stay put.
+#[test]
+fn whatsapp_later_reexport_b_then_a_skips() {
+    const N: usize = 40;
+    const M: usize = 12;
+    let root = tmp_root();
+    let zip_a = write_whatsapp_zip(&root.join("zip-a"), &wa_later_reexport_cfg(N));
+    let zip_b = write_whatsapp_zip(&root.join("zip-b"), &wa_later_reexport_cfg(N + M));
+
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    let stats_b = arch
+        .run_import(
+            SourceKind::WhatsappIosZip,
+            &zip_b,
+            &ImportOpts {
+                locale: Some("en-US".into()),
+                ..ImportOpts::default()
+            },
+        )
+        .unwrap();
+    assert!(
+        stats_b.inserted_messages >= (N + M) as u64,
+        "B inserted {}",
+        stats_b.inserted_messages
+    );
+    assert_eq!(stats_b.skipped_dupes, 0);
+    let n_after_b = count(&arch, "SELECT COUNT(*) FROM messages");
+    assert!(n_after_b >= (N + M) as i64, "messages after B={n_after_b}");
+    assert_eq!(count(&arch, "SELECT COUNT(*) FROM conversations"), 1);
+    let kind: String = arch
+        .conn
+        .query_row("SELECT kind FROM conversations LIMIT 1", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(kind, "dm", "#100 fixture must be a DM");
+    let ids_after_b = user_message_ids(&arch, N + M);
+
+    let stats_a = arch
+        .run_import(
+            SourceKind::WhatsappIosZip,
+            &zip_a,
+            &ImportOpts {
+                locale: Some("en-US".into()),
+                ..ImportOpts::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        stats_a.inserted_messages, 0,
+        "B-then-A must insert nothing, inserted={}",
+        stats_a.inserted_messages
+    );
+    assert!(
+        stats_a.skipped_dupes >= N as u64,
+        "B-then-A skipped_dupes {} must cover A's N user rows",
+        stats_a.skipped_dupes
+    );
+    assert_eq!(
+        count(&arch, "SELECT COUNT(*) FROM messages"),
+        n_after_b,
+        "B-then-A must not add rows"
+    );
+    assert_eq!(count(&arch, "SELECT COUNT(*) FROM conversations"), 1);
+    assert_eq!(
+        count(
+            &arch,
+            "SELECT COUNT(DISTINCT conversation_id) FROM messages"
+        ),
+        1
+    );
+    assert_eq!(user_message_ids(&arch, N + M), ids_after_b);
+    assert_each_user_row_once(&arch, N + M);
     let _ = std::fs::remove_dir_all(&root);
 }
