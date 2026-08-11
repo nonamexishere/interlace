@@ -30,14 +30,17 @@ end as one live person for the same E.164/email (I5).
 Name-only WhatsApp senders (`kind=display_name`) **never auto-merge** onto a
 Contacts/phone/email person (I2). After that review row is enqueued (when a
 similar live person already exists), each leftover name gets its **own**
-person so a WA-first archive has a people list. After promotion, two live
-non-self persons whose `name_fold_join(display_name)` is **exact equal** —
-one Contacts (`identities.platform = 'contacts'` or a `takeout_vcard` link),
-the other WhatsApp `display_name` — also enqueue **one** open review per pair
-(score 0.70, reason `exact_name_fold`). Rejected/suppressed pairs are skipped.
-A name that fold-equals a group conversation title is not promoted. Two
-contact cards that share a phone but have incompatible names block auto-link
-and enqueue review (I3).
+person so a WA-first archive has a people list. After promotion, live
+non-self persons whose `name_fold_join(display_name)` is **exact equal**
+(empty folds skipped) are one **cluster**. A Contacts
+(`identities.platform = 'contacts'` or a `takeout_vcard` link) person and a
+WhatsApp `display_name` person in that cluster enqueue **one** open review
+(score 0.70, reason `exact_name_fold`) — one row per cluster, not one per
+pair. Rejected/suppressed pairs are skipped. Names never auto-merge; Accept
+is a user click that folds every live person in that cluster into one
+survivor. A name that fold-equals a group conversation title is not promoted.
+Two contact cards that share a phone but have incompatible names block
+auto-link and enqueue review (I3).
 
 `persist_contact` creates one person per vCard (`takeout_vcard`) and does **not**
 merge across cards. **`resolve_run`** (after every import) is the only place
@@ -52,17 +55,26 @@ interlace review accept <id>
 interlace review reject <id>
 ```
 
-`review show` (CLI and Review tab) uses the same payload: both sides’ display
-names with **where the name came from** (`Ada (WhatsApp)` / `Ada (Contacts)`),
-each evidence line, and each side’s message count with up to three newest
-sample lines (`sent_at · body_text`). Messages **sent** in a group count;
-received-only group chatter does not. An empty side shows “No messages on
-this side” (a Contacts card with no DMs or mail is not hidden). Names never
-auto-merge. Accept links the left identity with `link_reason=review_accepted`.
-Reject suppresses that pair for this archive (the matcher skips `rejected`
-rows).
+`review show` (CLI and Review tab) uses the same payload: the queued pair
+(`left` / `right`) plus `sides` — one panel per live person in the exact-fold
+cluster (just the pair when folds differ or the fold is empty). Each panel
+has the display name with **where the name came from** (`Ada (WhatsApp)` /
+`Ada (Contacts)` / `Ada (Gmail)`), each evidence line, and each side’s
+message count with up to three newest sample lines (`sent_at · body_text`).
+Messages **sent** in a group count; received-only group chatter does not. An
+empty side shows “No messages on this side” (a Contacts card with no DMs or
+mail is not hidden). Names never auto-merge.
 
-Name similarity scores 0.40–0.70 go to review. An exact folded-name pair
+Accept merges the **checked** people in that cluster (Select all by default)
+into one survivor (queued `right_person_id` when that person is still live
+and checked). Unchecked people stay split. Identities move; **zero**
+`messages` rows change. A side with no platform is a leftover person with
+that name and no WhatsApp / Contacts / Gmail identity (“No source”). If the
+left identity is still unlinked, it is linked with
+`link_reason=review_accepted`. Reject does not merge; that cluster is not
+suggested again (the matcher skips `rejected` rows).
+
+Name similarity scores 0.40–0.70 go to review. An exact folded-name cluster
 (Contacts vs WhatsApp `display_name`, after leftover names are promoted) is
 score 0.70 / `exact_name_fold`. Nothing name-based auto-merges.
 A suggestion needs a **strong token** (same given name or surname, or a

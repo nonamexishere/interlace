@@ -703,8 +703,15 @@ fn print_review_show(out: &serde_json::Value) {
             );
         }
     }
-    print_review_panel("left", &out["left"]);
-    print_review_panel("right", &out["right"]);
+    let sides = out["sides"].as_array().filter(|a| !a.is_empty());
+    if let Some(sides) = sides {
+        for (i, panel) in sides.iter().enumerate() {
+            print_review_panel(&format!("side {}", i + 1), panel);
+        }
+    } else {
+        print_review_panel("left", &out["left"]);
+        print_review_panel("right", &out["right"]);
+    }
 }
 
 fn cmd_review(path: Option<PathBuf>, json: bool, cmd: ReviewCmd) -> Result<(), CliError> {
