@@ -33,8 +33,12 @@ Phase 1 target is macOS. Other OSes may compile; they are unsupported.
 
 ## Agent / pipeline contributors
 
-Humans may run `pipeline/run.sh`. Subagents communicate via files only. See
-`docs/hacking/pipeline.md`. Do not give agents a spawn-agent tool.
+Product work uses the three-role loop: **test-author → impl → reviewer**.
+The human (or the parent chat) sequences them. See
+`docs/hacking/pipeline.md` and `pipeline/prompts/`. Subagents communicate via
+files and those prompts only. Do not give agents a spawn-agent tool.
+Humans may still run `pipeline/run.sh` (it only re-checks finished spike
+stage 01).
 
 ## Commit messages
 
