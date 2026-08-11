@@ -31,7 +31,8 @@ pub use search::{
     rebuild_fts, search, turkish_fold,
 };
 pub use session::{
-    cloud_warning, init_owner_archive, read_last_path, validate_phone_region, write_last_path,
+    cloud_warning, init_owner_archive, read_last_bookmark, read_last_path, sandbox_denied_message,
+    validate_phone_region, write_last_bookmark, write_last_path,
 };
 
 /// Placeholder kept from the 0.0.1 name-squat so existing tests stay green.

@@ -62,21 +62,32 @@ python3 pipeline/tools/gate_tauri.py
 - CSP is the DESIGN string (IPC-only `connect-src`, no general `http`/`https`).
   `img-src` / `media-src` allow `cas:` for the local CAS protocol only.
 - `Interlace.entitlements`: sandbox, `allow-jit`, user-selected files,
-  **`network.client`** (WKWebView will not paint `tauri://localhost` without
-  it — measured blank `.app`). **No `network.server`.** Still no `reqwest` /
-  http plugin; CSP cannot connect to the internet.
+  **`bookmarks.app-scope`**, **`network.client`** (WKWebView will not paint
+  `tauri://localhost` without it — measured blank `.app`). **No
+  `network.server`.** Still no `reqwest` / http plugin; CSP cannot connect to
+  the internet.
+- Last folder: after a successful rfd `init` / `open`, Tauri writes
+  `last_archive_path` in `config.toml` **and** an opaque security-scoped
+  bookmark in `last-archive.bookmark` (same `INTERLACE_CONFIG_DIR`). CLI
+  `init` / `open --path` write only the path pointer — that is not enough
+  inside the sandbox. `remembered_path` resolves the bookmark with
+  `NSURLBookmarkResolutionWithSecurityScope` and
+  `startAccessingSecurityScopedResource`. Stale / failed resolve returns no
+  path (picker). No bookmark + leftover path → try the path; sandboxed
+  `.app` gets EPERM and the #137 sentence alone (no raw errno).
 - Message bodies in later PRs are text nodes only (never unsanitized HTML).
 
 ## Commands (UI1)
 
-`remembered_path`, `pick_folder` / `pick_import_path` (rfd on the main thread),
-`init`, `open`, `status`, `people`, `person_show`, `person_timeline`,
-`person_merge_cmd`, `person_unlink_cmd`, `person_undo_cmd`, `link_events`,
-`search_cmd`, `search_body`, `review_list_cmd` / `review_show_cmd` /
-`review_accept_cmd` / `review_reject_cmd`, `import_start`, `import_progress`,
-`doctor_issues_cmd`, `doctor_run_cmd` (integrity / rebuild FTS / GC CAS).
-`init` / `open` take a **local folder path** only. Session state holds
-`Archive` with `LockMode::Exclusive`. Timeline/search bodies are text nodes.
+`remembered_path` (bookmark first, else last-path pointer), `pick_folder` /
+`pick_import_path` (rfd on the main thread), `init`, `open`, `status`,
+`people`, `person_show`, `person_timeline`, `person_merge_cmd`,
+`person_unlink_cmd`, `person_undo_cmd`, `link_events`, `search_cmd`,
+`search_body`, `review_list_cmd` / `review_show_cmd` / `review_accept_cmd` /
+`review_reject_cmd`, `import_start`, `import_progress`, `doctor_issues_cmd`,
+`doctor_run_cmd` (integrity / rebuild FTS / GC CAS). `init` / `open` take a
+**local folder path** only. Session state holds `Archive` with
+`LockMode::Exclusive`. Timeline/search bodies are text nodes.
 
 ## Issue DAG
 

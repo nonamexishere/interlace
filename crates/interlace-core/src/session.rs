@@ -1,11 +1,19 @@
-//! Last-archive-path pointer + owner `init` (shared by CLI and Tauri).
+//! Last-archive-path pointer, opaque bookmark blob, owner `init` (CLI + Tauri).
 
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use crate::db::{init_archive, Archive};
 use crate::import::{normalize_email, parse_phone};
 use crate::model::CoreError;
+
+/// Exact #137 copy. Unicode ellipsis (U+2026), not three ASCII dots.
+const SANDBOX_DENIED_COPY: &str =
+    "macOS blocked that folder. Use Open existing\u{2026} once so Interlace can remember it.";
+
+/// Separate from `config.toml` so bookmark writes cannot clobber `last_archive_path`.
+const LAST_BOOKMARK_FILE: &str = "last-archive.bookmark";
 
 pub fn config_dir() -> PathBuf {
     if let Ok(p) = std::env::var("INTERLACE_CONFIG_DIR") {
@@ -34,6 +42,28 @@ pub fn read_last_path() -> Option<PathBuf> {
     v.get("last_archive_path")
         .and_then(|x| x.as_str())
         .map(PathBuf::from)
+}
+
+/// Persist an opaque security-scoped bookmark blob. Does not touch `config.toml`.
+pub fn write_last_bookmark(bytes: &[u8]) -> Result<(), CoreError> {
+    let dir = config_dir();
+    fs::create_dir_all(&dir)?;
+    fs::write(dir.join(LAST_BOOKMARK_FILE), bytes)?;
+    Ok(())
+}
+
+/// Missing file → `None`. Empty or junk bytes are still `Some` (staleness is Tauri’s job).
+pub fn read_last_bookmark() -> Option<Vec<u8>> {
+    fs::read(config_dir().join(LAST_BOOKMARK_FILE)).ok()
+}
+
+/// Map sandbox / EPERM to the #137 sentence. Other `ErrorKind`s stay `None`.
+pub fn sandbox_denied_message(err: &std::io::Error) -> Option<&'static str> {
+    if err.kind() == ErrorKind::PermissionDenied {
+        Some(SANDBOX_DENIED_COPY)
+    } else {
+        None
+    }
 }
 
 pub fn validate_phone_region(cc: &str) -> Result<String, CoreError> {
