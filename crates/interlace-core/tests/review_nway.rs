@@ -14,7 +14,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use interlace_core::db::init_archive;
 use interlace_core::import::{name_fold_join, normalize_email};
-use interlace_core::{resolve_run, review_resolve, review_show};
+use interlace_core::{resolve_run, review_resolve, review_resolve_selected, review_show};
 use rusqlite::OptionalExtension;
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -700,5 +700,36 @@ fn review_nway_two_contacts_one_wa_one_review() {
     assert_eq!(open_reviews(&arch), 1, "one review per fold, not per pair");
     let shown = show(&arch);
     assert_eq!(sides_of(&shown).len(), 3);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn review_nway_accept_subset_leaves_unchecked() {
+    let root = tmp_root();
+    let mut arch = init_archive(&root).unwrap();
+    let plant = plant_three_adas(&mut arch);
+    resolve_run(&mut arch, 0).unwrap();
+    let rid = open_review_id(&arch);
+    let shown = review_show(&arch, rid).unwrap();
+    let sides = sides_of(&shown);
+    let gmail_pid = sides
+        .iter()
+        .find(|s| platforms_of(s).iter().any(|p| p == "gmail"))
+        .and_then(|s| s["person_id"].as_i64())
+        .expect("gmail side has person_id");
+    let keep: Vec<i64> = sides
+        .iter()
+        .filter_map(|s| s["person_id"].as_i64())
+        .filter(|pid| *pid != gmail_pid)
+        .collect();
+    assert_eq!(keep.len(), 2);
+    review_resolve_selected(&mut arch, rid, true, Some(&keep)).unwrap();
+    assert_eq!(live_non_self(&arch), 2, "unchecked Gmail Ada stays live");
+    let gmail_live = live_person_for_identity(&arch, plant.gmail_iid).expect("gmail linked");
+    assert_eq!(gmail_live, gmail_pid);
+    let contacts_live = live_person_for_identity(&arch, plant.contacts_iid).expect("contacts");
+    let wa_live = live_person_for_identity(&arch, plant.wa_iid).expect("wa");
+    assert_eq!(contacts_live, wa_live);
+    assert_ne!(contacts_live, gmail_live);
     let _ = std::fs::remove_dir_all(&root);
 }

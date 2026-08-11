@@ -85,6 +85,7 @@ export type ReviewSample = {
 };
 
 export type ReviewPanel = {
+  person_id?: number | null;
   display_name: string | null;
   platforms: string[];
   message_count: number;
@@ -169,7 +170,8 @@ export const api = {
   searchBody: (messageId: number) => invoke<string>("search_body", { messageId }),
   reviewList: () => invoke<ReviewRow[]>("review_list_cmd"),
   reviewShow: (id: number) => invoke<ReviewShow>("review_show_cmd", { id }),
-  reviewAccept: (id: number) => invoke<void>("review_accept_cmd", { id }),
+  reviewAccept: (id: number, personIds?: number[]) =>
+    invoke<void>("review_accept_cmd", { id, personIds }),
   reviewReject: (id: number) => invoke<void>("review_reject_cmd", { id }),
   importStart: (args: { path: string; kind?: string | null; locale?: string | null }) =>
     invoke<void>("import_start", args),

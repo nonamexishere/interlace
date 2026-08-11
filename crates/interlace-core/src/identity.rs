@@ -125,6 +125,18 @@ pub fn review_resolve(
     review_id: i64,
     accept: bool,
 ) -> Result<(), CoreError> {
+    review_resolve_selected(archive, review_id, accept, None)
+}
+
+/// Accept only `selected` person ids (must be in the exact-fold cluster).
+/// `None` means every live person in the cluster. Fewer than two selected
+/// ids on accept is an error.
+pub fn review_resolve_selected(
+    archive: &mut Archive,
+    review_id: i64,
+    accept: bool,
+    selected: Option<&[i64]>,
+) -> Result<(), CoreError> {
     let row: (String, i64, Option<i64>, Option<i64>) = archive.conn.query_row(
         "SELECT status, left_identity_id, right_person_id, right_identity_id
          FROM merge_review_queue WHERE id = ?1",
@@ -143,8 +155,21 @@ pub fn review_resolve(
         let left_pid = live_person_of(archive, left)?;
         let right_pid = live_right_person(archive, queued_right_person, row.3)?;
         let cluster = review_cluster_person_ids(archive, left, left_pid, right_pid)?;
-        let survivor = pick_cluster_survivor(archive, queued_right_person, &cluster)?;
-        for pid in &cluster {
+        let chosen: Vec<i64> = match selected {
+            None => cluster.clone(),
+            Some(ids) => cluster
+                .iter()
+                .copied()
+                .filter(|pid| ids.contains(pid))
+                .collect(),
+        };
+        if chosen.len() < 2 {
+            return Err(CoreError::Config(
+                "select at least two people to merge".into(),
+            ));
+        }
+        let survivor = pick_cluster_survivor(archive, queued_right_person, &chosen)?;
+        for pid in &chosen {
             if *pid != survivor {
                 merge_persons(
                     archive,
@@ -255,12 +280,13 @@ pub fn review_show(archive: &Archive, id: i64) -> Result<serde_json::Value, Core
     } else {
         vec![left_id]
     };
-    let left = review_side_panel(archive, &left_ids, review["left_name"].clone())?;
+    let left = review_side_panel(archive, left_pid, &left_ids, review["left_name"].clone())?;
     let right = if let Some(pid) = review["right_person_id"].as_i64() {
         let right_ids = person_identity_ids(archive, pid)?;
-        review_side_panel(archive, &right_ids, review["right_name"].clone())?
+        review_side_panel(archive, Some(pid), &right_ids, review["right_name"].clone())?
     } else {
         serde_json::json!({
+            "person_id": null,
             "display_name": review["right_name"],
             "platforms": [],
             "message_count": 0,
@@ -462,6 +488,7 @@ fn review_side_panels(
             let name = person_display_name(archive, pid)?;
             sides.push(review_side_panel(
                 archive,
+                Some(pid),
                 &ids,
                 serde_json::Value::String(name),
             )?);
@@ -476,7 +503,7 @@ fn pick_cluster_survivor(
     cluster: &[i64],
 ) -> Result<i64, CoreError> {
     if let Some(pid) = queued_right_person {
-        if person_is_live(archive, pid)? {
+        if cluster.contains(&pid) && person_is_live(archive, pid)? {
             return Ok(pid);
         }
     }
@@ -588,12 +615,14 @@ fn person_identity_ids(archive: &Archive, person_id: i64) -> Result<Vec<i64>, Co
 /// group chatter does not count. People-list D18 is unchanged.
 fn review_side_panel(
     archive: &Archive,
+    person_id: Option<i64>,
     identity_ids: &[i64],
     display_name: serde_json::Value,
 ) -> Result<serde_json::Value, CoreError> {
     let platforms = side_platforms(archive, identity_ids)?;
     if identity_ids.is_empty() {
         return Ok(serde_json::json!({
+            "person_id": person_id,
             "display_name": display_name,
             "platforms": platforms,
             "message_count": 0,
@@ -648,6 +677,7 @@ fn review_side_panel(
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(serde_json::json!({
+        "person_id": person_id,
         "display_name": display_name,
         "platforms": platforms,
         "message_count": message_count,

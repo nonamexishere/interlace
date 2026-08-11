@@ -21,8 +21,8 @@ use interlace_core::session::{
 };
 use interlace_core::{
     open_archive, person_merge, person_undo, person_unlink, review_list, review_resolve,
-    review_show, search, Archive, CoreError, ImportOpts, ImporterRegistry, LockMode,
-    PersonMergeOpts, Platform, SearchQuery, SourceKind,
+    review_resolve_selected, review_show, search, Archive, CoreError, ImportOpts, ImporterRegistry,
+    LockMode, PersonMergeOpts, Platform, SearchQuery, SourceKind,
 };
 use tauri::http::{header, StatusCode};
 use tauri::AppHandle;
@@ -656,8 +656,18 @@ fn review_show_cmd(state: tauri::State<AppState>, id: i64) -> Result<serde_json:
 }
 
 #[tauri::command]
-fn review_accept_cmd(state: tauri::State<AppState>, id: i64) -> Result<(), String> {
-    with_arch_mut(&state, |arch| review_resolve(arch, id, true).map_err(err))
+fn review_accept_cmd(
+    state: tauri::State<AppState>,
+    id: i64,
+    person_ids: Option<Vec<i64>>,
+) -> Result<(), String> {
+    with_arch_mut(&state, |arch| {
+        match person_ids.as_deref() {
+            None => review_resolve(arch, id, true),
+            Some(ids) => review_resolve_selected(arch, id, true, Some(ids)),
+        }
+        .map_err(err)
+    })
 }
 
 #[tauri::command]

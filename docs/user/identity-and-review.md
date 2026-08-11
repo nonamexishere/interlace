@@ -65,12 +65,14 @@ Messages **sent** in a group count; received-only group chatter does not. An
 empty side shows “No messages on this side” (a Contacts card with no DMs or
 mail is not hidden). Names never auto-merge.
 
-Accept merges **every** live person with that exact folded name into one
-survivor (queued `right_person_id` when that person is still live). Identities
-move; **zero** `messages` rows change. If the left identity is still
-unlinked, it is linked with `link_reason=review_accepted`. Reject does not
-merge; that cluster is not suggested again (the matcher skips `rejected`
-rows).
+Accept merges the **checked** people in that cluster (Select all by default)
+into one survivor (queued `right_person_id` when that person is still live
+and checked). Unchecked people stay split. Identities move; **zero**
+`messages` rows change. A side with no platform is a leftover person with
+that name and no WhatsApp / Contacts / Gmail identity (“No source”). If the
+left identity is still unlinked, it is linked with
+`link_reason=review_accepted`. Reject does not merge; that cluster is not
+suggested again (the matcher skips `rejected` rows).
 
 Name similarity scores 0.40–0.70 go to review. An exact folded-name cluster
 (Contacts vs WhatsApp `display_name`, after leftover names are promoted) is
