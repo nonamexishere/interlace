@@ -1,0 +1,131 @@
+{
+  "stage": "03-test-author",
+  "cases": [
+    {
+      "id": "CAS1",
+      "file": "crates/interlace-core/tests/cas.rs",
+      "asserts": "cas_put/get same bytes → same 64-hex hash; second put is idempotent (one cas_blobs row)",
+      "source_spec_section": "DESIGN.md § Attachment CAS layout / Variant matrix CAS1"
+    },
+    {
+      "id": "CAS2",
+      "file": "crates/interlace-core/tests/cas.rs",
+      "asserts": "zip-slip paths (../, absolute, drive letter, ~, foo/../../) rejected; normal media names accepted",
+      "source_spec_section": "DESIGN.md § Attachment CAS layout (zip-slip) / Variant matrix CAS2"
+    },
+    {
+      "id": "CAS3",
+      "file": "crates/interlace-core/tests/cas.rs",
+      "asserts": "doctor --gc-cas deletes blob iff not referenced by attachments/photo_cas_hash",
+      "source_spec_section": "DESIGN.md § Attachment CAS layout (GC) / Variant matrix CAS3"
+    },
+    {
+      "id": "W1",
+      "file": "crates/interlace-core/tests/whatsapp.rs",
+      "asserts": "iOS en-US no-media DM inserts expected rows; kind=dm; reimport is skipped_dupes only",
+      "source_spec_section": "DESIGN.md § WhatsApp parser / Variant matrix W1"
+    },
+    {
+      "id": "W2",
+      "file": "crates/interlace-core/tests/whatsapp.rs",
+      "asserts": "iOS tr-TR with-media group of 8 stores media; kind=group",
+      "source_spec_section": "DESIGN.md § WhatsApp parser / Variant matrix W2"
+    },
+    {
+      "id": "W3",
+      "file": "crates/interlace-core/tests/whatsapp.rs",
+      "asserts": "Android de-DE with-media stores attachments (CAS)",
+      "source_spec_section": "DESIGN.md § WhatsApp parser / Variant matrix W3"
+    },
+    {
+      "id": "W4",
+      "file": "crates/interlace-core/tests/whatsapp.rs",
+      "asserts": "Android pt-BR no-media: system rows + multiline continuation",
+      "source_spec_section": "DESIGN.md § WhatsApp parser / Variant matrix W4"
+    },
+    {
+      "id": "M1",
+      "file": "crates/interlace-core/tests/gmail.rs",
+      "asserts": "mboxrd From-escaped body unescapes to a single From; no leftover >From",
+      "source_spec_section": "DESIGN.md § Gmail mbox + Takeout / Variant matrix M1"
+    },
+    {
+      "id": "M2",
+      "file": "crates/interlace-core/tests/gmail.rs",
+      "asserts": "messages without Message-ID still persist; gmail-hash and Message-ID keys both used",
+      "source_spec_section": "DESIGN.md § Gmail mbox + Takeout / Variant matrix M2"
+    },
+    {
+      "id": "M3",
+      "file": "crates/interlace-core/tests/gmail.rs",
+      "asserts": "mixed charsets UTF-8 + ISO-8859-9 + windows-1254 each yield a body",
+      "source_spec_section": "DESIGN.md § Gmail mbox + Takeout / Variant matrix M3"
+    },
+    {
+      "id": "C1",
+      "file": "crates/interlace-core/tests/gmail.rs",
+      "asserts": "vCard 3.0 multi TEL + EMAIL per card persisted",
+      "source_spec_section": "DESIGN.md § Contacts vCard / CSV / Variant matrix C1"
+    },
+    {
+      "id": "I1",
+      "file": "crates/interlace-core/tests/identity.rs",
+      "asserts": "same E.164 on WA + Contacts → auto-merge to one live person",
+      "source_spec_section": "DESIGN.md § Exact auto-merge rule / Variant matrix I1"
+    },
+    {
+      "id": "I2",
+      "file": "crates/interlace-core/tests/identity.rs",
+      "asserts": "same display name only → review queue, not auto-link onto the vCard person",
+      "source_spec_section": "DESIGN.md § Exact auto-merge rule (never name) / Variant matrix I2"
+    },
+    {
+      "id": "I3",
+      "file": "crates/interlace-core/tests/identity.rs",
+      "asserts": "same phone, two cards, different names → review, no auto-link",
+      "source_spec_section": "DESIGN.md § Exact auto-merge rule A.4 conflict / Variant matrix I3"
+    },
+    {
+      "id": "I4",
+      "file": "crates/interlace-core/tests/identity.rs",
+      "asserts": "person_undo leaves messages.sender_identity_id unchanged",
+      "source_spec_section": "DESIGN.md § Undo merge / Variant matrix I4"
+    },
+    {
+      "id": "I5",
+      "file": "crates/interlace-core/tests/identity.rs",
+      "asserts": "WA-then-Contacts same E.164 → one live person, zero unresolved exact-phone review",
+      "source_spec_section": "DESIGN.md § Exact auto-merge B (WA-first) / Variant matrix I5"
+    },
+    {
+      "id": "I6",
+      "file": "crates/interlace-core/tests/identity.rs",
+      "asserts": "Gmail +tag / dots / googlemail → one person (D25)",
+      "source_spec_section": "DESIGN.md D25 / Variant matrix I6"
+    },
+    {
+      "id": "I6b",
+      "file": "crates/interlace-core/tests/identity.rs",
+      "asserts": "corp.com +tag does not auto-merge (two live persons)",
+      "source_spec_section": "DESIGN.md D25 non-Gmail / Variant matrix I6b"
+    },
+    {
+      "id": "S1",
+      "file": "crates/interlace-core/tests/search.rs",
+      "asserts": "search istanbul hits İstanbul",
+      "source_spec_section": "DESIGN.md § Multilingual / Turkish strategy / Variant matrix S1"
+    },
+    {
+      "id": "S2",
+      "file": "crates/interlace-core/tests/search.rs",
+      "asserts": "search ıslak hits ISLAK",
+      "source_spec_section": "DESIGN.md § Multilingual / Turkish strategy / Variant matrix S2"
+    },
+    {
+      "id": "S3",
+      "file": "crates/interlace-core/tests/search.rs",
+      "asserts": "search islak hits ISLAK via ascii fold",
+      "source_spec_section": "DESIGN.md § Multilingual / Turkish strategy / Variant matrix S3"
+    }
+  ]
+}
