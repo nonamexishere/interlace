@@ -39,7 +39,7 @@ mod macos {
     use objc2::rc::Retained;
     use objc2::runtime::Bool;
     use objc2_foundation::{
-        NSData, NSString, NSURL, NSURLBookmarkCreationOptions, NSURLBookmarkResolutionOptions,
+        NSData, NSString, NSURLBookmarkCreationOptions, NSURLBookmarkResolutionOptions, NSURL,
     };
 
     /// Kept alive so `startAccessingSecurityScopedResource` stays valid.
