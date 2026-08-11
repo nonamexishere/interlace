@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use interlace_core::db::init_archive;
-use interlace_core::import::normalize_email;
+use interlace_core::import::{name_fold_join, normalize_email};
 use interlace_core::{person_merge, person_undo, resolve_run, PersonMergeOpts};
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -131,6 +131,51 @@ fn live_persons_for(arch: &interlace_core::db::Archive, kind: &str, norm: &str) 
             |r| r.get(0),
         )
         .unwrap()
+}
+
+/// Already-linked WhatsApp `display_name` person (no parser).
+fn persist_wa_display_person(
+    arch: &interlace_core::db::Archive,
+    display: &str,
+    norm: &str,
+) -> (i64, i64) {
+    let iid = insert_ident(
+        arch,
+        "whatsapp",
+        "display_name",
+        display,
+        norm,
+        Some(display),
+    );
+    arch.conn
+        .execute(
+            "INSERT INTO persons(display_name, is_self) VALUES (?1, 0)",
+            [display],
+        )
+        .unwrap();
+    let pid = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
+             VALUES (?1, ?2, 'manual', 1.0, 'user')",
+            rusqlite::params![pid, iid],
+        )
+        .unwrap();
+    (pid, iid)
+}
+
+fn live_non_self(arch: &interlace_core::db::Archive) -> i64 {
+    count(
+        arch,
+        "SELECT COUNT(*) FROM persons WHERE tombstoned_at IS NULL AND is_self = 0",
+    )
+}
+
+fn open_reviews(arch: &interlace_core::db::Archive) -> i64 {
+    count(
+        arch,
+        "SELECT COUNT(*) FROM merge_review_queue WHERE status='open'",
+    )
 }
 
 #[test]
@@ -589,6 +634,87 @@ fn identity_surname_typo_still_enqueues_review() {
                 "SELECT COUNT(*) FROM merge_review_queue WHERE status='open'"
             ) >= 1,
         "one-letter surname typo must still review"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn identity_exact_folded_name_contacts_and_wa_persons_enqueue_review() {
+    let root = tmp_root();
+    let mut arch = init_archive(&root).unwrap();
+    persist_card(&mut arch, "card-ada", "Ada", Some("+905321110100"), None);
+    let (wa_pid, _) = persist_wa_display_person(&arch, "Ada", &name_fold_join("Ada"));
+    let contacts_pid: i64 = arch
+        .conn
+        .query_row(
+            "SELECT p.id FROM persons p
+             JOIN person_identities pi ON pi.person_id = p.id
+             JOIN identities i ON i.id = pi.identity_id
+             WHERE i.platform = 'contacts' AND i.kind = 'phone'
+               AND p.tombstoned_at IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_ne!(wa_pid, contacts_pid);
+    let stats = resolve_run(&mut arch, 0).unwrap();
+    assert_eq!(
+        live_non_self(&arch),
+        2,
+        "exact folded name must not auto-merge"
+    );
+    assert_eq!(stats.auto_person_merges, 0, "never auto-merge on name");
+    assert!(
+        stats.review_enqueued >= 1,
+        "exact name_fold_join Contacts+WA must enqueue review"
+    );
+    assert_eq!(open_reviews(&arch), 1, "one open review row");
+    let still_contacts: i64 = arch
+        .conn
+        .query_row(
+            "SELECT p.id FROM persons p
+             JOIN person_identities pi ON pi.person_id = p.id
+             JOIN identities i ON i.id = pi.identity_id
+             WHERE i.platform = 'contacts' AND i.kind = 'phone'
+               AND p.tombstoned_at IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let still_wa: i64 = arch
+        .conn
+        .query_row(
+            "SELECT p.id FROM persons p
+             JOIN person_identities pi ON pi.person_id = p.id
+             JOIN identities i ON i.id = pi.identity_id
+             WHERE i.platform = 'whatsapp' AND i.kind = 'display_name'
+               AND p.tombstoned_at IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(still_contacts, contacts_pid);
+    assert_eq!(still_wa, wa_pid);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn identity_ada_contacts_vs_ali_wa_display_name_no_review() {
+    let root = tmp_root();
+    let mut arch = init_archive(&root).unwrap();
+    assert_ne!(name_fold_join("Ada"), name_fold_join("Ali"));
+    persist_card(&mut arch, "card-ada", "Ada", Some("+905321110200"), None);
+    persist_wa_display_person(&arch, "Ali", &name_fold_join("Ali"));
+    let stats = resolve_run(&mut arch, 0).unwrap();
+    assert_eq!(live_non_self(&arch), 2);
+    assert_eq!(
+        stats.review_enqueued, 0,
+        "Ada contacts vs Ali WA display_name must not enqueue review"
+    );
+    assert_eq!(
+        open_reviews(&arch),
+        0,
+        "no new open review for the Ada/Ali pair"
     );
     let _ = std::fs::remove_dir_all(&root);
 }
