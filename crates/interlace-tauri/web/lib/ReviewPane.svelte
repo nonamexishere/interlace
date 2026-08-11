@@ -114,14 +114,22 @@
           <li>{e.type} · {e.score} · {e.detail}</li>
         {/each}
       </ul>
-      <div>
-        <p class="mb-1 text-xs font-medium">Sample messages</p>
-        {#each detail.samples as s}
-          <p class="mb-2 whitespace-pre-wrap text-sm">{s.sent_at || "no date"} · {s.body_text}</p>
+      <div class="grid grid-cols-2 gap-3">
+        {#each [detail.left, detail.right] as panel}
+          <div class="min-w-0">
+            <p class="mb-1 text-xs font-medium">{panel.display_name ?? "—"}</p>
+            <p class="mb-1 text-xs text-muted-foreground">{panel.message_count}</p>
+            {#if panel.samples.length === 0}
+              <p class="text-sm text-muted-foreground">No messages on this side</p>
+            {:else}
+              {#each panel.samples as s}
+                <p class="mb-2 whitespace-pre-wrap text-sm">
+                  {s.sent_at || "no date"} · {s.body_text}
+                </p>
+              {/each}
+            {/if}
+          </div>
         {/each}
-        {#if detail.samples.length === 0}
-          <p class="text-sm text-muted-foreground">No sample messages.</p>
-        {/if}
       </div>
       <div class="flex gap-2">
         <Button onclick={accept}>Accept</Button>

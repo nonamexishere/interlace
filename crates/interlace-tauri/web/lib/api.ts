@@ -79,10 +79,22 @@ export type ReviewRow = {
   right_name?: string | null;
 };
 
+export type ReviewSample = {
+  sent_at?: string | null;
+  body_text: string;
+};
+
+export type ReviewPanel = {
+  display_name: string | null;
+  message_count: number;
+  samples: ReviewSample[];
+};
+
 export type ReviewShow = {
   review: ReviewRow & { status: string };
   evidence: { type: string; score: number; detail: string }[];
-  samples: { sent_at?: string | null; body_text: string }[];
+  left: ReviewPanel;
+  right: ReviewPanel;
 };
 
 export type ImportProgress = {
