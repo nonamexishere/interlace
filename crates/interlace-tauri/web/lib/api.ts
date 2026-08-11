@@ -96,6 +96,7 @@ export type ReviewShow = {
   evidence: { type: string; score: number; detail: string }[];
   left: ReviewPanel;
   right: ReviewPanel;
+  sides?: ReviewPanel[];
 };
 
 export type ImportProgress = {

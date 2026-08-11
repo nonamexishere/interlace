@@ -139,31 +139,26 @@ pub fn review_resolve(
     }
     if accept {
         let left = row.1;
-        let person_id = if let Some(pid) = row.2 {
-            pid
-        } else if let Some(rid) = row.3 {
-            live_person_of(archive, rid)?
-                .ok_or_else(|| CoreError::Config("review right identity has no person".into()))?
-        } else {
-            return Err(CoreError::Config("review has no right side".into()));
-        };
-        if live_person_of(archive, left)?.is_some() {
-            // already linked; merge persons if different
-            if let Some(lp) = live_person_of(archive, left)? {
-                if lp != person_id {
-                    merge_persons(
-                        archive,
-                        lp,
-                        person_id,
-                        Some(person_id.min(lp)),
-                        "user",
-                        "manual",
-                        1.0,
-                    )?;
-                }
+        let queued_right_person = row.2;
+        let left_pid = live_person_of(archive, left)?;
+        let right_pid = live_right_person(archive, queued_right_person, row.3)?;
+        let cluster = review_cluster_person_ids(archive, left, left_pid, right_pid)?;
+        let survivor = pick_cluster_survivor(archive, queued_right_person, &cluster)?;
+        for pid in &cluster {
+            if *pid != survivor {
+                merge_persons(
+                    archive,
+                    *pid,
+                    survivor,
+                    Some(survivor),
+                    "user",
+                    "manual",
+                    1.0,
+                )?;
             }
-        } else {
-            link_identity(archive, person_id, left, "review_accepted", 0.90, "user")?;
+        }
+        if live_person_of(archive, left)?.is_none() {
+            link_identity(archive, survivor, left, "review_accepted", 0.90, "user")?;
         }
         archive.conn.execute(
             "UPDATE merge_review_queue SET status = 'accepted',
@@ -172,6 +167,7 @@ pub fn review_resolve(
              WHERE id = ?1",
             [review_id],
         )?;
+        close_sibling_fold_reviews(archive, review_id, left, left_pid, right_pid, "accepted")?;
     } else {
         archive.conn.execute(
             "UPDATE merge_review_queue SET status = 'rejected',
@@ -180,6 +176,10 @@ pub fn review_resolve(
              WHERE id = ?1",
             [review_id],
         )?;
+        let left = row.1;
+        let left_pid = live_person_of(archive, left)?;
+        let right_pid = live_right_person(archive, row.2, row.3)?;
+        close_sibling_fold_reviews(archive, review_id, left, left_pid, right_pid, "rejected")?;
     }
     Ok(())
 }
@@ -249,7 +249,8 @@ pub fn review_show(archive: &Archive, id: i64) -> Result<serde_json::Value, Core
         })?
         .collect::<Result<Vec<_>, _>>()?;
     let left_id = review["left_identity_id"].as_i64().unwrap_or(0);
-    let left_ids = if let Some(pid) = live_person_of(archive, left_id)? {
+    let left_pid = live_person_of(archive, left_id)?;
+    let left_ids = if let Some(pid) = left_pid {
         person_identity_ids(archive, pid)?
     } else {
         vec![left_id]
@@ -266,12 +267,312 @@ pub fn review_show(archive: &Archive, id: i64) -> Result<serde_json::Value, Core
             "samples": [],
         })
     };
+    let right_pid = live_right_person(
+        archive,
+        review["right_person_id"].as_i64(),
+        review["right_identity_id"].as_i64(),
+    )?;
+    let sides = review_side_panels(archive, left_id, left_pid, right_pid, &left, &right)?;
     Ok(serde_json::json!({
         "review": review,
         "evidence": evidence,
         "left": left,
         "right": right,
+        "sides": sides,
     }))
+}
+
+/// Shared fold of the queued pair, if both sides have the same non-empty
+/// `name_fold_join`. Fuzzy / empty → `None` (cluster is just the pair).
+fn review_pair_fold(
+    archive: &Archive,
+    left_identity_id: i64,
+    left_pid: Option<i64>,
+    right_pid: Option<i64>,
+) -> Result<Option<String>, CoreError> {
+    let left_fold = if let Some(pid) = left_pid {
+        person_name_fold(archive, pid)?
+    } else {
+        identity_name_fold(archive, left_identity_id)?
+    };
+    let right_fold = match right_pid {
+        Some(pid) => person_name_fold(archive, pid)?,
+        None => String::new(),
+    };
+    if left_fold.is_empty() || left_fold != right_fold {
+        Ok(None)
+    } else {
+        Ok(Some(left_fold))
+    }
+}
+
+/// Fold of a queued pair from stored ids (works after a person is tombstoned).
+fn review_queued_fold(
+    archive: &Archive,
+    left_identity_id: i64,
+    right_person: Option<i64>,
+    right_ident: Option<i64>,
+) -> Result<Option<String>, CoreError> {
+    let left_fold = identity_name_fold(archive, left_identity_id)?;
+    let right_fold = if let Some(pid) = right_person {
+        person_name_fold(archive, pid)?
+    } else if let Some(rid) = right_ident {
+        identity_name_fold(archive, rid)?
+    } else {
+        String::new()
+    };
+    if left_fold.is_empty() || left_fold != right_fold {
+        Ok(None)
+    } else {
+        Ok(Some(left_fold))
+    }
+}
+
+fn fold_review_suppressed(archive: &Archive, fold: &str) -> Result<bool, CoreError> {
+    if fold.is_empty() {
+        return Ok(false);
+    }
+    let rows: Vec<(i64, Option<i64>, Option<i64>)> = {
+        let mut stmt = archive.conn.prepare(
+            "SELECT left_identity_id, right_person_id, right_identity_id
+             FROM merge_review_queue WHERE status IN ('open', 'rejected')",
+        )?;
+        let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        it.collect::<Result<Vec<_>, _>>()?
+    };
+    for (left, right_person, right_ident) in rows {
+        if review_queued_fold(archive, left, right_person, right_ident)?.as_deref() == Some(fold) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn close_sibling_fold_reviews(
+    archive: &Archive,
+    keep_review_id: i64,
+    left: i64,
+    left_pid: Option<i64>,
+    right_pid: Option<i64>,
+    status: &str,
+) -> Result<(), CoreError> {
+    let fold = match review_pair_fold(archive, left, left_pid, right_pid)? {
+        Some(f) => f,
+        None => match review_queued_fold(archive, left, right_pid, None)? {
+            Some(f) => f,
+            None => return Ok(()),
+        },
+    };
+    let open: Vec<(i64, i64, Option<i64>, Option<i64>)> = {
+        let mut stmt = archive.conn.prepare(
+            "SELECT id, left_identity_id, right_person_id, right_identity_id
+             FROM merge_review_queue WHERE status = 'open' AND id != ?1",
+        )?;
+        let it = stmt.query_map([keep_review_id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })?;
+        it.collect::<Result<Vec<_>, _>>()?
+    };
+    for (oid, oleft, oright_person, oright_ident) in open {
+        if review_queued_fold(archive, oleft, oright_person, oright_ident)?.as_deref()
+            == Some(fold.as_str())
+        {
+            archive.conn.execute(
+                "UPDATE merge_review_queue SET status = ?1,
+                        resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+                        resolved_by = 'user'
+                 WHERE id = ?2",
+                rusqlite::params![status, oid],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// Exact-fold cluster for Review: live non-self persons sharing the pair's
+/// `name_fold_join`. Different or empty folds → just the queued pair.
+fn review_cluster_person_ids(
+    archive: &Archive,
+    left_identity_id: i64,
+    left_pid: Option<i64>,
+    right_pid: Option<i64>,
+) -> Result<Vec<i64>, CoreError> {
+    let mut ids = Vec::new();
+    if let Some(fold) = review_pair_fold(archive, left_identity_id, left_pid, right_pid)? {
+        let persons: Vec<(i64, String)> = {
+            let mut stmt = archive.conn.prepare(
+                "SELECT id, display_name FROM persons
+                 WHERE tombstoned_at IS NULL AND is_self = 0",
+            )?;
+            let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            it.collect::<Result<Vec<_>, _>>()?
+        };
+        for (pid, name) in persons {
+            let f = name_fold_join(&name);
+            if f.is_empty() {
+                continue;
+            }
+            if f == fold {
+                ids.push(pid);
+            }
+        }
+    }
+    if let Some(pid) = left_pid {
+        if person_is_live(archive, pid)? && !ids.contains(&pid) {
+            ids.push(pid);
+        }
+    }
+    if let Some(pid) = right_pid {
+        if person_is_live(archive, pid)? && !ids.contains(&pid) {
+            ids.push(pid);
+        }
+    }
+    let mut ranked: Vec<(u8, i64)> = Vec::with_capacity(ids.len());
+    for pid in ids {
+        ranked.push((person_platform_rank(archive, pid)?, pid));
+    }
+    ranked.sort_unstable();
+    Ok(ranked.into_iter().map(|(_, pid)| pid).collect())
+}
+
+fn review_side_panels(
+    archive: &Archive,
+    left_identity_id: i64,
+    left_pid: Option<i64>,
+    right_pid: Option<i64>,
+    left: &serde_json::Value,
+    right: &serde_json::Value,
+) -> Result<Vec<serde_json::Value>, CoreError> {
+    // Fuzzy name_similarity or empty fold: sides is just the queued pair.
+    if review_pair_fold(archive, left_identity_id, left_pid, right_pid)?.is_none() {
+        return Ok(vec![left.clone(), right.clone()]);
+    }
+    let cluster = review_cluster_person_ids(archive, left_identity_id, left_pid, right_pid)?;
+    if cluster.is_empty() {
+        return Ok(vec![left.clone(), right.clone()]);
+    }
+    let mut sides = Vec::with_capacity(cluster.len());
+    for pid in cluster {
+        if Some(pid) == left_pid {
+            sides.push(left.clone());
+        } else if Some(pid) == right_pid {
+            sides.push(right.clone());
+        } else {
+            let ids = person_identity_ids(archive, pid)?;
+            let name = person_display_name(archive, pid)?;
+            sides.push(review_side_panel(
+                archive,
+                &ids,
+                serde_json::Value::String(name),
+            )?);
+        }
+    }
+    Ok(sides)
+}
+
+fn pick_cluster_survivor(
+    archive: &Archive,
+    queued_right_person: Option<i64>,
+    cluster: &[i64],
+) -> Result<i64, CoreError> {
+    if let Some(pid) = queued_right_person {
+        if person_is_live(archive, pid)? {
+            return Ok(pid);
+        }
+    }
+    let mut contacts = Vec::new();
+    for pid in cluster {
+        if person_is_contacts_or_vcard(archive, *pid)? {
+            contacts.push(*pid);
+        }
+    }
+    if contacts.len() == 1 {
+        return Ok(contacts[0]);
+    }
+    cluster
+        .iter()
+        .copied()
+        .min()
+        .ok_or_else(|| CoreError::Config("review has no right side".into()))
+}
+
+fn live_right_person(
+    archive: &Archive,
+    queued_right_person: Option<i64>,
+    queued_right_ident: Option<i64>,
+) -> Result<Option<i64>, CoreError> {
+    if let Some(pid) = queued_right_person {
+        if person_is_live(archive, pid)? {
+            return Ok(Some(pid));
+        }
+    }
+    if let Some(rid) = queued_right_ident {
+        return live_person_of(archive, rid);
+    }
+    Ok(None)
+}
+
+fn person_is_live(archive: &Archive, person_id: i64) -> Result<bool, CoreError> {
+    let tombstoned: Option<Option<String>> = archive
+        .conn
+        .query_row(
+            "SELECT tombstoned_at FROM persons WHERE id = ?1",
+            [person_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(matches!(tombstoned, Some(None)))
+}
+
+fn person_display_name(archive: &Archive, person_id: i64) -> Result<String, CoreError> {
+    archive
+        .conn
+        .query_row(
+            "SELECT display_name FROM persons WHERE id = ?1",
+            [person_id],
+            |r| r.get(0),
+        )
+        .map_err(Into::into)
+}
+
+fn person_name_fold(archive: &Archive, person_id: i64) -> Result<String, CoreError> {
+    Ok(name_fold_join(&person_display_name(archive, person_id)?))
+}
+
+fn identity_name_fold(archive: &Archive, identity_id: i64) -> Result<String, CoreError> {
+    let name: String = archive.conn.query_row(
+        "SELECT COALESCE(display_name, value_raw) FROM identities WHERE id = ?1",
+        [identity_id],
+        |r| r.get(0),
+    )?;
+    Ok(name_fold_join(&name))
+}
+
+fn person_is_contacts_or_vcard(archive: &Archive, person_id: i64) -> Result<bool, CoreError> {
+    let n: i64 = archive.conn.query_row(
+        "SELECT COUNT(*) FROM person_identities pi
+         LEFT JOIN identities i ON i.id = pi.identity_id
+         WHERE pi.person_id = ?1
+           AND (i.platform = 'contacts' OR pi.link_reason = 'takeout_vcard')",
+        [person_id],
+        |r| r.get(0),
+    )?;
+    Ok(n > 0)
+}
+
+fn person_platform_rank(archive: &Archive, person_id: i64) -> Result<u8, CoreError> {
+    if person_is_contacts_or_vcard(archive, person_id)? {
+        return Ok(0);
+    }
+    let ids = person_identity_ids(archive, person_id)?;
+    let plats = side_platforms(archive, &ids)?;
+    if plats.iter().any(|p| p == "whatsapp") {
+        Ok(1)
+    } else if plats.iter().any(|p| p == "gmail") {
+        Ok(2)
+    } else {
+        Ok(3)
+    }
 }
 
 fn person_identity_ids(archive: &Archive, person_id: i64) -> Result<Vec<i64>, CoreError> {
@@ -633,39 +934,39 @@ fn enqueue_exact_name_fold_reviews(
         let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
         it.collect::<Result<Vec<_>, _>>()?
     };
-    let mut seen_pairs: HashSet<(i64, i64)> = HashSet::new();
+    let mut seen_folds: HashSet<String> = HashSet::new();
     for (wa_pid, wa_iid, wa_name) in &wa {
         let wa_fold = name_fold_join(wa_name);
         if wa_fold.is_empty() {
             continue;
         }
-        for (c_pid, c_name) in &contacts {
-            if c_pid == wa_pid {
-                continue;
-            }
-            if name_fold_join(c_name) != wa_fold {
-                continue;
-            }
-            let key = (*wa_pid.min(c_pid), *wa_pid.max(c_pid));
-            if !seen_pairs.insert(key) {
-                continue;
-            }
-            enqueue_review(
-                archive,
-                stats,
-                *wa_iid,
-                Some(*c_pid),
-                None,
-                0.70,
-                "exact_name_fold",
-                "name_similarity",
-                serde_json::json!({
-                    "fold": wa_fold,
-                    "left_person": wa_pid,
-                    "right_person": c_pid,
-                }),
-            )?;
+        if !seen_folds.insert(wa_fold.clone()) {
+            continue;
         }
+        if fold_review_suppressed(archive, &wa_fold)? {
+            continue;
+        }
+        let Some((c_pid, _)) = contacts
+            .iter()
+            .find(|(c_pid, c_name)| *c_pid != *wa_pid && name_fold_join(c_name) == wa_fold)
+        else {
+            continue;
+        };
+        enqueue_review(
+            archive,
+            stats,
+            *wa_iid,
+            Some(*c_pid),
+            None,
+            0.70,
+            "exact_name_fold",
+            "name_similarity",
+            serde_json::json!({
+                "fold": wa_fold,
+                "left_person": wa_pid,
+                "right_person": c_pid,
+            }),
+        )?;
     }
     Ok(())
 }

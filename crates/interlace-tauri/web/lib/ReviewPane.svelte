@@ -52,7 +52,8 @@
   function accept() {
     if (!detail) return;
     const id = detail.review.id;
-    ask(`Accept review ${id}?`, "Links the name-only identity onto the suggested person. Messages stay put.", async () => {
+    const n = detail.sides && detail.sides.length > 0 ? detail.sides.length : 2;
+    ask(`Accept review ${id}?`, `Merge ${n} people into one. Messages stay put.`, async () => {
       await api.reviewAccept(id);
       await onChanged();
       await reload();
@@ -62,7 +63,7 @@
   function reject() {
     if (!detail) return;
     const id = detail.review.id;
-    ask(`Reject review ${id}?`, "This pair will not be suggested again.", async () => {
+    ask(`Reject review ${id}?`, "These people will not be suggested again.", async () => {
       await api.reviewReject(id);
       await onChanged();
       await reload();
@@ -136,7 +137,7 @@
         {/each}
       </ul>
       <div class="grid grid-cols-2 gap-3">
-        {#each [detail.left, detail.right] as panel}
+        {#each detail.sides && detail.sides.length > 0 ? detail.sides : [detail.left, detail.right] as panel}
           <div class="min-w-0">
             <p class="mb-1 text-xs font-medium">{panelTitle(panel)}</p>
             <p class="mb-1 text-xs text-muted-foreground">{countLabel(panel.message_count)}</p>
