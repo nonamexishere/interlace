@@ -261,6 +261,7 @@ pub fn review_show(archive: &Archive, id: i64) -> Result<serde_json::Value, Core
     } else {
         serde_json::json!({
             "display_name": review["right_name"],
+            "platforms": [],
             "message_count": 0,
             "samples": [],
         })
@@ -281,16 +282,19 @@ fn person_identity_ids(archive: &Archive, person_id: i64) -> Result<Vec<i64>, Co
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
-/// D18 membership with groups off: sent by a side identity, or a `dm` /
-/// `email_thread` where a side identity is a participant. Groups never count.
+/// Review samples: sent by a side identity (including group sends), or a
+/// `dm` / `email_thread` where a side identity is a participant. Received-only
+/// group chatter does not count. People-list D18 is unchanged.
 fn review_side_panel(
     archive: &Archive,
     identity_ids: &[i64],
     display_name: serde_json::Value,
 ) -> Result<serde_json::Value, CoreError> {
+    let platforms = side_platforms(archive, identity_ids)?;
     if identity_ids.is_empty() {
         return Ok(serde_json::json!({
             "display_name": display_name,
+            "platforms": platforms,
             "message_count": 0,
             "samples": [],
         }));
@@ -300,11 +304,13 @@ fn review_side_panel(
         .map(|_| "?")
         .collect::<Vec<_>>()
         .join(",");
+    // Sent-by (any kind, including group) or participant of dm/email_thread.
+    // Received-only group chatter stays out; people-list D18 is unchanged.
     let filter = format!(
-        "c.kind IN ('dm', 'email_thread')
-         AND (
-                m.sender_identity_id IN ({placeholders})
-             OR EXISTS (
+        "m.sender_identity_id IN ({placeholders})
+         OR (
+                c.kind IN ('dm', 'email_thread')
+            AND EXISTS (
                     SELECT 1 FROM conversation_participants cp
                     WHERE cp.conversation_id = m.conversation_id
                       AND cp.identity_id IN ({placeholders})
@@ -342,9 +348,33 @@ fn review_side_panel(
         .collect::<Result<Vec<_>, _>>()?;
     Ok(serde_json::json!({
         "display_name": display_name,
+        "platforms": platforms,
         "message_count": message_count,
         "samples": samples,
     }))
+}
+
+fn side_platforms(archive: &Archive, identity_ids: &[i64]) -> Result<Vec<String>, CoreError> {
+    if identity_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = identity_ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
+    let mut stmt = archive.conn.prepare(&format!(
+        "SELECT DISTINCT platform FROM identities WHERE id IN ({placeholders})
+         ORDER BY CASE platform
+            WHEN 'whatsapp' THEN 0
+            WHEN 'gmail' THEN 1
+            WHEN 'contacts' THEN 2
+            WHEN 'owner' THEN 3
+            ELSE 4
+         END, platform"
+    ))?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(identity_ids), |r| r.get(0))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
 fn attach_high_conf(archive: &Archive, stats: &mut ImportStats) -> Result<(), CoreError> {

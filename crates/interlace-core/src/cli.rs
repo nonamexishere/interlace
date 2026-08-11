@@ -15,8 +15,9 @@ use crate::db::{open_archive, LockMode};
 use crate::import::ImporterRegistry;
 use crate::session::{init_owner_archive, read_last_path, write_last_path};
 use crate::{
-    person_list, person_merge, person_timeline, person_undo, person_unlink, review_resolve, search,
-    CoreError, ImportOpts, ImportStats, PersonMergeOpts, Platform, SearchQuery, SourceKind,
+    person_list, person_merge, person_timeline, person_undo, person_unlink, review_resolve,
+    review_show, search, CoreError, ImportOpts, ImportStats, PersonMergeOpts, Platform,
+    SearchQuery, SourceKind,
 };
 
 /// Local-first archive that unifies conversations across platforms.
@@ -639,6 +640,73 @@ fn cmd_person(
     Ok(())
 }
 
+fn platform_label(p: &str) -> &str {
+    match p {
+        "whatsapp" => "WhatsApp",
+        "gmail" => "Gmail",
+        "contacts" => "Contacts",
+        "owner" => "Me",
+        other => other,
+    }
+}
+
+fn print_review_panel(label: &str, panel: &serde_json::Value) {
+    let name = panel["display_name"].as_str().unwrap_or("—");
+    let plats: Vec<&str> = panel["platforms"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(platform_label))
+                .collect()
+        })
+        .unwrap_or_default();
+    let title = if plats.is_empty() {
+        name.to_string()
+    } else {
+        format!("{name} ({})", plats.join(", "))
+    };
+    let count = panel["message_count"].as_i64().unwrap_or(0);
+    println!("{label}: {title}");
+    println!(
+        "  {} {}",
+        count,
+        if count == 1 { "message" } else { "messages" }
+    );
+    let samples = panel["samples"].as_array();
+    if samples.map(|s| s.is_empty()).unwrap_or(true) {
+        println!("  No messages on this side");
+        return;
+    }
+    for s in samples.unwrap() {
+        let at = s["sent_at"].as_str().unwrap_or("no date");
+        let body = s["body_text"].as_str().unwrap_or("");
+        println!("  {at} · {body}");
+    }
+}
+
+fn print_review_show(out: &serde_json::Value) {
+    let rev = &out["review"];
+    println!(
+        "id={} status={} score={} {}",
+        rev["id"],
+        rev["status"].as_str().unwrap_or(""),
+        rev["score"],
+        rev["reason"].as_str().unwrap_or("")
+    );
+    if let Some(ev) = out["evidence"].as_array() {
+        for e in ev {
+            println!(
+                "  {} · {} · {}",
+                e["type"].as_str().unwrap_or(""),
+                e["score"],
+                e["detail"].as_str().unwrap_or("")
+            );
+        }
+    }
+    print_review_panel("left", &out["left"]);
+    print_review_panel("right", &out["right"]);
+}
+
 fn cmd_review(path: Option<PathBuf>, json: bool, cmd: ReviewCmd) -> Result<(), CliError> {
     match cmd {
         ReviewCmd::List => {
@@ -677,38 +745,11 @@ fn cmd_review(path: Option<PathBuf>, json: bool, cmd: ReviewCmd) -> Result<(), C
         ReviewCmd::Show { id } => {
             let root = resolve_path(path)?;
             let arch = open_archive(&root, LockMode::Shared)?;
-            let row: serde_json::Value = arch.conn.query_row(
-                "SELECT id, status, suggested_score, reason_summary, left_identity_id, right_person_id
-                 FROM merge_review_queue WHERE id=?1",
-                [id],
-                |r| {
-                    Ok(serde_json::json!({
-                        "id": r.get::<_, i64>(0)?,
-                        "status": r.get::<_, String>(1)?,
-                        "score": r.get::<_, f64>(2)?,
-                        "reason": r.get::<_, String>(3)?,
-                        "left_identity_id": r.get::<_, i64>(4)?,
-                        "right_person_id": r.get::<_, Option<i64>>(5)?,
-                    }))
-                },
-            )?;
-            let mut ev = arch.conn.prepare(
-                "SELECT evidence_type, score, detail_json FROM merge_evidence WHERE review_id=?1",
-            )?;
-            let evidence: Vec<serde_json::Value> = ev
-                .query_map([id], |r| {
-                    Ok(serde_json::json!({
-                        "type": r.get::<_, String>(0)?,
-                        "score": r.get::<_, f64>(1)?,
-                        "detail": r.get::<_, String>(2)?,
-                    }))
-                })?
-                .collect::<Result<Vec<_>, _>>()?;
-            let out = serde_json::json!({"review": row, "evidence": evidence});
+            let out = review_show(&arch, id)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&out).unwrap());
             } else {
-                println!("{out}");
+                print_review_show(&out);
             }
         }
         ReviewCmd::Accept { id } => {

@@ -86,6 +86,7 @@ export type ReviewSample = {
 
 export type ReviewPanel = {
   display_name: string | null;
+  platforms: string[];
   message_count: number;
   samples: ReviewSample[];
 };

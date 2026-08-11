@@ -3,9 +3,11 @@
 //! Not a Phase 1 matrix ID. Do not add to test_plan.json.
 //! Matrix IDs (gate grep):
 //!
-//! `review_show` must return `left` / `right` panels (D18, groups off), not a
-//! single top-level `samples` array. Do not assume which panel is WhatsApp
-//! vs Contacts — classify from `review.left_identity_id` / `review.right_person_id`.
+//! `review_show` must return `left` / `right` panels, not a single top-level
+//! `samples` array. Sent group messages count; received-only group chatter
+//! does not. Each panel lists `platforms`. Do not assume which panel is
+//! WhatsApp vs Contacts — classify from `review.left_identity_id` /
+//! `review.right_person_id`.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -396,6 +398,25 @@ fn assert_panel_shell(shown: &serde_json::Value) {
         shown["right"]["display_name"], shown["review"]["right_name"],
         "right.display_name must match review.right_name"
     );
+    assert!(
+        shown["left"]["platforms"].as_array().is_some(),
+        "left.platforms must be an array: {shown}"
+    );
+    assert!(
+        shown["right"]["platforms"].as_array().is_some(),
+        "right.platforms must be an array: {shown}"
+    );
+}
+
+fn platforms_of(panel: &serde_json::Value) -> Vec<String> {
+    panel["platforms"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .map(|v| v.as_str().unwrap_or("").to_string())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 struct Panels<'a> {
@@ -514,6 +535,18 @@ fn review_show_empty_contacts_plus_wa_dm() {
         "WA samples missing Ada dm hi: {:?}",
         sample_bodies(panels.wa)
     );
+    assert!(
+        platforms_of(panels.wa).iter().any(|p| p == "whatsapp"),
+        "WA platforms: {:?}",
+        platforms_of(panels.wa)
+    );
+    assert!(
+        platforms_of(panels.contacts)
+            .iter()
+            .any(|p| p == "contacts"),
+        "Contacts platforms: {:?}",
+        platforms_of(panels.contacts)
+    );
     assert_empty_side(panels.contacts, "Contacts");
     assert_eq!(live_non_self(&arch), 2);
     let _ = std::fs::remove_dir_all(&root);
@@ -585,7 +618,7 @@ fn review_show_both_sides_have_d18() {
 }
 
 #[test]
-fn review_show_groups_stay_out_until_dm() {
+fn review_show_sent_group_messages_count() {
     let root = tmp_root();
     let mut arch = init_archive(&root).unwrap();
     let pair = plant_ada_pair(&mut arch);
@@ -607,7 +640,16 @@ fn review_show_groups_stay_out_until_dm() {
 
     let shown = show(&arch);
     let panels = both_panels(&arch, &shown);
-    assert_empty_side(panels.wa, "WA with only a group message");
+    assert_eq!(
+        json_count(&panels.wa["message_count"]),
+        1,
+        "sent group messages must count on Review"
+    );
+    assert!(
+        bodies_contain(panels.wa, "Ada group only"),
+        "WA samples missing group send: {:?}",
+        sample_bodies(panels.wa)
+    );
     assert_empty_side(panels.contacts, "Contacts");
 
     plant_dm_from(
@@ -622,15 +664,15 @@ fn review_show_groups_stay_out_until_dm() {
 
     let shown = show(&arch);
     let panels = both_panels(&arch, &shown);
-    assert_eq!(json_count(&panels.wa["message_count"]), 1);
+    assert_eq!(json_count(&panels.wa["message_count"]), 2);
     assert!(
         bodies_contain(panels.wa, "Ada later dm"),
         "later DM must count: {:?}",
         sample_bodies(panels.wa)
     );
     assert!(
-        !bodies_contain(panels.wa, "Ada group only"),
-        "group body leaked into samples: {:?}",
+        bodies_contain(panels.wa, "Ada group only"),
+        "group send must still count: {:?}",
         sample_bodies(panels.wa)
     );
     assert_empty_side(panels.contacts, "Contacts after later DM");

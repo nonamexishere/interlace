@@ -52,13 +52,15 @@ interlace review accept <id>
 interlace review reject <id>
 ```
 
-`review show` and the Review tab show both display names, each evidence line,
-and **both sides’** D18 message counts with up to three newest sample lines
-each (`sent_at · body_text`). An empty side shows “No messages on this side”
-(a Contacts card with no DMs or email threads is not hidden). Group
-conversations do not count. Names never auto-merge. Accept links the left
-identity with `link_reason=review_accepted`. Reject suppresses that pair for
-this archive (the matcher skips `rejected` rows).
+`review show` (CLI and Review tab) uses the same payload: both sides’ display
+names with **where the name came from** (`Ada (WhatsApp)` / `Ada (Contacts)`),
+each evidence line, and each side’s message count with up to three newest
+sample lines (`sent_at · body_text`). Messages **sent** in a group count;
+received-only group chatter does not. An empty side shows “No messages on
+this side” (a Contacts card with no DMs or mail is not hidden). Names never
+auto-merge. Accept links the left identity with `link_reason=review_accepted`.
+Reject suppresses that pair for this archive (the matcher skips `rejected`
+rows).
 
 Name similarity scores 0.40–0.70 go to review. An exact folded-name pair
 (Contacts vs WhatsApp `display_name`, after leftover names are promoted) is
