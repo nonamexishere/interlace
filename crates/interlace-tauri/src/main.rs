@@ -1,7 +1,9 @@
 //! UI1 session + UI3 person timeline + UI2/4/5 search, review, import.
-//! No URL fetch. Paths via rfd.
+//! No URL fetch. Paths via rfd. Last folder via security-scoped bookmark (#109).
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod bookmark;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -13,11 +15,14 @@ use interlace_core::people::{
     attachments_for, complete_attachments, person_display_name, person_identities, person_list,
     person_timeline_rows, recent_link_events,
 };
-use interlace_core::session::{init_owner_archive, read_last_path, write_last_path};
+use interlace_core::session::{
+    init_owner_archive, read_last_bookmark, read_last_path, sandbox_denied_message,
+    write_last_bookmark, write_last_path,
+};
 use interlace_core::{
     open_archive, person_merge, person_undo, person_unlink, review_list, review_resolve,
-    review_show, search, Archive, ImportOpts, ImporterRegistry, LockMode, PersonMergeOpts,
-    Platform, SearchQuery, SourceKind,
+    review_show, search, Archive, CoreError, ImportOpts, ImporterRegistry, LockMode,
+    PersonMergeOpts, Platform, SearchQuery, SourceKind,
 };
 use tauri::http::{header, StatusCode};
 use tauri::AppHandle;
@@ -40,6 +45,66 @@ struct AppState {
 
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
+}
+
+/// Permission denied → #137 sentence alone (no raw errno). Other errors unchanged.
+fn err_open(e: CoreError) -> String {
+    if let CoreError::Io(io) = &e {
+        if let Some(msg) = sandbox_denied_message(io) {
+            return msg.to_string();
+        }
+    }
+    e.to_string()
+}
+
+fn map_io(e: std::io::Error) -> String {
+    sandbox_denied_message(&e)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| e.to_string())
+}
+
+fn not_an_archive(p: &Path) -> String {
+    format!(
+        "not an Interlace archive (missing INTERLACE.toml): {}",
+        p.display()
+    )
+}
+
+/// Distinguish sandbox EPERM from a missing marker (`Path::is_file` swallows both).
+fn ensure_archive_readable(p: &Path) -> Result<(), String> {
+    if let Err(e) = fs::metadata(p) {
+        if sandbox_denied_message(&e).is_some() {
+            return Err(map_io(e));
+        }
+    }
+    match fs::metadata(p.join("INTERLACE.toml")) {
+        Ok(m) if m.is_file() => Ok(()),
+        Err(e) => {
+            if sandbox_denied_message(&e).is_some() {
+                Err(map_io(e))
+            } else {
+                Err(not_an_archive(p))
+            }
+        }
+        Ok(_) => Err(not_an_archive(p)),
+    }
+}
+
+/// After a successful rfd pick / open we have access: store the bookmark.
+/// Unsandboxed `tauri:dev` may fail create — path pointer is enough there.
+fn persist_bookmark(path: &Path) {
+    match bookmark::create_security_scoped_bookmark(path) {
+        Ok(bytes) => {
+            if let Err(e) = write_last_bookmark(&bytes) {
+                eprintln!("interlace: write_last_bookmark failed: {e}");
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "interlace: security-scoped bookmark not stored ({e}); path pointer is enough outside the sandbox"
+            );
+        }
+    }
 }
 
 fn hold(state: &AppState, arch: Archive) -> Result<serde_json::Value, String> {
@@ -246,6 +311,16 @@ fn parse_platform(s: &str) -> Result<Option<Platform>, String> {
 
 #[tauri::command]
 fn remembered_path() -> Option<String> {
+    if let Some(bytes) = read_last_bookmark() {
+        return match bookmark::resolve_security_scoped_bookmark(&bytes) {
+            Ok(p) => Some(p.display().to_string()),
+            Err(e) => {
+                eprintln!("interlace: bookmark resolve failed ({e}); not using last_archive_path");
+                None
+            }
+        };
+    }
+    // CLI-only leftover or unsandboxed dev: try the path pointer. Sandboxed .app will EPERM (#137).
     read_last_path().map(|p| p.display().to_string())
 }
 
@@ -300,7 +375,8 @@ fn init(
     if p.as_os_str().is_empty() {
         return Err("init requires a folder".into());
     }
-    let arch = init_owner_archive(&p, &phone_region, name, emails, phones).map_err(err)?;
+    let arch = init_owner_archive(&p, &phone_region, name, emails, phones).map_err(err_open)?;
+    persist_bookmark(&p);
     hold(&state, arch)
 }
 
@@ -308,14 +384,10 @@ fn init(
 fn open(state: tauri::State<AppState>, path: String) -> Result<serde_json::Value, String> {
     *state.archive.lock().map_err(err)? = None;
     let p = PathBuf::from(path);
-    if !p.join("INTERLACE.toml").is_file() {
-        return Err(format!(
-            "not an Interlace archive (missing INTERLACE.toml): {}",
-            p.display()
-        ));
-    }
-    let arch = open_archive(&p, LockMode::Exclusive).map_err(err)?;
-    write_last_path(&p).map_err(err)?;
+    ensure_archive_readable(&p)?;
+    let arch = open_archive(&p, LockMode::Exclusive).map_err(err_open)?;
+    write_last_path(&p).map_err(err_open)?;
+    persist_bookmark(&p);
     hold(&state, arch)
 }
 

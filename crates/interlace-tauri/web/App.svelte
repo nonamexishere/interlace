@@ -55,7 +55,13 @@
     }),
   );
 
+  const SANDBOX_DENIED =
+    "macOS blocked that folder. Use Open existing\u2026 once so Interlace can remember it.";
+
   function friendly(raw: string): string {
+    if (raw === SANDBOX_DENIED || raw.includes(SANDBOX_DENIED)) {
+      return SANDBOX_DENIED;
+    }
     if (raw.includes("archive in use")) {
       return `Archive is locked by another Interlace window or CLI writer. Close that process and try again.\n${raw}`;
     }
@@ -247,6 +253,7 @@
         }
       } catch (e) {
         showErr(e);
+        setup = true;
       } finally {
         booting = false;
       }

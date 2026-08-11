@@ -56,6 +56,17 @@ You can **create or open** an archive from the window (folder picker, no URLs).
 `--phone-region` is still required (no silent TR/US default). Status shows
 message / identity / person / review counts.
 
+After you pick a folder once (**Open existing…** or **Create archive…**), the
+sandboxed `.app` stores a **local security-scoped bookmark** in Application
+Support (`last-archive.bookmark`, next to `config.toml`). Quit and reopen:
+that folder opens again — no picker. The CLI-only `last_archive_path` string
+is **not** enough under the sandbox. If you first used the CLI, then open
+Interlace.app, macOS blocks the folder and the window shows the setup form
+with: “macOS blocked that folder. Use Open existing… once so Interlace can
+remember it.” Pick the folder once in the app. The bookmark is local only
+(not iCloud, not synced). `tauri:dev` still works from the path pointer if
+bookmark create fails outside the sandbox.
+
 The app holds an **exclusive flock** on the archive for the session. A second
 Interlace window or a CLI writer (`import`, `doctor --gc-cas`) fails with the
 holder pid — close this window first.
