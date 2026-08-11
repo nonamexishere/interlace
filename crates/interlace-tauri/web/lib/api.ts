@@ -120,8 +120,6 @@ export const api = {
     invoke<string[]>("doctor_run_cmd", args),
   casDataUrl: (hash: string) => invoke<string>("cas_data_url", { hash }),
   people: () => invoke<Person[]>("people"),
-  mergeTargets: (selectedId: number, allowSelf: boolean, query: string) =>
-    invoke<Person[]>("merge_targets_cmd", { selectedId, allowSelf, query }),
   personShow: (id: number) =>
     invoke<{ id: number; display_name: string; identities: Identity[] }>(
       "person_show",

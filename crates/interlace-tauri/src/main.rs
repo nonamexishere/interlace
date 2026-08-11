@@ -12,8 +12,8 @@ use std::thread;
 
 use data_encoding::BASE64;
 use interlace_core::people::{
-    attachments_for, complete_attachments, merge_targets, person_display_name, person_identities,
-    person_list, person_timeline_rows, recent_link_events,
+    attachments_for, complete_attachments, person_display_name, person_identities, person_list,
+    person_timeline_rows, recent_link_events,
 };
 use interlace_core::session::{
     init_owner_archive, read_last_bookmark, read_last_path, sandbox_denied_message,
@@ -475,19 +475,6 @@ fn people(state: tauri::State<AppState>) -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
-fn merge_targets_cmd(
-    state: tauri::State<AppState>,
-    selected_id: i64,
-    allow_self: bool,
-    query: String,
-) -> Result<serde_json::Value, String> {
-    with_arch(&state, |arch| {
-        let people = person_list(arch).map_err(err)?;
-        serde_json::to_value(merge_targets(&people, selected_id, allow_self, &query)).map_err(err)
-    })
-}
-
-#[tauri::command]
 fn person_show(state: tauri::State<AppState>, id: i64) -> Result<serde_json::Value, String> {
     with_arch(&state, |arch| {
         let name = person_display_name(arch, id).map_err(err)?;
@@ -805,7 +792,6 @@ fn main() {
             doctor_run_cmd,
             cas_data_url,
             people,
-            merge_targets_cmd,
             person_show,
             person_timeline,
             person_merge_cmd,

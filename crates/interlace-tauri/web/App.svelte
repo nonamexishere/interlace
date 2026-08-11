@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, type Identity, type LinkEvent, type Person, type Status, type TimelineRow } from "./lib/api";
+  import { mergeTargets } from "./lib/utils";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
@@ -32,10 +33,13 @@
   let mergeOpen = $state(false);
   let mergeQuery = $state("");
   let allowSelf = $state(false);
-  let mergeList = $state<Person[]>([]);
-  let mergeLoading = $state(false);
   let mergeKeepId = $state<number | null>(null);
   let mergeKeepName = $state("");
+  const mergeList = $derived(
+    mergeKeepId == null
+      ? []
+      : mergeTargets(people, mergeKeepId, allowSelf, mergeQuery),
+  );
   let events = $state<LinkEvent[]>([]);
 
   let confirmOpen = $state(false);
@@ -200,29 +204,6 @@
     return people.find((p) => p.id === id);
   }
 
-  $effect(() => {
-    if (!mergeOpen || mergeKeepId == null) return;
-    const id = mergeKeepId;
-    const self = allowSelf;
-    const q = mergeQuery;
-    let cancelled = false;
-    mergeLoading = true;
-    void api
-      .mergeTargets(id, self, q)
-      .then((rows) => {
-        if (!cancelled) mergeList = rows;
-      })
-      .catch((e) => {
-        if (!cancelled) showErr(e);
-      })
-      .finally(() => {
-        if (!cancelled) mergeLoading = false;
-      });
-    return () => {
-      cancelled = true;
-    };
-  });
-
   function openMerge() {
     const keep = personById(selectedId);
     if (!keep) {
@@ -234,7 +215,6 @@
     mergeKeepName = personLabel(keep);
     mergeQuery = "";
     allowSelf = false;
-    mergeList = [];
     mergeOpen = true;
   }
 
@@ -612,9 +592,7 @@
       <input type="checkbox" bind:checked={allowSelf} />
       Allow absorbing self into this person
     </label>
-    {#if mergeLoading && mergeList.length === 0}
-      <p class="text-sm text-muted-foreground">Loading people…</p>
-    {:else if mergeList.length === 0}
+    {#if mergeList.length === 0}
       <EmptyState
         title="No match"
         body="Try another spelling, or tick Allow absorbing self into this person."
