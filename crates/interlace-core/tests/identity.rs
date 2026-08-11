@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use interlace_core::db::init_archive;
 use interlace_core::import::{name_fold_join, normalize_email};
-use interlace_core::{person_merge, person_undo, resolve_run, PersonMergeOpts};
+use interlace_core::{person_merge, person_undo, resolve_run, review_resolve, PersonMergeOpts};
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -395,6 +395,54 @@ fn identity_i3_same_phone_two_cards_different_names_review() {
             "SELECT COUNT(*) FROM merge_review_queue WHERE status='open'"
         ) >= 1,
         "I3 expected review"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn identity_i3_accept_links_unlinked_phone() {
+    let root = tmp_root();
+    let mut arch = init_archive(&root).unwrap();
+    persist_card(&mut arch, "bank", "Alice Bank", Some("+905321110001"), None);
+    persist_card(
+        &mut arch,
+        "other",
+        "Bob Credit",
+        Some("+905321110001"),
+        None,
+    );
+    let wa = insert_ident(
+        &arch,
+        "whatsapp",
+        "phone",
+        "+905321110001",
+        "+905321110001",
+        Some("Alice"),
+    );
+    resolve_run(&mut arch, 0).unwrap();
+    let rid: i64 = arch
+        .conn
+        .query_row(
+            "SELECT id FROM merge_review_queue WHERE status='open' ORDER BY id LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    review_resolve(&mut arch, rid, true).unwrap();
+    let (pid, reason): (i64, String) = arch
+        .conn
+        .query_row(
+            "SELECT person_id, link_reason FROM person_identities WHERE identity_id = ?1",
+            [wa],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(reason, "review_accepted");
+    assert!(pid > 0);
+    assert_eq!(
+        live_non_self(&arch),
+        2,
+        "I3 Accept links the phone; does not merge the two contact persons"
     );
     let _ = std::fs::remove_dir_all(&root);
 }

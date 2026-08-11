@@ -733,3 +733,53 @@ fn review_nway_accept_subset_leaves_unchecked() {
     assert_ne!(contacts_live, gmail_live);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn review_nway_unlinked_left_stays_in_sides() {
+    let root = tmp_root();
+    let mut arch = init_archive(&root).unwrap();
+    persist_card(&mut arch, "card-ada", "Ada", Some("+905321110100"), None);
+    let left = insert_ident(
+        &arch,
+        "whatsapp",
+        "display_name",
+        "Ada",
+        &name_fold_join("Ada"),
+        Some("Ada"),
+    );
+    let contacts_pid = live_person_for_identity(
+        &arch,
+        arch.conn
+            .query_row(
+                "SELECT id FROM identities WHERE platform='contacts' AND kind='phone'
+                 AND value_normalized='+905321110100'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO merge_review_queue(
+                status, left_identity_id, right_person_id, suggested_score, reason_summary
+             ) VALUES ('open', ?1, ?2, 0.70, 'exact_name_fold')",
+            rusqlite::params![left, contacts_pid],
+        )
+        .unwrap();
+    let shown = show(&arch);
+    let sides = sides_of(&shown);
+    assert!(
+        sides
+            .iter()
+            .any(|s| s["person_id"].is_null() && platforms_of(s).iter().any(|p| p == "whatsapp")),
+        "unlinked left identity must stay in sides: {sides:?}"
+    );
+    assert!(
+        sides
+            .iter()
+            .any(|s| s["person_id"].as_i64() == Some(contacts_pid)),
+        "contacts person must stay in sides: {sides:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

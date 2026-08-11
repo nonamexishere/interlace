@@ -63,8 +63,15 @@
     confirmOpen = true;
   }
 
+  function canAccept(): boolean {
+    if (!detail) return false;
+    if (selected.length >= 2) return true;
+    // I3 / unlinked left: link onto one checked person.
+    return detail.left.person_id == null && selected.length >= 1;
+  }
+
   function accept() {
-    if (!detail || selected.length < 2) return;
+    if (!detail || !canAccept()) return;
     const id = detail.review.id;
     const ids = [...selected];
     const n = ids.length;
@@ -201,7 +208,7 @@
         {/each}
       </div>
       <div class="flex gap-2">
-        <Button onclick={accept} disabled={selected.length < 2}>Accept</Button>
+        <Button onclick={accept} disabled={!canAccept()}>Accept</Button>
         <Button variant="outline" onclick={reject}>Reject</Button>
       </div>
     </div>

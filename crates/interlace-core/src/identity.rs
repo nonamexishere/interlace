@@ -163,27 +163,43 @@ pub fn review_resolve_selected(
                 .filter(|pid| ids.contains(pid))
                 .collect(),
         };
-        if chosen.len() < 2 {
+        let survivor = if chosen.len() >= 2 {
+            let survivor = pick_cluster_survivor(archive, queued_right_person, &chosen)?;
+            for pid in &chosen {
+                if *pid != survivor {
+                    merge_persons(
+                        archive,
+                        *pid,
+                        survivor,
+                        Some(survivor),
+                        "user",
+                        "manual",
+                        1.0,
+                    )?;
+                }
+            }
+            Some(survivor)
+        } else if live_person_of(archive, left)?.is_none() {
+            // I3 / name-only: link the unlinked left identity onto the
+            // suggested person. Not a person-person merge.
+            match pick_cluster_survivor(archive, queued_right_person, &chosen)
+                .ok()
+                .or(right_pid)
+            {
+                Some(pid) => Some(pid),
+                None => {
+                    return Err(CoreError::Config("review has no right side".into()));
+                }
+            }
+        } else {
             return Err(CoreError::Config(
                 "select at least two people to merge".into(),
             ));
-        }
-        let survivor = pick_cluster_survivor(archive, queued_right_person, &chosen)?;
-        for pid in &chosen {
-            if *pid != survivor {
-                merge_persons(
-                    archive,
-                    *pid,
-                    survivor,
-                    Some(survivor),
-                    "user",
-                    "manual",
-                    1.0,
-                )?;
+        };
+        if let Some(survivor) = survivor {
+            if live_person_of(archive, left)?.is_none() {
+                link_identity(archive, survivor, left, "review_accepted", 0.90, "user")?;
             }
-        }
-        if live_person_of(archive, left)?.is_none() {
-            link_identity(archive, survivor, left, "review_accepted", 0.90, "user")?;
         }
         archive.conn.execute(
             "UPDATE merge_review_queue SET status = 'accepted',
@@ -477,7 +493,11 @@ fn review_side_panels(
     if cluster.is_empty() {
         return Ok(vec![left.clone(), right.clone()]);
     }
-    let mut sides = Vec::with_capacity(cluster.len());
+    let mut sides = Vec::with_capacity(cluster.len() + 1);
+    // Unlinked left identity is not a person; keep its panel (samples / name).
+    if left_pid.is_none() {
+        sides.push(left.clone());
+    }
     for pid in cluster {
         if Some(pid) == left_pid {
             sides.push(left.clone());
