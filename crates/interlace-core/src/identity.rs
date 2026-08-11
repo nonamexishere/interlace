@@ -249,13 +249,97 @@ pub fn review_show(archive: &Archive, id: i64) -> Result<serde_json::Value, Core
         })?
         .collect::<Result<Vec<_>, _>>()?;
     let left_id = review["left_identity_id"].as_i64().unwrap_or(0);
-    let mut msg_stmt = archive.conn.prepare(
-        "SELECT sent_at, COALESCE(substr(body_text, 1, 240), '')
-         FROM messages WHERE sender_identity_id = ?1
-         ORDER BY sent_at IS NULL, sent_at DESC LIMIT 3",
+    let left_ids = if let Some(pid) = live_person_of(archive, left_id)? {
+        person_identity_ids(archive, pid)?
+    } else {
+        vec![left_id]
+    };
+    let left = review_side_panel(archive, &left_ids, review["left_name"].clone())?;
+    let right = if let Some(pid) = review["right_person_id"].as_i64() {
+        let right_ids = person_identity_ids(archive, pid)?;
+        review_side_panel(archive, &right_ids, review["right_name"].clone())?
+    } else {
+        serde_json::json!({
+            "display_name": review["right_name"],
+            "platforms": [],
+            "message_count": 0,
+            "samples": [],
+        })
+    };
+    Ok(serde_json::json!({
+        "review": review,
+        "evidence": evidence,
+        "left": left,
+        "right": right,
+    }))
+}
+
+fn person_identity_ids(archive: &Archive, person_id: i64) -> Result<Vec<i64>, CoreError> {
+    let mut stmt = archive
+        .conn
+        .prepare("SELECT identity_id FROM person_identities WHERE person_id = ?1")?;
+    let rows = stmt.query_map([person_id], |r| r.get(0))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// Review samples: sent by a side identity (including group sends), or a
+/// `dm` / `email_thread` where a side identity is a participant. Received-only
+/// group chatter does not count. People-list D18 is unchanged.
+fn review_side_panel(
+    archive: &Archive,
+    identity_ids: &[i64],
+    display_name: serde_json::Value,
+) -> Result<serde_json::Value, CoreError> {
+    let platforms = side_platforms(archive, identity_ids)?;
+    if identity_ids.is_empty() {
+        return Ok(serde_json::json!({
+            "display_name": display_name,
+            "platforms": platforms,
+            "message_count": 0,
+            "samples": [],
+        }));
+    }
+    let placeholders = identity_ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
+    // Sent-by (any kind, including group) or participant of dm/email_thread.
+    // Received-only group chatter stays out; people-list D18 is unchanged.
+    let filter = format!(
+        "m.sender_identity_id IN ({placeholders})
+         OR (
+                c.kind IN ('dm', 'email_thread')
+            AND EXISTS (
+                    SELECT 1 FROM conversation_participants cp
+                    WHERE cp.conversation_id = m.conversation_id
+                      AND cp.identity_id IN ({placeholders})
+                )
+         )"
+    );
+    let mut binds = Vec::with_capacity(identity_ids.len() * 2);
+    binds.extend_from_slice(identity_ids);
+    binds.extend_from_slice(identity_ids);
+    let message_count: i64 = archive.conn.query_row(
+        &format!(
+            "SELECT COUNT(*)
+             FROM messages m
+             JOIN conversations c ON c.id = m.conversation_id
+             WHERE {filter}"
+        ),
+        rusqlite::params_from_iter(&binds),
+        |r| r.get(0),
     )?;
-    let samples: Vec<serde_json::Value> = msg_stmt
-        .query_map([left_id], |r| {
+    let mut sample_stmt = archive.conn.prepare(&format!(
+        "SELECT sent_at, COALESCE(substr(body_text, 1, 240), '')
+         FROM messages m
+         JOIN conversations c ON c.id = m.conversation_id
+         WHERE {filter}
+         ORDER BY m.sent_at IS NULL, m.sent_at DESC
+         LIMIT 3"
+    ))?;
+    let samples: Vec<serde_json::Value> = sample_stmt
+        .query_map(rusqlite::params_from_iter(&binds), |r| {
             Ok(serde_json::json!({
                 "sent_at": r.get::<_, Option<String>>(0)?,
                 "body_text": r.get::<_, String>(1)?,
@@ -263,10 +347,34 @@ pub fn review_show(archive: &Archive, id: i64) -> Result<serde_json::Value, Core
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(serde_json::json!({
-        "review": review,
-        "evidence": evidence,
+        "display_name": display_name,
+        "platforms": platforms,
+        "message_count": message_count,
         "samples": samples,
     }))
+}
+
+fn side_platforms(archive: &Archive, identity_ids: &[i64]) -> Result<Vec<String>, CoreError> {
+    if identity_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = identity_ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
+    let mut stmt = archive.conn.prepare(&format!(
+        "SELECT DISTINCT platform FROM identities WHERE id IN ({placeholders})
+         ORDER BY CASE platform
+            WHEN 'whatsapp' THEN 0
+            WHEN 'gmail' THEN 1
+            WHEN 'contacts' THEN 2
+            WHEN 'owner' THEN 3
+            ELSE 4
+         END, platform"
+    ))?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(identity_ids), |r| r.get(0))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
 fn attach_high_conf(archive: &Archive, stats: &mut ImportStats) -> Result<(), CoreError> {

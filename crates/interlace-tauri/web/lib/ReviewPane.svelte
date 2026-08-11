@@ -72,6 +72,31 @@
   onMount(() => {
     reload();
   });
+
+  function platformLabel(p: string): string {
+    switch (p) {
+      case "whatsapp":
+        return "WhatsApp";
+      case "gmail":
+        return "Gmail";
+      case "contacts":
+        return "Contacts";
+      case "owner":
+        return "Me";
+      default:
+        return p;
+    }
+  }
+
+  function panelTitle(panel: { display_name: string | null; platforms?: string[] }): string {
+    const name = panel.display_name || "—";
+    const plats = (panel.platforms ?? []).map(platformLabel).filter(Boolean);
+    return plats.length ? `${name} (${plats.join(", ")})` : name;
+  }
+
+  function countLabel(n: number): string {
+    return n === 1 ? "1 message" : `${n} messages`;
+  }
 </script>
 
 <ScrollArea class="p-4">
@@ -105,23 +130,27 @@
   {#if detail}
     <div class="space-y-3 border-t border-border pt-3">
       <p class="text-sm">{detail.review.reason}</p>
-      <p class="text-sm">
-        Left identity {detail.review.left_identity_id} ({detail.review.left_name}) → person
-        {detail.review.right_person_id ?? "—"} ({detail.review.right_name || "—"})
-      </p>
       <ul class="space-y-1 text-xs text-muted-foreground">
         {#each detail.evidence as e}
           <li>{e.type} · {e.score} · {e.detail}</li>
         {/each}
       </ul>
-      <div>
-        <p class="mb-1 text-xs font-medium">Sample messages</p>
-        {#each detail.samples as s}
-          <p class="mb-2 whitespace-pre-wrap text-sm">{s.sent_at || "no date"} · {s.body_text}</p>
+      <div class="grid grid-cols-2 gap-3">
+        {#each [detail.left, detail.right] as panel}
+          <div class="min-w-0">
+            <p class="mb-1 text-xs font-medium">{panelTitle(panel)}</p>
+            <p class="mb-1 text-xs text-muted-foreground">{countLabel(panel.message_count)}</p>
+            {#if panel.samples.length === 0}
+              <p class="text-sm text-muted-foreground">No messages on this side</p>
+            {:else}
+              {#each panel.samples as s}
+                <p class="mb-2 whitespace-pre-wrap text-sm">
+                  {s.sent_at || "no date"} · {s.body_text}
+                </p>
+              {/each}
+            {/if}
+          </div>
         {/each}
-        {#if detail.samples.length === 0}
-          <p class="text-sm text-muted-foreground">No sample messages.</p>
-        {/if}
       </div>
       <div class="flex gap-2">
         <Button onclick={accept}>Accept</Button>
