@@ -77,7 +77,11 @@ the message, or you share a DM / email thread). Each row shows that time and
 a one-line **plain-text** preview (the last message’s subject if it has one,
 otherwise a truncated body — never HTML). Contacts with no matching messages
 stay listed at the bottom. `/` still filters by name only. `j`/`k` move
-messages. Merge/unlink/undo do not rewrite `messages.sender_identity_id`.
+messages. Merge by picking a name: select a person, **Merge…**, search the
+list (display name only — typing an id matches nobody), then confirm. Self is
+hidden unless you tick **Allow merge into self**. Confirm shows display names,
+not ids. Names never auto-merge. Unlink stays on each identity row.
+Merge/unlink/undo do not rewrite `messages.sender_identity_id`.
 
 Tabs: **Search** (same FTS as CLI; expand a hit for the full body), **Review**
 (accept/reject name-only pairs), **Import** (ZIP/mbox/vcf/Takeout via the

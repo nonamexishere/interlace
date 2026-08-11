@@ -81,7 +81,8 @@ python3 pipeline/tools/gate_tauri.py
 
 `remembered_path` (bookmark first, else last-path pointer), `pick_folder` /
 `pick_import_path` (rfd on the main thread), `init`, `open`, `status`,
-`people`, `person_show`, `person_timeline`, `person_merge_cmd`,
+`people`, `merge_targets_cmd` (name-only picker; never matches numeric id),
+`person_show`, `person_timeline`, `person_merge_cmd`,
 `person_unlink_cmd`, `person_undo_cmd`, `link_events`, `search_cmd`,
 `search_body`, `review_list_cmd` / `review_show_cmd` / `review_accept_cmd` /
 `review_reject_cmd`, `import_start`, `import_progress`, `doctor_issues_cmd`,
