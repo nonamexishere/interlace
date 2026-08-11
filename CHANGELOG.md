@@ -41,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - People list is recent-first with last-activity time and a plain-text
   preview (`PersonSummary.last_activity_at` / `preview`). Contacts with no
   D18 activity stay at the bottom. `person list --json` includes the fields.
+- App merge is pick-by-name (`merge_targets`): search a person list, confirm
+  with display names. No numeric “Merge into id” box. Self is hidden unless
+  **Allow absorbing self into this person**. Picker rows show last-activity
+  preview. Confirm names come from the people list, not a lagging header.
+  Names still never auto-merge.
 
 ### Fixed
 

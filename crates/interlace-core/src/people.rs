@@ -176,6 +176,27 @@ pub fn person_list_with_groups(
     Ok(out)
 }
 
+/// People the UI may offer as merge targets for `selected_id`.
+///
+/// Drops the selected person and, unless `allow_self`, anyone with `is_self`.
+/// `query` is a casefold substring of `display_name` only — a query that looks
+/// like a numeric id matches nobody. Empty query keeps every remaining person.
+pub fn merge_targets(
+    people: &[PersonSummary],
+    selected_id: i64,
+    allow_self: bool,
+    query: &str,
+) -> Vec<PersonSummary> {
+    let q = query.trim().to_lowercase();
+    people
+        .iter()
+        .filter(|p| p.id != selected_id)
+        .filter(|p| allow_self || !p.is_self)
+        .filter(|p| q.is_empty() || p.display_name.to_lowercase().contains(&q))
+        .cloned()
+        .collect()
+}
+
 pub fn person_identities(
     archive: &Archive,
     person_id: i64,

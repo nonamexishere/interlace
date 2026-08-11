@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, type Identity, type LinkEvent, type Person, type Status, type TimelineRow } from "./lib/api";
+  import { mergeTargets } from "./lib/utils";
   import { Button } from "$lib/components/ui/button/index.js";
+  import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
@@ -28,7 +30,16 @@
   let timeline = $state<TimelineRow[]>([]);
   let tlIndex = $state(0);
   let includeGroups = $state(false);
-  let mergeInto = $state("");
+  let mergeOpen = $state(false);
+  let mergeQuery = $state("");
+  let allowSelf = $state(false);
+  let mergeKeepId = $state<number | null>(null);
+  let mergeKeepName = $state("");
+  const mergeList = $derived(
+    mergeKeepId == null
+      ? []
+      : mergeTargets(people, mergeKeepId, allowSelf, mergeQuery),
+  );
   let events = $state<LinkEvent[]>([]);
 
   let confirmOpen = $state(false);
@@ -184,23 +195,48 @@
     }
   }
 
-  function doMerge() {
-    if (!selectedId) {
+  function personLabel(p: { display_name: string; is_self: boolean }) {
+    return p.is_self ? `${p.display_name} (self)` : p.display_name;
+  }
+
+  function personById(id: number | null): Person | undefined {
+    if (id == null) return undefined;
+    return people.find((p) => p.id === id);
+  }
+
+  function openMerge() {
+    const keep = personById(selectedId);
+    if (!keep) {
       err = "select a person first";
       return;
     }
-    const other = Number(mergeInto);
-    if (!other) {
-      err = "enter the other person id";
-      return;
-    }
-    const keep = selectedId;
-    ask(`Merge ${selectedId} and ${other}?`, "Identity links move. Message rows are not rewritten.", async () => {
-      const out = await api.merge(keep, other, keep);
-      await refreshPeople();
-      await refreshEvents();
-      await selectPerson(out.survivor);
-    });
+    err = "";
+    mergeKeepId = keep.id;
+    mergeKeepName = personLabel(keep);
+    mergeQuery = "";
+    allowSelf = false;
+    mergeOpen = true;
+  }
+
+  function pickMergeTarget(other: Person) {
+    if (mergeKeepId == null || !mergeKeepName) return;
+    const keep = mergeKeepId;
+    const keepName = mergeKeepName;
+    const otherName = personLabel(other);
+    mergeOpen = false;
+    const extra = other.is_self
+      ? `This absorbs the self person into ${keepName}. The self flag is not copied onto the survivor. `
+      : "";
+    ask(
+      `Merge ${otherName} into ${keepName}?`,
+      `${extra}Identity links move. Message rows are not rewritten. Names never auto-merge.`,
+      async () => {
+        const out = await api.merge(keep, other.id, keep);
+        await refreshPeople();
+        await refreshEvents();
+        await selectPerson(out.survivor);
+      },
+    );
   }
 
   function doUnlink(id: number) {
@@ -445,13 +481,6 @@
             <EmptyState title="No match" body="Clear the filter or try another spelling." />
           </div>
         {/if}
-        <div class="mt-4 space-y-2">
-          <div class="space-y-1.5">
-            <Label for="merge-into">Merge into id</Label>
-            <Input id="merge-into" bind:value={mergeInto} inputmode="numeric" placeholder="person id" />
-          </div>
-          <Button variant="outline" size="sm" onclick={doMerge}>Merge selected →</Button>
-        </div>
         <ul class="mt-3 space-y-1 text-xs">
           {#each events as e}
             <li class="flex items-center justify-between gap-2">
@@ -465,14 +494,19 @@
       <ScrollArea class="p-4">
         <div class="mb-3 flex items-baseline justify-between gap-3">
           <h1 class="text-xl font-semibold tracking-tight">{personTitle}</h1>
-          <label class="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              bind:checked={includeGroups}
-              onchange={() => selectedId && selectPerson(selectedId)}
-            />
-            include groups
-          </label>
+          <div class="flex items-center gap-3">
+            <Button variant="outline" size="sm" disabled={!personById(selectedId)} onclick={openMerge}
+              >Merge…</Button
+            >
+            <label class="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                bind:checked={includeGroups}
+                onchange={() => selectedId && selectPerson(selectedId)}
+              />
+              include groups
+            </label>
+          </div>
         </div>
         <ul class="mb-3 space-y-1 text-sm text-muted-foreground">
           {#each identities as ident}
@@ -536,6 +570,60 @@
     </div>
   {/if}
 </div>
+
+<Dialog.Root bind:open={mergeOpen}>
+  <Dialog.Content>
+    <Dialog.Header>
+      <Dialog.Title>Merge into {mergeKeepName}</Dialog.Title>
+      <Dialog.Description>
+        Pick a person by name. {mergeKeepName} is kept. Names never auto-merge.
+      </Dialog.Description>
+    </Dialog.Header>
+    <div class="space-y-1.5">
+      <Label for="merge-query">Search</Label>
+      <Input
+        id="merge-query"
+        type="search"
+        bind:value={mergeQuery}
+        placeholder="name"
+      />
+    </div>
+    <label class="flex items-center gap-2 text-sm">
+      <input type="checkbox" bind:checked={allowSelf} />
+      Allow absorbing self into this person
+    </label>
+    {#if mergeList.length === 0}
+      <EmptyState
+        title="No match"
+        body="Try another spelling, or tick Allow absorbing self into this person."
+      />
+    {:else}
+      <ul class="max-h-64 space-y-0.5 overflow-y-auto">
+        {#each mergeList as p}
+          <li>
+            <button
+              type="button"
+              class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent {p.is_self
+                ? 'font-semibold'
+                : ''}"
+              onclick={() => pickMergeTarget(p)}
+            >
+              <span>{personLabel(p)}</span>
+              {#if p.last_activity_at || p.preview}
+                <span class="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+                  {p.last_activity_at ?? ""}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
+                </span>
+              {/if}
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+    <Dialog.Footer>
+      <Button variant="outline" onclick={() => (mergeOpen = false)}>Cancel</Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
 
 <ConfirmDialog
   bind:open={confirmOpen}
