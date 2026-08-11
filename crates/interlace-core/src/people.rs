@@ -10,12 +10,55 @@ use crate::model::CoreError;
 
 const TIMELINE_DEFAULT: u32 = 100;
 const TIMELINE_MAX: u32 = 200;
+const PREVIEW_MAX_CHARS: usize = 160;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PersonSummary {
     pub id: i64,
     pub display_name: String,
     pub is_self: bool,
+    pub last_activity_at: Option<String>,
+    pub preview: Option<String>,
+}
+
+/// One-line list preview: subject if the last D18 row has one, else truncated
+/// `body_text` with HTML tags stripped. Empty / missing text → `None`.
+fn list_preview(subject: Option<&str>, body_text: &str) -> Option<String> {
+    let subject = subject.map(str::trim).filter(|s| !s.is_empty());
+    if let Some(s) = subject {
+        let t = truncate_one_line(s, PREVIEW_MAX_CHARS);
+        return if t.is_empty() { None } else { Some(t) };
+    }
+    let plain = strip_html_tags(body_text);
+    let t = truncate_one_line(&plain, PREVIEW_MAX_CHARS);
+    if t.is_empty() {
+        None
+    } else {
+        Some(t)
+    }
+}
+
+fn strip_html_tags(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_tag = false;
+    for c in s.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
+fn truncate_one_line(s: &str, max: usize) -> String {
+    let line: String = s
+        .chars()
+        .map(|c| if c == '\n' || c == '\r' { ' ' } else { c })
+        .take(max)
+        .collect();
+    line.trim().to_string()
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -61,16 +104,69 @@ pub struct LinkEvent {
 }
 
 pub fn person_list(archive: &Archive) -> Result<Vec<PersonSummary>, CoreError> {
-    let mut stmt = archive.conn.prepare(
-        "SELECT id, display_name, is_self FROM persons
-         WHERE tombstoned_at IS NULL
-         ORDER BY is_self DESC, display_name COLLATE NOCASE, id",
-    )?;
+    person_list_with_groups(archive, false)
+}
+
+/// Live persons with last D18 activity + preview.
+/// `include_groups = false` (the `person_list` default): sender, or participant
+/// of `dm` / `email_thread`. Sort: self first, `sent_at` desc, nulls last, `id`.
+pub fn person_list_with_groups(
+    archive: &Archive,
+    include_groups: bool,
+) -> Result<Vec<PersonSummary>, CoreError> {
+    let group_sql = if include_groups {
+        ""
+    } else {
+        "AND c.kind IN ('dm','email_thread')"
+    };
+    let sql = format!(
+        "SELECT p.id, p.display_name, p.is_self,
+                act.sent_at, act.subject, act.body_text
+         FROM persons p
+         LEFT JOIN (
+           SELECT person_id, sent_at, subject, body_text
+           FROM (
+             SELECT pi.person_id AS person_id,
+                    m.sent_at AS sent_at,
+                    m.subject AS subject,
+                    COALESCE(m.body_text, '') AS body_text,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY pi.person_id
+                      ORDER BY m.sent_at IS NULL, m.sent_at DESC, m.id DESC
+                    ) AS rn
+             FROM messages m
+             JOIN conversations c ON c.id = m.conversation_id
+             JOIN person_identities pi ON (
+                    pi.identity_id = m.sender_identity_id
+                 OR (
+                        m.conversation_id IN (
+                          SELECT cp.conversation_id
+                          FROM conversation_participants cp
+                          WHERE cp.identity_id = pi.identity_id
+                        )
+                        {group_sql}
+                    )
+             )
+           ) ranked
+           WHERE rn = 1
+         ) act ON act.person_id = p.id
+         WHERE p.tombstoned_at IS NULL
+         ORDER BY p.is_self DESC, act.sent_at IS NULL, act.sent_at DESC, p.id"
+    );
+    let mut stmt = archive.conn.prepare(&sql)?;
     let rows = stmt.query_map([], |r| {
+        let subject: Option<String> = r.get(4)?;
+        let body: Option<String> = r.get(5)?;
+        let preview = match (subject.as_deref(), body.as_deref()) {
+            (None, None) => None,
+            (s, b) => list_preview(s, b.unwrap_or("")),
+        };
         Ok(PersonSummary {
             id: r.get(0)?,
             display_name: r.get(1)?,
             is_self: r.get::<_, i64>(2)? == 1,
+            last_activity_at: r.get(3)?,
+            preview,
         })
     })?;
     let mut out = Vec::new();

@@ -38,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bundled `.app` loads the UI: Vite `base: './'`; CSP `connect-src` is
   IPC-only; sandboxed WKWebView needs `network.client` (without it the
   window is blank). `network.server` still omitted; no HTTP client crate.
+- People list is recent-first with last-activity time and a plain-text
+  preview (`PersonSummary.last_activity_at` / `preview`). Contacts with no
+  D18 activity stay at the bottom. `person list --json` includes the fields.
 
 ### Fixed
 
