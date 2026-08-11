@@ -139,22 +139,18 @@ struct MboxRec<'a> {
 }
 
 fn split_mboxrd(bytes: &[u8]) -> Vec<MboxRec<'_>> {
+    // Record start: byte 0 or a newline then `From ` (space, no colon) at
+    // column 0. `\nFrom ` and `\r\nFrom ` both match (`\r\nFrom ` contains
+    // `\nFrom `). `>From ` is not a separator. No blank line required —
+    // Takeout All-mail uses `\nFrom ` between records.
     let mut starts = Vec::new();
     if bytes.starts_with(b"From ") {
         starts.push(0);
     }
     let needle = b"\nFrom ";
-    let mut i = 0;
-    while i + needle.len() <= bytes.len() {
-        if &bytes[i..i + needle.len()] == needle {
-            let from_at = i + 1;
-            // blank-line-before-From (`\n\nFrom `) or start of file.
-            if i == 0 || bytes[i - 1] == b'\n' {
-                starts.push(from_at);
-            }
-            i += needle.len();
-        } else {
-            i += 1;
+    for (i, w) in bytes.windows(needle.len()).enumerate() {
+        if w == needle {
+            starts.push(i + 1);
         }
     }
     starts.sort_unstable();
