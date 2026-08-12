@@ -58,8 +58,9 @@
 #     Not: 10M in one view, lazy-decode every photo.
 #121: SearchPane platform is a closed <select> (Any | whatsapp | gmail), not a
 #     free-text Input — invalid tokens cannot be typed. Empty value = any
-#     (null/empty to api.search). Only core tokens in options (contacts/owner
-#     OK if present; no invented twitter/slack/…). Not: new platforms, regex.
+#     (null/empty to api.search from select state). Only core tokens Tauri
+#     parse_platform accepts (contacts OK; no owner option unless IPC accepts it;
+#     no invented twitter/slack/…). Not: new platforms, regex.
 """
 
 from __future__ import annotations
@@ -5327,7 +5328,8 @@ def _has_windowed_render_path(markup: str, cleaned: str) -> bool:
 
 
 # #121 — SearchPane platform select (closed control; core tokens only).
-_CORE_SEARCH_PLATFORM_TOKENS = frozenset({"whatsapp", "gmail", "contacts", "owner"})
+# Tokens Tauri parse_platform accepts for search (not CLI Platform::Owner).
+_CORE_SEARCH_PLATFORM_TOKENS = frozenset({"whatsapp", "gmail", "contacts"})
 _INVENTED_SEARCH_PLATFORM_TOKENS = frozenset(
     {
         "twitter",
@@ -5386,17 +5388,21 @@ _SEARCH_PLATFORM_ARG = re.compile(
     r"\bplatform\s*:\s*([^,\n}]+)",
     re.I,
 )
-# Empty select value must mean any → null / empty / falsy coalesce to api.search.
+# Empty select value must mean any → null/empty from select *state* (not bare null).
 _SEARCH_PLATFORM_EMPTY_AS_ANY = re.compile(
     r"platform\s*:\s*(?:"
     r"platform\s*\|\|\s*(?:null|undefined)"
     r"|platform\s*\?\?\s*(?:null|undefined)"
     r"|platform\s*\?\s*platform\s*:\s*(?:null|undefined)"
     r"|platform\s*===\s*[\"'][\"']\s*\?\s*(?:null|undefined)"
-    r"|!platform\s*\?\s*(?:null|undefined)"
-    r"|(?:platform\s*\|\|\s*)?null"
+    r"|!platform\s*\?\s*(?:null|undefined)\s*:\s*platform"
     r"|platform\b"
     r")",
+    re.I,
+)
+# api.search platform arg must read the select binding (not a decorative control).
+_SEARCH_PLATFORM_STATE_FLOW = re.compile(
+    r"platform\s*:\s*platform\b",
     re.I,
 )
 
@@ -5432,8 +5438,9 @@ def assert_search_platform_select(crate: Path) -> None:
     """#121: Search platform is a closed <select>, not free-text.
 
     Options: empty/any + whatsapp + gmail (core tokens). Empty value means any
-    and is sent as null/empty to api.search. Invalid tokens cannot be typed.
-    contacts/owner may appear (existing core); do not invent twitter/slack/….
+    and is sent as null/empty to api.search from select state. Invalid tokens
+    cannot be typed. contacts may appear (existing core + Tauri parse); do not
+    invent twitter/slack/… or offer owner unless parse_platform accepts it.
     Not: new platforms, regex platform matching.
     """
     search_path = crate / "web" / "lib" / "SearchPane.svelte"
@@ -5481,6 +5488,14 @@ def assert_search_platform_select(crate: Path) -> None:
         fail(
             "#121: api.search platform must be user-selected from the control, "
             "not hard-coded to a single platform"
+        )
+    # Must flow from select state (platform: platform …), not bare null only.
+    if not _SEARCH_PLATFORM_STATE_FLOW.search(api_args) and not _SEARCH_PLATFORM_STATE_FLOW.search(
+        whole
+    ):
+        fail(
+            "#121: api.search platform must read the select state "
+            "(e.g. platform: platform || null) — not a bare null / ignored control"
         )
 
     # 2) Fail free-text Input/textbox for platform (invalid tokens typable).
@@ -5583,7 +5598,7 @@ def assert_search_platform_select(crate: Path) -> None:
         if v in _INVENTED_SEARCH_PLATFORM_TOKENS:
             fail(
                 f"#121: do not invent search platform option {v!r} "
-                "(only core tokens: whatsapp, gmail, and optionally contacts/owner)"
+                "(only core tokens: whatsapp, gmail, and optionally contacts)"
             )
         if v not in _CORE_SEARCH_PLATFORM_TOKENS:
             # Labels like "Any" must not appear as non-empty values.
@@ -5593,18 +5608,16 @@ def assert_search_platform_select(crate: Path) -> None:
                     "token — empty means any)"
                 )
             fail(
-                f"#121: platform option value {v!r} is not a core token "
-                "(allowed: whatsapp, gmail, contacts, owner; empty = any)"
+                f"#121: platform option value {v!r} is not accepted by search "
+                "(allowed: whatsapp, gmail, contacts; empty = any; no owner unless IPC accepts it)"
             )
 
-    # 5) Empty value means any → still null/empty to api.search.
+    # 5) Empty value means any → null/empty from select state to api.search.
     if not _SEARCH_PLATFORM_EMPTY_AS_ANY.search(whole):
-        # platform: platform || null  OR  platform: platform  (empty string)
-        if not re.search(r"\bplatform\s*:\s*platform\b", whole):
-            fail(
-                "#121: empty platform must mean any "
-                "(send null/empty to api.search — e.g. platform: platform || null)"
-            )
+        fail(
+            "#121: empty platform must mean any "
+            "(send null/empty from select state — e.g. platform: platform || null)"
+        )
 
     # Default state should be empty/any, not a forced platform.
     if re.search(

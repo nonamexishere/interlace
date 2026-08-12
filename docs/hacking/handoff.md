@@ -128,7 +128,7 @@ Treat counts as approximate; never paste real names or message text here.
 | #118 | In-window photo lightbox (local CAS) |
 | #119 | Voice-note player chrome (local CAS; play/pause + time) |
 | #120 | Virtualize person timeline (visible + overscan rows only) |
-| #121 | Search platform is a closed select (Any / WhatsApp / Gmail) |
+| #121 | Search platform closed select (Any / WhatsApp / Gmail / Contacts) |
 | #127 / PR #146 | Merge by picking a person (no raw ids) |
 | #147 / PR #148 | Exact folded Contacts+WA names → review, never auto-merge |
 | #149 / PR #150 | Review card: both sides’ samples / counts |
