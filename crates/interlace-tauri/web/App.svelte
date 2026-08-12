@@ -68,7 +68,11 @@
     people.filter((p) => {
       const q = filter.trim().toLowerCase();
       if (!q) return true;
-      return (p.display_name + (p.is_self ? " self" : "")).toLowerCase().includes(q);
+      let hay = (p.display_name + (p.is_self ? " self" : "")).toLowerCase();
+      for (const v of p.identity_values ?? []) {
+        hay += " " + v.toLowerCase();
+      }
+      return hay.includes(q);
     }),
   );
 

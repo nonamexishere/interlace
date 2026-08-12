@@ -19,6 +19,8 @@ pub struct PersonSummary {
     pub is_self: bool,
     pub last_activity_at: Option<String>,
     pub preview: Option<String>,
+    /// Linked identities' `value_normalized` (phone/email) for client-side filter.
+    pub identity_values: Vec<String>,
 }
 
 /// One-line list preview: subject if the last D18 row has one, else truncated
@@ -178,13 +180,47 @@ pub fn person_list_with_groups(
             is_self: r.get::<_, i64>(2)? == 1,
             last_activity_at: r.get(3)?,
             preview,
+            identity_values: Vec::new(),
         })
     })?;
     let mut out = Vec::new();
     for row in rows {
         out.push(row?);
     }
+    attach_identity_values(archive, &mut out)?;
     Ok(out)
+}
+
+/// Fill each person's linked `value_normalized` for client-side people filter (#138).
+fn attach_identity_values(
+    archive: &Archive,
+    people: &mut [PersonSummary],
+) -> Result<(), CoreError> {
+    if people.is_empty() {
+        return Ok(());
+    }
+    let mut by_person: HashMap<i64, Vec<String>> = HashMap::new();
+    let mut stmt = archive.conn.prepare(
+        "SELECT pi.person_id, i.value_normalized
+         FROM person_identities pi
+         JOIN identities i ON i.id = pi.identity_id
+         ORDER BY pi.person_id, i.id",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        let pid: i64 = r.get(0)?;
+        let value: String = r.get(1)?;
+        Ok((pid, value))
+    })?;
+    for row in rows {
+        let (pid, value) = row?;
+        if !value.is_empty() {
+            by_person.entry(pid).or_default().push(value);
+        }
+    }
+    for p in people.iter_mut() {
+        p.identity_values = by_person.remove(&p.id).unwrap_or_default();
+    }
+    Ok(())
 }
 
 /// People the UI may offer as merge targets for `selected_id`.
