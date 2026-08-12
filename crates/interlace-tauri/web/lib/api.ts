@@ -51,6 +51,14 @@ export type TimelineRow = {
   attachments?: Attachment[];
 };
 
+export type PersonConversation = {
+  id: number;
+  title?: string | null;
+  platform: string;
+  kind: string;
+  last_at?: string | null;
+};
+
 export type LinkEvent = { id: number; ts: string; op: string };
 
 export type SearchHit = {
@@ -145,7 +153,10 @@ export const api = {
     includeGroups: boolean;
     limit?: number;
     before?: string | null;
+    conversationId?: number | null;
   }) => invoke<TimelineRow[]>("person_timeline", args),
+  personConversations: (args: { id: number; includeGroups: boolean }) =>
+    invoke<PersonConversation[]>("person_conversations_cmd", args),
   merge: (a: number, b: number, keep: number) =>
     invoke<{ survivor: number; event_id: number }>("person_merge_cmd", {
       a,

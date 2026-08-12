@@ -6,6 +6,18 @@
 #113: open at latest (scroll after layout); older above; Load older at the top; prepend without jump;
 #     last bubble sits above the “Bodies are text only” chrome (list bottom pad);
 #     clear tlLoading before the open-person scroll; nested rAF so wrap has happened.
+#114: after selecting a person, list conversations (dm / group / email_thread) with
+#     title + platform + last_at; default All (D18 merged); pick one to filter the
+#     timeline; groups still need include-groups in the list and in All; no raw ids.
+#     Identity chrome (Merge, include groups, unlink) is hidden until the person
+#     name is clicked. Conversation switcher is a compact header control, not a
+#     second always-expanded list above the bubbles. People sidebar stays.
+#     All / the open panel must stack above sticky .day-heading (higher z-index
+#     than the heading, plus a background so the date cannot show through).
+#     Switcher label (summary + each row): empty title or title === personTitle
+#     → pretty platform (WhatsApp, Gmail — not raw whatsapp); distinct titles
+#     (groups, mail subjects) stay as the title. Subtitle may still show
+#     platform + last_at. No raw ids.
 """
 
 from __future__ import annotations
@@ -233,6 +245,205 @@ _LAST_ROW = re.compile(
     r"|:last-child"
     r"|last(?:Row|Bubble|Msg|Message|Item)"
     r")",
+    re.I,
+)
+
+# #114 — conversation switcher (title + platform + last_at); default All; no raw ids.
+_CONV_EACH = re.compile(
+    r"\{#each\s+"
+    r"(?:(?:[\w.$]+)?conversations|convos|personConversations|"
+    r"conversationList|convList|visibleConversations|filteredConversations)\b"
+)
+_CONV_SWITCHER_HOOK = re.compile(
+    r"(data-conversation-switcher|id=[\"']conversation-switcher[\"'])",
+    re.I,
+)
+_CONV_SELECT = re.compile(
+    r"<select\b[^>]{0,400}(conversation|convo)",
+    re.I | re.S,
+)
+_CONV_STATE_DEFAULT_ALL = re.compile(
+    r"(?:selectedConversation(?:Id)?|conversationId|conversationFilter|"
+    r"selectedConvo|activeConversation|pickedConversation)"
+    r"\s*=\s*\$state\s*(?:<[^>]*>)?\s*\(\s*(?:null|undefined|[\"']all[\"'])",
+    re.I,
+)
+_CONV_RESET_ALL = re.compile(
+    r"(?:selectedConversation(?:Id)?|conversationId|conversationFilter|"
+    r"selectedConvo|activeConversation|pickedConversation)"
+    r"\s*=\s*(?:null|undefined|[\"']all[\"'])",
+    re.I,
+)
+_CONV_ALL_LABEL = re.compile(r">\s*All\s*<|[\"']All[\"']")
+_CONV_TITLE = re.compile(r"(conversation_title|\.title\b|\{[^}]{0,80}\btitle\b[^}]{0,40}\})")
+# #114 dogfood — label helper (pretty platform when title is empty / the person).
+_CONV_LABEL_HELPER_NAMES = (
+    "conversationLabel",
+    "switcherLabel",
+    "platformLabel",
+    "convLabel",
+    "conversationHeading",
+    "switcherHeading",
+)
+_PRETTY_WHATSAPP = re.compile(r"[\"']WhatsApp[\"']")
+_PRETTY_GMAIL = re.compile(r"[\"']Gmail[\"']")
+_RAW_WHATSAPP = re.compile(r"[\"']whatsapp[\"']")
+_RAW_GMAIL = re.compile(r"[\"']gmail[\"']")
+_TITLE_EQ_PERSON = re.compile(
+    r"("
+    r"(?:[\w$]+(?:\?\.|\.))*title\b[^;\n]{0,48}(?:===?|!==?)[^;\n]{0,48}"
+    r"(?:personTitle|personName|displayName|display_name)\b"
+    r"|(?:personTitle|personName|displayName|display_name)\b[^;\n]{0,48}"
+    r"(?:===?|!==?)[^;\n]{0,48}(?:[\w$]+(?:\?\.|\.))*title\b"
+    r")"
+)
+_EMPTY_TITLE = re.compile(
+    r"("
+    r"!\s*(?:[\w$]+(?:\?\.|\.))*title\b"
+    r"|(?:[\w$]+(?:\?\.|\.))*title\b[^;\n]{0,40}(?:===?|!==?)\s*[\"']{2}"
+    r"|(?:[\w$]+(?:\?\.|\.))*title\b\s*\?\?"
+    r"|(?:[\w$]+(?:\?\.|\.))*title\b\s*\|\|"
+    r"|(?:[\w$]+(?:\?\.|\.))*title\b[^;\n]{0,24}\.trim\s*\("
+    r")"
+)
+_DISTINCT_TITLE = re.compile(
+    r"("
+    r"return\s+(?:[\w$]+(?:\?\.|\.))*title\b"
+    r"|:\s*(?:[\w$]+(?:\?\.|\.))*title\b"
+    r")"
+)
+_RAW_TITLE_HEADING = re.compile(
+    r"^(?:[\w$]+(?:\?\.|\.))*title(?:\s*\?\?\s*[\"']{2})?(?:\s*\|\|\s*[\"']{2})?$"
+)
+_SUBTITLE_EL = re.compile(
+    r"<(span|div|p|small|time)\b[^>]*>"
+    r"(?:(?!</\1>).)*\b(?:last_at|lastAt|last_activity_at)\b"
+    r"(?:(?!</\1>).)*</\1>",
+    re.I | re.S,
+)
+_CONV_PLATFORM = re.compile(r"\bplatform\b")
+_CONV_LAST_AT = re.compile(r"\b(?:last_at|lastAt|last_activity_at)\b")
+_CONV_ID_TEXT = re.compile(
+    r"\{[^}]{0,80}(?:conversation_id|\.id|person_id|personId|selectedId)[^}]{0,40}\}"
+)
+_CONV_ID_FALLBACK = re.compile(
+    r"(?:conversation_title|\.title|title)\s*\|\|\s*[^\n;]{0,80}"
+    r"(?:conversation_id|\.id|person_id|personId)\b"
+)
+_CONV_PICK = re.compile(
+    r"("
+    r"(?:onclick|onchange|on:click|on:change)\s*=\s*\{[^}]{0,200}"
+    r"(?:conversation|convo|Conversation|Convo)"
+    r"|bind:value=\{[^}]{0,80}(?:conversation|convo|Conversation|Convo)"
+    r")",
+    re.I,
+)
+_CONV_CREATE = re.compile(r"Create conversation|New conversation", re.I)
+_CONV_MUTE = re.compile(r">\s*Mute\s*<")
+_CONV_PIN = re.compile(r">\s*(?:Un)?[Pp]in\s*<")
+_PERSON_TIMELINE_CALL = re.compile(r"\bpersonTimeline\s*\(")
+_INCLUDE_GROUPS_LABEL = re.compile(r"include groups", re.I)
+
+# #114 dogfood — identity chrome + compact switcher (chat must not sit under admin).
+# All / the open panel stack above sticky .day-heading (z-index + background).
+_MERGE_CTRL = re.compile(r">\s*Merge(?:…|\.{3})?\s*<")
+_UNLINK_CTRL = re.compile(r">\s*unlink\s*<", re.I)
+_GROUPS_BIND = re.compile(r"bind:checked=\{includeGroups\}")
+_GROUPS_LABEL_CTRL = re.compile(
+    r"<label\b[^>]*>[\s\S]{0,240}include groups[\s\S]{0,80}</label>",
+    re.I,
+)
+_CLICK_ATTR = re.compile(r"(?:on:click|onclick)(?:\|\w+)*\s*=\s*\{", re.I)
+_TMPL_TOKEN = re.compile(
+    r"\{#if\s+([^}]+)\}"
+    r"|\{:else\s+if\s+([^}]+)\}"
+    r"|\{:else\}"
+    r"|\{/if\}"
+    r"|\{#each\s+([^}]+)\}"
+    r"|\{/each\}"
+    r"|\{#await\b[^}]*\}"
+    r"|\{/await\}"
+    r"|\{#key\b[^}]*\}"
+    r"|\{/key\}"
+    r"|<((?:[A-Za-z][\w]*\.)?(?:Select|Popover|DropdownMenu|Dropdown|Combobox|Menu)"
+    r"(?:\.\w+)?|details|select)\b([^>]*)>"
+    r"|</((?:[A-Za-z][\w]*\.)?(?:Select|Popover|DropdownMenu|Dropdown|Combobox|Menu)"
+    r"(?:\.\w+)?|details|select)\s*>",
+    re.I,
+)
+_HIDDEN_BIND = re.compile(
+    r"(?:\bhidden|class:hidden|aria-hidden)\s*=\s*\{",
+    re.I,
+)
+_TITLE_SKIP_ASSIGN = frozenset(
+    {
+        "selectedId",
+        "selectedConversationId",
+        "view",
+        "err",
+        "mergeOpen",
+        "mergeQuery",
+        "mergeKeepId",
+        "mergeKeepName",
+        "allowSelf",
+        "filter",
+        "tlIndex",
+        "tlLoading",
+        "setup",
+        "booting",
+        "opening",
+    }
+)
+_PERSON_PANE_SKIP = frozenset(
+    {
+        "SearchPane.svelte",
+        "ReviewPane.svelte",
+        "ImportPane.svelte",
+        "DoctorPane.svelte",
+        "ConfirmDialog.svelte",
+        "EmptyState.svelte",
+        "CasAttach.svelte",
+    }
+)
+# Sticky .day-heading is z-index 10; All / the open panel must sit above it.
+_TW_Z_INDEX = re.compile(r"(?<![\w-])z-(?:\[(\d+)\]|(\d+))(?![\w-])")
+_CSS_Z_INDEX = re.compile(r"z-index\s*:\s*(\d+)", re.I)
+_CLASS_Z_DIR = re.compile(r"\bclass:z-(\d+)\b")
+_TW_STACK_BG = re.compile(
+    r"(?<![\w-])((?:(?:group-)?(?:hover|focus|active|focus-visible):)*)"
+    r"(bg-(?:background|card|popover|muted|white|black|primary|secondary|accent)"
+    r"|bg-\[var\(--color-(?:background|card|popover|muted)\)\])"
+    r"(?:/(\d+))?(?![\w-])",
+    re.I,
+)
+_CSS_STACK_BG = re.compile(
+    r"background(?:-color)?\s*:\s*(?!none\b|transparent\b)(\S)",
+    re.I,
+)
+_VOID_HTML = frozenset(
+    {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+    }
+)
+_TIMELINE_INNER = re.compile(
+    r"(id=[\"']person-timeline[\"']|day-heading|\{#each\s+(?:timeline|dayGroups)\b)",
+    re.I,
+)
+_DAY_HEADING_CSS = re.compile(
+    r"(?:\.day-heading\b|\.day-separator\b|\.day-sep\b|\[data-day-heading\])[^{]*\{([^}]+)\}",
     re.I,
 )
 
@@ -836,6 +1047,1362 @@ def assert_timeline_latest(crate: Path) -> None:
         fail("#113: docs/user/app.md must say loading older does not jump the viewport")
 
 
+def _without_calls(src: str, rx: re.Pattern[str]) -> str:
+    """Blank out `name(` … matching `)` so a later search ignores those args."""
+    out: list[str] = []
+    i = 0
+    for m in rx.finditer(src):
+        out.append(src[i : m.start()])
+        close = _match_closer(src, m.end() - 1)
+        i = (close + 1) if close >= 0 else m.end()
+    out.append(src[i:])
+    return "".join(out)
+
+
+def _strip_tag_attrs(block: str) -> str:
+    """Leave element text / mustaches; drop attributes (data-id={c.id} is not visible)."""
+    no_mustache_attr = re.sub(
+        r"\s+[A-Za-z_:][\w:.-]*\s*=\s*\{(?:[^{}]|\{[^{}]*\})*\}",
+        "",
+        block,
+    )
+    no_quoted_attr = re.sub(
+        r"\s+[A-Za-z_:][\w:.-]*\s*=\s*(?:\"[^\"]*\"|'[^']*')",
+        "",
+        no_mustache_attr,
+    )
+    return no_quoted_attr
+
+
+def _visible_switcher_text(block: str) -> str:
+    """User-visible switcher text. Each keys and {#if} tests are not shown."""
+    no_attrs = _strip_tag_attrs(block)
+    return re.sub(r"\{[#/:@].*?\}", "", no_attrs, flags=re.S)
+
+
+def _person_detail_markup(app: str) -> str:
+    """Person column chrome (title → text-only footer), not the people sidebar."""
+    start = app.find("{personTitle}")
+    if start < 0:
+        start = app.find("personTitle")
+    end = app.find("Bodies are text")
+    if start >= 0 and end > start:
+        return app[start:end]
+    markup = app
+    script_end = app.rfind("</script>")
+    if script_end >= 0:
+        markup = app[script_end:]
+    return markup
+
+
+def _conversation_switcher_blocks(crate: Path) -> list[str]:
+    """Conversation list/select chrome — not the people sidebar, not chat bubbles."""
+    found: list[str] = []
+    for p in _web_sources(crate):
+        if p.suffix != ".svelte":
+            continue
+        text = p.read_text()
+        for m in _CONV_SWITCHER_HOOK.finditer(text):
+            found.append(text[max(0, m.start() - 200) : m.end() + 900])
+        i = 0
+        while True:
+            m = _CONV_EACH.search(text, i)
+            if not m:
+                break
+            end = _matching_each_end(text, m.start())
+            if end < 0:
+                fail(f"#114: unclosed conversation {{#each}} in {p.relative_to(crate)}")
+            found.append(text[m.start() : end])
+            i = end
+        for m in re.finditer(r"<select\b[^>]*>.*?</select>", text, re.I | re.S):
+            chunk = m.group(0)
+            if re.search(r"conversation|convo", chunk, re.I):
+                found.append(chunk)
+    return found
+
+
+def _svelte_markup(text: str) -> str:
+    end = text.rfind("</script>")
+    return text[end:] if end >= 0 else text
+
+
+def _template_stack(markup: str, pos: int) -> list[tuple[str, str, str]]:
+    """Open {#if}/{#each}/compact tags at pos. {:else} is if-else (not a closed gate)."""
+    stack: list[tuple[str, str, str]] = []
+    for m in _TMPL_TOKEN.finditer(markup):
+        if m.start() >= pos:
+            break
+        tok = m.group(0)
+        if tok.startswith("{#if"):
+            stack.append(("if", (m.group(1) or "").strip(), ""))
+        elif tok.startswith("{:else if"):
+            if stack and stack[-1][0] in {"if", "if-else"}:
+                stack[-1] = ("if", (m.group(2) or "").strip(), "")
+        elif tok.startswith("{:else}"):
+            if stack and stack[-1][0] == "if":
+                stack[-1] = ("if-else", stack[-1][1], "")
+        elif tok.startswith("{/if}"):
+            while stack and stack[-1][0] not in {"if", "if-else"}:
+                stack.pop()
+            if stack:
+                stack.pop()
+        elif tok.startswith("{#each"):
+            stack.append(("each", (m.group(3) or "").strip(), ""))
+        elif tok.startswith("{/each}"):
+            while stack and stack[-1][0] != "each":
+                stack.pop()
+            if stack:
+                stack.pop()
+        elif tok.startswith("{#await") or tok.startswith("{#key"):
+            stack.append(("block", tok[:6], ""))
+        elif tok.startswith("{/await}") or tok.startswith("{/key}"):
+            if stack and stack[-1][0] == "block":
+                stack.pop()
+        elif tok.startswith("</"):
+            name = (m.group(6) or "").lower()
+            if stack and stack[-1][0] == "tag" and stack[-1][1].lower() == name:
+                stack.pop()
+        else:
+            stack.append(("tag", (m.group(4) or "").lower(), m.group(5) or ""))
+    return stack
+
+
+def _is_vacuous_chrome_cond(cond: str) -> bool:
+    """selectedId / personTitle / true is not 'user opened identity chrome'."""
+    parts = re.split(r"&&|\|\|", cond)
+    if not parts:
+        return True
+    for raw in parts:
+        p = raw.strip().strip("()")
+        p = re.sub(r"^\s*!!?", "", p).strip()
+        if re.fullmatch(r"true|1", p, re.I):
+            continue
+        if re.fullmatch(r"personTitle", p):
+            continue
+        if re.fullmatch(
+            r"(?:selectedId|selectedPerson|identities\.length(?:\s*[><!=]=?\s*0)?"
+            r"|personById\s*\([^)]*\)|st|setup|booting|opening"
+            r"|view\s*===\s*[\"']\w+[\"'])",
+            p,
+        ):
+            continue
+        if re.fullmatch(r"selectedId\s*(?:!=|!==|==|===)\s*(?:null|undefined)", p):
+            continue
+        return False
+    return True
+
+
+def _details_always_open(attrs: str) -> bool:
+    if re.search(r"\bbind:open\b|\bopen\s*=\s*\{", attrs):
+        return False
+    return bool(re.search(r"\bopen\b", attrs))
+
+
+def _assigned_idents(expr: str) -> set[str]:
+    return set(re.findall(r"\b([A-Za-z_]\w*)\s*=(?!=)", expr))
+
+
+def _cond_uses_flag(cond: str, flags: set[str]) -> bool:
+    return any(re.search(rf"\b{re.escape(f)}\b", cond) for f in flags)
+
+
+def _title_flags(expr: str, whole: str, seen: set[str] | None = None) -> set[str]:
+    found = seen if seen is not None else set()
+    flags = {a for a in _assigned_idents(expr) if a not in _TITLE_SKIP_ASSIGN}
+    for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\(", expr):
+        name = m.group(1)
+        if name in found or name in _SCROLL_HELPER_SKIP or name in _TITLE_SKIP_ASSIGN:
+            continue
+        found.add(name)
+        body = _function_body(whole, name)
+        if body:
+            flags |= _title_flags(body, whole, found)
+    return flags
+
+
+def _open_tag_before(markup: str, pos: int) -> tuple[int, str] | None:
+    n = len(markup)
+    i = pos
+    while i > 0:
+        lt = markup.rfind("<", 0, i)
+        if lt < 0:
+            return None
+        if markup.startswith("</", lt) or markup.startswith("<!--", lt):
+            i = lt
+            continue
+        j = lt + 1
+        q = None
+        brace = 0
+        while j < n:
+            c = markup[j]
+            if q:
+                if c == q:
+                    q = None
+            elif c in "'\"":
+                q = c
+            elif c == "{":
+                brace += 1
+            elif c == "}":
+                if brace:
+                    brace -= 1
+            elif c == ">" and brace == 0:
+                return lt, markup[lt : j + 1]
+            j += 1
+        return None
+    return None
+
+
+def _is_title_wrapper(tag: str) -> bool:
+    name_m = re.match(r"<([\w.]+)", tag)
+    if not name_m:
+        return False
+    name = name_m.group(1).lower()
+    if name in {"button", "summary", "h1", "a"}:
+        return True
+    return bool(re.search(r"personTitle|person-title|data-person-title", tag))
+
+
+def _ancestor_tags(markup: str, pos: int, limit: int = 4) -> list[str]:
+    tags: list[str] = []
+    cur = pos
+    for _ in range(limit):
+        found = _open_tag_before(markup, cur)
+        if not found:
+            break
+        lt, tag = found
+        tags.append(tag)
+        cur = lt
+    return tags
+
+
+def _click_expr(tag: str) -> str:
+    m = _CLICK_ATTR.search(tag)
+    if not m:
+        return ""
+    open_i = m.end() - 1
+    close = _match_closer(tag, open_i)
+    if close < 0:
+        return ""
+    return tag[open_i + 1 : close]
+
+
+def _person_title_pos(markup: str) -> int:
+    for pat in (
+        "{personTitle}",
+        'id="personTitle"',
+        "id='personTitle'",
+        'class="personTitle"',
+        "data-person-title",
+        "person-title",
+    ):
+        i = markup.find(pat)
+        if i >= 0:
+            return i
+    return markup.find("personTitle")
+
+
+def _identity_title_toggle(markup: str, whole: str) -> tuple[set[str], bool]:
+    """Flags assigned by clicking the person title, and whether the title is a <summary>."""
+    pos = _person_title_pos(markup)
+    if pos < 0:
+        return set(), False
+    tags = _ancestor_tags(markup, pos)
+    candidates: list[str] = []
+    if tags:
+        candidates.append(tags[0])
+        for tag in tags[1:]:
+            if _is_title_wrapper(tag):
+                candidates.append(tag)
+    title_in_summary = any(re.match(r"<summary\b", t, re.I) for t in candidates)
+    flags: set[str] = set()
+    for tag in candidates:
+        expr = _click_expr(tag)
+        if expr:
+            flags |= _title_flags(expr, whole)
+            break
+    return flags, title_in_summary
+
+
+def _hidden_flags_before(markup: str, pos: int) -> set[str]:
+    window = markup[max(0, pos - 500) : pos]
+    flags: set[str] = set()
+    skip = _TITLE_SKIP_ASSIGN | {
+        "hidden",
+        "true",
+        "false",
+        "null",
+        "undefined",
+        "class",
+        "aria",
+    }
+    exprs: list[str] = []
+    for m in _HIDDEN_BIND.finditer(window):
+        close = _match_closer(window, m.end() - 1)
+        if close >= 0:
+            exprs.append(window[m.end() : close])
+    for m in re.finditer(r"\bclass\s*=\s*\{", window, re.I):
+        close = _match_closer(window, m.end() - 1)
+        if close < 0:
+            continue
+        expr = window[m.end() : close]
+        if "hidden" in expr.lower():
+            exprs.append(expr)
+    for expr in exprs:
+        for ident in re.findall(r"\b([A-Za-z_]\w*)\b", expr):
+            if ident not in skip:
+                flags.add(ident)
+    return flags
+
+
+def _chrome_hidden_by_default(markup: str, pos: int) -> bool:
+    for kind, a, b in _template_stack(markup, pos):
+        if kind == "if" and not _is_vacuous_chrome_cond(a):
+            return True
+        if kind == "tag" and a.lower() == "details" and not _details_always_open(b):
+            return True
+    return bool(_hidden_flags_before(markup, pos))
+
+
+def _chrome_toggled_by_title(
+    markup: str, pos: int, flags: set[str], title_in_summary: bool
+) -> bool:
+    for kind, a, b in _template_stack(markup, pos):
+        if kind == "if" and flags and _cond_uses_flag(a, flags):
+            return True
+        if kind == "tag" and a.lower() == "details" and not _details_always_open(b):
+            if title_in_summary:
+                return True
+            if flags and _cond_uses_flag(b, flags):
+                return True
+    hidden_fs = _hidden_flags_before(markup, pos)
+    return bool(flags and hidden_fs & flags)
+
+
+def _flag_default_open(logic: str, name: str) -> bool:
+    m = re.search(
+        rf"\b(?:let|const|var)\s+{re.escape(name)}\s*=\s*"
+        rf"(?:\$state\s*(?:<[^>]*>)?\s*\(\s*)?([^\n;)]+)",
+        logic,
+    )
+    if not m:
+        return False
+    val = m.group(1).strip().rstrip(")").strip()
+    return val in {"true", "1", '"open"', "'open'"} or val.startswith("true")
+
+
+def _person_chrome_markup(text: str) -> str:
+    """Person column, including the title open tag (h1 / button / summary onclick)."""
+    idx = text.find("{personTitle}")
+    if idx < 0:
+        idx = text.find("data-conversation-switcher")
+    if idx < 0:
+        return _person_detail_markup(text)
+    # Look back far enough for a wrapping <button>/<summary>/<details>, not to {#if st}.
+    start = max(0, idx - 600)
+    end = text.find("Bodies are text", idx)
+    if end > start:
+        return text[start:end]
+    return text[start:]
+
+
+def _person_pane_markups(crate: Path) -> list[str]:
+    found: list[str] = []
+    for p in _web_sources(crate):
+        if p.suffix != ".svelte" or p.name in _PERSON_PANE_SKIP:
+            continue
+        text = p.read_text()
+        if not (
+            "{personTitle}" in text
+            or "data-conversation-switcher" in text
+            or "openMerge" in text
+        ):
+            continue
+        found.append(_person_chrome_markup(text))
+    return found
+
+
+def _groups_ctrl_pos(detail: str) -> int:
+    m = _GROUPS_BIND.search(detail)
+    if m:
+        return m.start()
+    m = _GROUPS_LABEL_CTRL.search(detail)
+    if m and re.search(r"<input\b", m.group(0), re.I):
+        return m.start()
+    return -1
+
+
+def _is_compact_enclosure(stack: list[tuple[str, str, str]], logic: str = "") -> bool:
+    compact_parts = {
+        "select",
+        "details",
+        "popover",
+        "dropdownmenu",
+        "dropdown",
+        "combobox",
+        "menu",
+    }
+    for kind, a, b in stack:
+        if kind == "tag":
+            parts = a.lower().split(".")
+            if any(p in compact_parts for p in parts):
+                if "details" in parts and _details_always_open(b):
+                    continue
+                return True
+        if kind == "if" and not _is_vacuous_chrome_cond(a):
+            ident = a.strip()
+            if ident.isidentifier() and _flag_default_open(logic, ident):
+                continue
+            return True
+    return False
+
+
+def _always_expanded_conversation_list(crate: Path, logic: str = "") -> bool:
+    """True if {#each conversations} is a second always-visible list, not a compact control."""
+    for pane in _person_pane_markups(crate):
+        for m in _CONV_EACH.finditer(pane):
+            if _is_compact_enclosure(_template_stack(pane, m.start()), logic):
+                continue
+            return True
+    return False
+
+
+def _people_list_hidden_on_select(crate: Path) -> bool:
+    for p in _web_sources(crate):
+        if p.suffix != ".svelte":
+            continue
+        markup = _svelte_markup(p.read_text())
+        for m in re.finditer(r"\{#each\s+filtered\b", markup):
+            for kind, a, _b in _template_stack(markup, m.start()):
+                if kind == "if" and re.search(
+                    r"!\s*selectedId|selectedId\s*===\s*null|selectedId\s*==\s*null",
+                    a,
+                ):
+                    return True
+    return False
+
+
+def _z_from_text(blob: str) -> int | None:
+    """Highest explicit numeric z-index in classes / CSS (z-auto does not count)."""
+    best: int | None = None
+    for m in _TW_Z_INDEX.finditer(blob):
+        n = int(m.group(1) or m.group(2))
+        best = n if best is None else max(best, n)
+    for m in _CSS_Z_INDEX.finditer(blob):
+        n = int(m.group(1))
+        best = n if best is None else max(best, n)
+    for m in _CLASS_Z_DIR.finditer(blob):
+        n = int(m.group(1))
+        best = n if best is None else max(best, n)
+    return best
+
+
+def _has_stacking_bg(blob: str) -> bool:
+    """Opaque background so a sticky date cannot show through the control."""
+    if _CSS_STACK_BG.search(blob):
+        return True
+    for m in _TW_STACK_BG.finditer(blob):
+        if m.group(1):
+            continue
+        if m.group(3) == "0":
+            continue
+        return True
+    return False
+
+
+def _tag_name(tag: str) -> str:
+    m = re.match(r"</?([A-Za-z][\w:.-]*)", tag)
+    return (m.group(1) if m else "").lower()
+
+
+def _class_list(tag: str) -> list[str]:
+    m = re.search(r"\bclass(?:Name)?\s*=\s*[\"']([^\"']*)[\"']", tag, re.I)
+    if not m:
+        m = re.search(
+            r"\bclass(?:Name)?\s*=\s*\{[`'\"]([^`'\"]*)[`'\"]\}",
+            tag,
+            re.I,
+        )
+    if not m:
+        return []
+    return m.group(1).split()
+
+
+def _id_of(tag: str) -> str | None:
+    m = re.search(r"\bid\s*=\s*[\"']([^\"']+)[\"']", tag, re.I)
+    return m.group(1) if m else None
+
+
+def _style_attr(tag: str) -> str:
+    m = re.search(r"\bstyle\s*=\s*[\"']([^\"']*)[\"']", tag, re.I)
+    return m.group(1) if m else ""
+
+
+def _css_rules_for(css: str, tag: str) -> str:
+    chunks: list[str] = []
+    for cls in _class_list(tag):
+        esc = re.escape(cls)
+        chunks.extend(m.group(1) for m in re.finditer(rf"\.{esc}\b[^{{]*\{{([^}}]+)\}}", css))
+    el_id = _id_of(tag)
+    if el_id:
+        esc = re.escape(el_id)
+        chunks.extend(m.group(1) for m in re.finditer(rf"#{esc}\b[^{{]*\{{([^}}]+)\}}", css))
+    return "\n".join(chunks)
+
+
+def _layer_blob(tag: str, css: str) -> str:
+    return "\n".join((tag, _style_attr(tag), _css_rules_for(css, tag)))
+
+
+def _layer_stacks(blob: str, day_z: int) -> tuple[bool, int | None, bool]:
+    z = _z_from_text(blob)
+    bg = _has_stacking_bg(blob)
+    return bool(z is not None and z > day_z and bg), z, bg
+
+
+def _element_span(markup: str, pos: int) -> tuple[int, str, str] | None:
+    """Open tag at/before pos and its inner HTML (not descendants' close)."""
+    found = _open_tag_before(markup, pos + 1)
+    if not found:
+        return None
+    lt, tag = found
+    name = _tag_name(tag)
+    if not name or tag.rstrip().endswith("/>") or name in _VOID_HTML:
+        return lt, tag, ""
+    start = lt + len(tag)
+    depth = 1
+    rx = re.compile(rf"<{re.escape(name)}\b|</{re.escape(name)}\s*>", re.I)
+    for m in rx.finditer(markup, start):
+        if markup.startswith("</", m.start()):
+            depth -= 1
+            if depth == 0:
+                return lt, tag, markup[start : m.start()]
+        else:
+            depth += 1
+    return lt, tag, markup[start:]
+
+
+def _day_heading_z_index(crate: Path) -> int:
+    """Sticky day-heading z-index. Missing still stacks as 10 (current .day-heading)."""
+    blob = "\n".join(p.read_text() for p in _web_sources(crate))
+    found: list[int] = []
+    for m in _DAY_HEADING_CSS.finditer(blob):
+        z = _z_from_text(m.group(1))
+        if z is not None:
+            found.append(z)
+    for m in re.finditer(r"<[^>]+>", blob):
+        tag = m.group(0)
+        if not re.search(r"day-heading|day-separator|day-sep\b|data-day-heading", tag, re.I):
+            continue
+        z = _z_from_text(tag)
+        if z is not None:
+            found.append(z)
+    return max(found) if found else 10
+
+
+def _switcher_hook_positions(markup: str) -> list[int]:
+    pos = [m.start() for m in _CONV_SWITCHER_HOOK.finditer(markup)]
+    if pos:
+        return pos
+    pos = [m.start() for m in _CONV_SELECT.finditer(markup)]
+    if pos:
+        return pos
+    return [m.start() for m in _CONV_EACH.finditer(markup)]
+
+
+def _is_switcher_tag(tag: str) -> bool:
+    if _CONV_SWITCHER_HOOK.search(tag) or _CONV_SELECT.search(tag):
+        return True
+    return _tag_name(tag) in {"details", "select"}
+
+
+def _child_open_tag(inner: str, rx: re.Pattern[str]) -> str | None:
+    m = rx.search(inner)
+    if not m:
+        return None
+    found = _open_tag_before(inner, m.start() + 1)
+    return found[1] if found else m.group(0)
+
+
+def _switcher_summary_and_panel(tag: str, inner: str) -> tuple[str | None, str | None]:
+    """Closed control (summary / select) and the open list, if they are separate."""
+    if _tag_name(tag) == "select" or _CONV_SELECT.search(tag):
+        return tag, None
+    summary = _child_open_tag(inner, re.compile(r"<summary\b", re.I))
+    panel = _child_open_tag(
+        inner,
+        re.compile(
+            r"<[^>]*\babsolute\b|<[^>]*role\s*=\s*[\"'](?:listbox|menu)[\"']",
+            re.I,
+        ),
+    )
+    if panel is None:
+        panel = _child_open_tag(inner, re.compile(r"<(?:ul|ol|menu)\b", re.I))
+    return summary, panel
+
+
+def _switcher_above_day_heading(crate: Path) -> tuple[bool, int, int | None, bool]:
+    """Whether All / the open panel stack above .day-heading.
+
+    A z-index on the person-pane header or the switcher element covers both
+    the closed label and the dropdown (one stacking context). z-index only on
+    the panel leaves All under the sticky date; only on the summary leaves
+    the open list under it. People-sidebar overflow (#159) is not in scope.
+    """
+    day_z = _day_heading_z_index(crate)
+    css = "\n".join(p.read_text() for p in _web_sources(crate))
+    best_z: int | None = None
+    saw_bg = False
+    saw_switcher = False
+    for p in _web_sources(crate):
+        if p.suffix != ".svelte" or p.name in _PERSON_PANE_SKIP:
+            continue
+        markup = p.read_text()
+        for pos in _switcher_hook_positions(markup):
+            saw_switcher = True
+            switcher: tuple[int, str, str] | None = None
+            headers: list[str] = []
+            cur = pos + 1
+            for _ in range(12):
+                found = _open_tag_before(markup, cur)
+                if not found:
+                    break
+                lt, _open = found
+                el = _element_span(markup, lt)
+                if not el:
+                    break
+                _lt, tag, inner = el
+                if switcher is None and _is_switcher_tag(tag):
+                    switcher = el
+                elif switcher is not None and not _TIMELINE_INNER.search(inner):
+                    headers.append(tag)
+                cur = lt
+            if switcher is None:
+                switcher = _element_span(markup, pos)
+            if switcher is None:
+                continue
+            _lt, sw_tag, sw_inner = switcher
+            summary, panel = _switcher_summary_and_panel(sw_tag, sw_inner)
+            sw_blob = _layer_blob(sw_tag, css)
+            hd_blobs = [_layer_blob(h, css) for h in headers]
+            su_blob = _layer_blob(summary, css) if summary else ""
+            pa_blob = _layer_blob(panel, css) if panel else ""
+            sw_ok, sw_z, sw_bg = _layer_stacks(sw_blob, day_z)
+            hd_hits = [_layer_stacks(b, day_z) for b in hd_blobs]
+            hd_ok = any(ok for ok, _z, _bg in hd_hits)
+            su_ok, su_z, su_bg = _layer_stacks(su_blob, day_z) if summary else (False, None, False)
+            pa_ok, _pa_z, _pa_bg = _layer_stacks(pa_blob, day_z) if panel else (True, None, True)
+            for z in (sw_z, su_z, *(z for _ok, z, _bg in hd_hits)):
+                if z is None:
+                    continue
+                best_z = z if best_z is None else max(best_z, z)
+            saw_bg = saw_bg or sw_bg or su_bg or any(bg for _ok, _z, bg in hd_hits)
+            # Panel-only stacking does not cover the word All.
+            if sw_ok or hd_ok or (su_ok and pa_ok):
+                return True, day_z, best_z, True
+    if not saw_switcher:
+        return False, day_z, best_z, saw_bg
+    return False, day_z, best_z, saw_bg
+
+
+def _ts_function_body(src: str, name: str) -> str:
+    """Body or arrow expression of `name`, including a TS `: ReturnType`."""
+    body = _function_body(src, name)
+    if body:
+        return body
+    pats = (
+        rf"(?:async\s+)?function\s+{re.escape(name)}\s*\(",
+        rf"(?:const|let|var)\s+{re.escape(name)}\s*=\s*(?:async\s+)?function\s*\(",
+        rf"(?:const|let|var)\s+{re.escape(name)}\s*=\s*(?:async\s*)?\(",
+    )
+    for pat in pats:
+        m = re.search(pat, src)
+        if not m:
+            continue
+        open_p = m.end() - 1
+        if open_p < 0 or src[open_p] != "(":
+            continue
+        close_p = _match_closer(src, open_p)
+        if close_p < 0:
+            continue
+        i = close_p + 1
+        n = len(src)
+        while i < n and src[i] in " \t\n":
+            i += 1
+        if i < n and src[i] == ":":
+            i += 1
+            depth = 0
+            while i < n:
+                c = src[i]
+                if c in "<({[":
+                    depth += 1
+                elif c in ">)}]":
+                    depth -= 1
+                elif depth <= 0 and (src.startswith("=>", i) or c == "{"):
+                    break
+                i += 1
+        while i < n and src[i] in " \t\n":
+            i += 1
+        if src.startswith("=>", i):
+            i += 2
+            while i < n and src[i] in " \t\n":
+                i += 1
+        if i < n and src[i] == "{":
+            close_b = _match_closer(src, i)
+            return src[i + 1 : close_b] if close_b >= 0 else src[i + 1 :]
+        j = i
+        depth = 0
+        while j < n:
+            nxt = _js_next(src, j)
+            if nxt != j:
+                j = nxt
+                continue
+            c = src[j]
+            if c in "({[":
+                depth += 1
+            elif c in ")}]":
+                if depth == 0:
+                    break
+                depth -= 1
+            elif c in ";,\n" and depth == 0:
+                break
+            j += 1
+        return src[i:j]
+    return ""
+
+
+def _helper_with_callees(src: str, name: str, seen: set[str] | None = None) -> str:
+    found = seen if seen is not None else set()
+    if name in found:
+        return ""
+    found.add(name)
+    body = _ts_function_body(src, name)
+    if not body:
+        return ""
+    parts = [body]
+    for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\(", body):
+        callee = m.group(1)
+        if callee in found or callee in _SCROLL_HELPER_SKIP:
+            continue
+        nested = _helper_with_callees(src, callee, found)
+        if nested:
+            parts.append(nested)
+    return "\n".join(parts)
+
+
+def _assignment_rhs(src: str, name: str) -> str:
+    m = re.search(
+        rf"\b(?:const|let|var)\s+{re.escape(name)}\s*=\s*",
+        src,
+    )
+    if not m:
+        return ""
+    rest = src[m.end() :]
+    dm = re.match(r"\$derived(?:\.by)?\s*\(", rest)
+    if dm:
+        return _call_arg(rest, dm.end() - 1).strip().rstrip(",")
+    depth = 0
+    j = 0
+    while j < len(rest):
+        nxt = _js_next(rest, j)
+        if nxt != j:
+            j = nxt
+            continue
+        c = rest[j]
+        if c in "({[":
+            depth += 1
+        elif c in ")}]":
+            depth -= 1
+        elif c == ";" and depth <= 0:
+            break
+        j += 1
+    return rest[:j].strip()
+
+
+def _is_pretty_platform_blob(blob: str) -> bool:
+    """Maps raw slugs to WhatsApp / Gmail (not a raw `whatsapp` fallback)."""
+    if not (_PRETTY_WHATSAPP.search(blob) and _PRETTY_GMAIL.search(blob)):
+        return False
+    return bool(_RAW_WHATSAPP.search(blob) and _RAW_GMAIL.search(blob))
+
+
+def _pretty_platform_helpers(logic: str) -> set[str]:
+    names: set[str] = set()
+    for name in _CONV_LABEL_HELPER_NAMES:
+        blob = _helper_with_callees(logic, name)
+        if blob and _is_pretty_platform_blob(blob):
+            names.add(name)
+    return names
+
+
+def _compares_title_to_person(blob: str) -> bool:
+    if not re.search(r"\bpersonTitle\b", blob):
+        return False
+    if _TITLE_EQ_PERSON.search(blob):
+        return True
+    # `person = personTitle` then `title === person`
+    return bool(
+        re.search(
+            r"(?:[\w$]+(?:\?\.|\.))*title\b[^;\n]{0,48}(?:===?|!==?)",
+            blob,
+        )
+    )
+
+
+def _blob_chooses_pretty_platform(blob: str, pretty_names: set[str]) -> bool:
+    """Empty title or title === personTitle → pretty platform; else title."""
+    if not _compares_title_to_person(blob):
+        return False
+    if not _EMPTY_TITLE.search(blob):
+        return False
+    if not _DISTINCT_TITLE.search(blob):
+        return False
+    uses_pretty = any(re.search(rf"\b{re.escape(n)}\s*\(", blob) for n in pretty_names)
+    if uses_pretty or _is_pretty_platform_blob(blob):
+        return True
+    return bool(_PRETTY_WHATSAPP.search(blob) and _PRETTY_GMAIL.search(blob))
+
+
+def _conversation_chooser_helpers(logic: str) -> dict[str, str]:
+    """Named helpers that pick pretty platform vs a distinct title."""
+    pretty = _pretty_platform_helpers(logic)
+    found: dict[str, str] = {}
+    for name in _CONV_LABEL_HELPER_NAMES:
+        blob = _helper_with_callees(logic, name)
+        if blob and _blob_chooses_pretty_platform(blob, pretty | {name}):
+            found[name] = blob
+    return found
+
+
+def _closed_switcher_label_markup(tag: str, inner: str) -> str:
+    if _tag_name(tag) == "select" or _CONV_SELECT.search(tag):
+        return inner
+    sm = re.search(r"<summary\b[^>]*>([\s\S]*?)</summary>", inner, re.I)
+    if sm:
+        return sm.group(1)
+    each = _CONV_EACH.search(inner)
+    if each:
+        return inner[: each.start()]
+    bm = re.search(r"<button\b[^>]*>([\s\S]*?)</button>", inner, re.I)
+    if bm:
+        return bm.group(1)
+    return inner
+
+
+def _switcher_summary_markup(crate: Path) -> str:
+    parts: list[str] = []
+    for p in _web_sources(crate):
+        if p.suffix != ".svelte" or p.name in _PERSON_PANE_SKIP:
+            continue
+        text = p.read_text()
+        for m in _CONV_SWITCHER_HOOK.finditer(text):
+            el = _element_span(text, m.start())
+            if not el:
+                window = text[max(0, m.start() - 80) : m.end() + 900]
+                sm = re.search(r"<summary\b[^>]*>([\s\S]*?)</summary>", window, re.I)
+                if sm:
+                    parts.append(sm.group(1))
+                continue
+            _lt, tag, inner = el
+            parts.append(_closed_switcher_label_markup(tag, inner))
+        if not parts:
+            for m in _CONV_SELECT.finditer(text):
+                el = _element_span(text, m.start())
+                if el:
+                    parts.append(el[2])
+    return "\n".join(parts)
+
+
+def _switcher_row_markup(crate: Path) -> str:
+    parts: list[str] = []
+    for p in _web_sources(crate):
+        if p.suffix != ".svelte" or p.name in _PERSON_PANE_SKIP:
+            continue
+        text = p.read_text()
+        i = 0
+        while True:
+            m = _CONV_EACH.search(text, i)
+            if not m:
+                break
+            end = _matching_each_end(text, m.start())
+            if end < 0:
+                break
+            parts.append(text[m.start() : end])
+            i = end
+    return "\n".join(parts)
+
+
+def _strip_switcher_subtitles(block: str) -> str:
+    prev = None
+    out = block
+    while prev != out:
+        prev = out
+        out = _SUBTITLE_EL.sub("", out)
+    return out
+
+
+def _heading_exprs(markup: str) -> list[str]:
+    """Visible heading mustaches (not {#if}, not All, not last_at subtitle)."""
+    cleaned = _strip_switcher_subtitles(markup)
+    cleaned = _strip_tag_attrs(cleaned)
+    cleaned = re.sub(r"\{[#/:@].*?\}", "", cleaned, flags=re.S)
+    cleaned = re.sub(r">\s*All\s*<|[\"']All[\"']", "", cleaned)
+    return [m.group(1).strip() for m in re.finditer(r"\{([^{}]+)\}", cleaned)]
+
+
+def _expr_with_defs(expr: str, logic: str, depth: int = 0) -> str:
+    if depth > 4:
+        return expr
+    parts = [expr]
+    skip = _SCROLL_HELPER_SKIP | {
+        "conv",
+        "c",
+        "title",
+        "platform",
+        "personTitle",
+        "null",
+        "undefined",
+        "true",
+        "false",
+    }
+    for ident in re.findall(r"\b([A-Za-z_]\w*)\b", expr):
+        if ident in skip:
+            continue
+        rhs = _assignment_rhs(logic, ident)
+        if rhs:
+            parts.append(rhs)
+            parts.append(_expr_with_defs(rhs, logic, depth + 1))
+    return "\n".join(parts)
+
+
+def _uses_named_helper(blob: str, names: set[str] | dict[str, str]) -> bool:
+    return any(re.search(rf"\b{re.escape(n)}\s*\(", blob) for n in names)
+
+
+def _is_raw_title_heading(expr: str, logic: str, choosers: dict[str, str]) -> bool:
+    s = expr.strip()
+    s = re.sub(r"\s*\?\?\s*[\"']{2}\s*$", "", s).strip()
+    s = re.sub(r"\s*\|\|\s*[\"']{2}\s*$", "", s).strip()
+    if _RAW_TITLE_HEADING.match(s):
+        return True
+    if re.fullmatch(r"selectedConversationTitle|conversation_title", s):
+        rhs = _assignment_rhs(logic, s)
+        if rhs and _uses_named_helper(rhs, choosers):
+            return False
+        if rhs and _blob_chooses_pretty_platform(rhs, _pretty_platform_helpers(logic)):
+            return False
+        return True
+    return False
+
+
+def _headings_use_label_helper(
+    exprs: list[str],
+    logic: str,
+    choosers: dict[str, str],
+    pretty: set[str],
+) -> bool:
+    """True if the heading calls the chooser (or inlines empty/name → pretty)."""
+    if not exprs:
+        return False
+    if all(_is_raw_title_heading(e, logic, choosers) for e in exprs):
+        return False
+    blobs = [_expr_with_defs(e, logic) for e in exprs]
+    combined = "\n".join(blobs)
+    if choosers and _uses_named_helper(combined, choosers):
+        return True
+    return _blob_chooses_pretty_platform(combined, pretty)
+
+
+def _label_helper_falls_back_to_id(blob: str) -> bool:
+    return bool(
+        re.search(
+            r"("
+            r"return\s+[^;\n]{0,80}(?:conversation_id|\.id|person_id|personId)\b"
+            r"|(?:title|\|\|)\s*[^\n;]{0,80}(?:conversation_id|\.id|person_id|personId)\b"
+            r")",
+            blob,
+        )
+    )
+
+
+def assert_conversation_switcher(crate: Path) -> None:
+    """#114: after a person is selected, switch conversations; default All; no raw ids.
+
+    Groups still need include-groups to appear in the list and in All.
+    Identity chrome (Merge, include groups, unlink) stays hidden until the
+    person name is clicked. Conversation switcher is a compact header control,
+    not a second always-expanded list above the bubbles. People sidebar stays.
+    All / the open panel must stack above sticky .day-heading (higher z-index
+    + background). Switcher label: empty title or title === personTitle shows
+    the pretty platform (WhatsApp, Gmail), not the repeated person name;
+    distinct titles stay. Not in scope: create / mute / pin. Keep #111–#113.
+    """
+    app = (crate / "web" / "App.svelte").read_text()
+    logic = _web_logic(crate)
+    api_src = (crate / "web" / "lib" / "api.ts").read_text()
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+    whole = app + "\n" + logic
+
+    blocks = _conversation_switcher_blocks(crate)
+    if not blocks:
+        fail(
+            "#114: after selecting a person, list their conversations "
+            "({#each conversations / convos / personConversations / conversationList, "
+            "a conversation <select>, or data-conversation-switcher) "
+            "with title + platform + last_at"
+        )
+    switcher = "\n".join(blocks)
+
+    # People sidebar and chat bubbles are not the switcher.
+    if _CONV_EACH.search(switcher) is None and not _CONV_SWITCHER_HOOK.search(switcher):
+        if not _CONV_SELECT.search(switcher):
+            fail(
+                "#114: conversation switcher must be a list or select of conversations, "
+                "not the people sidebar and not a caption inside a chat bubble"
+            )
+    tl = _timeline_block(crate)
+    if switcher.strip() and switcher.strip() in tl:
+        fail(
+            "#114: conversation switcher must sit outside the message bubbles "
+            "(list conversations, then filter the timeline)"
+        )
+
+    detail = _person_detail_markup(app)
+    if not _CONV_ALL_LABEL.search(switcher) and not _CONV_ALL_LABEL.search(detail):
+        fail("#114: conversation switcher must offer All (default = current D18 merged stream)")
+    if not _CONV_STATE_DEFAULT_ALL.search(logic) and not _CONV_STATE_DEFAULT_ALL.search(app):
+        fail(
+            "#114: default conversation must be All "
+            "(selected conversation state starts null / undefined / \"all\")"
+        )
+
+    sel = _function_body(whole, "selectPerson")
+    if not sel:
+        fail("#114: selectPerson must still open a person (default conversation = All)")
+    opened_all = bool(_CONV_RESET_ALL.search(sel)) or bool(
+        re.search(
+            r"conversation(?:Id|_id)\s*:\s*(?:null|undefined|(?:append\s*\?))",
+            sel,
+        )
+    )
+    if not opened_all:
+        fail(
+            "#114: opening a person must default to All (merged D18 stream), "
+            "not leave a previously picked conversation_id selected"
+        )
+
+    choosers = _conversation_chooser_helpers(logic)
+    pretty_helpers = _pretty_platform_helpers(logic)
+    # Distinct titles still show; do not require interpolating conv.title when
+    # that title is the open person's name (helper may show WhatsApp / Gmail).
+    if not _CONV_TITLE.search(switcher):
+        title_in_helper = any(
+            re.search(r"(?:conversation_title|\.title\b|\btitle\b)", blob)
+            for blob in choosers.values()
+        )
+        if not title_in_helper:
+            fail("#114: each conversation in the list must show its title")
+
+    summary_exprs = _heading_exprs(_switcher_summary_markup(crate))
+    row_exprs = _heading_exprs(_switcher_row_markup(crate))
+    summary_ok = _headings_use_label_helper(summary_exprs, logic, choosers, pretty_helpers)
+    rows_ok = _headings_use_label_helper(row_exprs, logic, choosers, pretty_helpers)
+    if not choosers and not (summary_ok and rows_ok):
+        fail(
+            "#114: conversation switcher label must use a helper "
+            "(conversationLabel / switcherLabel / platformLabel) that shows "
+            "the pretty platform (WhatsApp, Gmail — not raw whatsapp) when "
+            "the title is empty or equals personTitle; distinct titles "
+            "(groups, mail subjects) still use title"
+        )
+    if not summary_ok:
+        fail(
+            "#114: compact switcher summary must call that label helper "
+            "(not raw selectedConversationTitle / conv.title as the only heading)"
+        )
+    if not rows_ok:
+        fail(
+            "#114: each switcher row heading must call that label helper "
+            "(not raw conv.title; subtitle may still show platform + last_at)"
+        )
+    for blob in choosers.values():
+        if _label_helper_falls_back_to_id(blob):
+            fail("#114: do not fall back a missing conversation title to a raw id")
+
+    if not _CONV_PLATFORM.search(switcher):
+        fail("#114: each conversation in the list must show its platform")
+    if not _CONV_LAST_AT.search(switcher):
+        fail(
+            "#114: each conversation in the list must show last_at "
+            "(last activity time of that conversation for this person)"
+        )
+
+    if not _CONV_PICK.search(switcher) and not _CONV_PICK.search(detail):
+        fail("#114: picking a conversation must select it (click / change / bind)")
+
+    tl_filtered = False
+    for m in _PERSON_TIMELINE_CALL.finditer(whole):
+        arg = _call_arg(whole, m.end() - 1)
+        if re.search(r"conversation(?:Id|_id)\s*:", arg):
+            tl_filtered = True
+            if not re.search(r"includeGroups", arg):
+                fail(
+                    "#114: personTimeline must still pass includeGroups "
+                    "(All is the current D18 merged stream; groups stay gated)"
+                )
+            break
+    if not tl_filtered:
+        fail(
+            "#114: picking one conversation must filter the timeline "
+            "(personTimeline must pass conversationId / conversation_id; "
+            "All passes null so the stream stays D18 merged)"
+        )
+
+    api_args = re.search(r"personTimeline\s*:\s*\(\s*args\s*:\s*\{([^}]*)\}", api_src, re.S)
+    if not api_args or not re.search(r"conversation(?:Id|_id)\b", api_args.group(1)):
+        fail(
+            "#114: personTimeline args must include optional conversationId / conversation_id "
+            "(All = omitted/null; pick one = that conversation)"
+        )
+
+    if not _INCLUDE_GROUPS_LABEL.search(app):
+        fail("#114: include groups toggle must remain (groups still require it)")
+
+    list_src = _without_calls(whole, _PERSON_TIMELINE_CALL) + "\n" + switcher
+    group_in_list = re.search(
+        r"includeGroups[\s\S]{0,400}[\"']group[\"']|[\"']group[\"'][\s\S]{0,400}includeGroups",
+        list_src,
+    )
+    fetched_with_toggle = re.search(
+        r"(?:conversations|convos|personConversations|conversationList|convList"
+        r"|visibleConversations|filteredConversations)"
+        r"\s*=\s*(?:await\s+)?[^=;\n]{0,200}includeGroups",
+        list_src,
+        re.I,
+    )
+    if not group_in_list and not fetched_with_toggle:
+        fail(
+            "#114: groups must require the include-groups toggle to appear in the "
+            "conversation list (and in All) — filter kind === \"group\" with includeGroups, "
+            "or load the list with includeGroups"
+        )
+    if re.search(r"kind\s*===?\s*[\"']dm[\"']", list_src) and not re.search(
+        r"[\"']group[\"']|email_thread", list_src
+    ):
+        fail("#114: list dm / group / email_thread, not only DMs")
+
+    visible = _visible_switcher_text(switcher)
+    if _CONV_ID_TEXT.search(visible):
+        fail(
+            "#114: no raw conversation ids or person ids in the conversation switcher "
+            "(show title + platform + last_at; data-conversation-id attributes are fine)"
+        )
+    if (
+        _CONV_ID_FALLBACK.search(switcher)
+        or _CONV_ID_FALLBACK.search(sel)
+        or _CONV_ID_FALLBACK.search(detail)
+    ):
+        fail("#114: do not fall back a missing conversation title to a raw id")
+
+    markup = app
+    script_end = app.rfind("</script>")
+    if script_end >= 0:
+        markup = app[script_end:]
+    if _CONV_CREATE.search(markup) or _CONV_CREATE.search(switcher):
+        fail("#114: not in scope — do not add create-conversation chrome")
+    if _CONV_MUTE.search(markup) or _CONV_MUTE.search(switcher):
+        fail("#114: not in scope — do not add mute-conversation chrome")
+    if _CONV_PIN.search(markup) or _CONV_PIN.search(switcher):
+        fail("#114: not in scope — do not add pin-conversation chrome")
+
+    if not re.search(
+        r"("
+        r"conversation switcher"
+        r"|list(?:s|ing)? (?:their |the )?conversations"
+        r"|conversations? (?:list|switcher|filter)"
+        r")",
+        dtxt,
+        re.I,
+    ):
+        fail("#114: docs/user/app.md must describe the conversation switcher")
+    if not re.search(
+        r"("
+        r"\bAll\b.{0,100}(default|merged|D18)"
+        r"|(default|merged|D18).{0,100}\bAll\b"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail("#114: docs/user/app.md must say All is the default (merged D18 stream)")
+    if not re.search(
+        r"("
+        r"filter(?:s|ed|ing)? (?:the )?timeline"
+        r"|timeline.{0,60}filter"
+        r"|picking (?:a |one )?conversation"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail("#114: docs/user/app.md must say picking a conversation filters the timeline")
+    if not re.search(
+        r"("
+        r"include groups?.{0,160}conversation"
+        r"|conversation.{0,160}include groups?"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail(
+            "#114: docs/user/app.md must say groups still need include-groups "
+            "to appear in the conversation list (and in All)"
+        )
+
+    # Dogfood: reading a chat must not be buried under identity admin + a second list.
+    panes = _person_pane_markups(crate)
+    pane = "\n".join(panes) if panes else detail
+    merge_at = _MERGE_CTRL.search(pane)
+    unlink_at = _UNLINK_CTRL.search(pane)
+    groups_at = _groups_ctrl_pos(pane)
+    if not merge_at:
+        fail(
+            "#114: Merge must remain in the person chrome "
+            "(hidden until the person name is clicked; do not remove it)"
+        )
+    if groups_at < 0:
+        fail(
+            "#114: include groups toggle must remain in the person chrome "
+            "(hidden until the person name is clicked; groups still need it)"
+        )
+    if not unlink_at:
+        fail(
+            "#114: unlink must remain in the person chrome "
+            "(hidden until the person name is clicked; do not remove it)"
+        )
+
+    chrome_sites = (
+        ("Merge", merge_at.start()),
+        ("include groups", groups_at),
+        ("unlink", unlink_at.start()),
+    )
+    for label, pos in chrome_sites:
+        if not _chrome_hidden_by_default(pane, pos):
+            fail(
+                f"#114: {label} must not show until the user opens identity chrome "
+                "(default: behind {{#if …}} / hidden / <details> closed — "
+                "not sitting above the timeline after selecting a person; "
+                "{{#if selectedId}} alone is not a click-to-open gate)"
+            )
+
+    flags, title_in_summary = _identity_title_toggle(pane, whole)
+    if not flags and not title_in_summary:
+        fail(
+            "#114: clicking the person title (h1 / personTitle / a button wrapping "
+            "the name) must toggle identity chrome (Merge, include groups, unlink)"
+        )
+    if flags and any(_flag_default_open(logic, name) for name in flags):
+        fail(
+            "#114: identity chrome must start closed "
+            "(toggle state must default false / closed, not true)"
+        )
+    for label, pos in chrome_sites:
+        if not _chrome_toggled_by_title(pane, pos, flags, title_in_summary):
+            fail(
+                f"#114: clicking the person title must toggle {label} "
+                "(same {{#if}} flag, <details> summary, or hidden binding — "
+                "not a separate always-visible control)"
+            )
+
+    if flags:
+        buried = False
+        for rx in (_CONV_SWITCHER_HOOK, _CONV_SELECT, _CONV_EACH):
+            hit = rx.search(pane)
+            if not hit:
+                continue
+            stack = _template_stack(pane, hit.start())
+            if any(kind == "if" and _cond_uses_flag(a, flags) for kind, a, _b in stack):
+                buried = True
+                break
+        if buried:
+            fail(
+                "#114: conversation switcher must stay in the header next to the "
+                "person name (not inside the identity chrome that opens on click)"
+            )
+
+    if _always_expanded_conversation_list(crate, logic):
+        fail(
+            "#114: conversation switcher must be compact in the header "
+            "(a <select>, <details>, or a single closed control) — "
+            "not a second always-expanded full-width {#each conversations} "
+            "list sitting above the bubbles (data-conversation-switcher can stay; "
+            "title + platform + last_at still belong inside the compact control)"
+        )
+
+    people_src = "\n".join(
+        p.read_text() for p in _web_sources(crate) if p.suffix == ".svelte"
+    )
+    if not re.search(r"\{#each\s+filtered\b", people_src) and not re.search(
+        r"id=[\"']person-filter[\"']", people_src
+    ):
+        fail("#114: people sidebar must stay (do not hide the people list)")
+    if _people_list_hidden_on_select(crate):
+        fail(
+            "#114: people sidebar must stay — do not hide the people list when a "
+            "person is selected (no Back-that-hides-the-list in this issue)"
+        )
+
+    if not re.search(
+        r"("
+        r"compact (conversation )?(switcher|control)"
+        r"|(conversation )?(switcher|control).{0,80}compact"
+        r"|not a second .{0,60}(list|switcher)"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail(
+            "#114: docs/user/app.md must say the conversation switcher is a "
+            "compact header control (not a second list above the bubbles)"
+        )
+    if not re.search(
+        r"("
+        r"(click(?:s|ing)?|tap(?:s|ping)?) (the )?(person )?(name|title)"
+        r".{0,160}(Merge|include groups|unlink|identity)"
+        r"|(Merge|include groups|unlink|identity chrome)"
+        r".{0,160}(click(?:s|ing)?|hidden until|until you click)"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail(
+            "#114: docs/user/app.md must say identity chrome "
+            "(Merge, include groups, unlink) is hidden until the person name is clicked"
+        )
+
+    # Dogfood: sticky .day-heading must not cover All or the open panel.
+    stacked, day_z, chrome_z, chrome_bg = _switcher_above_day_heading(crate)
+    if not stacked:
+        if chrome_z is None or chrome_z <= day_z:
+            fail(
+                "#114: conversation switcher (data-conversation-switcher / its "
+                "summary or panel) or the person-pane header that contains it "
+                f"must stack above .day-heading (higher z-index than {day_z}, "
+                "and a background so the date cannot show through) — "
+                "fail if the switcher/header z-index is missing or "
+                f"≤ the day-heading z-index ({day_z})"
+            )
+        if not chrome_bg:
+            fail(
+                "#114: conversation switcher / person-pane header must have a "
+                "background so the sticky .day-heading date cannot show through "
+                "All or the open panel"
+            )
+        fail(
+            "#114: conversation switcher / person-pane header must stack above "
+            f".day-heading (z-index > {day_z} and a background; the date must "
+            "not cover All or the dropdown)"
+        )
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -926,6 +2493,7 @@ def main() -> None:
     assert_chat_bubbles(crate)
     assert_day_separators(crate)
     assert_timeline_latest(crate)
+    assert_conversation_switcher(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")

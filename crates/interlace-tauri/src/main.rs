@@ -12,8 +12,8 @@ use std::thread;
 
 use data_encoding::BASE64;
 use interlace_core::people::{
-    attachments_for, complete_attachments, person_display_name, person_identities, person_list,
-    person_timeline_rows, recent_link_events,
+    attachments_for, complete_attachments, person_conversations, person_display_name,
+    person_identities, person_list, person_timeline_rows_for, recent_link_events,
 };
 use interlace_core::session::{
     init_owner_archive, read_last_bookmark, read_last_path, sandbox_denied_message,
@@ -494,17 +494,31 @@ fn person_timeline(
     include_groups: bool,
     limit: Option<u32>,
     before: Option<String>,
+    conversation_id: Option<i64>,
 ) -> Result<serde_json::Value, String> {
     with_arch(&state, |arch| {
-        let rows = person_timeline_rows(
+        let rows = person_timeline_rows_for(
             arch,
             id,
             include_groups,
             limit.unwrap_or(80),
             before.as_deref(),
+            conversation_id,
         )
         .map_err(err)?;
         serde_json::to_value(rows).map_err(err)
+    })
+}
+
+#[tauri::command]
+fn person_conversations_cmd(
+    state: tauri::State<AppState>,
+    id: i64,
+    include_groups: bool,
+) -> Result<serde_json::Value, String> {
+    with_arch(&state, |arch| {
+        serde_json::to_value(person_conversations(arch, id, include_groups).map_err(err)?)
+            .map_err(err)
     })
 }
 
@@ -804,6 +818,7 @@ fn main() {
             people,
             person_show,
             person_timeline,
+            person_conversations_cmd,
             person_merge_cmd,
             person_unlink_cmd,
             person_undo_cmd,
