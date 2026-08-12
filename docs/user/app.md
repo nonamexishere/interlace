@@ -119,7 +119,10 @@ shows display names, not ids. Names never auto-merge. Unlink stays on each
 identity row.
 Merge/unlink/undo do not rewrite `messages.sender_identity_id`.
 
-Tabs: **Search** (same FTS as CLI; expand a hit for the full body), **Review**
+Tabs: **Search** (same FTS as CLI; expand a hit for the full body). Platform is
+a closed **select** — **Any** (default, empty value), **WhatsApp**, **Gmail**,
+and **Contacts** — not a free-text box; values are the core tokens
+(`whatsapp` / `gmail` / `contacts`). Empty means any platform. **Review**
 (accept/reject name-only pairs), **Import** (ZIP/mbox/vcf/Takeout via the
 folder picker; progress in-window), **Doctor** (integrity / rebuild FTS /
 GC CAS with a confirm dialog — same as the CLI, no extra window).
