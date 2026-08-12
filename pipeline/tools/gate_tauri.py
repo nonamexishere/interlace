@@ -18,6 +18,11 @@
 #     → pretty platform (WhatsApp, Gmail — not raw whatsapp); distinct titles
 #     (groups, mail subjects) stay as the title. Subtitle may still show
 #     platform + last_at. No raw ids.
+#159: people sidebar must not scroll sideways — overflow-x hidden on the people
+#     pane (or ScrollArea defaults); vertical scroll stays; long names / activity
+#     previews truncate (or min-w-0 / minmax(0, …)) so they do not widen the
+#     column; people list still visible when a chat is open; no raw person ids
+#     in list labels. Not the conversation switcher (#114).
 """
 
 from __future__ import annotations
@@ -2403,6 +2408,260 @@ def assert_conversation_switcher(crate: Path) -> None:
         )
 
 
+# #159 — people sidebar: vertical scroll only; long names/previews do not pan sideways.
+_PEOPLE_EACH = re.compile(r"\{#each\s+filtered\b")
+_OVERFLOW_X_HIDDEN = re.compile(
+    r"("
+    r"overflow-x-hidden"
+    r"|overflow-x\s*:\s*hidden"
+    r"|overflow\s*:\s*hidden\b"
+    r")",
+    re.I,
+)
+_OVERFLOW_Y_SCROLL = re.compile(
+    r"("
+    r"overflow-y-(?:auto|scroll)"
+    r"|overflow-y\s*:\s*(?:auto|scroll)"
+    r"|overflow\s*:\s*auto\b"
+    r"|overflow\s*:\s*scroll\b"
+    r")",
+    re.I,
+)
+_OVERFLOW_X_VISIBLE = re.compile(
+    r"("
+    r"overflow-x-(?:auto|scroll|visible)"
+    r"|overflow-x\s*:\s*(?:auto|scroll|visible)"
+    r")",
+    re.I,
+)
+_TRUNCATE_TOKENS = re.compile(
+    r"("
+    r"\btruncate\b"
+    r"|text-ellipsis"
+    r"|text-overflow\s*:\s*ellipsis"
+    r"|line-clamp-\d+"
+    r"|overflow-hidden"
+    r")",
+    re.I,
+)
+_MIN_W0 = re.compile(
+    r"("
+    r"\bmin-w-0\b"
+    r"|min-width\s*:\s*0"
+    r"|minmax\s*\(\s*0\s*,"
+    r")",
+    re.I,
+)
+_PEOPLE_NAME = re.compile(r"\b(?:display_name|displayName|personName|name)\b")
+_PEOPLE_PREVIEW = re.compile(
+    r"\b(?:last_activity_at|lastActivityAt|preview|last_at|status)\b"
+)
+_PEOPLE_ID_VISIBLE = re.compile(
+    r"\{[^}]{0,60}(?:\bp\.id\b|\bperson\.id\b|\bfiltered\b[^}]{0,20}\.id)[^}]{0,20}\}"
+)
+_PEOPLE_ID_FALLBACK = re.compile(
+    r"(?:display_name|displayName|name)\s*\|\|\s*[^\n;]{0,60}"
+    r"(?:\bp\.id\b|\bperson\.id\b|\.id\b)"
+)
+_DATA_PEOPLE_SIDEBAR = re.compile(r"data-people-sidebar", re.I)
+_SCROLL_AREA_TAG = re.compile(r"<ScrollArea\b([^>]*)>", re.I | re.S)
+
+
+def _people_each_block(markup: str) -> str:
+    """Innermost {#each filtered …} body for the people list (not switcher)."""
+    m = _PEOPLE_EACH.search(markup)
+    if not m:
+        return ""
+    end = _matching_each_end(markup, m.start())
+    if end < 0:
+        return markup[m.start() :]
+    return markup[m.start() : end]
+
+
+def _people_sidebar_regions(crate: Path) -> list[str]:
+    """People column chrome: filter + list, not the conversation switcher."""
+    found: list[str] = []
+    for p in _web_sources(crate):
+        if p.suffix != ".svelte" or p.name in _PERSON_PANE_SKIP:
+            continue
+        text = p.read_text()
+        if not _PEOPLE_EACH.search(text) and "person-filter" not in text:
+            continue
+        # Prefer an explicit people-sidebar hook when present.
+        for m in _DATA_PEOPLE_SIDEBAR.finditer(text):
+            found.append(text[max(0, m.start() - 120) : m.end() + 2400])
+        if found:
+            continue
+        # Else take a window around the people list / filter.
+        for m in _PEOPLE_EACH.finditer(text):
+            found.append(text[max(0, m.start() - 800) : m.end() + 1200])
+        if not found and "person-filter" in text:
+            i = text.find("person-filter")
+            found.append(text[max(0, i - 400) : i + 2000])
+    return found
+
+
+def _scroll_area_source(crate: Path) -> str:
+    p = crate / "web" / "lib" / "components" / "ui" / "scroll-area" / "scroll-area.svelte"
+    return p.read_text() if p.is_file() else ""
+
+
+def _region_overflow_ok(region: str, scroll_defaults: str) -> bool:
+    """True if this people pane (or shared ScrollArea defaults) hide x-scroll."""
+    # Explicit overflow-x auto/scroll/visible on the people pane is a fail signal
+    # unless a more specific hidden also applies on the same ScrollArea.
+    for m in _SCROLL_AREA_TAG.finditer(region):
+        attrs = m.group(1)
+        if _OVERFLOW_X_VISIBLE.search(attrs) and not _OVERFLOW_X_HIDDEN.search(attrs):
+            return False
+        if _OVERFLOW_X_HIDDEN.search(attrs) and _OVERFLOW_Y_SCROLL.search(attrs):
+            return True
+        if _OVERFLOW_X_HIDDEN.search(attrs) and _OVERFLOW_Y_SCROLL.search(scroll_defaults):
+            return True
+        # ScrollArea with people sidebar + defaults that clip x / allow y.
+        if (
+            _DATA_PEOPLE_SIDEBAR.search(attrs)
+            or "border-r" in attrs
+            or "min-w-0" in attrs
+        ) and _OVERFLOW_X_HIDDEN.search(scroll_defaults) and _OVERFLOW_Y_SCROLL.search(
+            scroll_defaults
+        ):
+            return True
+    if _OVERFLOW_X_HIDDEN.search(region) and _OVERFLOW_Y_SCROLL.search(region):
+        return True
+    if _OVERFLOW_X_HIDDEN.search(scroll_defaults) and _OVERFLOW_Y_SCROLL.search(
+        scroll_defaults
+    ):
+        # Shared ScrollArea defaults apply when the people pane uses ScrollArea.
+        if _SCROLL_AREA_TAG.search(region) or "ScrollArea" in region:
+            return True
+    return False
+
+
+def _row_clips_long_text(block: str) -> bool:
+    """Names / previews must truncate or otherwise not expand the column."""
+    if not block:
+        return False
+    has_name = bool(_PEOPLE_NAME.search(block))
+    has_preview = bool(_PEOPLE_PREVIEW.search(block))
+    if not has_name:
+        return False
+    tokens = _TRUNCATE_TOKENS.findall(block)
+    if not tokens:
+        return False
+    # Name + activity preview both shown → both must clip (two truncate sites,
+    # or one shared overflow-hidden/line-clamp wrapper plus another clip).
+    if has_preview and len(tokens) < 2:
+        return False
+    return True
+
+
+def assert_people_sidebar_no_x_scroll(crate: Path) -> None:
+    """#159: people sidebar must not pan sideways; vertical scroll only.
+
+    Long names and activity previews stay readable via truncate / min-w-0 /
+    minmax(0, …) — they must not push the left column wider. People list stays
+    when a chat is open. No raw person ids in list labels. Not #114 switcher.
+    """
+    app = (crate / "web" / "App.svelte").read_text()
+    people_src = "\n".join(
+        p.read_text() for p in _web_sources(crate) if p.suffix == ".svelte"
+    )
+    regions = _people_sidebar_regions(crate)
+    region_blob = "\n".join(regions) if regions else ""
+    scroll_defaults = _scroll_area_source(crate)
+
+    # 1) People list still exists and is not hidden when a person is selected.
+    if not _PEOPLE_EACH.search(people_src) and not re.search(
+        r"id=[\"']person-filter[\"']", people_src
+    ):
+        fail(
+            "#159: people sidebar must still list people "
+            "({#each filtered …} and/or person-filter) — do not remove the left column"
+        )
+    if _people_list_hidden_on_select(crate):
+        fail(
+            "#159: people sidebar must stay visible when a person is selected "
+            "(do not hide the people list when a chat is open — that is not this issue)"
+        )
+
+    # 2) Scroll container: overflow-x hidden; overflow-y auto/scroll.
+    if not regions and not (
+        _OVERFLOW_X_HIDDEN.search(scroll_defaults)
+        and _OVERFLOW_Y_SCROLL.search(scroll_defaults)
+        and _SCROLL_AREA_TAG.search(app)
+    ):
+        fail(
+            "#159: people sidebar scroll region not found "
+            "({#each filtered}, person-filter, or data-people-sidebar)"
+        )
+
+    overflow_ok = False
+    if regions:
+        overflow_ok = any(_region_overflow_ok(r, scroll_defaults) for r in regions)
+    if not overflow_ok:
+        # Shared ScrollArea defaults alone are enough when people pane uses it.
+        if (
+            _SCROLL_AREA_TAG.search(app)
+            and _OVERFLOW_X_HIDDEN.search(scroll_defaults)
+            and _OVERFLOW_Y_SCROLL.search(scroll_defaults)
+            and not _OVERFLOW_X_VISIBLE.search(region_blob)
+        ):
+            overflow_ok = True
+    if not overflow_ok:
+        fail(
+            "#159: people pane must hide horizontal overflow "
+            "(overflow-x: hidden / overflow-x-hidden on the people ScrollArea "
+            "or shared ScrollArea defaults) while still allowing vertical scroll "
+            "(overflow-y: auto|scroll)"
+        )
+    if _OVERFLOW_X_VISIBLE.search(region_blob) and not _OVERFLOW_X_HIDDEN.search(
+        region_blob + "\n" + scroll_defaults
+    ):
+        fail(
+            "#159: people pane must not enable horizontal pan "
+            "(overflow-x auto/scroll/visible without overflow-x hidden)"
+        )
+
+    # 3) Long names / previews do not expand the column indefinitely.
+    each_blocks = []
+    for p in _web_sources(crate):
+        if p.suffix != ".svelte" or p.name in _PERSON_PANE_SKIP:
+            continue
+        text = p.read_text()
+        markup = _svelte_markup(text)
+        block = _people_each_block(markup)
+        if block:
+            each_blocks.append(block)
+    if not each_blocks:
+        fail("#159: people list must still {#each filtered …} as person rows")
+    people_rows = "\n".join(each_blocks)
+    if not _row_clips_long_text(people_rows):
+        fail(
+            "#159: long person names and activity previews must truncate "
+            "(or ellipsis / line-clamp / overflow-hidden) so they stay readable "
+            "without pushing the people column wider"
+        )
+    # Column track or row ancestors must be able to shrink (min-w-0 / minmax(0, …)).
+    column_blob = region_blob + "\n" + app
+    if not _MIN_W0.search(column_blob) and not _MIN_W0.search(people_rows):
+        fail(
+            "#159: people column / row content must allow shrink "
+            "(min-w-0 or grid minmax(0, …)) so truncate can take effect"
+        )
+
+    # 4) No raw person-id copy in people list labels (undo event ids elsewhere ok).
+    visible_rows = _strip_tag_attrs(people_rows)
+    visible_rows = re.sub(r"\{[#/:@].*?\}", "", visible_rows, flags=re.S)
+    if _PEOPLE_ID_VISIBLE.search(visible_rows):
+        fail(
+            "#159: no raw person ids in the people list labels "
+            "(show display name / preview; data-id attributes are fine)"
+        )
+    if _PEOPLE_ID_FALLBACK.search(people_rows):
+        fail("#159: do not fall back a missing person name to a raw id")
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -2494,6 +2753,7 @@ def main() -> None:
     assert_day_separators(crate)
     assert_timeline_latest(crate)
     assert_conversation_switcher(crate)
+    assert_people_sidebar_no_x_scroll(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
