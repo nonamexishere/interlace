@@ -561,7 +561,10 @@
     />
   {:else if st}
     <div class="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
-      <ScrollArea class="min-w-0 border-r border-border p-4" data-people-sidebar>
+      <div
+        class="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto border-r border-border p-4"
+        data-people-sidebar
+      >
         <p class="break-all text-xs text-muted-foreground">{st.path}</p>
         <dl class="mt-3 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-sm">
           <dt class="text-muted-foreground">owner</dt>
@@ -650,7 +653,7 @@
         <Button variant="outline" size="sm" class="mt-4 max-w-full" onclick={openPicker}>
           Open other archive…
         </Button>
-      </ScrollArea>
+      </div>
       <div class="flex min-h-0 min-w-0 flex-col">
         <div class="relative z-20 shrink-0 bg-background px-4 pt-4">
         <div class="mb-3 flex items-baseline justify-between gap-3">
