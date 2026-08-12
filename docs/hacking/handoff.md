@@ -76,7 +76,8 @@ enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
 HEAD when this was rewritten: `00d9057` (merge **#160** conversation switcher).
-In sync with `origin/master`. **Zero open PRs.**
+In sync with `origin/master`. **No product PRs open** (this handoff PR
+excepted until merge; re-check with `gh pr list`).
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
 
