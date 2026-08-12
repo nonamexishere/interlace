@@ -52,6 +52,10 @@
 #119: voice/audio CAS attachments — in-app player (play/pause + time/duration),
 #     local casDataUrl / data: only (no streaming http(s)); omitted/missing stay
 #     placeholders. Not: waveform-from-CDN, transcription.
+#120: virtualize person timeline — only visible + overscan rows in the DOM for
+#     large lists (10k fixture stays scrollable). Keep j/k and Load older (#113).
+#     Bodies still text nodes (no {@html}/innerHTML of message body).
+#     Not: 10M in one view, lazy-decode every photo.
 """
 
 from __future__ import annotations
@@ -173,7 +177,16 @@ _SENT_AT_GUARD = re.compile(
 # Dogfood: pad the list so the last bubble clears the text-only chrome; scroll after layout.
 # Narrow pane: tlLoading = false before the open scroll; nested rAF so wrap has happened.
 _LOAD_OLDER = re.compile(r"Load older")
-_EACH_TIMELINE = re.compile(r"\{#each\s+(?:timeline|dayGroups)\b")
+# Timeline row loop — full list names or windowed variants (#120).
+_EACH_TIMELINE = re.compile(
+    r"\{#each\s+(?:"
+    r"timeline|dayGroups|"
+    r"windowed(?:Day)?Groups|visible(?:Day)?Groups|virtual(?:Day)?Groups|"
+    r"rendered(?:Day)?Groups|windowedRows|visibleRows|virtualRows|renderedRows|"
+    r"windowedTimeline|visibleTimeline|virtualTimeline|renderedTimeline|"
+    r"windowedItems|visibleItems|virtualItems"
+    r")\b"
+)
 _CONCAT_BOTTOM = re.compile(r"timeline\.concat\s*\(\s*rows\s*\)")
 _PREPEND = re.compile(
     r"("
@@ -473,8 +486,35 @@ _VOID_HTML = frozenset(
     }
 )
 _TIMELINE_INNER = re.compile(
-    r"(id=[\"']person-timeline[\"']|day-heading|\{#each\s+(?:timeline|dayGroups)\b)",
+    r"(id=[\"']person-timeline[\"']|day-heading|"
+    r"\{#each\s+(?:timeline|dayGroups|windowed(?:Day)?Groups|visible(?:Day)?Groups|"
+    r"virtual(?:Day)?Groups|rendered(?:Day)?Groups|windowedRows|visibleRows|"
+    r"virtualRows|renderedRows|windowedTimeline|visibleTimeline)\b)",
     re.I,
+)
+# Names accepted as the person-timeline {#each} source (#111–#113 / #120).
+_TIMELINE_EACH_NAMES = (
+    "timeline",
+    "dayGroups",
+    "windowedDayGroups",
+    "windowedGroups",
+    "visibleDayGroups",
+    "visibleGroups",
+    "virtualDayGroups",
+    "virtualGroups",
+    "renderedDayGroups",
+    "renderedGroups",
+    "windowedRows",
+    "visibleRows",
+    "virtualRows",
+    "renderedRows",
+    "windowedTimeline",
+    "visibleTimeline",
+    "virtualTimeline",
+    "renderedTimeline",
+    "windowedItems",
+    "visibleItems",
+    "virtualItems",
 )
 _DAY_HEADING_CSS = re.compile(
     r"(?:\.day-heading\b|\.day-separator\b|\.day-sep\b|\[data-day-heading\])[^{]*\{([^}]+)\}",
@@ -509,9 +549,11 @@ def _timeline_block(crate: Path) -> str:
         text = p.read_text()
         i = 0
         while True:
-            start = text.find("{#each timeline", i)
-            if start < 0:
-                start = text.find("{#each dayGroups", i)
+            start = -1
+            for name in _TIMELINE_EACH_NAMES:
+                idx = text.find(f"{{#each {name}", i)
+                if idx >= 0 and (start < 0 or idx < start):
+                    start = idx
             if start < 0:
                 break
             end = text.find("{/each}", start)
@@ -520,7 +562,10 @@ def _timeline_block(crate: Path) -> str:
             found.append(text[start:end])
             i = end + len("{/each}")
     if not found:
-        fail("#111: person timeline must {#each timeline} or {#each dayGroups} as chat rows")
+        fail(
+            "#111: person timeline must {#each timeline}, {#each dayGroups}, "
+            "or a windowed row list as chat rows"
+        )
     return "\n".join(found)
 
 
@@ -5072,6 +5117,307 @@ def assert_voice_note_player(crate: Path) -> None:
         )
 
 
+# #120 — virtualize person timeline (visible + overscan only in the DOM).
+# Static analysis: fail naive full {#each dayGroups}→{#each group.rows} without a window.
+# No FPS/perf assertions in CI; dogfood measures 10k scroll.
+_VIRT_SIGNAL = re.compile(
+    r"("
+    r"\boverscan\b"
+    r"|\bvirtual(?:ize|ized|izing|isation|ization)?\b"
+    r"|\bVirtualList\b"
+    r"|\bvirtual(?:List|Rows?|Window|Scroll|Range|Items?)\b"
+    r"|\bwindow(?:ed|ing)(?:Rows?|Items?|Groups?|Range|Start|End|Slice|Timeline|DayGroups?)?\b"
+    r"|\bvisible(?:Range|Start|End|Count|Window|Slice|Rows?|Items?|Groups?|DayGroups?|"
+    r"Indices|Index)\b"
+    r"|\b(?:start|end)(?:Index|Row|Offset)\b"
+    r"|\b(?:first|last)Visible(?:Index|Row|Item)?\b"
+    r"|\brender(?:ed)?(?:Rows?|Items?|Range|Window|Slice|Groups?)\b"
+    r"|\bviewport(?:Rows?|Range|Height|Top)\b"
+    r"|\b(?:row|item)(?:Height|Size)\b"
+    r"|\bestimated(?:Row|Item)?(?:Height|Size)\b"
+    r"|\btotalHeight\b"
+    r"|\bspacer(?:Height|Top|Bottom)?\b"
+    r"|\bscrollMargin\b"
+    r"|\bsvelte-virtual(?:-list)?\b"
+    r"|@tanstack/(?:svelte-)?virtual\b"
+    r"|\bcreateVirtualizer\b"
+    r"|\buseVirtualizer\b"
+    r"|\bVirtualizer\b"
+    r")",
+    re.I,
+)
+# Classic anti-pattern: full dayGroups then every group.rows (no window).
+_NAIVE_DAYGROUPS_ROWS = re.compile(
+    r"\{#each\s+dayGroups\b[^}]*\}[\s\S]{0,1200}?\{#each\s+group\.rows\b",
+    re.I,
+)
+# Full unwindowed list each (flat timeline / filtered list of every row).
+_NAIVE_FULL_ROW_EACH = re.compile(
+    r"\{#each\s+(?:timeline|filteredTimeline)\b",
+    re.I,
+)
+_BODY_INNER_HTML = re.compile(
+    r"("
+    r"\{@html\b"
+    r"|\.innerHTML\s*="
+    r"|insertAdjacentHTML\s*\("
+    r")",
+)
+_SCOPE_10M = re.compile(
+    r"("
+    r"10\s*[Mm](?:illion)?\b[^.\n]{0,80}"
+    r"(?:one view|single view|in (?:the )?DOM|all (?:at )?once|in one (?:list|view))"
+    r"|(?:render|mount|load)\s+(?:all\s+)?10\s*[Mm]"
+    r")",
+    re.I,
+)
+_SCOPE_LAZY_EVERY_PHOTO = re.compile(
+    r"("
+    r"lazy[- ]decode\s+every\s+(?:photo|image|cas|attachment)"
+    r"|decode\s+every\s+(?:photo|image)\s+laz"
+    r"|lazyDecodeEvery"
+    r")",
+    re.I,
+)
+_JK_KEY = re.compile(
+    r"("
+    r"key\s*===?\s*[\"']j[\"']"
+    r"|[\"']j[\"']\s*===?\s*key"
+    r"|key\s*===?\s*[\"']k[\"']"
+    r"|[\"']k[\"']\s*===?\s*key"
+    r"|visibleTlIndices"
+    r"|nearestVisibleTlIndex"
+    r")",
+    re.I,
+)
+
+
+def _derived_body(cleaned: str, name: str) -> str | None:
+    """Return the body of `const name = $derived...` / `$derived.by` if present."""
+    m = re.search(
+        rf"(?:const|let|var)\s+{re.escape(name)}\s*=\s*\$derived(?:\.by)?\s*\(",
+        cleaned,
+    )
+    if not m:
+        return None
+    open_idx = m.end() - 1
+    close = _match_closer(cleaned, open_idx)
+    if close < 0:
+        return cleaned[m.end() : m.end() + 2500]
+    return cleaned[open_idx + 1 : close]
+
+
+def _body_has_row_window(body: str) -> bool:
+    """True if a derived-list body actually bounds rows (not only ISO day slice)."""
+    if re.search(
+        r"\boverscan\b|\bvirtual|\bwindow(?:ed|ing|Start|End|Range)|"
+        r"\bvisible(?:Range|Start|End|Window|Slice|Rows?|Groups?)|"
+        r"\b(?:start|end)(?:Index|Row)\b|"
+        r"\b(?:first|last)Visible\b|"
+        r"createVirtualizer|useVirtualizer",
+        body,
+        re.I,
+    ):
+        return True
+    # .slice(a, b) row window — exclude the common day-prefix .slice(0, 10).
+    for sm in re.finditer(r"\.slice\s*\(\s*([^)]*)\)", body):
+        args = sm.group(1)
+        if re.match(r"\s*0\s*,\s*10\s*$", args):
+            continue
+        if "," in args:
+            return True
+    return False
+
+
+def _list_source_is_windowed(cleaned: str, name: str) -> bool:
+    """True if `name` is derived/assigned with a real row window (not a rename alone)."""
+    body = _derived_body(cleaned, name)
+    if body and _body_has_row_window(body):
+        return True
+    # Non-$derived assignment / helper: name = windowRows(...) / slice(...)
+    m = re.search(
+        rf"(?:const|let|var)\s+{re.escape(name)}\s*=\s*(?!\$derived)([^;]{{0,400}})",
+        cleaned,
+    )
+    if m and _body_has_row_window(m.group(1)):
+        return True
+    if re.search(
+        rf"(?:const|let|var)\s+{re.escape(name)}\s*=\s*"
+        r"(?:\$derived(?:\.by)?\s*\()?"
+        r"[\s\S]{0,240}"
+        r"(?:window(?:ed|ing)\w*|virtual(?:ize|Rows|List|Items?)?|"
+        r"visible(?:Range|Rows|Groups?|Window)|"
+        r"overscan|createVirtualizer|useVirtualizer)",
+        cleaned,
+        re.I,
+    ):
+        return True
+    return False
+
+
+def _timeline_each_names_in_markup(markup: str) -> list[str]:
+    """Names used in {#each ...} that look like timeline row sources."""
+    names: list[str] = []
+    for m in re.finditer(r"\{#each\s+([A-Za-z_]\w*)\b", markup):
+        name = m.group(1)
+        if name in _TIMELINE_EACH_NAMES or re.match(
+            r"^(?:windowed|visible|virtual|rendered)",
+            name,
+            re.I,
+        ):
+            names.append(name)
+        elif name in {"timeline", "filteredTimeline", "dayGroups"}:
+            names.append(name)
+    return names
+
+
+def _naive_full_timeline_mount(markup: str, cleaned: str) -> bool:
+    """True if the person timeline always mounts every filtered row (no window)."""
+    # 1) {#each dayGroups} → {#each group.rows} with unwindowed dayGroups.
+    if _NAIVE_DAYGROUPS_ROWS.search(markup):
+        if not _list_source_is_windowed(cleaned, "dayGroups"):
+            return True
+    # 2) Flat {#each timeline|filteredTimeline} without windowing that source.
+    for m in _NAIVE_FULL_ROW_EACH.finditer(markup):
+        mm = re.search(r"\{#each\s+(\w+)", m.group(0))
+        name = mm.group(1) if mm else "timeline"
+        if not _list_source_is_windowed(cleaned, name):
+            return True
+    # 3) Any timeline-ish each whose source is not windowed (rename without window).
+    for name in _timeline_each_names_in_markup(markup):
+        if name in {"dayGroups", "timeline", "filteredTimeline"}:
+            continue  # already covered; dayGroups alone without rows is headings-only
+        # Nested group.rows is not a top-level list name.
+        if not _list_source_is_windowed(cleaned, name):
+            # Only treat as naive if the each body looks like message rows.
+            for em in re.finditer(rf"\{{#each\s+{re.escape(name)}\b[^}}]*\}}", markup):
+                end = _matching_each_end(markup, em.start())
+                chunk = markup[em.start() : end if end > 0 else em.start() + 800]
+                if re.search(
+                    r"from_me|body_text|data-from-me|bubble-me|group\.rows",
+                    chunk,
+                    re.I,
+                ):
+                    return True
+    return False
+
+
+def _has_windowed_render_path(markup: str, cleaned: str) -> bool:
+    """True if some timeline {#each} iterates a really windowed list (or VirtualList)."""
+    for name in _timeline_each_names_in_markup(markup):
+        if _list_source_is_windowed(cleaned, name):
+            return True
+    # Virtual list component / helper owns the window even without a named slice.
+    if re.search(
+        r"<Virtual(?:List|Scroll|izer)?\b|createVirtualizer\s*\(|useVirtualizer\s*\(",
+        markup + "\n" + cleaned,
+        re.I,
+    ):
+        return True
+    # dayGroups itself windowed (still named dayGroups) + nested group.rows.
+    if re.search(r"\{#each\s+dayGroups\b", markup) and _list_source_is_windowed(
+        cleaned, "dayGroups"
+    ):
+        return True
+    return False
+
+
+def assert_virtualized_timeline(crate: Path) -> None:
+    """#120: window person timeline (visible + overscan); keep j/k + Load older.
+
+    Acceptance: synthetic 10k DM does not lock the window — only visible + overscan
+    rows (and needed day headings) mount. Bodies still text nodes.
+    Static gate: fail naive full {#each dayGroups}→{#each group.rows} without a
+    window. No FPS assertions in CI (dogfood measures scroll).
+    Not: 10M in one view, lazy-decode every photo.
+    """
+    app = (crate / "web" / "App.svelte").read_text()
+    logic = _web_logic(crate)
+    blob = "\n".join(p.read_text() for p in _web_sources(crate))
+    whole = app + "\n" + logic
+    cleaned = _without_comments(whole)
+    markup = _svelte_markup(app)
+    # Prefer person-timeline pane if present.
+    pt = markup.find("person-timeline")
+    if pt >= 0:
+        timeline_markup = markup[pt:]
+    else:
+        timeline_markup = markup
+    block = _timeline_block(crate)
+
+    # 1) Reject naive full double-each over dayGroups/rows (current App.svelte).
+    # Prefer this message as the pre-impl red gate so the fix target is obvious.
+    if _naive_full_timeline_mount(timeline_markup, cleaned):
+        fail(
+            "#120: do not always mount every filtered row "
+            "({#each dayGroups} → {#each group.rows} over the full list, or "
+            "{#each timeline|filteredTimeline} without a window). "
+            "Window to visible + overscan only so a synthetic 10k DM stays scrollable"
+        )
+
+    # 2) Virtualization / windowing signal must exist (overscan, virtual list, …).
+    if not _VIRT_SIGNAL.search(cleaned) and not _VIRT_SIGNAL.search(blob):
+        fail(
+            "#120: person timeline must window the list "
+            "(only visible + overscan rows in the DOM — overscan / virtual list / "
+            "visibleRange / startIndex+endIndex / windowed rows; "
+            "do not always mount every filtered bubble)"
+        )
+
+    # 3) Positive: render path must each a windowed list (or VirtualList).
+    if not _has_windowed_render_path(timeline_markup, cleaned):
+        fail(
+            "#120: person timeline render path must iterate a windowed list "
+            "(windowed/visible/virtual/rendered rows or groups, or a list derived "
+            "with overscan/slice/startIndex — not the full filtered set)"
+        )
+
+    # 4) Keep Load older (#113) — still at the list, not dropped by virtualization.
+    if not _LOAD_OLDER.search(markup) and not _LOAD_OLDER.search(app):
+        fail("#120: keep Load older when virtualizing (do not regress #113)")
+
+    # 5) Keep j/k on visible (filtered) indices (#113 / #116).
+    if not _JK_KEY.search(cleaned) and not _VISIBLE_KIND_JK.search(cleaned):
+        fail(
+            "#120: keep j/k walking visible timeline rows "
+            "(visibleTlIndices / j|k handlers — do not regress #113/#116)"
+        )
+
+    # 6) Bodies still text nodes — no {@html} / innerHTML of message body.
+    body_surface = block + "\n" + timeline_markup
+    if _HTML_BODY.search(body_surface) or _BODY_INNER_HTML.search(body_surface):
+        # Allow innerHTML only outside body bindings (e.g. unrelated); still forbid {@html}.
+        if _HTML_BODY.search(body_surface):
+            fail(
+                "#120: bodies still text nodes — no {@html} of the message body "
+                "(keep whitespace-pre-wrap / plain text bindings)"
+            )
+        # innerHTML near body_text / displayBody is the product footgun.
+        if re.search(
+            r"(?:body_text|displayBody|message\.body|row\.body)[\s\S]{0,120}\.innerHTML\s*="
+            r"|\.innerHTML\s*=[\s\S]{0,120}(?:body_text|displayBody)",
+            body_surface,
+            re.I,
+        ):
+            fail(
+                "#120: bodies still text nodes — no innerHTML of the message body"
+            )
+
+    # 7) Not in scope: 10M-in-one-view / lazy-decode-every-photo (product claims).
+    scope_src = _without_comments(blob)
+    # Ignore this gate file and issue notes if they ever land under web/ (they should not).
+    if _SCOPE_10M.search(scope_src):
+        fail(
+            "#120: not in scope — do not claim or build 10M messages in one view "
+            "(window the list for 10k-class DMs only)"
+        )
+    if _SCOPE_LAZY_EVERY_PHOTO.search(scope_src):
+        fail(
+            "#120: not in scope — lazy-decode every photo / CAS is a separate concern, "
+            "not part of timeline windowing"
+        )
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -5171,6 +5517,7 @@ def main() -> None:
     assert_boot_spinner(crate)
     assert_photo_lightbox(crate)
     assert_voice_note_player(crate)
+    assert_virtualized_timeline(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
