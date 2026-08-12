@@ -529,25 +529,24 @@
             body="This person may only appear in groups. Tick include groups, or import more sources."
           />
         {/if}
-        <ol class="divide-y divide-border">
+        <ol class="space-y-2">
           {#each timeline as row, i}
-            <li>
+            <li class="flex">
               <button
                 type="button"
-                class="w-full px-1 py-2 text-left {i === tlIndex ? 'bg-accent' : ''}"
+                class="max-w-[min(36rem,85%)] rounded-2xl px-3 py-2 text-left {i === tlIndex
+                  ? 'ring-2 ring-ring'
+                  : ''}"
+                class:bubble-me={row.from_me}
+                class:bubble-them={!row.from_me}
+                class:ml-auto={row.from_me}
+                data-from-me={row.from_me}
                 onclick={() => (tlIndex = i)}
               >
-                <div class="text-xs text-muted-foreground">
-                  {[
-                    row.sent_at || "no date",
-                    row.platform,
-                    row.conversation_kind,
-                    row.from_me ? "you" : "them",
-                    row.conversation_title || "",
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </div>
+                <p class="caption text-xs text-muted-foreground">
+                  <time>{row.sent_at || "no date"}</time>
+                  {row.platform}
+                </p>
                 <p class="mt-1 whitespace-pre-wrap text-sm text-foreground">{displayBody(row.body_text || row.subject || "")}</p>
                 <CasAttach items={row.attachments || []} />
               </button>

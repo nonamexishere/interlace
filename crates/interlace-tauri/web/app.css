@@ -23,6 +23,11 @@
   --radius-lg: 0.5rem;
 }
 
+:root {
+  --bubble-me: hsl(214 76% 90%);
+  --bubble-them: hsl(240 4.8% 93%);
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --color-background: hsl(240 10% 3.9%);
@@ -41,6 +46,8 @@
     --color-ring: hsl(240 4.9% 83.9%);
     --color-card: hsl(240 10% 3.9%);
     --color-card-foreground: hsl(0 0% 98%);
+    --bubble-me: hsl(214 35% 24%);
+    --bubble-them: hsl(240 3.7% 18%);
   }
 }
 
@@ -67,4 +74,12 @@ body {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.bubble-me {
+  background-color: var(--bubble-me);
+}
+
+.bubble-them {
+  background-color: var(--bubble-them);
 }
