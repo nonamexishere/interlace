@@ -76,6 +76,15 @@ body {
   border: 0;
 }
 
+.day-heading {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-background);
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
 .bubble-me,
 .bubble-them {
   overflow-wrap: anywhere;
