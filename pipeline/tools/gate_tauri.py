@@ -49,6 +49,9 @@
 #     no remote http(s) in the viewer; optional prev/next among same-message
 #     attachments. HEIC stays placeholder unless already decoded (no transcode).
 #     Not: system Preview, video player chrome, HEIC convert.
+#119: voice/audio CAS attachments — in-app player (play/pause + time/duration),
+#     local casDataUrl / data: only (no streaming http(s)); omitted/missing stay
+#     placeholders. Not: waveform-from-CDN, transcription.
 """
 
 from __future__ import annotations
@@ -4816,6 +4819,259 @@ def assert_photo_lightbox(crate: Path) -> None:
         )
 
 
+# #119 — voice-note / audio CAS player (local only; play/pause + time).
+_VOICE_KIND = re.compile(
+    r"("
+    r"kind\s*===\s*[\"']voice[\"']"
+    r"|kind\s*==\s*[\"']voice[\"']"
+    r"|startsWith\s*\(\s*[\"']audio/"
+    r"|audio/\*"
+    r"|\.opus|\.ogg|\.mp3|\.m4a|\.aac|\.wav"
+    r"|isAudio\s*\("
+    r"|isVoice\s*\("
+    r")",
+    re.I,
+)
+_VOICE_AUDIO_EL = re.compile(r"<audio\b", re.I)
+_VOICE_NATIVE_CONTROLS = re.compile(
+    r"<audio\b[^>]*\bcontrols\b|\bcontrols\b[^>]*<audio\b",
+    re.I | re.S,
+)
+# Pin local CAS only: srcs map / casDataUrl / data: — not a generic url/src binding.
+_VOICE_LOCAL_SRC = re.compile(
+    r"("
+    r"src\s*=\s*\{[^}]{0,120}(?:srcs|casDataUrl|data:)"
+    r"|src\s*=\s*[\"']data:"
+    r")",
+    re.I,
+)
+_VOICE_REMOTE_SRC = re.compile(
+    r"("
+    r"src\s*=\s*[\"']https?://"
+    r"|src\s*=\s*\{[^}]{0,160}https?://"
+    r"|new\s+Audio\s*\(\s*[\"']https?://"
+    r"|audio(?:Src|Url|URL)?\s*=\s*[\"']https?://"
+    r")",
+    re.I,
+)
+_VOICE_PLAY_PAUSE = re.compile(
+    r"("
+    r"\.play\s*\(|\.pause\s*\("
+    r"|togglePlay|playPause|isPlaying|playing\s*="
+    r"|aria-label\s*=\s*[\"'][^\"']*(?:[Pp]lay|[Pp]ause)[^\"']*[\"']"
+    r"|data-voice-(?:play|pause)"
+    r")",
+    re.I,
+)
+_VOICE_TIME_CHROME = re.compile(
+    r"("
+    r"currentTime|\.duration\b"
+    r"|formatTime|formatDuration|audioTime|elapsed"
+    r"|data-voice-(?:time|duration|elapsed)"
+    r"|aria-valuenow"
+    r"|timeupdate"
+    r")",
+    re.I,
+)
+_VOICE_OMITTED = re.compile(
+    r"("
+    r"\.omitted\b"
+    r"|a\.omitted"
+    r"|omitted\s*\?"
+    r"|Media omitted"
+    r"|omitted in this export"
+    r")",
+    re.I,
+)
+_VOICE_MISSING = re.compile(
+    r"("
+    r"\.missing\b"
+    r"|a\.missing"
+    r"|not stored"
+    r"|Photo/file not stored"
+    r"|file not stored"
+    r")",
+    re.I,
+)
+_VOICE_WAVEFORM_CDN = re.compile(
+    r"("
+    r"wavesurfer"
+    r"|waveform\.js"
+    r"|cdn\.jsdelivr.*wave"
+    r"|unpkg\.com.*wave"
+    r"|https?://[^\"'\s)]+(?:waveform|wavesurfer)"
+    r"|url\s*\(\s*[\"']https?://[^\"']*wave"
+    r"|src\s*=\s*[\"']https?://[^\"']*(?:waveform|wave\.png|spectrogram)"
+    r")",
+    re.I,
+)
+_VOICE_TRANSCRIPTION = re.compile(
+    r"("
+    r"\btranscri(?:be|ption|pt)\b"
+    r"|speech[-_]?to[-_]?text"
+    r"|whisper\.|openai\.audio"
+    r"|data-voice-transcript"
+    r"|showTranscript|voiceTranscript"
+    r")",
+    re.I,
+)
+
+
+def assert_voice_note_player(crate: Path) -> None:
+    """#119: voice/audio CAS attachments play in-app (local only).
+
+    Acceptance: opus/mp3 (and other audio/* / kind===voice) play via an in-app
+    player with play/pause and time/duration chrome. Native <audio controls> is
+    enough; custom chrome must expose both. Source is casDataUrl / data: (same
+    path as other CAS) — no remote streaming URL. Omitted/missing stay
+    placeholders (no fake player). Not: waveform-from-CDN, transcription.
+    """
+    cas_path = crate / "web" / "lib" / "CasAttach.svelte"
+    if not cas_path.is_file():
+        fail("#119: CasAttach.svelte required for voice/audio CAS attachments")
+    cas = cas_path.read_text()
+    cleaned = _without_comments(cas)
+    blob = "\n".join(p.read_text() for p in _web_sources(crate))
+    logic = _web_logic(crate)
+    surface = cas + "\n" + logic
+
+    # 0) Local CAS path only — same casDataUrl / data: as photos.
+    if "casDataUrl" not in cas:
+        fail(
+            "#119: voice notes must load via casDataUrl (local data: URL), "
+            "not a remote stream"
+        )
+    if re.search(r"[\"']https?://", cleaned) or re.search(
+        r"src\s*=\s*[\"']https?://", cas, re.I
+    ):
+        fail("#119: CasAttach must not use remote http(s) URLs for voice/audio")
+    if _VOICE_REMOTE_SRC.search(cas) or _VOICE_REMOTE_SRC.search(cleaned):
+        fail(
+            "#119: audio player must not use http(s) src — only local "
+            "casDataUrl / data: (no streaming CDN)"
+        )
+
+    # 1) Classify voice/audio (kind, mime, or extension).
+    if not _VOICE_KIND.search(cas):
+        fail(
+            "#119: CasAttach must detect voice/audio attachments "
+            "(kind === \"voice\", audio/* mime, or .opus/.ogg/.mp3/.m4a/.aac/.wav)"
+        )
+
+    # 2) In-app player: native <audio controls> OR custom play/pause + time.
+    has_audio = bool(_VOICE_AUDIO_EL.search(cas))
+    if not has_audio:
+        fail(
+            "#119: voice/audio CAS attachments need an in-app <audio> player "
+            "(play opus/mp3 in-window; not shell-open only)"
+        )
+    native = bool(_VOICE_NATIVE_CONTROLS.search(cas))
+    custom_play = bool(_VOICE_PLAY_PAUSE.search(cas) or _VOICE_PLAY_PAUSE.search(cleaned))
+    custom_time = bool(_VOICE_TIME_CHROME.search(cas) or _VOICE_TIME_CHROME.search(cleaned))
+    if not (native or (custom_play and custom_time)):
+        fail(
+            "#119: audio player needs play/pause and time/duration chrome "
+            "(native <audio controls>, or custom play/pause + currentTime/duration)"
+        )
+    if not _VOICE_LOCAL_SRC.search(cas):
+        fail(
+            "#119: <audio> src must be local casDataUrl / data: / srcs "
+            "(same CAS bytes path as images)"
+        )
+
+    # 3) Omitted / missing stay placeholders — no player on those branches.
+    if not _VOICE_OMITTED.search(cas):
+        fail(
+            "#119: omitted attachments must stay placeholders "
+            "(branch on .omitted — no fake voice player)"
+        )
+    if not _VOICE_MISSING.search(cas):
+        fail(
+            "#119: missing attachments must stay placeholders "
+            "(branch on .missing / not stored — no fake voice player)"
+        )
+    # Audio must not render on the omitted path: require loadable guards
+    # (srcs / !broken / !omitted) near <audio>, not a bare always-on player.
+    audio_m = _VOICE_AUDIO_EL.search(cas)
+    if audio_m:
+        window = cas[max(0, audio_m.start() - 400) : audio_m.end() + 200]
+        guarded = bool(
+            re.search(
+                r"("
+                r"srcs\s*\[|srcs\s*\.|!broken|broken\s*\[|"
+                r"!a\.omitted|!omitted|!a\.missing|!missing|"
+                r"hashOf\s*\(|cas_hash|casHash"
+                r")",
+                window,
+                re.I,
+            )
+        )
+        if not guarded:
+            fail(
+                "#119: <audio> must only render for loadable voice/audio "
+                "(srcs / hash present, not omitted/missing) — placeholders otherwise"
+            )
+        # If audio sits inside the omitted branch, reject.
+        before = cas[: audio_m.start()]
+        # Last relevant branch marker before <audio>.
+        last_omitted = max(before.rfind("omitted"), before.rfind("Media omitted"))
+        last_missing = max(
+            before.rfind(".missing"),
+            before.rfind("not stored"),
+            before.rfind("a.missing"),
+        )
+        last_audio_guard = max(
+            before.rfind("isAudio"),
+            before.rfind("isVoice"),
+            before.rfind("audio/"),
+            before.rfind("kind === \"voice\""),
+            before.rfind("kind === 'voice'"),
+        )
+        if last_omitted > last_audio_guard and last_omitted > 0:
+            # Only fail if no {:else if isAudio} sits after omitted closer to audio.
+            if last_audio_guard < last_omitted:
+                fail(
+                    "#119: do not put the voice player on the omitted branch — "
+                    "omitted stays a placeholder"
+                )
+        if last_missing > last_audio_guard and last_missing > 0:
+            if last_audio_guard < last_missing:
+                fail(
+                    "#119: do not put the voice player on the missing branch — "
+                    "missing stays a placeholder"
+                )
+
+    # 4) Reachable from timeline and/or search (shared CasAttach).
+    app = (crate / "web" / "App.svelte").read_text()
+    search = ""
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    if search_path.is_file():
+        search = search_path.read_text()
+    timeline_has_cas = "CasAttach" in app or bool(
+        re.search(r"casDataUrl|CasAttach", _timeline_block(crate) + "\n" + app)
+    )
+    search_has_cas = "CasAttach" in search
+    if not (timeline_has_cas or search_has_cas):
+        fail(
+            "#119: voice player must be reachable from timeline and/or search "
+            "CAS attachments (CasAttach)"
+        )
+
+    # 5) Not in scope: waveform-from-CDN, transcription UI.
+    if _VOICE_WAVEFORM_CDN.search(surface) or _VOICE_WAVEFORM_CDN.search(blob):
+        fail(
+            "#119: not in scope — no waveform visualization from a CDN "
+            "(wavesurfer / remote wave assets)"
+        )
+    if _VOICE_TRANSCRIPTION.search(cleaned) or _VOICE_TRANSCRIPTION.search(
+        _without_comments(blob)
+    ):
+        fail(
+            "#119: not in scope — no transcription UI "
+            "(transcribe / speech-to-text / transcript pane)"
+        )
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -4914,6 +5170,7 @@ def main() -> None:
     assert_people_filter_identity(crate)
     assert_boot_spinner(crate)
     assert_photo_lightbox(crate)
+    assert_voice_note_player(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")

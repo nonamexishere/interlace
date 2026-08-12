@@ -129,8 +129,10 @@ in the window (not only in the terminal).
 Photos and voice notes stored in the archive `cas/` folder open in the
 timeline (and search). Click a photo thumbnail for a full-size in-window
 lightbox (Esc or backdrop to close; arrow keys when a message has several
-images). Nothing is fetched from the network. Exports that omitted media show
-a placeholder.
+images). Voice notes play in-app with play/pause and elapsed/duration time;
+audio is loaded only from local CAS bytes (`data:`), never a remote stream.
+Nothing is fetched from the network. Exports that omitted media show a
+placeholder.
 
 If the archive path looks like iCloud Drive, Dropbox, or Google Drive, a
 banner stays up on every tab. Time Machine of the whole folder is fine after
