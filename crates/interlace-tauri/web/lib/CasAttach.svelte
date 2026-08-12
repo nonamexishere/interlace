@@ -59,6 +59,81 @@
         });
     }
   });
+
+  // Loadable image attachments on this message (for lightbox prev/next).
+  function imageItems(): Attachment[] {
+    return (items || []).filter(
+      (a) =>
+        !a.omitted &&
+        !a.missing &&
+        hashOf(a) &&
+        isImage(a) &&
+        srcs[keyOf(a)] &&
+        !broken[keyOf(a)],
+    );
+  }
+
+  let lightboxOpen = $state(false);
+  let lightboxIndex = $state(0);
+
+  function openLightbox(a: Attachment) {
+    const imgs = imageItems();
+    const idx = imgs.findIndex((x) => keyOf(x) === keyOf(a));
+    if (idx < 0) return;
+    lightboxIndex = idx;
+    lightboxOpen = true;
+  }
+
+  function closeLightbox() {
+    lightboxOpen = false;
+  }
+
+  function showPrev() {
+    const imgs = imageItems();
+    if (imgs.length < 2) return;
+    lightboxIndex = (lightboxIndex - 1 + imgs.length) % imgs.length;
+  }
+
+  function showNext() {
+    const imgs = imageItems();
+    if (imgs.length < 2) return;
+    lightboxIndex = (lightboxIndex + 1) % imgs.length;
+  }
+
+  function onLightboxKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeLightbox();
+      return;
+    }
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      showPrev();
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      showNext();
+    }
+  }
+
+  $effect(() => {
+    if (!lightboxOpen) return;
+    const handler = (e: KeyboardEvent) => onLightboxKeydown(e);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  });
+
+  function lightboxSrc(): string | null {
+    const imgs = imageItems();
+    const a = imgs[lightboxIndex];
+    if (!a) return null;
+    return srcs[keyOf(a)] || null;
+  }
+
+  function lightboxAlt(): string {
+    const imgs = imageItems();
+    const a = imgs[lightboxIndex];
+    return a?.filename || "image";
+  }
 </script>
 
 {#if items?.length}
@@ -72,16 +147,26 @@
             Photo/file not stored ({a.filename || "attachment"}). Re-import the WhatsApp ZIP from the
             Import tab (old messages stay, missing files are added).
           </p>
-        {:else if isImage(a) && srcs[keyOf(a)]}
-          <img
-            src={srcs[keyOf(a)]}
-            alt={a.filename || "image"}
-            class="max-h-64 max-w-full rounded-md border border-border"
-            onerror={() => {
-              broken = { ...broken, [keyOf(a)]: true };
+        {:else if isImage(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
+          <button
+            type="button"
+            class="block cursor-pointer border-0 bg-transparent p-0 text-left"
+            onclick={(e) => {
+              e.stopPropagation();
+              openLightbox(a);
             }}
-          />
-        {:else if isAudio(a) && srcs[keyOf(a)]}
+            aria-label={`Open ${a.filename || "image"} full size`}
+          >
+            <img
+              src={srcs[keyOf(a)]}
+              alt={a.filename || "image"}
+              class="max-h-64 max-w-full rounded-md border border-border"
+              onerror={() => {
+                broken = { ...broken, [keyOf(a)]: true };
+              }}
+            />
+          </button>
+        {:else if isAudio(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
           <audio
             class="w-full"
             controls
@@ -103,4 +188,67 @@
       </li>
     {/each}
   </ul>
+{/if}
+
+{#if lightboxOpen && lightboxSrc()}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="photo-lightbox fixed inset-0 z-[100] flex items-center justify-center bg-black/80"
+    data-photo-lightbox
+    role="dialog"
+    aria-modal="true"
+    aria-label="Photo viewer"
+    onclick={(e) => {
+      e.stopPropagation();
+      closeLightbox();
+    }}
+    onkeydown={onLightboxKeydown}
+  >
+    <button
+      type="button"
+      class="absolute top-3 right-3 z-[101] rounded-md bg-black/50 px-3 py-1.5 text-sm text-white hover:bg-black/70"
+      data-lightbox-close
+      aria-label="Close photo"
+      onclick={(e) => {
+        e.stopPropagation();
+        closeLightbox();
+      }}
+    >
+      Close
+    </button>
+    {#if imageItems().length > 1}
+      <button
+        type="button"
+        class="absolute left-3 z-[101] rounded-md bg-black/50 px-3 py-2 text-white hover:bg-black/70"
+        data-lightbox-prev
+        aria-label="Previous image"
+        onclick={(e) => {
+          e.stopPropagation();
+          showPrev();
+        }}
+      >
+        ←
+      </button>
+      <button
+        type="button"
+        class="absolute right-3 z-[101] rounded-md bg-black/50 px-3 py-2 text-white hover:bg-black/70"
+        data-lightbox-next
+        aria-label="Next image"
+        onclick={(e) => {
+          e.stopPropagation();
+          showNext();
+        }}
+      >
+        →
+      </button>
+    {/if}
+    <!-- stopPropagation so clicking the image does not close -->
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <img
+      src={lightboxSrc()}
+      alt={lightboxAlt()}
+      class="max-h-[90vh] max-w-[90vw] object-contain"
+      onclick={(e) => e.stopPropagation()}
+    />
+  </div>
 {/if}

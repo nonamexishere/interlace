@@ -127,16 +127,16 @@
 
   <ol class="divide-y divide-border">
     {#each hits as h}
-      <li>
-        <button type="button" class="w-full px-1 py-2 text-left hover:bg-accent" onclick={() => toggle(h.message_id)}>
+      <li class="px-1 py-2">
+        <button type="button" class="w-full text-left hover:bg-accent" onclick={() => toggle(h.message_id)}>
           <div class="text-xs text-muted-foreground">
             {[h.sent_at || "no date", h.platform, h.conversation_kind, h.person_name || "", h.conversation_title || ""]
               .filter(Boolean)
               .join(" · ")}
           </div>
           <p class="mt-1 whitespace-pre-wrap text-sm">{(h.snippet || h.subject || "").replace(/<attached:\s*[^>]+>/gi, "").trim()}</p>
-          <CasAttach items={h.attachments || []} />
         </button>
+        <CasAttach items={h.attachments || []} />
         {#if expanded === h.message_id}
           <p class="bg-muted px-2 py-2 text-sm whitespace-pre-wrap">{body}</p>
         {/if}

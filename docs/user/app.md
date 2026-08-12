@@ -127,8 +127,10 @@ Empty lists, loading, lock conflicts, and doctor findings are shown as copy
 in the window (not only in the terminal).
 
 Photos and voice notes stored in the archive `cas/` folder open in the
-timeline (and search). Exports that omitted media show a placeholder — nothing
-is fetched from the network.
+timeline (and search). Click a photo thumbnail for a full-size in-window
+lightbox (Esc or backdrop to close; arrow keys when a message has several
+images). Nothing is fetched from the network. Exports that omitted media show
+a placeholder.
 
 If the archive path looks like iCloud Drive, Dropbox, or Google Drive, a
 banner stays up on every tab. Time Machine of the whole folder is fine after
