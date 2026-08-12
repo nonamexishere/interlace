@@ -77,8 +77,9 @@ the message, or you share a DM / email thread). Each row shows that time and
 a one-line **plain-text** preview (the last message’s subject if it has one,
 otherwise a truncated body — never HTML). Contacts with no matching messages
 stay listed at the bottom. After you open a person, a **compact conversation switcher** in the header
-(not a second list above the bubbles) lists their chats (title, platform,
-last activity). **All** is the default (the merged D18 stream). Picking a
+(not a second list above the bubbles) lists their chats (WhatsApp / Gmail
+when the title is empty or the person’s name; otherwise the group name or
+mail subject; platform and last activity). **All** is the default (the merged D18 stream). Picking a
 conversation filters the timeline to that chat. Groups still need **include
 groups** to appear in the conversation list and in All. **Identity chrome**
 (Merge, include groups, unlink) is hidden until you click the person name at

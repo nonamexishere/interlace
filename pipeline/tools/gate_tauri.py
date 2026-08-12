@@ -14,6 +14,10 @@
 #     second always-expanded list above the bubbles. People sidebar stays.
 #     All / the open panel must stack above sticky .day-heading (higher z-index
 #     than the heading, plus a background so the date cannot show through).
+#     Switcher label (summary + each row): empty title or title === personTitle
+#     → pretty platform (WhatsApp, Gmail — not raw whatsapp); distinct titles
+#     (groups, mail subjects) stay as the title. Subtitle may still show
+#     platform + last_at. No raw ids.
 """
 
 from __future__ import annotations
@@ -272,6 +276,51 @@ _CONV_RESET_ALL = re.compile(
 )
 _CONV_ALL_LABEL = re.compile(r">\s*All\s*<|[\"']All[\"']")
 _CONV_TITLE = re.compile(r"(conversation_title|\.title\b|\{[^}]{0,80}\btitle\b[^}]{0,40}\})")
+# #114 dogfood — label helper (pretty platform when title is empty / the person).
+_CONV_LABEL_HELPER_NAMES = (
+    "conversationLabel",
+    "switcherLabel",
+    "platformLabel",
+    "convLabel",
+    "conversationHeading",
+    "switcherHeading",
+)
+_PRETTY_WHATSAPP = re.compile(r"[\"']WhatsApp[\"']")
+_PRETTY_GMAIL = re.compile(r"[\"']Gmail[\"']")
+_RAW_WHATSAPP = re.compile(r"[\"']whatsapp[\"']")
+_RAW_GMAIL = re.compile(r"[\"']gmail[\"']")
+_TITLE_EQ_PERSON = re.compile(
+    r"("
+    r"(?:[\w$]+(?:\?\.|\.))*title\b[^;\n]{0,48}(?:===?|!==?)[^;\n]{0,48}"
+    r"(?:personTitle|personName|displayName|display_name)\b"
+    r"|(?:personTitle|personName|displayName|display_name)\b[^;\n]{0,48}"
+    r"(?:===?|!==?)[^;\n]{0,48}(?:[\w$]+(?:\?\.|\.))*title\b"
+    r")"
+)
+_EMPTY_TITLE = re.compile(
+    r"("
+    r"!\s*(?:[\w$]+(?:\?\.|\.))*title\b"
+    r"|(?:[\w$]+(?:\?\.|\.))*title\b[^;\n]{0,40}(?:===?|!==?)\s*[\"']{2}"
+    r"|(?:[\w$]+(?:\?\.|\.))*title\b\s*\?\?"
+    r"|(?:[\w$]+(?:\?\.|\.))*title\b\s*\|\|"
+    r"|(?:[\w$]+(?:\?\.|\.))*title\b[^;\n]{0,24}\.trim\s*\("
+    r")"
+)
+_DISTINCT_TITLE = re.compile(
+    r"("
+    r"return\s+(?:[\w$]+(?:\?\.|\.))*title\b"
+    r"|:\s*(?:[\w$]+(?:\?\.|\.))*title\b"
+    r")"
+)
+_RAW_TITLE_HEADING = re.compile(
+    r"^(?:[\w$]+(?:\?\.|\.))*title(?:\s*\?\?\s*[\"']{2})?(?:\s*\|\|\s*[\"']{2})?$"
+)
+_SUBTITLE_EL = re.compile(
+    r"<(span|div|p|small|time)\b[^>]*>"
+    r"(?:(?!</\1>).)*\b(?:last_at|lastAt|last_activity_at)\b"
+    r"(?:(?!</\1>).)*</\1>",
+    re.I | re.S,
+)
 _CONV_PLATFORM = re.compile(r"\bplatform\b")
 _CONV_LAST_AT = re.compile(r"\b(?:last_at|lastAt|last_activity_at)\b")
 _CONV_ID_TEXT = re.compile(
@@ -1655,6 +1704,326 @@ def _switcher_above_day_heading(crate: Path) -> tuple[bool, int, int | None, boo
     return False, day_z, best_z, saw_bg
 
 
+def _ts_function_body(src: str, name: str) -> str:
+    """Body or arrow expression of `name`, including a TS `: ReturnType`."""
+    body = _function_body(src, name)
+    if body:
+        return body
+    pats = (
+        rf"(?:async\s+)?function\s+{re.escape(name)}\s*\(",
+        rf"(?:const|let|var)\s+{re.escape(name)}\s*=\s*(?:async\s+)?function\s*\(",
+        rf"(?:const|let|var)\s+{re.escape(name)}\s*=\s*(?:async\s*)?\(",
+    )
+    for pat in pats:
+        m = re.search(pat, src)
+        if not m:
+            continue
+        open_p = m.end() - 1
+        if open_p < 0 or src[open_p] != "(":
+            continue
+        close_p = _match_closer(src, open_p)
+        if close_p < 0:
+            continue
+        i = close_p + 1
+        n = len(src)
+        while i < n and src[i] in " \t\n":
+            i += 1
+        if i < n and src[i] == ":":
+            i += 1
+            depth = 0
+            while i < n:
+                c = src[i]
+                if c in "<({[":
+                    depth += 1
+                elif c in ">)}]":
+                    depth -= 1
+                elif depth <= 0 and (src.startswith("=>", i) or c == "{"):
+                    break
+                i += 1
+        while i < n and src[i] in " \t\n":
+            i += 1
+        if src.startswith("=>", i):
+            i += 2
+            while i < n and src[i] in " \t\n":
+                i += 1
+        if i < n and src[i] == "{":
+            close_b = _match_closer(src, i)
+            return src[i + 1 : close_b] if close_b >= 0 else src[i + 1 :]
+        j = i
+        depth = 0
+        while j < n:
+            nxt = _js_next(src, j)
+            if nxt != j:
+                j = nxt
+                continue
+            c = src[j]
+            if c in "({[":
+                depth += 1
+            elif c in ")}]":
+                if depth == 0:
+                    break
+                depth -= 1
+            elif c in ";,\n" and depth == 0:
+                break
+            j += 1
+        return src[i:j]
+    return ""
+
+
+def _helper_with_callees(src: str, name: str, seen: set[str] | None = None) -> str:
+    found = seen if seen is not None else set()
+    if name in found:
+        return ""
+    found.add(name)
+    body = _ts_function_body(src, name)
+    if not body:
+        return ""
+    parts = [body]
+    for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\(", body):
+        callee = m.group(1)
+        if callee in found or callee in _SCROLL_HELPER_SKIP:
+            continue
+        nested = _helper_with_callees(src, callee, found)
+        if nested:
+            parts.append(nested)
+    return "\n".join(parts)
+
+
+def _assignment_rhs(src: str, name: str) -> str:
+    m = re.search(
+        rf"\b(?:const|let|var)\s+{re.escape(name)}\s*=\s*",
+        src,
+    )
+    if not m:
+        return ""
+    rest = src[m.end() :]
+    dm = re.match(r"\$derived(?:\.by)?\s*\(", rest)
+    if dm:
+        return _call_arg(rest, dm.end() - 1).strip().rstrip(",")
+    depth = 0
+    j = 0
+    while j < len(rest):
+        nxt = _js_next(rest, j)
+        if nxt != j:
+            j = nxt
+            continue
+        c = rest[j]
+        if c in "({[":
+            depth += 1
+        elif c in ")}]":
+            depth -= 1
+        elif c == ";" and depth <= 0:
+            break
+        j += 1
+    return rest[:j].strip()
+
+
+def _is_pretty_platform_blob(blob: str) -> bool:
+    """Maps raw slugs to WhatsApp / Gmail (not a raw `whatsapp` fallback)."""
+    if not (_PRETTY_WHATSAPP.search(blob) and _PRETTY_GMAIL.search(blob)):
+        return False
+    return bool(_RAW_WHATSAPP.search(blob) and _RAW_GMAIL.search(blob))
+
+
+def _pretty_platform_helpers(logic: str) -> set[str]:
+    names: set[str] = set()
+    for name in _CONV_LABEL_HELPER_NAMES:
+        blob = _helper_with_callees(logic, name)
+        if blob and _is_pretty_platform_blob(blob):
+            names.add(name)
+    return names
+
+
+def _compares_title_to_person(blob: str) -> bool:
+    if not re.search(r"\bpersonTitle\b", blob):
+        return False
+    if _TITLE_EQ_PERSON.search(blob):
+        return True
+    # `person = personTitle` then `title === person`
+    return bool(
+        re.search(
+            r"(?:[\w$]+(?:\?\.|\.))*title\b[^;\n]{0,48}(?:===?|!==?)",
+            blob,
+        )
+    )
+
+
+def _blob_chooses_pretty_platform(blob: str, pretty_names: set[str]) -> bool:
+    """Empty title or title === personTitle → pretty platform; else title."""
+    if not _compares_title_to_person(blob):
+        return False
+    if not _EMPTY_TITLE.search(blob):
+        return False
+    if not _DISTINCT_TITLE.search(blob):
+        return False
+    uses_pretty = any(re.search(rf"\b{re.escape(n)}\s*\(", blob) for n in pretty_names)
+    if uses_pretty or _is_pretty_platform_blob(blob):
+        return True
+    return bool(_PRETTY_WHATSAPP.search(blob) and _PRETTY_GMAIL.search(blob))
+
+
+def _conversation_chooser_helpers(logic: str) -> dict[str, str]:
+    """Named helpers that pick pretty platform vs a distinct title."""
+    pretty = _pretty_platform_helpers(logic)
+    found: dict[str, str] = {}
+    for name in _CONV_LABEL_HELPER_NAMES:
+        blob = _helper_with_callees(logic, name)
+        if blob and _blob_chooses_pretty_platform(blob, pretty | {name}):
+            found[name] = blob
+    return found
+
+
+def _closed_switcher_label_markup(tag: str, inner: str) -> str:
+    if _tag_name(tag) == "select" or _CONV_SELECT.search(tag):
+        return inner
+    sm = re.search(r"<summary\b[^>]*>([\s\S]*?)</summary>", inner, re.I)
+    if sm:
+        return sm.group(1)
+    each = _CONV_EACH.search(inner)
+    if each:
+        return inner[: each.start()]
+    bm = re.search(r"<button\b[^>]*>([\s\S]*?)</button>", inner, re.I)
+    if bm:
+        return bm.group(1)
+    return inner
+
+
+def _switcher_summary_markup(crate: Path) -> str:
+    parts: list[str] = []
+    for p in _web_sources(crate):
+        if p.suffix != ".svelte" or p.name in _PERSON_PANE_SKIP:
+            continue
+        text = p.read_text()
+        for m in _CONV_SWITCHER_HOOK.finditer(text):
+            el = _element_span(text, m.start())
+            if not el:
+                window = text[max(0, m.start() - 80) : m.end() + 900]
+                sm = re.search(r"<summary\b[^>]*>([\s\S]*?)</summary>", window, re.I)
+                if sm:
+                    parts.append(sm.group(1))
+                continue
+            _lt, tag, inner = el
+            parts.append(_closed_switcher_label_markup(tag, inner))
+        if not parts:
+            for m in _CONV_SELECT.finditer(text):
+                el = _element_span(text, m.start())
+                if el:
+                    parts.append(el[2])
+    return "\n".join(parts)
+
+
+def _switcher_row_markup(crate: Path) -> str:
+    parts: list[str] = []
+    for p in _web_sources(crate):
+        if p.suffix != ".svelte" or p.name in _PERSON_PANE_SKIP:
+            continue
+        text = p.read_text()
+        i = 0
+        while True:
+            m = _CONV_EACH.search(text, i)
+            if not m:
+                break
+            end = _matching_each_end(text, m.start())
+            if end < 0:
+                break
+            parts.append(text[m.start() : end])
+            i = end
+    return "\n".join(parts)
+
+
+def _strip_switcher_subtitles(block: str) -> str:
+    prev = None
+    out = block
+    while prev != out:
+        prev = out
+        out = _SUBTITLE_EL.sub("", out)
+    return out
+
+
+def _heading_exprs(markup: str) -> list[str]:
+    """Visible heading mustaches (not {#if}, not All, not last_at subtitle)."""
+    cleaned = _strip_switcher_subtitles(markup)
+    cleaned = _strip_tag_attrs(cleaned)
+    cleaned = re.sub(r"\{[#/:@].*?\}", "", cleaned, flags=re.S)
+    cleaned = re.sub(r">\s*All\s*<|[\"']All[\"']", "", cleaned)
+    return [m.group(1).strip() for m in re.finditer(r"\{([^{}]+)\}", cleaned)]
+
+
+def _expr_with_defs(expr: str, logic: str, depth: int = 0) -> str:
+    if depth > 4:
+        return expr
+    parts = [expr]
+    skip = _SCROLL_HELPER_SKIP | {
+        "conv",
+        "c",
+        "title",
+        "platform",
+        "personTitle",
+        "null",
+        "undefined",
+        "true",
+        "false",
+    }
+    for ident in re.findall(r"\b([A-Za-z_]\w*)\b", expr):
+        if ident in skip:
+            continue
+        rhs = _assignment_rhs(logic, ident)
+        if rhs:
+            parts.append(rhs)
+            parts.append(_expr_with_defs(rhs, logic, depth + 1))
+    return "\n".join(parts)
+
+
+def _uses_named_helper(blob: str, names: set[str] | dict[str, str]) -> bool:
+    return any(re.search(rf"\b{re.escape(n)}\s*\(", blob) for n in names)
+
+
+def _is_raw_title_heading(expr: str, logic: str, choosers: dict[str, str]) -> bool:
+    s = expr.strip()
+    s = re.sub(r"\s*\?\?\s*[\"']{2}\s*$", "", s).strip()
+    s = re.sub(r"\s*\|\|\s*[\"']{2}\s*$", "", s).strip()
+    if _RAW_TITLE_HEADING.match(s):
+        return True
+    if re.fullmatch(r"selectedConversationTitle|conversation_title", s):
+        rhs = _assignment_rhs(logic, s)
+        if rhs and _uses_named_helper(rhs, choosers):
+            return False
+        if rhs and _blob_chooses_pretty_platform(rhs, _pretty_platform_helpers(logic)):
+            return False
+        return True
+    return False
+
+
+def _headings_use_label_helper(
+    exprs: list[str],
+    logic: str,
+    choosers: dict[str, str],
+    pretty: set[str],
+) -> bool:
+    """True if the heading calls the chooser (or inlines empty/name → pretty)."""
+    if not exprs:
+        return False
+    if all(_is_raw_title_heading(e, logic, choosers) for e in exprs):
+        return False
+    blobs = [_expr_with_defs(e, logic) for e in exprs]
+    combined = "\n".join(blobs)
+    if choosers and _uses_named_helper(combined, choosers):
+        return True
+    return _blob_chooses_pretty_platform(combined, pretty)
+
+
+def _label_helper_falls_back_to_id(blob: str) -> bool:
+    return bool(
+        re.search(
+            r"("
+            r"return\s+[^;\n]{0,80}(?:conversation_id|\.id|person_id|personId)\b"
+            r"|(?:title|\|\|)\s*[^\n;]{0,80}(?:conversation_id|\.id|person_id|personId)\b"
+            r")",
+            blob,
+        )
+    )
+
+
 def assert_conversation_switcher(crate: Path) -> None:
     """#114: after a person is selected, switch conversations; default All; no raw ids.
 
@@ -1663,7 +2032,9 @@ def assert_conversation_switcher(crate: Path) -> None:
     person name is clicked. Conversation switcher is a compact header control,
     not a second always-expanded list above the bubbles. People sidebar stays.
     All / the open panel must stack above sticky .day-heading (higher z-index
-    + background). Not in scope: create / mute / pin. Keep #111–#113.
+    + background). Switcher label: empty title or title === personTitle shows
+    the pretty platform (WhatsApp, Gmail), not the repeated person name;
+    distinct titles stay. Not in scope: create / mute / pin. Keep #111–#113.
     """
     app = (crate / "web" / "App.svelte").read_text()
     logic = _web_logic(crate)
@@ -1720,8 +2091,44 @@ def assert_conversation_switcher(crate: Path) -> None:
             "not leave a previously picked conversation_id selected"
         )
 
+    choosers = _conversation_chooser_helpers(logic)
+    pretty_helpers = _pretty_platform_helpers(logic)
+    # Distinct titles still show; do not require interpolating conv.title when
+    # that title is the open person's name (helper may show WhatsApp / Gmail).
     if not _CONV_TITLE.search(switcher):
-        fail("#114: each conversation in the list must show its title")
+        title_in_helper = any(
+            re.search(r"(?:conversation_title|\.title\b|\btitle\b)", blob)
+            for blob in choosers.values()
+        )
+        if not title_in_helper:
+            fail("#114: each conversation in the list must show its title")
+
+    summary_exprs = _heading_exprs(_switcher_summary_markup(crate))
+    row_exprs = _heading_exprs(_switcher_row_markup(crate))
+    summary_ok = _headings_use_label_helper(summary_exprs, logic, choosers, pretty_helpers)
+    rows_ok = _headings_use_label_helper(row_exprs, logic, choosers, pretty_helpers)
+    if not choosers and not (summary_ok and rows_ok):
+        fail(
+            "#114: conversation switcher label must use a helper "
+            "(conversationLabel / switcherLabel / platformLabel) that shows "
+            "the pretty platform (WhatsApp, Gmail — not raw whatsapp) when "
+            "the title is empty or equals personTitle; distinct titles "
+            "(groups, mail subjects) still use title"
+        )
+    if not summary_ok:
+        fail(
+            "#114: compact switcher summary must call that label helper "
+            "(not raw selectedConversationTitle / conv.title as the only heading)"
+        )
+    if not rows_ok:
+        fail(
+            "#114: each switcher row heading must call that label helper "
+            "(not raw conv.title; subtitle may still show platform + last_at)"
+        )
+    for blob in choosers.values():
+        if _label_helper_falls_back_to_id(blob):
+            fail("#114: do not fall back a missing conversation title to a raw id")
+
     if not _CONV_PLATFORM.search(switcher):
         fail("#114: each conversation in the list must show its platform")
     if not _CONV_LAST_AT.search(switcher):

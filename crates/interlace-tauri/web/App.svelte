@@ -254,9 +254,25 @@
 
   const oldestCursor = $derived(oldestSentAt(timeline));
 
-  const selectedConversationTitle = $derived(
-    conversations.find((c) => c.id === selectedConversationId)?.title ?? "",
+  const selectedConversation = $derived(
+    conversations.find((c) => c.id === selectedConversationId),
   );
+
+  /** Empty / person-name titles → WhatsApp, Gmail, …; keep group names and subjects. */
+  function conversationLabel(title: string | null | undefined, platform: string | null | undefined) {
+    if (
+      !(title ?? "").trim() ||
+      (title ?? "").trim().toLowerCase() === personTitle.trim().toLowerCase()
+    ) {
+      const p = (platform ?? "").trim().toLowerCase();
+      if (p === "whatsapp") return "WhatsApp";
+      if (p === "gmail") return "Gmail";
+      if (p === "contacts") return "Contacts";
+      if (!p) return "";
+      return p.charAt(0).toUpperCase() + p.slice(1);
+    }
+    return title;
+  }
 
   async function selectPerson(id: number, append = false, keepConversation = false) {
     if (append && tlLoading) return;
@@ -651,7 +667,7 @@
                 {#if selectedConversationId === null}
                   All
                 {:else}
-                  {selectedConversationTitle}
+                  {conversationLabel(selectedConversation?.title, selectedConversation?.platform)}
                 {/if}
               </summary>
               <ul
@@ -679,7 +695,7 @@
                         : ''}"
                       onclick={() => pickConversation(conv.id)}
                     >
-                      <span>{conv.title ?? ""}</span>
+                      <span>{conversationLabel(conv.title, conv.platform)}</span>
                       <span class="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
                         {conv.platform}{conv.last_at ? ` · ${conv.last_at}` : ""}
                       </span>
