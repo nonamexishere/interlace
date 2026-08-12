@@ -23,6 +23,9 @@
 #     previews truncate (or min-w-0 / minmax(0, …)) so they do not widen the
 #     column; people list still visible when a chat is open; no raw person ids
 #     in list labels. Not the conversation switcher (#114).
+#156: boot screen — centered CSS spinner (pre-JS splash + Opening-last-archive),
+#     not a blank page with a corner Loading line; keep “Opening last archive”;
+#     light/dark; no network images / CDN / splash video / server progress %.
 """
 
 from __future__ import annotations
@@ -2556,6 +2559,301 @@ def _row_clips_long_text(block: str) -> bool:
     return True
 
 
+# #156 — cold launch: centered CSS spinner, not a corner Loading line.
+_BOOT_IF = re.compile(
+    r"\{#if\s+((?:booting|opening)(?:\s*\|\|\s*(?:booting|opening))+)\s*\}",
+)
+_SPIN_ANIM = re.compile(
+    r"("
+    r"animate-spin\b"
+    r"|@keyframes\s+[\w-]*spin[\w-]*"
+    r"|animation\s*:\s*[^;\n}]*\bspin\b"
+    r"|animation-name\s*:\s*[\w-]*spin[\w-]*"
+    r")",
+    re.I,
+)
+_SPINNER_NAME = re.compile(
+    r"("
+    r"\bspinner\b"
+    r"|boot-spinner"
+    r"|loading-spinner"
+    r"|data-boot-spinner"
+    r"|data-spinner"
+    r")",
+    re.I,
+)
+_SPINNER_RING = re.compile(
+    r"("
+    r"rounded-full"
+    r"|border-radius\s*:\s*(?:50%|9999px|999px)"
+    r")",
+    re.I,
+)
+_SPINNER_BORDER = re.compile(
+    r"("
+    r"\bborder(?:-[trblxy])?(?:-\d)?\b"
+    r"|border(?:-top|-right|-bottom|-left)?\s*:"
+    r")",
+    re.I,
+)
+_VIEWPORT_FILL = re.compile(
+    r"("
+    r"min-h-(?:screen|dvh|svh|full)"
+    r"|h-(?:screen|dvh|svh|full)"
+    r"|min-height\s*:\s*100(?:vh|dvh|svh|%)"
+    r"|height\s*:\s*100(?:vh|dvh|svh|%)"
+    r"|(?:fixed|absolute)\s+inset-0"
+    r"|inset\s*:\s*0"
+    r")",
+    re.I,
+)
+_CENTER_AXIS = re.compile(
+    r"("
+    r"items-center"
+    r"|justify-center"
+    r"|place-items-center"
+    r"|place-content-center"
+    r"|align-items\s*:\s*center"
+    r"|justify-content\s*:\s*center"
+    r"|place-items\s*:\s*center"
+    r"|place-content\s*:\s*center"
+    r")",
+    re.I,
+)
+_FLEX_OR_GRID = re.compile(
+    r"("
+    r"\bflex\b"
+    r"|\bgrid\b"
+    r"|display\s*:\s*(?:flex|grid|inline-flex)"
+    r")",
+    re.I,
+)
+_LIGHT_DARK = re.compile(
+    r"("
+    r"\bdark:"
+    r"|prefers-color-scheme"
+    r"|--color-(?:background|foreground|muted)"
+    r"|color-scheme\s*:"
+    r")",
+    re.I,
+)
+_NET_IMG = re.compile(
+    r"("
+    r"""(?:src|href)\s*=\s*["']https?://"""
+    r"""|url\(\s*['"]?https?://"""
+    r"""|<img\b[^>]+https?://"""
+    r")",
+    re.I,
+)
+_CDN_HINT = re.compile(
+    r"("
+    r"cdn\.|unpkg\.com|jsdelivr|googleapis|gstatic|cloudflare"
+    r"|fonts\.google"
+    r")",
+    re.I,
+)
+_SPLASH_VIDEO = re.compile(r"<video\b", re.I)
+_SERVER_PROGRESS = re.compile(
+    r"("
+    r"progress\s*%"
+    r"|percent(?:age)?\s*(?:from|via|of)\s*(?:server|network|http)"
+    r"|fetch(?:Progress|Percent)"
+    r")",
+    re.I,
+)
+
+
+def _boot_opening_block(app: str) -> str:
+    """Markup of the booting || opening branch (until {:else…} or {/if})."""
+    m = _BOOT_IF.search(app)
+    if not m:
+        return ""
+    rest = app[m.end() :]
+    # Branch ends at the first sibling {:else / {:else if / {/if} at depth 0.
+    depth = 1
+    i = 0
+    while i < len(rest):
+        if rest.startswith("{#if", i) or rest.startswith("{#each", i) or rest.startswith(
+            "{#await", i
+        ) or rest.startswith("{#key", i):
+            depth += 1
+            i += 3
+            continue
+        if rest.startswith("{/if}", i) or rest.startswith("{/each}", i) or rest.startswith(
+            "{/await}", i
+        ) or rest.startswith("{/key}", i):
+            depth -= 1
+            if depth == 0:
+                return app[m.start() : m.end() + i]
+            i += 3
+            continue
+        if depth == 1 and (
+            rest.startswith("{:else", i) or rest.startswith("{:then", i) or rest.startswith(
+                "{:catch", i
+            )
+        ):
+            return app[m.start() : m.end() + i]
+        i += 1
+    return app[m.start() :]
+
+
+def _has_css_spinner(blob: str) -> bool:
+    """True when blob has a CSS-only rotating spinner (no network image required)."""
+    if not blob:
+        return False
+    if _SPIN_ANIM.search(blob) and (
+        _SPINNER_NAME.search(blob) or (_SPINNER_RING.search(blob) and _SPINNER_BORDER.search(blob))
+    ):
+        return True
+    # Tailwind animate-spin on a ring element is enough by itself.
+    if re.search(r"animate-spin", blob) and (
+        _SPINNER_RING.search(blob) or _SPINNER_BORDER.search(blob) or _SPINNER_NAME.search(blob)
+    ):
+        return True
+    # Named spinner class with an inline/keyframes animation nearby.
+    if _SPINNER_NAME.search(blob) and _SPIN_ANIM.search(blob):
+        return True
+    return False
+
+
+def _is_viewport_centered(blob: str) -> bool:
+    """True when layout fills the viewport and centers content (not corner text)."""
+    if not blob:
+        return False
+    if re.search(r"place-items-center|place-content-center", blob) and _VIEWPORT_FILL.search(
+        blob
+    ):
+        return True
+    return bool(
+        _VIEWPORT_FILL.search(blob)
+        and _CENTER_AXIS.search(blob)
+        and _FLEX_OR_GRID.search(blob)
+    )
+
+
+def _plain_corner_loading(html: str) -> bool:
+    """True when splash is only plain Loading text with no spinner chrome."""
+    body = re.search(r"<body\b[^>]*>(.*)</body>", html, re.I | re.S)
+    blob = body.group(1) if body else html
+    # Strip scripts — they are not the visible splash.
+    blob = re.sub(r"<script\b[^>]*>.*?</script>", "", blob, flags=re.I | re.S)
+    if _has_css_spinner(html):
+        return False
+    if re.search(r"Loading Interlace", blob, re.I) and not _is_viewport_centered(html):
+        return True
+    # Bare #app text node, no spinner markup.
+    if re.search(
+        r"""id=["']app["'][^>]*>\s*Loading\b[^<]*\s*</""",
+        blob,
+        re.I,
+    ) and not _has_css_spinner(html):
+        return True
+    return False
+
+
+def assert_boot_spinner(crate: Path) -> None:
+    """#156: centered CSS spinner on pre-JS splash and Opening-last-archive.
+
+    Cold launch must not be a blank page with a corner Loading line. Spinner is
+    CSS-only (no network images / CDN). Keep exact copy “Opening last archive”.
+    Light/dark aware. Not: splash video, server progress %, people skeleton.
+    """
+    index = crate / "index.html"
+    if not index.is_file():
+        fail("#156: crates/interlace-tauri/index.html missing (pre-JS splash)")
+    html = index.read_text()
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#156: App.svelte missing (Opening-last-archive boot state)")
+    app = app_path.read_text()
+    css_blob = "\n".join(
+        p.read_text() for p in _web_sources(crate) if p.suffix == ".css"
+    )
+    boot = _boot_opening_block(app)
+
+    # 1) Pre-JS splash: centered CSS spinner in index.html (inline — Vite CSS
+    # loads with JS, so corner text-only “Loading Interlace…” is not enough).
+    if _plain_corner_loading(html):
+        fail(
+            "#156: pre-JS splash must not be a plain corner Loading line — "
+            "index.html needs a centered CSS spinner (inline <style> / classes) "
+            "plus short status, not only “Loading Interlace…”"
+        )
+    # Spinner styles for pre-JS must live in index.html itself (not only app.css).
+    if not _has_css_spinner(html):
+        fail(
+            "#156: pre-JS splash (index.html) must include a CSS-only rotating "
+            "spinner (@keyframes / animate-spin / border ring) — no network image"
+        )
+    if not _is_viewport_centered(html):
+        fail(
+            "#156: pre-JS splash must center the spinner in the viewport "
+            "(flex/grid + items/justify center + min-h-screen/full), "
+            "not leave status text in the corner"
+        )
+    if _NET_IMG.search(html) or _CDN_HINT.search(html):
+        fail(
+            "#156: pre-JS spinner must be CSS-only — no http(s) image URLs or CDN"
+        )
+    if _SPLASH_VIDEO.search(html):
+        fail("#156: no branded splash <video> (out of scope)")
+
+    # 2) Post-mount boot: booting || opening UI — centered spinner + copy.
+    if not boot:
+        fail(
+            "#156: App.svelte must keep a {#if booting || opening} (or opening || booting) "
+            "branch for the Opening-last-archive state"
+        )
+    if "Opening last archive" not in boot and "Opening last archive" not in app:
+        fail(
+            "#156: boot screen must keep the exact copy substring "
+            "“Opening last archive” (existing gate string)"
+        )
+    if "Opening last archive" not in boot:
+        fail(
+            "#156: “Opening last archive” must appear in the booting/opening branch, "
+            "not only elsewhere in App.svelte"
+        )
+    # Spinner may use Tailwind utilities in the branch and/or shared CSS.
+    boot_with_css = boot + "\n" + css_blob
+    if not _has_css_spinner(boot) and not (
+        _has_css_spinner(boot_with_css) and _SPINNER_NAME.search(boot)
+    ):
+        # Accept spinner markup in branch that relies on global .spinner / animate-spin CSS.
+        if not (
+            (_SPINNER_NAME.search(boot) or re.search(r"animate-spin", boot))
+            and _SPIN_ANIM.search(boot_with_css)
+        ):
+            fail(
+                "#156: Opening-last-archive state must show a CSS rotating spinner "
+                "(animate-spin / @keyframes spin / spinner class), not status text only"
+            )
+    if not _is_viewport_centered(boot):
+        fail(
+            "#156: Opening-last-archive state must be viewport-centered "
+            "(flex/grid + center + full height), not a left-aligned loading line"
+        )
+    if _NET_IMG.search(boot) or _CDN_HINT.search(boot):
+        fail(
+            "#156: boot spinner must not load network images or CDN assets"
+        )
+    if _SPLASH_VIDEO.search(boot):
+        fail("#156: no splash <video> on the Opening-last-archive state")
+    if _SERVER_PROGRESS.search(boot):
+        fail(
+            "#156: boot status must not show server/network progress percent "
+            "(out of scope)"
+        )
+
+    # 3) Light/dark aware — soft: dark: utilities, prefers-color-scheme, or theme vars.
+    theme_blob = html + "\n" + app + "\n" + css_blob
+    if not _LIGHT_DARK.search(theme_blob):
+        fail(
+            "#156: boot chrome must follow light/dark "
+            "(dark: classes, prefers-color-scheme, or --color-background/foreground)"
+        )
+
+
 def assert_people_sidebar_no_x_scroll(crate: Path) -> None:
     """#159: people sidebar must not pan sideways; vertical scroll only.
 
@@ -2754,6 +3052,7 @@ def main() -> None:
     assert_timeline_latest(crate)
     assert_conversation_switcher(crate)
     assert_people_sidebar_no_x_scroll(crate)
+    assert_boot_spinner(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
