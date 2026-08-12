@@ -149,6 +149,13 @@ def assert_chat_bubbles(crate: Path) -> None:
         fail("#111: screen reader must still get the visible message text")
     if "displayBody" not in inner and "body_text" not in inner:
         fail("#111: screen reader must still get the message text")
+    if not (
+        "overflow-wrap" in blob
+        or "break-words" in block
+        or "break-all" in block
+        or "overflow-wrap" in block
+    ):
+        fail("#111: long tokens (URLs) must wrap inside the bubble")
 
     me = _css_var(blob, _BUBBLE_ME_VARS)
     them = _css_var(blob, _BUBBLE_THEM_VARS)

@@ -404,7 +404,7 @@
       }}
     />
   {:else if st}
-    <div class="grid min-h-0 flex-1 grid-cols-[18rem_1fr]">
+    <div class="grid min-h-0 min-w-0 flex-1 grid-cols-[18rem_minmax(0,1fr)]">
       <ScrollArea class="border-r border-border p-4">
         <p class="break-all text-xs text-muted-foreground">{st.path}</p>
         <dl class="mt-3 grid grid-cols-[7rem_1fr] gap-x-2 gap-y-1 text-sm">
@@ -491,7 +491,7 @@
         </ul>
         <Button variant="outline" size="sm" class="mt-4" onclick={openPicker}>Open other archive…</Button>
       </ScrollArea>
-      <ScrollArea class="p-4">
+      <ScrollArea class="min-w-0 p-4">
         <div class="mb-3 flex items-baseline justify-between gap-3">
           <h1 class="text-xl font-semibold tracking-tight">{personTitle}</h1>
           <div class="flex items-center gap-3">
@@ -529,12 +529,12 @@
             body="This person may only appear in groups. Tick include groups, or import more sources."
           />
         {/if}
-        <ol class="space-y-2">
+        <ol class="min-w-0 space-y-2">
           {#each timeline as row, i}
-            <li class="flex">
+            <li class="flex min-w-0">
               <button
                 type="button"
-                class="max-w-[min(36rem,85%)] rounded-2xl px-3 py-2 text-left {i === tlIndex
+                class="min-w-0 max-w-[min(36rem,85%)] rounded-2xl px-3 py-2 text-left {i === tlIndex
                   ? 'ring-2 ring-ring'
                   : ''}"
                 class:bubble-me={row.from_me}
@@ -547,7 +547,7 @@
                   <time>{row.sent_at || "no date"}</time>
                   {row.platform}
                 </p>
-                <p class="mt-1 whitespace-pre-wrap text-sm text-foreground">{displayBody(row.body_text || row.subject || "")}</p>
+                <p class="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">{displayBody(row.body_text || row.subject || "")}</p>
                 <CasAttach items={row.attachments || []} />
               </button>
             </li>

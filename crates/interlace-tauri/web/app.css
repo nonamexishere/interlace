@@ -76,6 +76,12 @@ body {
   border: 0;
 }
 
+.bubble-me,
+.bubble-them {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .bubble-me {
   background-color: var(--bubble-me);
 }

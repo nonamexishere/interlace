@@ -80,7 +80,7 @@ stay listed at the bottom. The person timeline is a **chat**, not a log:
 messages you sent sit on the right, the other person on the left. Date and
 platform sit under the bubble as a caption. Bodies stay visible plain-text
 nodes (`whitespace-pre-wrap`) so a screen reader still hears them — never
-HTML. `/` still filters by name only. `j`/`k` move
+HTML. Long URLs wrap inside the bubble; they do not widen the pane. `/` still filters by name only. `j`/`k` move
 messages. Merge by picking a name: select a person, **Merge…**, search the
 list (display name only — typing an id matches nobody), then confirm. Targets
 show the same last-activity preview as the sidebar so same-name cards differ.
