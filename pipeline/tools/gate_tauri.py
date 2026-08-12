@@ -39,6 +39,11 @@
 #     include-groups; empty state when the combined filter yields no rows;
 #     Load older must not sit under that empty filtered view; j/k walks the
 #     visible (combined-filtered) indices only.
+#117: email_thread / gmail bubbles: subject as a title (not only body_text||subject
+#     fallback); fold quoted tails (On … wrote: / leading >) behind “Show quoted”
+#     (or similar); still text nodes (whitespace-pre-wrap / plain), never {@html}
+#     for the mail body; no cid: remote images; no send/compose chrome. WhatsApp
+#     / non-mail rows keep a plain body path (not forced through the mail layout).
 """
 
 from __future__ import annotations
@@ -3919,6 +3924,367 @@ def assert_people_sidebar_no_x_scroll(crate: Path) -> None:
         fail("#159: do not fall back a missing person name to a raw id")
 
 
+# #117 — Gmail / email_thread timeline rows: subject title + fold quoted tails.
+_MAIL_ROW_GATE = re.compile(
+    r"("
+    r"(?:platform|row\.platform|\.platform)\s*===?\s*[\"']gmail[\"']"
+    r"|[\"']gmail[\"']\s*===?\s*(?:platform|row\.platform|\.platform)"
+    r"|(?:conversation_kind|row\.conversation_kind|\.conversation_kind)"
+    r"\s*===?\s*[\"']email_thread[\"']"
+    r"|[\"']email_thread[\"']\s*===?\s*"
+    r"(?:conversation_kind|row\.conversation_kind|\.conversation_kind)"
+    r"|\bisMail(?:Row|Bubble|Message)?\b"
+    r"|\bisEmail(?:Row|Bubble|Message|Thread)?\b"
+    r"|\bisGmail(?:Row|Bubble|Message)?\b"
+    r"|\bmailRow\b"
+    r"|\bemailRow\b"
+    # Subject present ⇒ mail-ish title branch (WA subjects are null).
+    r"|\{#if\s+[^}]{0,120}(?:item\.)?row\.subject\b"
+    r"|(?:item\.)?row\.subject\s*(?:\?\.|\.)?trim\s*\([^)]*\)\s*(?:&&|\?)"
+    r"|(?:item\.)?row\.subject\s*&&"
+    r")",
+    re.I,
+)
+# Standalone subject title binding — not body_text || subject body fallback.
+_SUBJECT_TITLE_HELPER = re.compile(
+    r"("
+    r"\{[^}]{0,80}(?:subjectTitle|mailSubject|emailSubject|"
+    r"rowSubject|displaySubject)[^}]{0,40}\}"
+    r"|data-mail-subject"
+    r"|class=[\"'][^\"']*\b(?:mail-)?subject\b"
+    r"|class:(?:mail-)?subject\b"
+    r")",
+    re.I,
+)
+# Sole body fallback that treats subject as body when body is empty — not a title.
+_SUBJECT_BODY_FALLBACK_ONLY = re.compile(
+    r"(?:body_text\s*\|\|\s*(?:(?:item\.)?row\.)?subject"
+    r"|(?:displayBody|bodyText)\s*\(\s*(?:(?:item\.)?row\.)?body_text\s*\|\|"
+    r"\s*(?:(?:item\.)?row\.)?subject)",
+    re.I,
+)
+
+
+def _standalone_subject_bindings(block: str) -> list[str]:
+    """{…row.subject…} expressions that are titles, not body_text||subject."""
+    out: list[str] = []
+    for m in re.finditer(
+        r"\{([^{}]{0,160}(?:item\.)?row\.subject[^{}]{0,80})\}",
+        block,
+    ):
+        expr = m.group(1)
+        if "body_text" in expr and "||" in expr:
+            continue
+        if re.search(r"body_text\s*\|\|", expr):
+            continue
+        if re.search(r"displayBody\s*\(", expr) and "||" in expr:
+            continue
+        out.append(expr)
+    return out
+
+
+_SHOW_QUOTED = re.compile(
+    r"("
+    r"Show quoted"
+    r"|Show quote"
+    r"|Show quotes"
+    r"|Expand quoted"
+    r"|Expand quote"
+    r"|Quoted text"
+    r"|showQuoted"
+    r"|showQuote"
+    r"|quotedExpanded"
+    r"|expandQuoted"
+    r"|data-show-quoted"
+    r")",
+    re.I,
+)
+_QUOTE_SPLIT = re.compile(
+    r"("
+    # “On … wrote:” marker (literal, regex, or template).
+    r"On\s+.{0,60}wrote\s*:"
+    r"|On\s+\\?\$\{[^}]{0,40}\}\s+wrote"
+    r"|/On\s+.+?wrote\s*:/"
+    r"|[\"']On [\"'][^;]{0,80}wrote"
+    r"|[\"']wrote:[\"']"
+    r"|wrote:"
+    # Named pure split / fold helpers (synthetic placeholders only in tests).
+    r"|splitQuoted(?:Body|Tail|Text)?"
+    r"|splitQuote(?:d)?(?:Body|Tail)?"
+    r"|quoteTail"
+    r"|quotedTail"
+    r"|quotedBody"
+    r"|foldQuoted"
+    r"|quoteSplit"
+    r"|mailQuote"
+    r"|extractQuoted"
+    r"|stripQuoted"
+    r"|unquotedBody"
+    r"|bodyWithoutQuote"
+    r"|mainBody(?:Text)?"
+    # Leading “>” quote lines.
+    r"|startsWith\s*\(\s*[\"']>[\"']"
+    r"|lines?\s*\.?\s*(?:filter|map|find|some|every|startsWith)"
+    r"[^;]{0,80}[\"']>[\"']"
+    r"|[\"']>[\"']\s*===?\s*.{0,20}(?:trim|charAt|\[0\])"
+    r")",
+    re.I | re.S,
+)
+_HTML_BODY = re.compile(r"\{@html\b")
+_CID_IMG = re.compile(
+    r"("
+    r"cid:"
+    r"|src\s*=\s*[\"']cid:"
+    r"|src\s*=\s*\{[^}]*cid:"
+    r")",
+    re.I,
+)
+_SEND_MAIL_UI = re.compile(
+    r"("
+    r">\s*Send\s+(?:mail|email|message)\s*<"
+    r"|[\"']Send (?:mail|email|message)[\"']"
+    r"|compose(?:Mail|Email|Message)"
+    r"|data-compose-mail"
+    r"|reply-all"
+    r"|Reply all"
+    r"|mailto:"
+    r"|type=[\"']email[\"'][^>]{0,80}compose"
+    r"|placeholder=[\"'][^\"']*(?:Write a (?:mail|reply)|Compose)"
+    r")",
+    re.I,
+)
+_WA_PLAIN_BODY = re.compile(
+    r"("
+    r"(?:platform|row\.platform)\s*===?\s*[\"']whatsapp[\"']"
+    r"|[\"']whatsapp[\"']\s*===?\s*(?:platform|row\.platform)"
+    r"|\bisWhats?App\b"
+    r"|!\s*(?:isMail|isEmail|isGmail|mailRow|emailRow)\b"
+    r"|\{:else\b"
+    r")",
+    re.I,
+)
+
+
+def assert_gmail_timeline_rows(crate: Path) -> None:
+    """#117: Gmail/email_thread rows — subject title, fold quotes; WA plain.
+
+    Acceptance: long reply chains stay one screen until “Show quoted” expands.
+    Subject is a title on mail rows (not only body_text||subject fallback).
+    Body stays text nodes (whitespace-pre-wrap / plain); no {@html}, no cid:
+    images, no send/compose chrome. WhatsApp / non-mail rows keep a plain body
+    path and are not forced through the mail layout.
+    """
+    app = (crate / "web" / "App.svelte").read_text()
+    logic = _web_logic(crate)
+    block = _timeline_block(crate)
+    blob = "\n".join(p.read_text() for p in _web_sources(crate))
+    whole = app + "\n" + logic
+    cleaned = _without_comments(whole)
+    detail = _person_detail_markup(app)
+    timeline_chrome = block + "\n" + detail
+
+    # 1) Mail-aware path: gmail platform and/or email_thread kind.
+    if not _MAIL_ROW_GATE.search(cleaned) and not _MAIL_ROW_GATE.search(block):
+        fail(
+            "#117: email_thread / gmail timeline rows need a mail-aware path "
+            "(platform === \"gmail\" and/or conversation_kind === \"email_thread\", "
+            "isMail/isEmail helper, or {#if row.subject} title branch) — "
+            "subject title + quote fold only apply there"
+        )
+
+    # 2) Subject shown as a title on mail rows — not only body_text || subject.
+    standalone_subjects = _standalone_subject_bindings(block)
+    has_subject_title = bool(standalone_subjects) or bool(
+        _SUBJECT_TITLE_HELPER.search(block)
+    )
+    if not has_subject_title:
+        has_subject_title = bool(
+            re.search(
+                r"(?:subjectTitle|mailSubject|emailSubject|rowSubject|displaySubject|"
+                r"mail-subject|data-mail-subject)"
+                r"[\s\S]{0,200}"
+                r"(?:\.subject\b|row\.subject)"
+                r"|(?:function|const|let)\s+(?:subjectTitle|mailSubject|emailSubject|"
+                r"displaySubject)\b",
+                cleaned,
+                re.I,
+            )
+        )
+    # Title may live in a small child component used from the row.
+    if not has_subject_title:
+        has_subject_title = bool(
+            re.search(
+                r"<(?:MailBubble|EmailBubble|GmailRow|MailRow|MailBody)\b[^>]{0,200}"
+                r"subject",
+                block + "\n" + blob,
+                re.I,
+            )
+        )
+    if not has_subject_title:
+        fail(
+            "#117: for email_thread / gmail, show subject as a title on the bubble "
+            "(bind row.subject / mailSubject as its own text node), not only as "
+            "displayBody(body_text || subject) fallback"
+        )
+
+    # If the only subject use in the row is still the body fallback, fail even
+    # when a helper name exists elsewhere (Search hits subject).
+    if _SUBJECT_BODY_FALLBACK_ONLY.search(block) and not standalone_subjects:
+        if not _SUBJECT_TITLE_HELPER.search(block) and not re.search(
+            r"subjectTitle|mailSubject|emailSubject|displaySubject|data-mail-subject",
+            block,
+            re.I,
+        ):
+            fail(
+                "#117: subject must be a title on mail rows — "
+                "body_text || subject alone is the body fallback, not a title"
+            )
+
+    # Subject title must be reachable from the mail gate (not a global force that
+    # rewrites WhatsApp). Prefer an isMail / gmail / email_thread condition near
+    # the subject surface, or a helper that only returns subject for mail rows.
+    mail_subject_ok = bool(
+        re.search(
+            r"(?:isMail|isEmail|isGmail|mailRow|emailRow|"
+            r"platform\s*===?\s*[\"']gmail[\"']|"
+            r"conversation_kind\s*===?\s*[\"']email_thread[\"'])"
+            r"[\s\S]{0,500}"
+            r"(?:\.subject\b|subjectTitle|mailSubject|emailSubject|displaySubject|"
+            r"data-mail-subject|mail-subject)"
+            r"|(?:\.subject\b|subjectTitle|mailSubject|emailSubject|displaySubject|"
+            r"data-mail-subject|mail-subject)"
+            r"[\s\S]{0,500}"
+            r"(?:isMail|isEmail|isGmail|mailRow|emailRow|"
+            r"platform\s*===?\s*[\"']gmail[\"']|"
+            r"conversation_kind\s*===?\s*[\"']email_thread[\"'])",
+            cleaned,
+            re.I,
+        )
+    ) or bool(
+        re.search(
+            r"(?:subjectTitle|mailSubject|displaySubject|emailSubject)\s*=\s*"
+            r"(?:function|\([^)]*\)\s*=>|\$derived)",
+            cleaned,
+            re.I,
+        )
+    )
+    if not mail_subject_ok:
+        # Markup {#if isMail} … {row.subject} is enough when both tokens are in block.
+        if not (
+            _MAIL_ROW_GATE.search(block + "\n" + cleaned)
+            and (
+                standalone_subjects
+                or _SUBJECT_TITLE_HELPER.search(block)
+                or re.search(
+                    r"subjectTitle|mailSubject|emailSubject|data-mail-subject",
+                    block,
+                    re.I,
+                )
+            )
+        ):
+            fail(
+                "#117: subject-as-title must be gated to email_thread / gmail "
+                "(do not force a mail subject title onto every WhatsApp bubble)"
+            )
+
+    # 3) Quoted tails collapsed behind “Show quoted” (or similar expand control).
+    if not _SHOW_QUOTED.search(blob) and not _SHOW_QUOTED.search(cleaned):
+        fail(
+            "#117: fold quoted reply tails behind an expand control "
+            "(“Show quoted” / showQuoted / data-show-quoted) so a long chain "
+            "is one screen until expanded"
+        )
+    if not _QUOTE_SPLIT.search(cleaned):
+        fail(
+            "#117: split mail body on common quote markers "
+            "(“On … wrote:”, lines starting with “>”) — pure text split / "
+            "quoteTail / splitQuoted helper is fine; still text nodes, not HTML"
+        )
+    # Expand control must sit on the timeline / person detail, not only Search.
+    if not _SHOW_QUOTED.search(timeline_chrome) and not _SHOW_QUOTED.search(block):
+        # Allow control label only in script if data-show-quoted / toggle is in row.
+        if not re.search(
+            r"(?:showQuoted|quotedExpanded|expandQuoted|data-show-quoted|"
+            r"quotedTail|quoteTail|splitQuoted)",
+            block + "\n" + timeline_chrome,
+            re.I,
+        ):
+            fail(
+                "#117: “Show quoted” (or the quote expand toggle) must be on the "
+                "person timeline bubble for mail rows, not only in Search/Review"
+            )
+
+    # 4) Body remains text nodes — no {@html} for mail body; pre-wrap / plain ok.
+    if _HTML_BODY.search(block) or _HTML_BODY.search(timeline_chrome):
+        fail(
+            "#117: mail body must stay text nodes (whitespace-pre-wrap or plain) — "
+            "no {@html} for the message body (not HTML MIME layout)"
+        )
+    # Timeline body still needs a readable text surface (#111 pre-wrap or plain).
+    if not re.search(r"whitespace-pre-wrap|whitespace-pre\b", block) and not re.search(
+        r"\{(?:displayBody|mainBody|visibleBody|unquotedBody|bodyWithoutQuote|"
+        r"(?:item\.)?row\.body_text)[^}]*\}",
+        block,
+    ):
+        fail(
+            "#117: timeline body must remain a text binding "
+            "(whitespace-pre-wrap / plain text node), including after quote fold"
+        )
+
+    # 5) No cid: remote images; no send/compose chrome on the person timeline.
+    if _CID_IMG.search(timeline_chrome) or _CID_IMG.search(block):
+        fail("#117: no cid: images in the person timeline (not HTML MIME / inline cid)")
+    if re.search(
+        r"<img\b[^>]{0,200}src\s*=\s*[\"'](?:cid:|https?://)",
+        timeline_chrome + "\n" + block,
+        re.I | re.S,
+    ):
+        fail("#117: timeline must not render remote or cid: <img> for mail bodies")
+    if _SEND_MAIL_UI.search(timeline_chrome) or _SEND_MAIL_UI.search(block):
+        fail(
+            "#117: no send / compose mail UI on the person timeline "
+            "(read-only archive — fold quotes only, do not add reply chrome)"
+        )
+
+    # 6) WhatsApp / non-mail path stays plain body — not forced through mail layout.
+    # Require either an explicit {:else} / !isMail branch, or that mail-only helpers
+    # do not wrap every row (subject title + show-quoted only under mail gate).
+    wa_plain = bool(_WA_PLAIN_BODY.search(block + "\n" + cleaned))
+    # Plain body_text for non-mail: displayBody(body_text) without requiring subject title.
+    plain_body_binding = bool(
+        re.search(
+            r"(?:displayBody\s*\(\s*(?:(?:item\.)?row\.)?body_text"
+            r"|\{(?:(?:item\.)?row\.)?body_text\s*\}\s*)",
+            block,
+        )
+    )
+    if not (wa_plain and plain_body_binding) and not (
+        _MAIL_ROW_GATE.search(cleaned)
+        and plain_body_binding
+        and re.search(r"\{:else\b", block)
+    ):
+        # Soften: if quote fold / subject title are clearly mail-gated, WA inherits
+        # the existing pre-wrap body_text path from #111.
+        if not (
+            _MAIL_ROW_GATE.search(cleaned)
+            and (
+                re.search(r"body_text", block)
+                or re.search(r"displayBody", block)
+            )
+            and not re.search(
+                r"(?:showQuoted|Show quoted|subjectTitle|mailSubject)"
+                r"[^;]{0,120}(?:whatsapp|for\s+each|every\s+row)",
+                cleaned,
+                re.I,
+            )
+        ):
+            fail(
+                "#117: WhatsApp / non-mail rows must keep a plain body path "
+                "(body_text / displayBody) and must not be forced through the "
+                "mail subject-title + quote-fold layout"
+            )
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -4012,6 +4378,7 @@ def main() -> None:
     assert_conversation_switcher(crate)
     assert_timeline_platform_chips(crate)
     assert_timeline_kind_filter(crate)
+    assert_gmail_timeline_rows(crate)
     assert_people_sidebar_no_x_scroll(crate)
     assert_people_filter_identity(crate)
     assert_boot_spinner(crate)

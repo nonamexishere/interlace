@@ -114,6 +114,62 @@
     return s.replace(/<attached:\s*[^>]+>/gi, "").trim();
   }
 
+  /** Gmail / email_thread rows get subject title + quote fold; WA stays plain. */
+  function isMailRow(row: {
+    platform?: string | null;
+    conversation_kind?: string | null;
+  }): boolean {
+    const p = (row.platform ?? "").trim().toLowerCase();
+    const k = (row.conversation_kind ?? "").trim().toLowerCase();
+    return p === "gmail" || k === "email_thread";
+  }
+
+  /**
+   * Split mail body into main + quoted tail.
+   * Markers: a line `On … wrote:` or lines starting with `>`.
+   */
+  function splitQuotedBody(body: string): { main: string; quoted: string } {
+    const text = body ?? "";
+    if (!text) return { main: "", quoted: "" };
+
+    const onWrote = /(?:^|\n)(On .+ wrote:\s*(?:\n|$))/;
+    const m = text.match(onWrote);
+    if (m && m.index !== undefined) {
+      const splitIdx = m.index + (text[m.index] === "\n" ? 1 : 0);
+      const main = text.slice(0, splitIdx).trimEnd();
+      const quoted = text.slice(splitIdx);
+      if (quoted.trim()) return { main, quoted };
+    }
+
+    const lines = text.split("\n");
+    let firstQuote = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith(">")) {
+        firstQuote = i;
+        break;
+      }
+    }
+    if (firstQuote > 0) {
+      return {
+        main: lines.slice(0, firstQuote).join("\n").trimEnd(),
+        quoted: lines.slice(firstQuote).join("\n"),
+      };
+    }
+    if (firstQuote === 0) {
+      return { main: "", quoted: text };
+    }
+    return { main: text, quoted: "" };
+  }
+
+  /** message_id → quoted tail expanded on the person timeline. */
+  let quotedOpen = $state<Record<number, boolean>>({});
+
+  function toggleQuoted(messageId: number, e: Event) {
+    e.stopPropagation();
+    e.preventDefault();
+    quotedOpen = { ...quotedOpen, [messageId]: !quotedOpen[messageId] };
+  }
+
   /** UTC calendar day key (`YYYY-MM-DD`) from RFC3339 `sent_at`. Empty if missing. */
   function utcDay(iso: string | null | undefined): string {
     if (!iso || iso.length < 10) return "";
@@ -407,6 +463,7 @@
       showPersonChrome = false;
       platformFilter = "all";
       kindFilter = "all";
+      quotedOpen = {};
     }
     selectedId = id;
     if (!append && !keepConversation) {
@@ -1000,9 +1057,8 @@
               <div class="space-y-2">
                 {#each group.rows as item}
                   <div class="flex min-w-0">
-                    <button
-                      type="button"
-                      class="min-w-0 max-w-[94%] rounded-2xl px-3 py-2 text-left {item.index ===
+                    <div
+                      class="min-w-0 max-w-[94%] cursor-pointer rounded-2xl px-3 py-2 text-left {item.index ===
                       tlIndex
                         ? 'ring-2 ring-ring'
                         : ''}"
@@ -1019,10 +1075,53 @@
                           data-platform-chip
                           >{platformLabel(item.row.platform)}</span
                         >
+                        {#if isMailRow(item.row) && item.row.from_me}
+                          <span class="text-xs text-muted-foreground">You</span>
+                        {/if}
                       </p>
-                      <p class="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">{displayBody(item.row.body_text || item.row.subject || "")}</p>
+                      {#if isMailRow(item.row)}
+                        {#if (item.row.subject ?? "").trim()}
+                          <p class="mail-subject mt-1 text-sm font-medium text-foreground">
+                            {item.row.subject}
+                          </p>
+                        {/if}
+                        {@const parts = splitQuotedBody(item.row.body_text || "")}
+                        {#if parts.main || !parts.quoted}
+                          <p class="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">
+                            {displayBody(parts.main)}
+                          </p>
+                        {/if}
+                        {#if parts.quoted}
+                          {#if quotedOpen[item.row.message_id]}
+                            <p
+                              class="mt-1 whitespace-pre-wrap break-words text-sm text-muted-foreground"
+                            >
+                              {displayBody(parts.quoted)}
+                            </p>
+                            <button
+                              type="button"
+                              class="mt-1 text-xs text-muted-foreground underline"
+                              data-show-quoted
+                              onclick={(e) => toggleQuoted(item.row.message_id, e)}
+                              >Hide quoted</button
+                            >
+                          {:else}
+                            <button
+                              type="button"
+                              class="mt-1 text-xs text-muted-foreground underline"
+                              data-show-quoted
+                              onclick={(e) => toggleQuoted(item.row.message_id, e)}
+                              >Show quoted</button
+                            >
+                          {/if}
+                        {/if}
+                      {:else}
+                        <p class="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">
+                          {displayBody(item.row.body_text || item.row.subject || "")}
+                        </p>
+                      {/if}
                       <CasAttach items={item.row.attachments || []} />
-                    </button>
+                    </div>
                   </div>
                 {/each}
               </div>
