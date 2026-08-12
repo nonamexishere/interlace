@@ -18,6 +18,8 @@ export type Person = {
   is_self: boolean;
   last_activity_at?: string | null;
   preview?: string | null;
+  /** Linked identity value_normalized (phone/email) for client-side filter. */
+  identity_values?: string[];
 };
 
 export type Identity = {

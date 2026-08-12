@@ -98,7 +98,7 @@ inserted when the UTC calendar day of `sent_at` changes and **sticks**
 to the top of the message list until the next day replaces it. Days are
 UTC (not the host timezone). A row with no `sent_at` gets no heading. Bodies stay visible plain-text
 nodes (`whitespace-pre-wrap`) so a screen reader still hears them — never
-HTML. Long URLs wrap inside the bubble; they do not widen the pane. `/` still filters by name only. `j`/`k` move
+HTML. Long URLs wrap inside the bubble; they do not widen the pane. `/` filters the loaded people list client-side by display name and linked identity values (phone digits / E.164, email local part or full address). `j`/`k` move
 messages. Merge by picking a name: select a person, **Merge…**, search the
 list (display name only — typing an id matches nobody), then confirm. Targets
 show the same last-activity preview as the sidebar so same-name cards differ.
