@@ -1,6 +1,6 @@
 # Agent / session handoff
 
-**Date:** 2026-08-11. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
+**Date:** 2026-08-12. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -8,17 +8,33 @@ Do **not** dump real chat bodies or real contact names into issues, PRs, tests, 
 How we work: [`docs/hacking/pipeline.md`](pipeline.md) — test-author → impl → reviewer.
 The parent chat sequences; agents do not spawn agents.
 
+## Keep this file current
+
+Update `docs/hacking/handoff.md` in the **same session** when any of these change
+(prefer one short PR or the same product PR’s docs commit):
+
+- HEAD / last merge on `master`
+- Open vs closed product issues that affect “now”
+- Recommended next steps order
+- Machine paths, published versions, or tags (`v*`, `app-v*`)
+- Dogfood archive facts (counts only — no names, no chat text)
+
+Do **not** leave a session that merged product work with a stale “Snapshot” or
+“Recommended next steps” section. If you only touched code and skipped this
+file, say so in the wrap-up so the next agent rewrites it before coding.
+
 ## What Interlace is
 
 OSS local-first offline desktop archive. Rust workspace + Tauri 2 macOS app.
 SQLite+FTS5, CAS BLAKE3 (`cas/ab/cd/<hash>`). No server, no sync, no outbound
 HTTP client (cargo-deny bans `reqwest`/`hyper`/`tokio` on core+cli; Tauri may
 use `tokio` without `net`). Phase 1 = CLI; Phase 2 = Svelte 5 desktop UI
-(UI0–UI8 done).
+(UI0–UI8 done). **Active product track: Phase 2.1** (chat-shaped archive UI).
 
 Normative spec: [`docs/design/DESIGN.md`](../design/DESIGN.md).
-Roadmap index: issue **#52**. Workflow: one issue → one PR `Fixes #N` → merge
-when CI jobs **`check`** + **`tauri`** are green. Small conventional commits.
+Roadmap index: issue **#52** (body is stale — rewrite when hygiene time allows).
+Workflow: one issue → one PR `Fixes #N` → merge when CI jobs **`check`** +
+**`tauri`** are green. Small conventional commits.
 
 ## Non-negotiables
 
@@ -37,66 +53,122 @@ when CI jobs **`check`** + **`tauri`** are green. Small conventional commits.
 
 | What | Path |
 | --- | --- |
-| Repo | `~/Desktop/interlace/interlace` |
+| Repo | `~/AllTogether/interlace/interlace` (this monorepo; not `~/Desktop/…`) |
 | Live archive | `~/Interlace` (mode 0700, exclusive flock) |
-| Previous archive backup | `~/Interlace.bak-2026-08-10` (may exist if he already wiped) |
+| Archive backups | `~/Interlace.bak-2026-08-10`, `~/Interlace.bak-2026-08-11` (may exist) |
 | WhatsApp exports | `~/Downloads/WhatsApp/*.zip` (3 official iOS ZIPs; glob, do not name people) |
 | Installed CLI | `~/.cargo/bin/interlace` (rebuild from workspace; crates.io 0.1.1 may lag) |
-| Last-archive pointer | `~/Library/Application Support/Interlace/last-archive-path` |
+| App support | `~/Library/Application Support/Interlace/` (`config.toml`, `last-archive.bookmark`) |
 | Owner | `init --phone-region TR --name Mustafa` |
 
 App holds exclusive flock. Close `interlace-app` / `tauri:dev` before CLI
 `import` / `doctor --integrity` / wipe.
 
-## Snapshot (2026-08-11)
+## Snapshot (2026-08-12)
 
-Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`, `v0.1.1` tags).
-App crate `interlace-tauri` is `publish = false`. **No `app-v*` tag yet.**
+Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`,
+`v0.1.1` tags). Workspace version is still **0.1.1**. App crate
+`interlace-tauri` is `publish = false`. **No `app-v*` tag yet** (unsigned
+`.app`/`.dmg` can be built locally; not cut as a GitHub Release).
 
 `master` is **protected**: required checks `check` + `tauri`, strict,
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `e700f5e` (merge #139 `--version`). In sync
-with `origin/master`. CI green. **Zero open PRs.**
+HEAD when this was rewritten: `00d9057` (merge **#160** conversation switcher).
+In sync with `origin/master`. **No product PRs open** (this handoff PR
+excepted until merge; re-check with `gh pr list`).
 
-### Done (do not re-implement)
+Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
+
+| Field | Value |
+| --- | --- |
+| messages | ~37k |
+| identities | ~1.7k |
+| persons_live | ~2.2k |
+| review_open | 0 |
+| region / owner | `TR` / Mustafa |
+| last import | 2026-08-11 (done) |
+
+Treat counts as approximate; never paste real names or message text here.
+
+### Done — Phase 1 / 2 foundation (do not re-implement)
 
 | # | What |
 | --- | --- |
-| #37 | Phase 2 epic — closed |
+| #1 | Phase 1 epic — closed; CLI 0.1.0 / 0.1.1 published |
+| #7 | Living pipeline prompts + `test_plan.json` map |
+| #37 | Phase 2 epic — closed (UI0–UI8) |
 | #44 | UI7 doctor + backup banner |
 | #46 / PR #106 | UI8 unsigned `.app` / `.dmg` |
+| #54 | Dogfood wipe + re-import 3 iOS WA ZIPs |
+| #83 | Dogfood Takeout Contacts + Gmail |
+| #88 / PR #139 | `--version` / `-V` |
+| #100 / PR #142 | Later WA re-export unions (not duplicate) |
 | #103 / PR #104 | `name_score` token align |
-| #88 / PR #139 | `--version` / `-V` (#89 closed unmerged) |
 | UI0–UI6 | shell, search, people, review, import, empty states, shadcn, CAS photos |
 
-Phase 2 milestone should be **closed** (0 open / 17 closed). Do not re-close #37.
+### Done — Phase 2.1 + review polish (closed on/after 2026-08-11)
 
-### Open — hygiene then product
+| # | What |
+| --- | --- |
+| #109 / PR #141 | Security-scoped bookmark; `.app` reopens last archive |
+| #137 | Honest empty/error when sandbox denies remembered path |
+| #110 / PR #145 | People list by last activity + preview |
+| #111 / PR #153 | Chat bubbles (me right / them left), text nodes |
+| #112 / PR #157 | UTC day headings on person timeline |
+| #113 / PR #158 | Timeline opens at latest message |
+| #114 / PR #160 | Compact conversation switcher for one person |
+| #127 / PR #146 | Merge by picking a person (no raw ids) |
+| #147 / PR #148 | Exact folded Contacts+WA names → review, never auto-merge |
+| #149 / PR #150 | Review card: both sides’ samples / counts |
+| #151 / PR #152 | Accept can fold every same-name person (n-way pick) |
+| #143 / PR #144 | Takeout mbox split on `\nFrom ` (not blank-line-only) |
+| #154 / PR #155 | Reviewer must score scope vs the issue |
 
-Phase 2.1 epic **#108** (31 children). Do **not** start Phase 1.1 (#57–#69) or
-Phase 3/4 (#72–#82) while dogfood + a thin 2.1 are open.
+Phase 2.1 milestone (#6): **~10 closed / ~23 open** (verify with `gh`).
+
+## Open — product now (Phase 2.1)
+
+Epic **#108**. Do **not** start Phase 1.1 (#57–#69) or Phase 3/4 (#72–#82)
+while 2.1 is the product focus. Prefer one issue → one PR; thin UI chrome does
+not need the full three-role loop unless behavior is load-bearing.
+
+### Suggested next (hygiene polish first, then epic order)
 
 | # | Note |
 | --- | --- |
-| **#7** | This PR (`Fixes #7`): `test_plan.json` + living prompts. Close with a comment that 1.1 IDs stay on #57–#69 and the plan is a map, not proof of blindness. |
-| **#1** | Phase 1 epic — close after #7; 0.1.0/0.1.1 already published |
-| **#17** | Unstick (`Blocked by #16` is false); move to Phase 1.1 milestone |
-| **#52** | Rewrite “now” table after hygiene |
-| **#54** | Wipe + re-import 3 iOS WA ZIPs (dirty archive; counts only) |
-| **#83** | Takeout Contacts + Gmail dogfood |
-| **#84** | Satellite README redirect — leftover docs on Phase 1 CLI milestone |
-| **#100** | Later re-export of the same chat must union — **first issue that must use the three-role loop** |
-| **#109** | Security-scoped bookmark so `.app` reopens last archive |
+| **#159** | People sidebar must not scroll sideways (newest; overflow clip/truncate) |
+| **#156** | Boot screen: centered spinner, not a blank “Loading” line |
+| **#138** | People filter matches phone/email, not only display name |
+| **#115** | Platform chips + filter timeline by platform |
+| **#116** | Filter timeline by conversation kind |
+| **#117** | Gmail rows: subject + from/to, fold quoted tails |
+| **#120** | Virtualize person timeline (10k+) |
+| **#118** / **#119** | Local photo lightbox; voice-note player chrome |
+| **#121**–**#126** | Search: platform select, kind, person pick, jump-to-hit, has:media, safe highlight |
+| **#128** | Review card shows both sides’ identifiers (not only names) |
+| **#129**–**#136** | Window title, macOS menu, en+tr chrome, keyboard map, a11y, drag-drop, copy/reveal, defer doctor CAS |
+
+Full board: issue **#108** and milestone [Phase 2.1 product UI](https://github.com/nonamexishere/interlace/milestone/6).
+
+### Open — hygiene / parked (not product coding)
+
+| # | Note |
+| --- | --- |
+| **#52** | Roadmap “now” table still points at #109 — rewrite when convenient |
+| **#17** | Phase 1.1 umbrella — parked; not blocked; do not start children |
+| **#84** | Satellite mirror READMEs — leftover docs on Phase 1 CLI milestone |
+| Phase 1 CLI milestone | Still open with 1 leftover (#84); close milestone when #84 is done or moved |
+| Phase 1.1 / 3 / 4 | Parked. Do not start. |
 
 ## Recommended next steps
 
-1. Land `Fixes #7` (this branch). Comment + close #7.
-2. GitHub hygiene: close #1; close Phase 2 milestone only; unstick/move #17; rewrite #52; decide #84.
-3. Optional dogfood **#54** (commented commands below). Ask before wiping.
-4. Product: **#109** bookmark, **#83** Takeout, then **#100** via test-author → impl → reviewer.
-5. One chat-surface PR after that — not eleven Phase 2.1 atoms. Do not start 1.1 / P3 / P4.
+1. **#159** people sidebar no sideways scroll (or **#156** boot spinner if preferred).
+2. Continue **#108** board top-down: filters (#115–#117), media (#118–#119),
+   virtualize (#120), then search (#121–#126), then app chrome.
+3. Optional hygiene PR when idle: rewrite **#52** “now” table; decide **#84**.
+4. Do **not** start 1.1 / P3 / P4. Do **not** cut `app-v*` without asking.
 
 ## Commands (copy-paste)
 
@@ -104,17 +176,19 @@ Phase 3/4 (#72–#82) while dogfood + a thin 2.1 are open.
 # CLI with this tree (not crates.io 0.1.1)
 cargo install --path crates/interlace --locked --force
 
-# optional wipe + re-import (#54). Close the app first. Ask Mustafa.
-# mv ~/Interlace ~/Interlace.bak-2026-08-11
+# status / integrity (close the app first if flock busy)
+interlace --path ~/Interlace --json status
+interlace --path ~/Interlace doctor --integrity
+
+# wipe + re-import only if Mustafa asks (archive is already post-#54)
+# mv ~/Interlace ~/Interlace.bak-$(date +%Y-%m-%d)
 # interlace init --path ~/Interlace --phone-region TR --name Mustafa
 # for z in ~/Downloads/WhatsApp/*.zip; do
 #   interlace --path ~/Interlace import whatsapp "$z"
 # done
-# interlace --path ~/Interlace --json status
-# interlace --path ~/Interlace doctor --integrity
 
 # desktop UI
-cd ~/Desktop/interlace/interlace/crates/interlace-tauri
+cd ~/AllTogether/interlace/interlace/crates/interlace-tauri
 npm install
 npm run tauri:dev    # NOT bare `npm run tauri` (prints help only)
 ```
@@ -133,17 +207,9 @@ person (`review_accepted`); Reject suppresses the pair. Sample lines are
 evidence, not the timeline.
 
 `name_score` (PR #104) aligns tokens: leftover tokens on both sides → 0.0;
-one-letter typo still ≥ 0.40. Tests in `identity.rs` use placeholders only
-(`Cemre Yıldız` / `Berk Özdemir`).
-
-## Dogfood notes (counts only)
-
-- Init region `TR`, owner display `Mustafa`.
-- 3 iOS WA ZIPs. After 0.1.0: many `kind=unknown` (unpadded day) + 1:1 as
-  `group` — wipe is the honest fix (#54). 0.1.1 has locale + D18-C.
-- Last `status` seen ~16k messages / 6 identities; treat as possibly dirty
-  until #54.
-- `#100`: same chat re-exported later must union, not duplicate messages.
+one-letter typo still ≥ 0.40. Exact folded Contacts FN vs WA name still
+**review-only** (#147). N-way Accept can fold every same-name person with a
+picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 
 ## Stack cheatsheet
 
@@ -155,6 +221,7 @@ one-letter typo still ≥ 0.40. Tests in `identity.rs` use placeholders only
 - CI: `.github/workflows/ci.yml` — `check` (Ubuntu, includes `gate_tests.py`) +
   `tauri` (macOS, `gate_tauri.py`).
 - Tauri deny: `crates/interlace-tauri/deny.toml` (darwin graph targets).
+- Pipeline prompts: `pipeline/prompts/{orchestrator,test-author,impl,reviewer}.md`.
 
 ## What not to do next
 
@@ -165,10 +232,13 @@ one-letter typo still ≥ 0.40. Tests in `identity.rs` use placeholders only
   (`pipeline/prompts/reviewer.md`); GitHub review-required is not.
 - Do not enable `dangerousRemoteDomainIpcAccess`, `network.server`, or an
   HTTP client. Keep `network.client`.
+- Do not leave this handoff stale after merges (see **Keep this file current**).
 
 ## New session prompt (paste)
 
 > Read `docs/hacking/handoff.md` and `docs/hacking/pipeline.md`. Sequence
-> test-author → impl → reviewer. Do not spawn agents from a child. Stay on
-> issue order after hygiene: #54 (ask before wipe), #109, #83, then #100.
+> test-author → impl → reviewer when load-bearing. Do not spawn agents from a
+> child. Product now is Phase 2.1 (#108): next coding issues **#159** (sidebar
+> no sideways scroll) then **#156** / remaining board. Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or `app-v*` tags.
+> After merges, update this handoff in the same session.
