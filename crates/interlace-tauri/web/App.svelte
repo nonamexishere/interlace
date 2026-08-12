@@ -498,7 +498,12 @@
   {/if}
 
   {#if booting || opening}
-    <main class="mx-auto w-full max-w-lg space-y-2 p-6">
+    <main class="flex h-full flex-col items-center justify-center gap-3 p-6">
+      <div
+        class="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground"
+        role="status"
+        aria-label={opening ? "Opening archive" : "Opening last archive"}
+      ></div>
       <p class="text-sm text-muted-foreground">
         {opening ? "Opening archive…" : "Opening last archive…"}
       </p>
