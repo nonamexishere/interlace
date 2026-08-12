@@ -79,7 +79,14 @@ otherwise a truncated body — never HTML). Contacts with no matching messages
 stay listed at the bottom. The person timeline is a **chat**, not a log:
 messages you sent sit on the right, the other person on the left. Each
 bubble caption is **hour:minute** (UTC) and platform — not the calendar
-date again. A **day heading** (`15/03/2024` UTC, day/month/year) is
+date again. Opening a person shows the **latest messages** (the loading line
+clears first, then the list waits for wrap and the pane is pinned
+to the bottom while heights settle, so the newest bubble is fully
+visible above the text-only footer even on a narrow pane or a long
+UTC day). Older rows sit above; newest at
+the bottom. **Load older**
+is at the top of the list and prepends earlier pages without jumping
+the viewport. A **day heading** (`15/03/2024` UTC, day/month/year) is
 inserted when the UTC calendar day of `sent_at` changes and **sticks**
 to the top of the message list until the next day replaces it. Days are
 UTC (not the host timezone). A row with no `sent_at` gets no heading. Bodies stay visible plain-text

@@ -3,6 +3,9 @@
 
 #111: person timeline must be chat bubbles (from_me right / else left), not a log.
 #112: UTC calendar-day headings (2024-03-15) when sent_at's day changes.
+#113: open at latest (scroll after layout); older above; Load older at the top; prepend without jump;
+#     last bubble sits above the “Bodies are text only” chrome (list bottom pad);
+#     clear tlLoading before the open-person scroll; nested rAF so wrap has happened.
 """
 
 from __future__ import annotations
@@ -118,6 +121,119 @@ _SENT_AT_GUARD = re.compile(
     r"!\s*(?:row\.)?sent_at|"
     r"if\s*\(\s*!\s*(?:iso|day)\b"
     r")",
+)
+
+# #113 — newest page visible at the bottom; Load older at the top; prepend without jump.
+# Dogfood: pad the list so the last bubble clears the text-only chrome; scroll after layout.
+# Narrow pane: tlLoading = false before the open scroll; nested rAF so wrap has happened.
+_LOAD_OLDER = re.compile(r"Load older")
+_EACH_TIMELINE = re.compile(r"\{#each\s+(?:timeline|dayGroups)\b")
+_CONCAT_BOTTOM = re.compile(r"timeline\.concat\s*\(\s*rows\s*\)")
+_PREPEND = re.compile(
+    r"("
+    r"(?:rows|older|page|reversed|chrono)\s*\.concat\s*\(\s*timeline\s*\)"
+    r"|\[\s*\.\.\.[^,\]]+\s*,\s*\.\.\.timeline\s*\]"
+    r"|\.unshift\s*\("
+    r"|timeline\s*=\s*append\s*\?\s*[^;\n]*\.concat\s*\(\s*timeline\s*\)"
+    r")",
+)
+# Newest-first API page flipped for chat order (older above, newest at the bottom).
+_OLDEST_FIRST = re.compile(
+    r"("
+    r"\.toReversed\s*\("
+    r"|\.reverse\s*\("
+    r"|oldestFirst"
+    r"|\.sort\s*\([^)]*sent_at"
+    r")",
+    re.I,
+)
+# Whole newest-first store shown oldest-first (concat-then-reverse is ok).
+_FULL_REVERSE = re.compile(
+    r"("
+    r"timeline\.toReversed\s*\("
+    r"|timeline\.slice\s*\(\s*\)\s*\.reverse\s*\("
+    r"|\[\s*\.\.\.timeline\s*\]\s*\.reverse\s*\("
+    r"|\{#each\s+timeline\.toReversed"
+    r")",
+)
+_SCROLL_TO_BOTTOM = re.compile(
+    r"("
+    r"scrollTop\s*=\s*[^;\n]*scrollHeight"
+    r"|scrollTo\s*\(\s*\{[^}]*scrollHeight"
+    r"|scrollIntoView\s*\("
+    r")",
+    re.I,
+)
+_SCROLL_PRESERVE = re.compile(
+    r"("
+    r"scrollTop\s*\+="
+    r"|scrollHeight\s*-"
+    r"|(?:prev(?:ious)?|old|saved|was)(?:Scroll)?(?:Height|Top)"
+    r")",
+    re.I,
+)
+# Enough pad that the last bubble is not under the text-only chrome (not .day-heading 0.25rem).
+_TL_PAD_UTIL = re.compile(r"\bpb-(?:8|10|12)\b")
+_TL_SPACER = re.compile(
+    r"("
+    r"\bpb-(?:8|10|12)\b"
+    r"|padding-bottom\s*:"
+    r"|\bh-(?:8|10|12)\b"
+    r"|spacer"
+    r")",
+    re.I,
+)
+_SCROLL_AFTER_LAYOUT = re.compile(r"requestAnimationFrame\s*\(|scrollIntoView\s*\(")
+_TL_LOADING_FALSE = re.compile(r"\btlLoading\s*=\s*false\b")
+_RAF_CALL = re.compile(r"\b(?:window\.)?requestAnimationFrame\s*\(")
+_SCROLL_HELPER_SKIP = frozenset(
+    {
+        "if",
+        "for",
+        "while",
+        "switch",
+        "catch",
+        "function",
+        "return",
+        "typeof",
+        "new",
+        "await",
+        "void",
+        "requestAnimationFrame",
+        "setTimeout",
+        "setInterval",
+        "queueMicrotask",
+        "tick",
+        "Promise",
+        "Math",
+        "Number",
+        "String",
+        "Boolean",
+        "parseInt",
+        "document",
+        "getElementById",
+        "querySelector",
+        "querySelectorAll",
+        "scrollTo",
+        "scrollIntoView",
+        "showErr",
+        "personShow",
+        "personTimeline",
+        "toReversed",
+        "concat",
+    }
+)
+_LAST_ROW = re.compile(
+    r"("
+    r"lastElementChild"
+    r"|lastChild"
+    r"|\.at\s*\(\s*-1\s*\)"
+    r"|\[\s*length\s*-\s*1\s*\]"
+    r"|length\s*-\s*1"
+    r"|:last-child"
+    r"|last(?:Row|Bubble|Msg|Message|Item)"
+    r")",
+    re.I,
 )
 
 
@@ -355,6 +471,371 @@ def assert_day_separators(crate: Path) -> None:
         fail("#112: day heading must stick to the top of the message list while scrolling")
 
 
+def _matching_each_end(markup: str, each_start: int) -> int:
+    depth = 0
+    for m in re.finditer(r"\{#each\b|\{/each\}", markup[each_start:]):
+        if m.group(0).startswith("{#each"):
+            depth += 1
+        else:
+            depth -= 1
+            if depth == 0:
+                return each_start + m.end()
+    return -1
+
+
+def _person_timeline_open_tag(src: str) -> str:
+    m = re.search(
+        r"<[^>]*\bid=(?:[\"']person-timeline[\"']|\{[\"']person-timeline[\"']\})[^>]*>",
+        src,
+        re.I | re.S,
+    )
+    return m.group(0) if m else ""
+
+
+def _has_nonzero_padding_bottom(blob: str) -> bool:
+    for m in re.finditer(r"padding-bottom\s*:\s*([^;}\n]+)", blob, re.I):
+        val = m.group(1).strip().lower()
+        if val not in {"0", "0px", "0rem", "0em", "0%", "none"}:
+            return True
+    return False
+
+
+def _timeline_css_pad_blocks(blob: str) -> list[str]:
+    blocks: list[str] = []
+    for rx in (
+        r"#person-timeline(?:\s+(?:ol|ul))?\s*\{([^}]+)\}",
+        r"\[id=[\"']person-timeline[\"']\](?:\s+(?:ol|ul))?\s*\{([^}]+)\}",
+    ):
+        blocks.extend(m.group(1) for m in re.finditer(rx, blob, re.I))
+    return blocks
+
+
+def _timeline_has_bottom_pad(crate: Path, app: str) -> bool:
+    """True if #person-timeline / the message list pads above the text-only chrome."""
+    tag = _person_timeline_open_tag(app)
+    if tag and (_TL_PAD_UTIL.search(tag) or _has_nonzero_padding_bottom(tag)):
+        return True
+    blob = "\n".join(p.read_text() for p in _web_sources(crate))
+    for block in _timeline_css_pad_blocks(blob):
+        if _TL_PAD_UTIL.search(block) or _has_nonzero_padding_bottom(block):
+            return True
+    for p in _web_sources(crate):
+        if p.suffix != ".svelte":
+            continue
+        text = p.read_text()
+        script_end = text.rfind("</script>")
+        markup = text[script_end:] if script_end >= 0 else text
+        for each in _EACH_TIMELINE.finditer(markup):
+            before = markup[: each.start()]
+            ol = None
+            for m in re.finditer(r"<ol\b[^>]*>", before, re.I | re.S):
+                ol = m
+            if ol and (
+                _TL_PAD_UTIL.search(ol.group(0)) or _has_nonzero_padding_bottom(ol.group(0))
+            ):
+                return True
+            end = _matching_each_end(markup, each.start())
+            if end < 0:
+                continue
+            after = markup[end : end + 900]
+            cut = after.lower().find("</scrollarea>")
+            if cut < 0:
+                cut = after.find("Bodies are text")
+            if cut >= 0:
+                after = after[:cut]
+            if _TL_SPACER.search(after):
+                return True
+    return False
+
+
+def _scrolls_after_layout(app: str, logic: str) -> bool:
+    """True if open-person scroll waits for layout (rAF and/or last-row scrollIntoView)."""
+    src = app + "\n" + logic
+    for m in _SCROLL_AFTER_LAYOUT.finditer(src):
+        window = src[max(0, m.start() - 500) : m.end() + 500]
+        if m.group(0).startswith("requestAnimationFrame"):
+            if re.search(r"scrollTop|scrollTo\s*\(|scrollIntoView", window):
+                return True
+        elif _LAST_ROW.search(window):
+            return True
+    return False
+
+
+def _js_next(src: str, i: int) -> int:
+    """Advance past a JS comment or string starting at i; else return i."""
+    n = len(src)
+    if i >= n:
+        return i
+    if src.startswith("//", i):
+        nl = src.find("\n", i)
+        return n if nl < 0 else nl + 1
+    if src.startswith("/*", i):
+        end = src.find("*/", i + 2)
+        return n if end < 0 else end + 2
+    q = src[i]
+    if q in "'\"`":
+        j = i + 1
+        while j < n:
+            if src[j] == "\\":
+                j += 2
+                continue
+            if src[j] == q:
+                return j + 1
+            j += 1
+        return n
+    return i
+
+
+def _without_comments(src: str) -> str:
+    out: list[str] = []
+    i = 0
+    n = len(src)
+    while i < n:
+        if src.startswith("//", i) or src.startswith("/*", i):
+            i = _js_next(src, i)
+            continue
+        nxt = _js_next(src, i)
+        if nxt != i:
+            out.append(src[i:nxt])
+            i = nxt
+            continue
+        out.append(src[i])
+        i += 1
+    return "".join(out)
+
+
+def _match_closer(src: str, open_idx: int) -> int:
+    opener = src[open_idx]
+    closer = ")" if opener == "(" else "}"
+    depth = 0
+    i = open_idx
+    n = len(src)
+    while i < n:
+        nxt = _js_next(src, i)
+        if nxt != i:
+            i = nxt
+            continue
+        c = src[i]
+        if c == opener:
+            depth += 1
+        elif c == closer:
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+def _call_arg(src: str, open_paren: int) -> str:
+    close = _match_closer(src, open_paren)
+    if close < 0:
+        return ""
+    return src[open_paren + 1 : close]
+
+
+def _function_body(src: str, name: str) -> str:
+    rx = re.compile(
+        rf"(?:async\s+)?function\s+{re.escape(name)}\s*\([^)]*\)\s*\{{"
+        rf"|(?:const|let|var)\s+{re.escape(name)}\s*=\s*(?:async\s*)?"
+        rf"(?:function\s*)?\([^)]*\)\s*(?:=>\s*)?\{{"
+    )
+    m = rx.search(src)
+    if not m:
+        return ""
+    open_b = m.end() - 1
+    close_b = _match_closer(src, open_b)
+    if close_b < 0:
+        return src[open_b + 1 :]
+    return src[open_b + 1 : close_b]
+
+
+def _contains_open_latest_scroll(blob: str, whole: str, seen: set[str] | None = None) -> bool:
+    """True if blob (or a named rAF callback it references) scrolls to latest."""
+    if _SCROLL_TO_BOTTOM.search(blob):
+        return True
+    found = seen if seen is not None else set()
+    for m in _RAF_CALL.finditer(blob):
+        arg = _call_arg(blob, m.end() - 1)
+        if _SCROLL_TO_BOTTOM.search(arg):
+            return True
+        ident = re.fullmatch(r"\s*([A-Za-z_]\w*)\s*", arg)
+        if ident and ident.group(1) not in found:
+            found.add(ident.group(1))
+            body = _function_body(whole, ident.group(1))
+            if body and _contains_open_latest_scroll(body, whole, found):
+                return True
+    return False
+
+
+def _open_person_scroll_anchor(src: str, whole: str) -> int | None:
+    """Index of the outer open-person rAF / scrollTop / scrollIntoView (not append +=)."""
+    for m in _RAF_CALL.finditer(src):
+        arg = _call_arg(src, m.end() - 1)
+        if arg and _contains_open_latest_scroll(arg, whole):
+            return m.start()
+    m = _SCROLL_TO_BOTTOM.search(src)
+    return m.start() if m else None
+
+
+def _clears_loading_before_open_scroll(app: str, logic: str) -> bool:
+    """tlLoading = false must appear before the open-person rAF/scroll, not only in finally after."""
+    whole = app + "\n" + logic
+    fn = _function_body(whole, "selectPerson") or whole
+    cleaned = _without_comments(fn)
+    whole_c = _without_comments(whole)
+    anchor = _open_person_scroll_anchor(cleaned, whole_c)
+    if anchor is not None:
+        return bool(_TL_LOADING_FALSE.search(cleaned[:anchor]))
+    m = _TL_LOADING_FALSE.search(cleaned)
+    if not m:
+        return False
+    after = cleaned[m.end() :]
+    for call in re.finditer(r"\b([A-Za-z_]\w*)\s*\(", after):
+        name = call.group(1)
+        if name in _SCROLL_HELPER_SKIP:
+            continue
+        body = _function_body(whole_c, name)
+        if body and _open_person_scroll_anchor(_without_comments(body), whole_c) is not None:
+            return True
+    return False
+
+
+def _nested_raf_around_open_scroll(app: str, logic: str) -> bool:
+    """True if a requestAnimationFrame callback itself schedules another rAF that scrolls to latest."""
+    whole = _without_comments(app + "\n" + logic)
+    for m in _RAF_CALL.finditer(whole):
+        arg = _call_arg(whole, m.end() - 1)
+        if not arg or not _RAF_CALL.search(arg):
+            continue
+        if _contains_open_latest_scroll(arg, whole):
+            return True
+    return False
+
+
+def assert_timeline_latest(crate: Path) -> None:
+    """#113: newest at bottom; Load older at top; prepend without jump; pad / scroll after layout.
+
+    Narrow-pane dogfood: clear tlLoading before the open-person scroll; nested rAF for wrap.
+    """
+    app = (crate / "web" / "App.svelte").read_text()
+    logic = _web_logic(crate)
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+
+    found_each = False
+    found_load = False
+    for p in _web_sources(crate):
+        if p.suffix != ".svelte":
+            continue
+        text = p.read_text()
+        script_end = text.rfind("</script>")
+        markup = text[script_end:] if script_end >= 0 else text
+        if _LOAD_OLDER.search(markup):
+            found_load = True
+        each = _EACH_TIMELINE.search(markup)
+        if not each:
+            continue
+        found_each = True
+        if not _LOAD_OLDER.search(markup):
+            fail("#113: Load older button is required (intersection observer is optional)")
+        if markup.find("Load older") > each.start():
+            fail("#113: Load older must sit at the top of the message list, not under it")
+        # A leftover control under the list is the current bug even if one also sits above.
+        after_each = markup.find("{/each}", each.start())
+        if after_each >= 0 and "Load older" in markup[after_each:]:
+            fail("#113: Load older must sit at the top of the message list, not under it")
+    if not found_each:
+        fail("#113: person timeline must still {#each timeline} or {#each dayGroups}")
+    if not found_load:
+        fail("#113: Load older button is required (intersection observer is optional)")
+
+    concat_bottom = bool(_CONCAT_BOTTOM.search(logic))
+    prepended = bool(_PREPEND.search(logic))
+    full_reverse = bool(_FULL_REVERSE.search(logic))
+    oldest_first = bool(_OLDEST_FIRST.search(logic))
+    if concat_bottom and not full_reverse:
+        fail("#113: older pages must be prepended, not concatenated at the bottom")
+    if not (prepended or full_reverse or oldest_first):
+        fail(
+            "#113: visual order is a chat — older above, newest at the bottom "
+            "(reverse or sort the newest-first page; prepend older rows)"
+        )
+
+    # Initial fetch is already the newest page (`before` unset). Latest must be visible.
+    if not _SCROLL_TO_BOTTOM.search(logic) and not _SCROLL_TO_BOTTOM.search(app):
+        fail(
+            "#113: opening a person must scroll to the bottom "
+            "so the latest messages are visible"
+        )
+
+    if not _SCROLL_PRESERVE.search(logic) and not _SCROLL_PRESERVE.search(app):
+        fail(
+            "#113: preserve scroll position when prepending older rows "
+            "(do not jump the viewport to 0)"
+        )
+
+    # Last bubble must sit above the “Bodies are text only” chrome, not under it.
+    if not _timeline_has_bottom_pad(crate, app):
+        fail(
+            "#113: last bubble must sit above the “Bodies are text only” chrome — "
+            "pad the bottom of the message list / #person-timeline "
+            "(pb-8, pb-10, pb-12, padding-bottom, or a spacer after {/each})"
+        )
+
+    # tick then scrollTop = scrollHeight runs before day groups / images settle.
+    if not _scrolls_after_layout(app, logic):
+        fail(
+            "#113: opening a person must scroll to the newest message after layout "
+            "(requestAnimationFrame and/or scrollIntoView on the last row), "
+            "not only await tick() then scrollTop = scrollHeight"
+        )
+
+    # Loading line still in the pane (tlLoading true) makes one rAF land short on a wrap.
+    if not _clears_loading_before_open_scroll(app, logic):
+        fail(
+            "#113: clear tlLoading before the open-person scroll to latest "
+            "(tlLoading = false must run before that scrollTop / scrollIntoView / "
+            "requestAnimationFrame, not only in finally after it — "
+            "the loading line must leave the pane first)"
+        )
+    if not _nested_raf_around_open_scroll(app, logic):
+        fail(
+            "#113: opening a person must wait for wrap on a short pane "
+            "(nested requestAnimationFrame around the open-person scroll to latest; "
+            "a single rAF while tlLoading is still true is not enough)"
+        )
+
+    if not re.search(
+        r"("
+        r"opens? at (the )?(latest|newest)"
+        r"|(latest|newest) messages"
+        r"|scroll(?:s|ed)? to the bottom"
+        r")",
+        dtxt,
+        re.I,
+    ):
+        fail("#113: docs/user/app.md must say the person timeline opens at the latest messages")
+    if not re.search(
+        r"Load older.{0,80}(top|above)|(top|above).{0,80}Load older",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail("#113: docs/user/app.md must say Load older is at the top")
+    if not re.search(
+        r"("
+        r"does not jump"
+        r"|don.?t jump"
+        r"|without jump"
+        r"|keep(?:s|ing)? (the )?(scroll|viewport|place)"
+        r"|preserve(?:s|d)? scroll"
+        r"|scroll position"
+        r")",
+        dtxt,
+        re.I,
+    ):
+        fail("#113: docs/user/app.md must say loading older does not jump the viewport")
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -444,6 +925,7 @@ def main() -> None:
         fail("placeholder UI7 CLI-only copy must be gone")
     assert_chat_bubbles(crate)
     assert_day_separators(crate)
+    assert_timeline_latest(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")

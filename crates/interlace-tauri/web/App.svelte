@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { api, type Identity, type LinkEvent, type Person, type Status, type TimelineRow } from "./lib/api";
   import { mergeTargets } from "./lib/utils";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -50,7 +50,10 @@
   let booting = $state(true);
   let opening = $state(false);
   let tlLoading = $state(false);
+  let tlGen = 0;
   let doctor = $state<string[]>([]);
+  let pinLatestObs: ResizeObserver | null = null;
+  let pinLatestUntil: ReturnType<typeof setTimeout> | null = null;
 
   const cloudWarning = $derived(
     (st?.warnings ?? []).find((w) =>
@@ -212,26 +215,96 @@
     }
   }
 
+  function stopPinLatest() {
+    pinLatestObs?.disconnect();
+    pinLatestObs = null;
+    if (pinLatestUntil != null) {
+      clearTimeout(pinLatestUntil);
+      pinLatestUntil = null;
+    }
+  }
+
+  /** Pin the pane to the true end. A day-group <li> is often taller than the pane. */
+  function pinTimelineLatest(sc: HTMLElement) {
+    sc.scrollTop = sc.scrollHeight;
+  }
+
+  function watchPinLatest(sc: HTMLElement) {
+    stopPinLatest();
+    pinTimelineLatest(sc);
+    const ol = sc.querySelector("ol");
+    pinLatestObs = new ResizeObserver(() => {
+      sc.scrollTop = sc.scrollHeight;
+    });
+    pinLatestObs.observe(sc);
+    if (ol) pinLatestObs.observe(ol);
+    pinLatestUntil = setTimeout(stopPinLatest, 600);
+  }
+
+  /** After toReversed, undated rows sit at the top; cursor must be a real sent_at. */
+  function oldestSentAt(rows: TimelineRow[]): string | null {
+    for (const row of rows) {
+      if (row.sent_at) return row.sent_at;
+    }
+    return null;
+  }
+
+  const oldestCursor = $derived(oldestSentAt(timeline));
+
   async function selectPerson(id: number, append = false) {
+    if (append && tlLoading) return;
+    // Newest-first API page; `before` is the oldest dated row already on screen.
+    const before = append ? oldestSentAt(timeline) : null;
+    if (append && !before) return;
+
     selectedId = id;
+    const gen = ++tlGen;
     tlLoading = true;
+    stopPinLatest();
     try {
       const show = await api.personShow(id);
+      if (gen !== tlGen) return;
       personTitle = show.display_name || `person ${id}`;
       identities = show.identities || [];
-      const before = append && timeline.length ? timeline[timeline.length - 1].sent_at : null;
-      const rows = await api.personTimeline({
+      const page = await api.personTimeline({
         id,
         includeGroups,
         limit: 80,
-        before: before ?? null,
+        before,
       });
-      timeline = append ? timeline.concat(rows) : rows;
-      tlIndex = 0;
+      if (gen !== tlGen) return;
+      const pane = document.getElementById("person-timeline");
+      const prevHeight = pane?.scrollHeight ?? 0;
+      const chrono = page.toReversed();
+      timeline = append ? chrono.concat(timeline) : chrono;
+      tlIndex = append ? tlIndex + chrono.length : Math.max(0, chrono.length - 1);
+      if (append) {
+        await tick();
+        if (gen !== tlGen) return;
+        const sc = document.getElementById("person-timeline");
+        if (sc) {
+          sc.scrollTop += sc.scrollHeight - prevHeight;
+        }
+      } else {
+        // Loading line still in the pane makes one rAF land short after wrap.
+        tlLoading = false;
+        await tick();
+        if (gen !== tlGen) return;
+        const sc = document.getElementById("person-timeline");
+        if (sc) {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              if (gen !== tlGen) return;
+              sc.scrollTop = sc.scrollHeight;
+              watchPinLatest(sc);
+            });
+          });
+        }
+      }
     } catch (e) {
-      showErr(e);
+      if (gen === tlGen) showErr(e);
     } finally {
-      tlLoading = false;
+      if (gen === tlGen) tlLoading = false;
     }
   }
 
@@ -335,7 +408,10 @@
       }
       setup = true;
     })();
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      stopPinLatest();
+    };
   });
 </script>
 
@@ -558,7 +634,7 @@
           {/each}
         </ul>
         </div>
-        <ScrollArea class="min-h-0 min-w-0 flex-1 px-4">
+        <ScrollArea id="person-timeline" class="min-h-0 min-w-0 flex-1 px-4 pb-8">
         {#if tlLoading}
           <p class="text-sm text-muted-foreground">Loading timeline…</p>
         {:else if !selectedId}
@@ -571,6 +647,16 @@
             title="No messages in this view"
             body="This person may only appear in groups. Tick include groups, or import more sources."
           />
+        {/if}
+        {#if timeline.length && oldestCursor}
+          <Button
+            variant="outline"
+            size="sm"
+            class="mb-3"
+            disabled={tlLoading}
+            onclick={() => !tlLoading && selectedId && selectPerson(selectedId, true)}
+            >Load older</Button
+          >
         {/if}
         <ol class="min-w-0 space-y-2">
           {#each dayGroups as group}
@@ -608,13 +694,9 @@
             </li>
           {/each}
         </ol>
-        {#if timeline.length}
-          <Button variant="outline" size="sm" class="mt-3" onclick={() => selectedId && selectPerson(selectedId, true)}
-            >Load older</Button
-          >
-        {/if}
+        <div id="timeline-end"></div>
         </ScrollArea>
-        <p class="shrink-0 px-4 pb-4 pt-2 text-xs text-muted-foreground">
+        <p class="shrink-0 bg-background px-4 pb-4 pt-2 text-xs text-muted-foreground">
           Bodies are text only. Day headings are UTC. <kbd class="rounded border border-border px-1">j</kbd>/<kbd
             class="rounded border border-border px-1">k</kbd
           >
