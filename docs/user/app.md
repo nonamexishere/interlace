@@ -76,7 +76,13 @@ groups). The people list is **recent-first** by last D18 activity (you sent
 the message, or you share a DM / email thread). Each row shows that time and
 a one-line **plain-text** preview (the last message’s subject if it has one,
 otherwise a truncated body — never HTML). Contacts with no matching messages
-stay listed at the bottom. The person timeline is a **chat**, not a log:
+stay listed at the bottom. After you open a person, a **compact conversation switcher** in the header
+(not a second list above the bubbles) lists their chats (title, platform,
+last activity). **All** is the default (the merged D18 stream). Picking a
+conversation filters the timeline to that chat. Groups still need **include
+groups** to appear in the conversation list and in All. **Identity chrome**
+(Merge, include groups, unlink) is hidden until you click the person name at
+the top of the conversation. The person timeline is a **chat**, not a log:
 messages you sent sit on the right, the other person on the left. Each
 bubble caption is **hour:minute** (UTC) and platform — not the calendar
 date again. Opening a person shows the **latest messages** (the loading line

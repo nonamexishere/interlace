@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import { api, type Identity, type LinkEvent, type Person, type Status, type TimelineRow } from "./lib/api";
+  import { api, type Identity, type LinkEvent, type Person, type PersonConversation, type Status, type TimelineRow } from "./lib/api";
   import { mergeTargets } from "./lib/utils";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
@@ -30,6 +30,9 @@
   let timeline = $state<TimelineRow[]>([]);
   let tlIndex = $state(0);
   let includeGroups = $state(false);
+  let selectedConversationId = $state<number | null>(null);
+  let conversations = $state<PersonConversation[]>([]);
+  let showPersonChrome = $state(false);
   let mergeOpen = $state(false);
   let mergeQuery = $state("");
   let allowSelf = $state(false);
@@ -251,13 +254,23 @@
 
   const oldestCursor = $derived(oldestSentAt(timeline));
 
-  async function selectPerson(id: number, append = false) {
+  const selectedConversationTitle = $derived(
+    conversations.find((c) => c.id === selectedConversationId)?.title ?? "",
+  );
+
+  async function selectPerson(id: number, append = false, keepConversation = false) {
     if (append && tlLoading) return;
     // Newest-first API page; `before` is the oldest dated row already on screen.
     const before = append ? oldestSentAt(timeline) : null;
     if (append && !before) return;
 
+    if (!append && id !== selectedId) {
+      showPersonChrome = false;
+    }
     selectedId = id;
+    if (!append && !keepConversation) {
+      selectedConversationId = null;
+    }
     const gen = ++tlGen;
     tlLoading = true;
     stopPinLatest();
@@ -266,11 +279,16 @@
       if (gen !== tlGen) return;
       personTitle = show.display_name || `person ${id}`;
       identities = show.identities || [];
+      if (!append && !keepConversation) {
+        conversations = await api.personConversations({ id, includeGroups });
+        if (gen !== tlGen) return;
+      }
       const page = await api.personTimeline({
         id,
         includeGroups,
         limit: 80,
         before,
+        conversationId: selectedConversationId,
       });
       if (gen !== tlGen) return;
       const pane = document.getElementById("person-timeline");
@@ -306,6 +324,12 @@
     } finally {
       if (gen === tlGen) tlLoading = false;
     }
+  }
+
+  async function pickConversation(conversationId: number | null) {
+    if (!selectedId) return;
+    selectedConversationId = conversationId;
+    await selectPerson(selectedId, false, true);
   }
 
   function personLabel(p: { display_name: string; is_self: boolean }) {
@@ -608,10 +632,66 @@
         <Button variant="outline" size="sm" class="mt-4" onclick={openPicker}>Open other archive…</Button>
       </ScrollArea>
       <div class="flex min-h-0 min-w-0 flex-col">
-        <div class="shrink-0 px-4 pt-4">
+        <div class="relative z-20 shrink-0 bg-background px-4 pt-4">
         <div class="mb-3 flex items-baseline justify-between gap-3">
-          <h1 class="text-xl font-semibold tracking-tight">{personTitle}</h1>
-          <div class="flex items-center gap-3">
+          <h1 class="text-xl font-semibold tracking-tight">
+            <button
+              type="button"
+              class="text-left"
+              onclick={() => (showPersonChrome = !showPersonChrome)}
+            >
+              {personTitle}
+            </button>
+          </h1>
+          {#if selectedId}
+            <details data-conversation-switcher class="relative z-20 min-w-0 max-w-[16rem]">
+              <summary
+                class="cursor-pointer truncate rounded-md border border-border px-2 py-1 text-sm"
+              >
+                {#if selectedConversationId === null}
+                  All
+                {:else}
+                  {selectedConversationTitle}
+                {/if}
+              </summary>
+              <ul
+                class="absolute right-0 z-10 mt-1 min-w-[14rem] space-y-0.5 rounded-md border border-border bg-background p-1 shadow-md"
+              >
+                <li>
+                  <button
+                    type="button"
+                    class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent {selectedConversationId ===
+                    null
+                      ? 'bg-accent'
+                      : ''}"
+                    onclick={() => pickConversation(null)}
+                  >
+                    All
+                  </button>
+                </li>
+                {#each conversations as conv}
+                  <li>
+                    <button
+                      type="button"
+                      class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent {selectedConversationId ===
+                      conv.id
+                        ? 'bg-accent'
+                        : ''}"
+                      onclick={() => pickConversation(conv.id)}
+                    >
+                      <span>{conv.title ?? ""}</span>
+                      <span class="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+                        {conv.platform}{conv.last_at ? ` · ${conv.last_at}` : ""}
+                      </span>
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            </details>
+          {/if}
+        </div>
+        {#if showPersonChrome}
+          <div class="mb-3 flex items-center gap-3">
             <Button variant="outline" size="sm" disabled={!personById(selectedId)} onclick={openMerge}
               >Merge…</Button
             >
@@ -624,15 +704,15 @@
               include groups
             </label>
           </div>
-        </div>
-        <ul class="mb-3 space-y-1 text-sm text-muted-foreground">
-          {#each identities as ident}
-            <li class="flex items-center justify-between gap-2">
-              <span>{ident.platform} {ident.kind} {ident.display_name || ident.value}</span>
-              <Button variant="outline" size="sm" onclick={() => doUnlink(ident.id)}>unlink</Button>
-            </li>
-          {/each}
-        </ul>
+          <ul class="mb-3 space-y-1 text-sm text-muted-foreground">
+            {#each identities as ident}
+              <li class="flex items-center justify-between gap-2">
+                <span>{ident.platform} {ident.kind} {ident.display_name || ident.value}</span>
+                <Button variant="outline" size="sm" onclick={() => doUnlink(ident.id)}>unlink</Button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
         </div>
         <ScrollArea id="person-timeline" class="min-h-0 min-w-0 flex-1 px-4 pb-8">
         {#if tlLoading}
