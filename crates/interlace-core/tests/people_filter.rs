@@ -280,9 +280,15 @@ fn filter_still_matches_display_name() {
     let planted = plant_filter_roster(&arch);
     let list = person_list(&arch).unwrap();
 
-    assert!(matches_people_filter(find(&list, planted.cemre_id), "cemre"));
+    assert!(matches_people_filter(
+        find(&list, planted.cemre_id),
+        "cemre"
+    ));
     // Same Unicode letters as display_name (ASCII "YILDIZ" ≠ Turkish "Yıldız").
-    assert!(matches_people_filter(find(&list, planted.cemre_id), "yıldız"));
+    assert!(matches_people_filter(
+        find(&list, planted.cemre_id),
+        "yıldız"
+    ));
     assert!(matches_people_filter(find(&list, planted.ada_id), "ADA"));
     assert!(matches_people_filter(find(&list, planted.ali_id), "ali"));
     let _ = std::fs::remove_dir_all(&root);
