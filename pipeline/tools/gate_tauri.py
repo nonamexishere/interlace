@@ -56,6 +56,10 @@
 #     large lists (10k fixture stays scrollable). Keep j/k and Load older (#113).
 #     Bodies still text nodes (no {@html}/innerHTML of message body).
 #     Not: 10M in one view, lazy-decode every photo.
+#121: SearchPane platform is a closed <select> (Any | whatsapp | gmail), not a
+#     free-text Input — invalid tokens cannot be typed. Empty value = any
+#     (null/empty to api.search). Only core tokens in options (contacts/owner
+#     OK if present; no invented twitter/slack/…). Not: new platforms, regex.
 """
 
 from __future__ import annotations
@@ -5322,6 +5326,306 @@ def _has_windowed_render_path(markup: str, cleaned: str) -> bool:
     return False
 
 
+# #121 — SearchPane platform select (closed control; core tokens only).
+_CORE_SEARCH_PLATFORM_TOKENS = frozenset({"whatsapp", "gmail", "contacts", "owner"})
+_INVENTED_SEARCH_PLATFORM_TOKENS = frozenset(
+    {
+        "twitter",
+        "x",
+        "slack",
+        "discord",
+        "telegram",
+        "signal",
+        "imessage",
+        "sms",
+        "messenger",
+        "instagram",
+        "facebook",
+        "linkedin",
+        "reddit",
+        "mastodon",
+        "matrix",
+        "irc",
+    }
+)
+# Free-text textbox bound to search platform state (invalid tokens typable).
+_SEARCH_PLATFORM_FREE_TEXT = re.compile(
+    r"<Input\b[^>]{0,400}\bbind:value=\{platform\}"
+    r"|<input\b(?![^>]*\btype\s*=\s*[\"'](?:hidden|checkbox|radio|submit|button)[\"'])"
+    r"[^>]{0,400}\bbind:value=\{platform\}"
+    r"|<Input\b[^>]{0,200}\bid\s*=\s*[\"']plat[\"'][^>]{0,200}>"
+    r"|<input\b(?![^>]*\btype\s*=\s*[\"'](?:hidden|checkbox|radio|submit|button)[\"'])"
+    r"[^>]{0,200}\bid\s*=\s*[\"']plat[\"'][^>]{0,200}>",
+    re.I,
+)
+# Closed platform control: native <select> or bits-ui / Select root.
+_SEARCH_PLATFORM_SELECT = re.compile(
+    r"<select\b[^>]{0,400}(?:\bbind:value=\{platform\}|\bid\s*=\s*[\"']plat[\"'])"
+    r"|(?:\bbind:value=\{platform\}|\bid\s*=\s*[\"']plat[\"'])[^>]{0,400}>"
+    r"|<(?:[A-Za-z][\w]*\.)?Select(?:\.Root)?\b[^>]{0,400}\bplatform\b",
+    re.I,
+)
+_SEARCH_OPTION_VALUE = re.compile(
+    r"<option\b([^>]*)>",
+    re.I,
+)
+_SEARCH_OPTION_VALUE_ATTR = re.compile(
+    r"\bvalue\s*=\s*(?:\{\s*([\"'])(.*?)\1\s*\}|([\"'])(.*?)\3|\{([^}]*)\})",
+    re.I | re.S,
+)
+# bits-ui / custom Select.Item value="…"
+_SEARCH_SELECT_ITEM_VALUE = re.compile(
+    r"<(?:[A-Za-z][\w]*\.)?(?:Select\.Item|SelectItem|Option)\b([^>]*)>",
+    re.I,
+)
+_SEARCH_API_PLATFORM_ARG = re.compile(
+    r"api\.search\s*\(\s*\{([\s\S]{0,800}?)\}",
+    re.I,
+)
+_SEARCH_PLATFORM_ARG = re.compile(
+    r"\bplatform\s*:\s*([^,\n}]+)",
+    re.I,
+)
+# Empty select value must mean any → null / empty / falsy coalesce to api.search.
+_SEARCH_PLATFORM_EMPTY_AS_ANY = re.compile(
+    r"platform\s*:\s*(?:"
+    r"platform\s*\|\|\s*(?:null|undefined)"
+    r"|platform\s*\?\?\s*(?:null|undefined)"
+    r"|platform\s*\?\s*platform\s*:\s*(?:null|undefined)"
+    r"|platform\s*===\s*[\"'][\"']\s*\?\s*(?:null|undefined)"
+    r"|!platform\s*\?\s*(?:null|undefined)"
+    r"|(?:platform\s*\|\|\s*)?null"
+    r"|platform\b"
+    r")",
+    re.I,
+)
+
+
+def _search_platform_option_values(markup: str) -> list[str]:
+    """Collect value= attributes from <option> / Select.Item near platform control."""
+    values: list[str] = []
+    for tag_re in (_SEARCH_OPTION_VALUE, _SEARCH_SELECT_ITEM_VALUE):
+        for m in tag_re.finditer(markup):
+            attrs = m.group(1) or ""
+            am = _SEARCH_OPTION_VALUE_ATTR.search(attrs)
+            if not am:
+                # <option>any</option> with no value attr → empty string in HTML
+                if tag_re is _SEARCH_OPTION_VALUE and "value" not in attrs.lower():
+                    values.append("")
+                continue
+            if am.group(2) is not None:
+                values.append(am.group(2))
+            elif am.group(4) is not None:
+                values.append(am.group(4))
+            else:
+                # value={expr} — only accept string literals inside
+                expr = (am.group(5) or "").strip()
+                lit = re.fullmatch(r"([\"'])(.*)\1", expr)
+                if lit:
+                    values.append(lit.group(2))
+                elif expr in {"\"\"", "''"}:
+                    values.append("")
+    return values
+
+
+def assert_search_platform_select(crate: Path) -> None:
+    """#121: Search platform is a closed <select>, not free-text.
+
+    Options: empty/any + whatsapp + gmail (core tokens). Empty value means any
+    and is sent as null/empty to api.search. Invalid tokens cannot be typed.
+    contacts/owner may appear (existing core); do not invent twitter/slack/….
+    Not: new platforms, regex platform matching.
+    """
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    if not search_path.is_file():
+        fail("#121: SearchPane.svelte required (search platform control lives there)")
+    src = search_path.read_text()
+    cleaned = _without_comments(src)
+    markup = _svelte_markup(src)
+    # Prefer markup; fall back to whole file for script-only option lists.
+    surface = markup if markup.strip() else src
+    whole = cleaned
+
+    # 1) Must still call api.search with a platform arg (filter reaches core).
+    api_m = _SEARCH_API_PLATFORM_ARG.search(whole)
+    if not api_m:
+        # Multiline / nested — looser fallback.
+        if not re.search(r"api\.search\s*\(", whole):
+            fail("#121: SearchPane must call api.search")
+        if not re.search(r"\bplatform\s*:", whole):
+            fail(
+                "#121: api.search must receive platform from the select "
+                "(platform: … in the search args)"
+            )
+        api_args = whole
+    else:
+        api_args = api_m.group(1)
+        if not re.search(r"\bplatform\s*:", api_args):
+            fail(
+                "#121: api.search must receive platform from the select "
+                "(platform: … in the search args)"
+            )
+
+    plat_arg_m = _SEARCH_PLATFORM_ARG.search(api_args)
+    plat_arg = (plat_arg_m.group(1).strip() if plat_arg_m else "") or ""
+    if plat_arg and re.fullmatch(
+        r"[\"'](?:" + "|".join(sorted(_INVENTED_SEARCH_PLATFORM_TOKENS)) + r")[\"']",
+        plat_arg,
+        re.I,
+    ):
+        fail(
+            "#121: api.search platform must come from the select state, "
+            "not a hard-coded invented token"
+        )
+    if plat_arg and re.fullmatch(r"[\"'](?:whatsapp|gmail|contacts|owner)[\"']", plat_arg, re.I):
+        fail(
+            "#121: api.search platform must be user-selected from the control, "
+            "not hard-coded to a single platform"
+        )
+
+    # 2) Fail free-text Input/textbox for platform (invalid tokens typable).
+    if _SEARCH_PLATFORM_FREE_TEXT.search(surface) or _SEARCH_PLATFORM_FREE_TEXT.search(src):
+        fail(
+            "#121: search platform must not be a free-text Input/textbox "
+            "(invalid tokens cannot be typed — use a closed <select>)"
+        )
+    # Platform label + Input nearby without a select is also free-text.
+    if re.search(r"Platform", surface, re.I) and re.search(
+        r"<Input\b|<input\b(?![^>]*\btype\s*=\s*[\"'](?:hidden|checkbox|radio)[\"'])",
+        surface,
+        re.I,
+    ):
+        # Only fail when the free-text sits in the platform field region.
+        for m in re.finditer(r"Platform", surface, re.I):
+            window = surface[m.start() : m.start() + 400]
+            if re.search(
+                r"<Input\b[^>]{0,200}(?:platform|plat)|"
+                r"<input\b[^>]{0,200}(?:platform|plat)|"
+                r"bind:value=\{platform\}",
+                window,
+                re.I,
+            ) and not re.search(r"<select\b|Select\.Root|SelectItem", window, re.I):
+                fail(
+                    "#121: search platform must not be a free-text Input/textbox "
+                    "(invalid tokens cannot be typed — use a closed <select>)"
+                )
+
+    # 3) Closed control: <select> (or equivalent) bound to platform.
+    has_select = bool(_SEARCH_PLATFORM_SELECT.search(surface)) or bool(
+        _SEARCH_PLATFORM_SELECT.search(src)
+    )
+    # Also accept a plain <select> whose options carry core tokens next to Platform.
+    if not has_select:
+        plat_label = re.search(
+            r"(?:for\s*=\s*[\"']plat[\"']|>\s*Platform\s*<|id\s*=\s*[\"']plat[\"'])",
+            surface,
+            re.I,
+        )
+        if plat_label:
+            window = surface[plat_label.start() : plat_label.start() + 800]
+            has_select = bool(re.search(r"<select\b", window, re.I)) or bool(
+                re.search(r"<(?:[A-Za-z][\w]*\.)?Select(?:\.Root)?\b", window, re.I)
+            )
+    if not has_select:
+        fail(
+            "#121: search platform must be a closed <select> "
+            "(or equivalent Select control) with fixed options — not free text"
+        )
+
+    # 4) Options: empty/any + whatsapp + gmail; only core tokens.
+    # Narrow to the platform <select>…</select> when present.
+    option_region = surface
+    sel = re.search(
+        r"<select\b[^>]{0,400}(?:\bbind:value=\{platform\}|\bid\s*=\s*[\"']plat[\"'])"
+        r"[^>]*>[\s\S]{0,2000}?</select>",
+        surface,
+        re.I,
+    )
+    if not sel:
+        sel = re.search(
+            r"(?:for\s*=\s*[\"']plat[\"']|>\s*Platform\s*<)[\s\S]{0,200}"
+            r"<select\b[^>]*>[\s\S]{0,2000}?</select>",
+            surface,
+            re.I,
+        )
+    if sel:
+        option_region = sel.group(0)
+
+    values = _search_platform_option_values(option_region)
+    # Fallback: any option values in SearchPane markup if region parse missed.
+    if not values:
+        values = _search_platform_option_values(surface)
+
+    norm = [v.strip() for v in values]
+    lower = [v.lower() for v in norm]
+
+    if "" not in norm:
+        # Empty value required for “any”. value="any"/"all" alone is not enough.
+        fail(
+            "#121: platform <select> must include an empty-value option for Any "
+            '(value="" — empty means any; do not send a literal "any" token)'
+        )
+
+    if "whatsapp" not in lower:
+        fail(
+            "#121: platform <select> must offer whatsapp "
+            "(core token; issue: Any | whatsapp | gmail)"
+        )
+    if "gmail" not in lower:
+        fail(
+            "#121: platform <select> must offer gmail "
+            "(core token; issue: Any | whatsapp | gmail)"
+        )
+
+    for v in lower:
+        if v == "":
+            continue
+        if v in _INVENTED_SEARCH_PLATFORM_TOKENS:
+            fail(
+                f"#121: do not invent search platform option {v!r} "
+                "(only core tokens: whatsapp, gmail, and optionally contacts/owner)"
+            )
+        if v not in _CORE_SEARCH_PLATFORM_TOKENS:
+            # Labels like "Any" must not appear as non-empty values.
+            if v in {"any", "all"}:
+                fail(
+                    "#121: Any/all must use empty value=\"\" (core has no \"any\" platform "
+                    "token — empty means any)"
+                )
+            fail(
+                f"#121: platform option value {v!r} is not a core token "
+                "(allowed: whatsapp, gmail, contacts, owner; empty = any)"
+            )
+
+    # 5) Empty value means any → still null/empty to api.search.
+    if not _SEARCH_PLATFORM_EMPTY_AS_ANY.search(whole):
+        # platform: platform || null  OR  platform: platform  (empty string)
+        if not re.search(r"\bplatform\s*:\s*platform\b", whole):
+            fail(
+                "#121: empty platform must mean any "
+                "(send null/empty to api.search — e.g. platform: platform || null)"
+            )
+
+    # Default state should be empty/any, not a forced platform.
+    if re.search(
+        r"\b(?:let|const|var)\s+platform\s*=\s*\$state\s*\(\s*[\"']"
+        r"(?:whatsapp|gmail|contacts|owner|"
+        + "|".join(sorted(_INVENTED_SEARCH_PLATFORM_TOKENS))
+        + r")[\"']\s*\)",
+        whole,
+        re.I,
+    ) or re.search(
+        r"\bplatform\s*=\s*\$state\s*\(\s*[\"']"
+        r"(?:whatsapp|gmail|contacts|owner)[\"']\s*\)",
+        whole,
+        re.I,
+    ):
+        fail(
+            "#121: platform state must default to empty/any "
+            "(not pre-selected to a single platform)"
+        )
+
+
 def assert_virtualized_timeline(crate: Path) -> None:
     """#120: window person timeline (visible + overscan); keep j/k + Load older.
 
@@ -5518,6 +5822,7 @@ def main() -> None:
     assert_photo_lightbox(crate)
     assert_voice_note_player(crate)
     assert_virtualized_timeline(crate)
+    assert_search_platform_select(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
