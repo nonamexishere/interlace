@@ -75,9 +75,8 @@ Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`,
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `00d9057` (merge **#160** conversation switcher).
-In sync with `origin/master`. **No product PRs open** (this handoff PR
-excepted until merge; re-check with `gh pr list`).
+HEAD when this was rewritten: merge of **#159** (people sidebar no sideways scroll)
+on top of `4d07e78` (#162 handoff). Re-check with `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
 
@@ -119,6 +118,7 @@ Treat counts as approximate; never paste real names or message text here.
 | #112 / PR #157 | UTC day headings on person timeline |
 | #113 / PR #158 | Timeline opens at latest message |
 | #114 / PR #160 | Compact conversation switcher for one person |
+| #159 | People sidebar: no horizontal scroll (truncate / clip) |
 | #127 / PR #146 | Merge by picking a person (no raw ids) |
 | #147 / PR #148 | Exact folded Contacts+WA names → review, never auto-merge |
 | #149 / PR #150 | Review card: both sides’ samples / counts |
@@ -126,7 +126,7 @@ Treat counts as approximate; never paste real names or message text here.
 | #143 / PR #144 | Takeout mbox split on `\nFrom ` (not blank-line-only) |
 | #154 / PR #155 | Reviewer must score scope vs the issue |
 
-Phase 2.1 milestone (#6): **~10 closed / ~23 open** (verify with `gh`).
+Phase 2.1 milestone (#6): verify with `gh` (counts move as issues close).
 
 ## Open — product now (Phase 2.1)
 
@@ -138,7 +138,6 @@ not need the full three-role loop unless behavior is load-bearing.
 
 | # | Note |
 | --- | --- |
-| **#159** | People sidebar must not scroll sideways (newest; overflow clip/truncate) |
 | **#156** | Boot screen: centered spinner, not a blank “Loading” line |
 | **#138** | People filter matches phone/email, not only display name |
 | **#115** | Platform chips + filter timeline by platform |
@@ -164,7 +163,7 @@ Full board: issue **#108** and milestone [Phase 2.1 product UI](https://github.c
 
 ## Recommended next steps
 
-1. **#159** people sidebar no sideways scroll (or **#156** boot spinner if preferred).
+1. **#156** boot spinner (or **#138** people filter by phone/email).
 2. Continue **#108** board top-down: filters (#115–#117), media (#118–#119),
    virtualize (#120), then search (#121–#126), then app chrome.
 3. Optional hygiene PR when idle: rewrite **#52** “now” table; decide **#84**.
@@ -238,7 +237,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 
 > Read `docs/hacking/handoff.md` and `docs/hacking/pipeline.md`. Sequence
 > test-author → impl → reviewer when load-bearing. Do not spawn agents from a
-> child. Product now is Phase 2.1 (#108): next coding issues **#159** (sidebar
-> no sideways scroll) then **#156** / remaining board. Do not start 1.1 / P3 / P4.
-> Do not dump chat bodies. Ask before crates.io, `v*`, or `app-v*` tags.
-> After merges, update this handoff in the same session.
+> child. Product now is Phase 2.1 (#108): next coding **#156** (boot spinner)
+> then remaining board. Do not start 1.1 / P3 / P4. Do not dump chat bodies.
+> Ask before crates.io, `v*`, or `app-v*` tags. After merges, update this handoff
+> in the same session.
