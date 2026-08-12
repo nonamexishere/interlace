@@ -75,7 +75,7 @@ Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`,
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: **#117** Gmail timeline subject + quote fold after **#116**.
+HEAD when this was rewritten: **#118** in-window photo lightbox after **#117**.
 Re-check with `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
@@ -124,6 +124,7 @@ Treat counts as approximate; never paste real names or message text here.
 | #115 | Timeline platform chips + All / platform filter |
 | #116 | Timeline kind filter (DMs / email / groups) AND platform |
 | #117 | Gmail rows: subject title + fold quoted tails |
+| #118 | In-window photo lightbox (local CAS) |
 | #127 / PR #146 | Merge by picking a person (no raw ids) |
 | #147 / PR #148 | Exact folded Contacts+WA names → review, never auto-merge |
 | #149 / PR #150 | Review card: both sides’ samples / counts |
@@ -144,7 +145,7 @@ not need the full three-role loop unless behavior is load-bearing.
 | # | Note |
 | --- | --- |
 | **#120** | Virtualize person timeline (10k+) |
-| **#118** / **#119** | Local photo lightbox; voice-note player chrome |
+| **#119** | Voice-note player chrome |
 | **#121**–**#126** | Search: platform select, kind, person pick, jump-to-hit, has:media, safe highlight |
 | **#128** | Review card shows both sides’ identifiers (not only names) |
 | **#129**–**#136** | Window title, macOS menu, en+tr chrome, keyboard map, a11y, drag-drop, copy/reveal, defer doctor CAS |
@@ -163,7 +164,7 @@ Full board: issue **#108** and milestone [Phase 2.1 product UI](https://github.c
 
 ## Recommended next steps
 
-1. **#118** / **#119** local photo lightbox + voice-note chrome (epic order).
+1. **#119** voice-note player chrome (epic order).
 2. Continue **#108** board: virtualize (#120), search (#121–#126),
    virtualize (#120), then search (#121–#126), then app chrome.
 3. Optional hygiene PR when idle: rewrite **#52** “now” table; decide **#84**.
@@ -237,7 +238,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 
 > Read `docs/hacking/handoff.md` and `docs/hacking/pipeline.md`. Sequence
 > test-author → impl → reviewer when load-bearing. Do not spawn agents from a
-> child. Product now is Phase 2.1 (#108): next coding **#118** / **#119** (media chrome)
+> child. Product now is Phase 2.1 (#108): next coding **#119** (voice-note chrome)
 > then remaining board. Do not start 1.1 / P3 / P4. Do not dump chat bodies.
 > Ask before crates.io, `v*`, or `app-v*` tags. After merges, update this handoff
 > in the same session.
