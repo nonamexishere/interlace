@@ -4,9 +4,68 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Interlace</title>
+    <style>
+      /* Pre-JS splash: Vite CSS loads with JS, so spinner styles stay inline. */
+      html,
+      body,
+      #app {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: #fafafa;
+        color: #18181b;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #09090b;
+          color: #f4f4f5;
+        }
+      }
+      .boot-splash {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100%;
+        height: 100%;
+        gap: 0.75rem;
+      }
+      .boot-spinner {
+        box-sizing: border-box;
+        width: 2rem;
+        height: 2rem;
+        border: 2px solid #d4d4d8;
+        border-top-color: #18181b;
+        border-radius: 50%;
+        animation: boot-spin 0.7s linear infinite;
+      }
+      @media (prefers-color-scheme: dark) {
+        .boot-spinner {
+          border-color: #3f3f46;
+          border-top-color: #f4f4f5;
+        }
+      }
+      @keyframes boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .boot-status {
+        margin: 0;
+        font-size: 0.875rem;
+        opacity: 0.7;
+      }
+    </style>
   </head>
   <body class="bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-    <div id="app">Loading Interlace…</div>
+    <div id="app">
+      <div class="boot-splash">
+        <div class="boot-spinner" role="status" aria-label="Loading"></div>
+        <p class="boot-status">Loading Interlace…</p>
+      </div>
+    </div>
     <script type="module" src="/web/main.ts"></script>
   </body>
 </html>
