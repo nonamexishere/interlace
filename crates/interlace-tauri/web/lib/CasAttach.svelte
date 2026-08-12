@@ -134,6 +134,36 @@
     const a = imgs[lightboxIndex];
     return a?.filename || "image";
   }
+
+  // Compact voice-note player (local casDataUrl only; no remote stream).
+  let playing = $state<Record<string, boolean>>({});
+  let currentTimes = $state<Record<string, number>>({});
+  let durations = $state<Record<string, number>>({});
+
+  function formatTime(sec: number): string {
+    if (!Number.isFinite(sec) || sec < 0) return "0:00";
+    const s = Math.floor(sec);
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${String(r).padStart(2, "0")}`;
+  }
+
+  function togglePlay(e: MouseEvent, key: string) {
+    e.stopPropagation();
+    const wrap = (e.currentTarget as HTMLElement).closest("[data-voice-note]");
+    const el = wrap?.querySelector("audio") as HTMLAudioElement | null;
+    if (!el) return;
+    if (el.paused) {
+      document.querySelectorAll<HTMLAudioElement>("[data-voice-note] audio").forEach((other) => {
+        if (other !== el && !other.paused) other.pause();
+      });
+      void el.play().catch(() => {
+        broken = { ...broken, [key]: true };
+      });
+    } else {
+      el.pause();
+    }
+  }
 </script>
 
 {#if items?.length}
@@ -167,14 +197,59 @@
             />
           </button>
         {:else if isAudio(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
-          <audio
-            class="w-full"
-            controls
-            src={srcs[keyOf(a)]}
-            onerror={() => {
-              broken = { ...broken, [keyOf(a)]: true };
-            }}
-          ></audio>
+          {@const key = keyOf(a)}
+          <div
+            class="voice-note flex max-w-xs items-center gap-2 rounded-full border border-border bg-muted/40 px-2 py-1.5"
+            data-voice-note
+          >
+            <audio
+              class="hidden"
+              src={srcs[key]}
+              preload="metadata"
+              ontimeupdate={(e) => {
+                const t = (e.currentTarget as HTMLAudioElement).currentTime;
+                currentTimes = { ...currentTimes, [key]: t };
+              }}
+              onloadedmetadata={(e) => {
+                const d = (e.currentTarget as HTMLAudioElement).duration;
+                durations = { ...durations, [key]: d };
+              }}
+              onplay={() => {
+                playing = { ...playing, [key]: true };
+              }}
+              onpause={() => {
+                playing = { ...playing, [key]: false };
+              }}
+              onended={(e) => {
+                playing = { ...playing, [key]: false };
+                currentTimes = { ...currentTimes, [key]: 0 };
+                (e.currentTarget as HTMLAudioElement).currentTime = 0;
+              }}
+              onerror={() => {
+                broken = { ...broken, [key]: true };
+              }}
+            ></audio>
+            <button
+              type="button"
+              class="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+              aria-label={playing[key] ? "Pause voice note" : "Play voice note"}
+              data-voice-play
+              onclick={(e) => togglePlay(e, key)}
+            >
+              {#if playing[key]}
+                <span class="text-[10px] leading-none" aria-hidden="true">❚❚</span>
+              {:else}
+                <span class="pl-0.5 text-xs leading-none" aria-hidden="true">▶</span>
+              {/if}
+            </button>
+            <span
+              class="min-w-0 flex-1 font-mono text-xs tabular-nums text-muted-foreground"
+              data-voice-time
+            >
+              {formatTime(currentTimes[key] ?? 0)}{#if Number.isFinite(durations[key]) && (durations[key] ?? 0) > 0}
+                {" "}/ {formatTime(durations[key] ?? 0)}{/if}
+            </span>
+          </div>
         {:else if !broken[keyOf(a)] && !srcs[keyOf(a)]}
           <p class="text-xs text-muted-foreground">Loading {a.filename || "attachment"}…</p>
         {:else}
