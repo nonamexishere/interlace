@@ -135,7 +135,6 @@
     return a?.filename || "image";
   }
 
-  // Compact voice-note player (local casDataUrl only; no remote stream).
   let playing = $state<Record<string, boolean>>({});
   let currentTimes = $state<Record<string, number>>({});
   let durations = $state<Record<string, number>>({});
@@ -148,12 +147,18 @@
     return `${m}:${String(r).padStart(2, "0")}`;
   }
 
+  function setDuration(key: string, d: number) {
+    if (!Number.isFinite(d) || d <= 0) return;
+    durations = { ...durations, [key]: d };
+  }
+
   function togglePlay(e: MouseEvent, key: string) {
     e.stopPropagation();
     const wrap = (e.currentTarget as HTMLElement).closest("[data-voice-note]");
     const el = wrap?.querySelector("audio") as HTMLAudioElement | null;
     if (!el) return;
     if (el.paused) {
+      // One voice note at a time (document-wide so multiple CasAttach instances share).
       document.querySelectorAll<HTMLAudioElement>("[data-voice-note] audio").forEach((other) => {
         if (other !== el && !other.paused) other.pause();
       });
@@ -214,8 +219,11 @@
                 currentTimes = { ...currentTimes, [key]: t };
               }}
               onloadedmetadata={(e) => {
-                const d = (e.currentTarget as HTMLAudioElement).duration;
-                durations = { ...durations, [key]: d };
+                setDuration(key, (e.currentTarget as HTMLAudioElement).duration);
+              }}
+              ondurationchange={(e) => {
+                // Opus/Ogg often reports duration only after this event.
+                setDuration(key, (e.currentTarget as HTMLAudioElement).duration);
               }}
               onplay={() => {
                 playing = { ...playing, [key]: true };

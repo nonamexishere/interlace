@@ -4837,10 +4837,10 @@ _VOICE_NATIVE_CONTROLS = re.compile(
     r"<audio\b[^>]*\bcontrols\b|\bcontrols\b[^>]*<audio\b",
     re.I | re.S,
 )
+# Pin local CAS only: srcs map / casDataUrl / data: — not a generic url/src binding.
 _VOICE_LOCAL_SRC = re.compile(
     r"("
     r"src\s*=\s*\{[^}]{0,120}(?:srcs|casDataUrl|data:)"
-    r"|src\s*=\s*\{[^}]{0,80}(?:url|src|audioSrc|voiceSrc)"
     r"|src\s*=\s*[\"']data:"
     r")",
     re.I,
