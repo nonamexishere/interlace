@@ -293,13 +293,63 @@
     }
   });
 
-  const dayGroups = $derived.by(() => {
+  /**
+   * #120: window the person timeline — only visible + overscan rows in the DOM.
+   * Fixed estimate is enough for scrollability; dogfood measures 10k.
+   */
+  const ESTIMATED_ROW_HEIGHT = 88;
+  const OVERSCAN = 15;
+  let tlScrollTop = $state(0);
+  let tlViewportHeight = $state(480);
+
+  function onTimelineScroll(e: Event) {
+    const el = e.currentTarget as HTMLElement | null;
+    if (!el) return;
+    tlScrollTop = el.scrollTop;
+    tlViewportHeight = el.clientHeight || tlViewportHeight;
+  }
+
+  /** Visible filtered-row index range (inclusive start, exclusive end) + overscan. */
+  const visibleRange = $derived.by(() => {
+    const total = filteredTimeline.length;
+    if (total === 0) return { startIndex: 0, endIndex: 0 };
+    const vh = Math.max(tlViewportHeight, 200);
+    const windowRows = Math.ceil(vh / ESTIMATED_ROW_HEIGHT) + OVERSCAN * 2;
+    let startIndex = Math.max(
+      0,
+      Math.floor(tlScrollTop / ESTIMATED_ROW_HEIGHT) - OVERSCAN,
+    );
+    let endIndex = Math.min(
+      total,
+      Math.ceil((tlScrollTop + vh) / ESTIMATED_ROW_HEIGHT) + OVERSCAN,
+    );
+    // Filter shrink or oversize scrollTop: keep a window on the real list.
+    if (startIndex >= total) {
+      startIndex = Math.max(0, total - windowRows);
+      endIndex = total;
+    } else if (endIndex <= startIndex) {
+      endIndex = Math.min(total, startIndex + 1);
+    }
+    return { startIndex, endIndex };
+  });
+
+  const spacerTop = $derived(visibleRange.startIndex * ESTIMATED_ROW_HEIGHT);
+  const spacerBottom = $derived(
+    Math.max(0, (filteredTimeline.length - visibleRange.endIndex) * ESTIMATED_ROW_HEIGHT),
+  );
+
+  /** Day groups for the overscan window only (headings for visible days). */
+  const windowedDayGroups = $derived.by(() => {
+    const startIndex = visibleRange.startIndex;
+    const endIndex = visibleRange.endIndex;
+    const rows = filteredTimeline.slice(startIndex, endIndex);
     const groups: { key: string; label: string; rows: { row: TimelineRow; index: number }[] }[] =
       [];
-    for (let i = 0; i < filteredTimeline.length; i++) {
-      const { row, index } = filteredTimeline[i];
+    for (let i = 0; i < rows.length; i++) {
+      const { row, index } = rows[i];
       const key = utcDay(row.sent_at);
-      const dayChanged = key !== utcDay(filteredTimeline[i - 1]?.row.sent_at);
+      // i === 0 starts a group so sticky day heading stays when the day began above the window.
+      const dayChanged = i === 0 || key !== utcDay(rows[i - 1]?.row.sent_at);
       const last = groups[groups.length - 1];
       if (!last || dayChanged) {
         groups.push({ key, label: key ? utcDayLabel(row.sent_at) : "", rows: [{ row, index }] });
@@ -309,6 +359,25 @@
     }
     return groups;
   });
+
+  /** Keep j/k selection on-screen when it leaves the virtual window. */
+  function ensureTlIndexVisible(index: number) {
+    const pos = visibleTlIndices.indexOf(index);
+    if (pos < 0) return;
+    const sc = document.getElementById("person-timeline");
+    if (!sc) return;
+    const rowTop = pos * ESTIMATED_ROW_HEIGHT;
+    const rowBottom = rowTop + ESTIMATED_ROW_HEIGHT;
+    const viewTop = sc.scrollTop;
+    const viewBottom = viewTop + sc.clientHeight;
+    if (rowTop < viewTop) {
+      sc.scrollTop = Math.max(0, rowTop - ESTIMATED_ROW_HEIGHT);
+    } else if (rowBottom > viewBottom) {
+      sc.scrollTop = rowBottom - sc.clientHeight + ESTIMATED_ROW_HEIGHT;
+    }
+    tlScrollTop = sc.scrollTop;
+    tlViewportHeight = sc.clientHeight || tlViewportHeight;
+  }
 
   function ask(title: string, description: string, run: () => Promise<void>) {
     confirmTitle = title;
@@ -394,6 +463,8 @@
   /** Pin the pane to the true end. A day-group <li> is often taller than the pane. */
   function pinTimelineLatest(sc: HTMLElement) {
     sc.scrollTop = sc.scrollHeight;
+    tlScrollTop = sc.scrollTop;
+    tlViewportHeight = sc.clientHeight || tlViewportHeight;
   }
 
   function watchPinLatest(sc: HTMLElement) {
@@ -402,6 +473,8 @@
     const ol = sc.querySelector("ol");
     pinLatestObs = new ResizeObserver(() => {
       sc.scrollTop = sc.scrollHeight;
+      tlScrollTop = sc.scrollTop;
+      tlViewportHeight = sc.clientHeight || tlViewportHeight;
     });
     pinLatestObs.observe(sc);
     if (ol) pinLatestObs.observe(ol);
@@ -500,8 +573,13 @@
         const sc = document.getElementById("person-timeline");
         if (sc) {
           sc.scrollTop += sc.scrollHeight - prevHeight;
+          tlScrollTop = sc.scrollTop;
+          tlViewportHeight = sc.clientHeight || tlViewportHeight;
         }
       } else {
+        // Window from the end before first paint so open-person does not flash the top.
+        const estTotal = Math.max(chrono.length, 1) * ESTIMATED_ROW_HEIGHT;
+        tlScrollTop = estTotal;
         // Loading line still in the pane makes one rAF land short after wrap.
         tlLoading = false;
         await tick();
@@ -512,6 +590,8 @@
             requestAnimationFrame(() => {
               if (gen !== tlGen) return;
               sc.scrollTop = sc.scrollHeight;
+              tlScrollTop = sc.scrollTop;
+              tlViewportHeight = sc.clientHeight || tlViewportHeight;
               watchPinLatest(sc);
             });
           });
@@ -613,12 +693,14 @@
     if (e.key === "j" || e.key === "ArrowDown") {
       if (pos >= 0 && pos < visible.length - 1) {
         tlIndex = visible[pos + 1];
+        ensureTlIndexVisible(tlIndex);
       }
       e.preventDefault();
     }
     if (e.key === "k" || e.key === "ArrowUp") {
       if (pos > 0) {
         tlIndex = visible[pos - 1];
+        ensureTlIndexVisible(tlIndex);
       }
       e.preventDefault();
     }
@@ -1016,7 +1098,11 @@
           </ul>
         {/if}
         </div>
-        <ScrollArea id="person-timeline" class="min-h-0 min-w-0 flex-1 px-4 pb-8">
+        <ScrollArea
+          id="person-timeline"
+          class="min-h-0 min-w-0 flex-1 px-4 pb-8"
+          onscroll={onTimelineScroll}
+        >
         {#if tlLoading}
           <p class="pt-2 text-sm text-muted-foreground">Loading timeline…</p>
         {:else if !selectedId}
@@ -1047,7 +1133,10 @@
           >
         {/if}
         <ol class="min-w-0 space-y-2">
-          {#each dayGroups as group}
+          {#if spacerTop > 0}
+            <li class="timeline-spacer-top pointer-events-none" style="height: {spacerTop}px" aria-hidden="true"></li>
+          {/if}
+          {#each windowedDayGroups as group}
             <li class="day-group min-w-0">
               {#if utcDay(group.rows[0]?.row.sent_at)}
                 <h3 class="day-heading mb-2 text-center text-xs font-medium text-muted-foreground">
@@ -1056,7 +1145,7 @@
               {/if}
               <div class="space-y-2">
                 {#each group.rows as item}
-                  <div class="flex min-w-0">
+                  <div class="flex min-w-0" data-tl-index={item.index}>
                     <div
                       class="min-w-0 max-w-[94%] cursor-pointer rounded-2xl px-3 py-2 text-left {item.index ===
                       tlIndex
@@ -1127,6 +1216,9 @@
               </div>
             </li>
           {/each}
+          {#if spacerBottom > 0}
+            <li class="timeline-spacer-bottom pointer-events-none" style="height: {spacerBottom}px" aria-hidden="true"></li>
+          {/if}
         </ol>
         <div id="timeline-end"></div>
         </ScrollArea>
