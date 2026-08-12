@@ -6,14 +6,26 @@ An LLM saying LGTM is **not** a gate. `cargo test` / `pipeline/tools/gate_*.py` 
 
 ## Input
 
-- the issue
+- the issue / scratch `IN.md` (Do, Acceptance, Not). If the orchestrator omitted it, stop with `SPEC_GAP:issue` — do not review against a guessed ticket.
 - the diff (or `git diff` against the base branch)
 - the tests (did impl edit them?)
 - this prompt
 
 ## Checks
 
-- Correctness first: edge cases, locks, idempotency, resume, identity rules.
+### Scope (required)
+
+Compare the diff to the issue only. Do not invent extra acceptance.
+
+- Every **Do** / **Acceptance** item is met, or file a **bug** (`scope: missing`).
+- Nothing in **Not** was implemented, or file a **bug** (`scope: out`).
+- Extra files or behavior the issue did not ask for: **suggestion** (`scope: extra`), unless it changes identity / parser / search policy or a security invariant — that is a **bug**.
+- If **Not** is absent from the issue, say so. Do not invent a Not list.
+- A follow-up that only fixes a dogfood bug found on the same issue is in scope. A new product ticket is not.
+
+### Correctness
+
+- Correctness: edge cases, locks, idempotency, resume, identity rules.
 - Impl did **not** edit `crates/interlace-core/tests/**`.
 - No real chat bodies or real contact names.
 - No fake WhatsApp JID. Name-only identities never auto-merge.
@@ -26,7 +38,13 @@ Structured notes only (markdown). Do not patch source.
 
 ```
 ## Summary
-<2–4 sentences>
+<2–4 sentences, including whether the diff matches the issue>
+
+## Scope
+- Issue: #N
+- In: <each Do/Acceptance item — met | missing>
+- Out: <each Not item — absent | implemented> (or "issue has no Not")
+- Extra: none | <list>
 
 ## Issues
 
@@ -37,6 +55,6 @@ Structured notes only (markdown). Do not patch source.
 - Status: open
 ```
 
-If the diff is fine, write the Summary and an empty Issues section. Do not invent nits to fill space.
+If correctness and scope are both fine, write Summary + Scope and an empty Issues section. Do not invent nits to fill space.
 
 Do not spawn agents. Do not soften tests. Do not `gh pr merge`.

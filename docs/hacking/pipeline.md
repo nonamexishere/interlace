@@ -20,7 +20,7 @@ Prompts live in `pipeline/prompts/`. Read `orchestrator.md` first.
 | orchestrator | `prompts/orchestrator.md` | Sequence the loop; copy issue → scratch `IN.md` | Implement; give a child a spawn tool |
 | test-author | `prompts/test-author.md` | Write tests from the issue + public API | Open parser/identity/search impl bodies; invent policy |
 | impl | `prompts/impl.md` | Make those tests and the matching gate green | Edit tests; ignore must-IDs; add HTTP clients |
-| reviewer | `prompts/reviewer.md` | Structured notes (bug / suggestion / nit) | Merge; patch source; count as a gate |
+| reviewer | `prompts/reviewer.md` | Structured notes: **scope vs issue** (Do/Acceptance/Not) plus correctness | Merge; patch source; count as a gate; invent a ticket |
 | human + CI | `gate_*.py` | The actual gate | — |
 
 Producer ≠ verifier. The agent that writes tests is not the one that writes the impl.
@@ -32,8 +32,8 @@ Producer ≠ verifier. The agent that writes tests is not the one that writes th
 3. Confirm new tests exist. For new behavior they should fail for the right reason (not compile errors).
 4. Run **impl** with `pipeline/prompts/impl.md`.
 5. Run the matching `gate_*.py` (see CI block below). Red → impl retries, max 3, then stop.
-6. Run **reviewer** with `pipeline/prompts/reviewer.md`.
-7. Merge when jobs **`check`** + **`tauri`** are green and the review has no open bugs. `Fixes #N`.
+6. Run **reviewer** with `pipeline/prompts/reviewer.md` and the same `IN.md`. It must fill **Scope** (in / out / extra).
+7. Merge when jobs **`check`** + **`tauri`** are green and the review has no open bugs (including scope: missing / out). `Fixes #N`. Ask before commit / push / merge.
 
 ### When blindness applies
 
