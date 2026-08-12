@@ -34,6 +34,8 @@
   let conversations = $state<PersonConversation[]>([]);
   /** Timeline platform toolbar: "all" or a platform value present for this person. */
   let platformFilter = $state<string>("all");
+  /** Timeline kind toolbar: "all" | "dm" | "email_thread" | "group". */
+  let kindFilter = $state<string>("all");
   let showPersonChrome = $state(false);
   let mergeOpen = $state(false);
   let mergeQuery = $state("");
@@ -135,27 +137,76 @@
     return iso.slice(t + 1, t + 6);
   }
 
-  /** Platforms present for this person (conversations + loaded timeline). */
+  /** Known kind order for chip toolbar (others sort after). */
+  const KIND_ORDER = ["dm", "email_thread", "group"] as const;
+
+  /**
+   * Platforms present for this person (conversations + loaded timeline).
+   * When a kind is selected, only platforms that appear under that kind.
+   */
   const availablePlatforms = $derived.by(() => {
     const set = new Set<string>();
     for (const c of conversations) {
+      if (kindFilter !== "all" && (c.kind ?? "").trim() !== kindFilter) continue;
       const p = (c.platform ?? "").trim();
       if (p) set.add(p);
     }
     for (const row of timeline) {
+      if (kindFilter !== "all" && (row.conversation_kind ?? "").trim() !== kindFilter) {
+        continue;
+      }
       const p = (row.platform ?? "").trim();
       if (p) set.add(p);
     }
     return [...set].sort();
   });
 
-  /** Client-side platform filter for the loaded timeline page. */
+  /**
+   * Kinds present for this person (conversations.kind + timeline.conversation_kind).
+   * When a platform is selected, only kinds that appear under that platform.
+   */
+  const availableKinds = $derived.by(() => {
+    const set = new Set<string>();
+    for (const c of conversations) {
+      if (platformFilter !== "all" && (c.platform ?? "").trim() !== platformFilter) {
+        continue;
+      }
+      const k = (c.kind ?? "").trim();
+      if (k) set.add(k);
+    }
+    for (const row of timeline) {
+      if (platformFilter !== "all" && (row.platform ?? "").trim() !== platformFilter) {
+        continue;
+      }
+      const k = (row.conversation_kind ?? "").trim();
+      if (k) set.add(k);
+    }
+    const known = KIND_ORDER.filter((k) => set.has(k));
+    const rest = [...set].filter((k) => !(KIND_ORDER as readonly string[]).includes(k)).sort();
+    return [...known, ...rest];
+  });
+
+  /** If the other filter removes the selected chip, snap back to All. */
+  $effect(() => {
+    if (platformFilter !== "all" && !availablePlatforms.includes(platformFilter)) {
+      platformFilter = "all";
+    }
+  });
+  $effect(() => {
+    if (kindFilter !== "all" && !availableKinds.includes(kindFilter)) {
+      kindFilter = "all";
+    }
+  });
+
+  /** Client-side platform + kind filter for the loaded timeline page (AND). */
   const filteredTimeline = $derived(
-    platformFilter === "all"
-      ? timeline.map((row, index) => ({ row, index }))
-      : timeline
-          .map((row, index) => ({ row, index }))
-          .filter((item) => item.row.platform === platformFilter),
+    timeline
+      .map((row, index) => ({ row, index }))
+      .filter(
+        (item) =>
+          (platformFilter === "all" || item.row.platform === platformFilter) &&
+          (kindFilter === "all" || item.row.conversation_kind === kindFilter),
+      ),
   );
 
   /** Original `timeline` indices currently shown (j/k and highlight use these). */
@@ -325,6 +376,16 @@
     return p.charAt(0).toUpperCase() + p.slice(1);
   }
 
+  /** Pretty conversation-kind labels for the kind filter toolbar. */
+  function kindLabel(kind: string | null | undefined) {
+    const k = (kind ?? "").trim().toLowerCase();
+    if (k === "dm") return "DMs";
+    if (k === "email_thread") return "Email threads";
+    if (k === "group") return "Groups";
+    if (!k) return "";
+    return k.charAt(0).toUpperCase() + k.slice(1);
+  }
+
   /** Empty / person-name titles → WhatsApp, Gmail, …; keep group names and subjects. */
   function conversationLabel(title: string | null | undefined, platform: string | null | undefined) {
     if (
@@ -345,6 +406,7 @@
     if (!append && id !== selectedId) {
       showPersonChrome = false;
       platformFilter = "all";
+      kindFilter = "all";
     }
     selectedId = id;
     if (!append && !keepConversation) {
@@ -483,7 +545,7 @@
       document.getElementById("person-filter")?.focus();
       return;
     }
-    // Walk only rows currently shown (platform filter may hide some).
+    // Walk only rows currently shown (platform / kind filters may hide some).
     const visible = visibleTlIndices;
     if (!visible.length) return;
     let pos = visible.indexOf(tlIndex);
@@ -745,81 +807,132 @@
               {personTitle}
             </button>
           </h1>
-          {#if selectedId}
-            <details data-conversation-switcher class="relative z-20 min-w-0 max-w-[16rem]">
-              <summary
-                class="cursor-pointer truncate rounded-md border border-border px-2 py-1 text-sm"
-              >
-                {#if selectedConversationId === null}
-                  All
-                {:else}
-                  {conversationLabel(selectedConversation?.title, selectedConversation?.platform)}
-                {/if}
-              </summary>
-              <ul
-                class="absolute right-0 z-10 mt-1 min-w-[14rem] space-y-0.5 rounded-md border border-border bg-background p-1 shadow-md"
-              >
-                <li>
-                  <button
-                    type="button"
-                    class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent {selectedConversationId ===
-                    null
-                      ? 'bg-accent'
-                      : ''}"
-                    onclick={() => pickConversation(null)}
-                  >
+          {#if false}
+            {#if selectedId && conversations.length > 1}
+              <details data-conversation-switcher class="relative z-20 min-w-0 max-w-[16rem]">
+                <summary
+                  class="cursor-pointer truncate rounded-md border border-border px-2 py-1 text-sm"
+                >
+                  {#if selectedConversationId === null}
                     All
-                  </button>
-                </li>
-                {#each conversations as conv}
+                  {:else}
+                    {conversationLabel(selectedConversation?.title, selectedConversation?.platform)}
+                  {/if}
+                </summary>
+                <ul
+                  class="absolute right-0 z-10 mt-1 min-w-[14rem] space-y-0.5 rounded-md border border-border bg-background p-1 shadow-md"
+                >
                   <li>
                     <button
                       type="button"
                       class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent {selectedConversationId ===
-                      conv.id
+                      null
                         ? 'bg-accent'
                         : ''}"
-                      onclick={() => pickConversation(conv.id)}
+                      onclick={() => pickConversation(null)}
                     >
-                      <span>{conversationLabel(conv.title, conv.platform)}</span>
-                      <span class="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
-                        {conv.platform}{conv.last_at ? ` · ${conv.last_at}` : ""}
-                      </span>
+                      All
                     </button>
                   </li>
-                {/each}
-              </ul>
-            </details>
+                  {#each conversations as conv}
+                    <li>
+                      <button
+                        type="button"
+                        class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent {selectedConversationId ===
+                        conv.id
+                          ? 'bg-accent'
+                          : ''}"
+                        onclick={() => pickConversation(conv.id)}
+                      >
+                        <span>{conversationLabel(conv.title, conv.platform)}</span>
+                        <span class="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+                          {conv.platform}{conv.last_at ? ` · ${conv.last_at}` : ""}
+                        </span>
+                      </button>
+                    </li>
+                  {/each}
+                </ul>
+              </details>
+            {/if}
           {/if}
         </div>
-        {#if selectedId && availablePlatforms.length > 0}
+        {#if selectedId && (availablePlatforms.length > 0 || availableKinds.length > 0)}
           <div
-            data-platform-filter
-            class="platform-filter mb-3 flex flex-wrap items-center gap-1.5"
-            role="toolbar"
-            aria-label="Filter by platform"
+            class="timeline-filters mb-4 space-y-2.5 rounded-lg border border-border bg-muted/40 px-3 py-2.5"
+            data-timeline-filters
           >
-            <button
-              type="button"
-              class="rounded-full border border-border px-2.5 py-0.5 text-xs {platformFilter ===
-              'all'
-                ? 'bg-accent font-medium'
-                : 'text-muted-foreground hover:bg-accent/60'}"
-              onclick={() => (platformFilter = "all")}
-            >
-              All
-            </button>
-            {#each availablePlatforms as p}
-              <button
-                type="button"
-                class="rounded-full border border-border px-2.5 py-0.5 text-xs {platformFilter === p
-                  ? 'bg-accent font-medium'
-                  : 'text-muted-foreground hover:bg-accent/60'}"
-                onclick={() => (platformFilter = p)}
+            {#if availablePlatforms.length > 0}
+              <div
+                data-platform-filter
+                class="platform-filter flex flex-wrap items-center gap-x-2 gap-y-1.5"
+                role="toolbar"
+                aria-label="Filter by platform"
               >
-                {platformLabel(p)}
-              </button>
-            {/each}
+                <span class="filter-section-label shrink-0 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground"
+                  >Platform</span
+                >
+                <div class="flex min-w-0 flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    class="filter-chip rounded-full border px-2.5 py-0.5 text-xs transition-colors {platformFilter ===
+                    'all'
+                      ? 'filter-chip-active border-border bg-background font-medium text-foreground shadow-sm'
+                      : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'}"
+                    onclick={() => (platformFilter = "all")}
+                  >
+                    All
+                  </button>
+                  {#each availablePlatforms as p}
+                    <button
+                      type="button"
+                      class="filter-chip rounded-full border px-2.5 py-0.5 text-xs transition-colors {platformFilter ===
+                      p
+                        ? 'filter-chip-active border-border bg-background font-medium text-foreground shadow-sm'
+                        : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'}"
+                      onclick={() => (platformFilter = p)}
+                    >
+                      {platformLabel(p)}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+            {#if availableKinds.length > 0}
+              <div
+                data-kind-filter
+                class="kind-filter flex flex-wrap items-center gap-x-2 gap-y-1.5"
+                role="toolbar"
+                aria-label="Filter by kind"
+              >
+                <span class="filter-section-label shrink-0 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground"
+                  >Kind</span
+                >
+                <div class="flex min-w-0 flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    class="filter-chip rounded-full border px-2.5 py-0.5 text-xs transition-colors {kindFilter ===
+                    'all'
+                      ? 'filter-chip-active border-border bg-background font-medium text-foreground shadow-sm'
+                      : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'}"
+                    onclick={() => (kindFilter = "all")}
+                  >
+                    All
+                  </button>
+                  {#each availableKinds as k}
+                    <button
+                      type="button"
+                      class="filter-chip rounded-full border px-2.5 py-0.5 text-xs transition-colors {kindFilter ===
+                      k
+                        ? 'filter-chip-active border-border bg-background font-medium text-foreground shadow-sm'
+                        : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'}"
+                      onclick={() => (kindFilter = k)}
+                    >
+                      {kindLabel(k)}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
           </div>
         {/if}
         {#if showPersonChrome}
@@ -848,23 +961,29 @@
         </div>
         <ScrollArea id="person-timeline" class="min-h-0 min-w-0 flex-1 px-4 pb-8">
         {#if tlLoading}
-          <p class="text-sm text-muted-foreground">Loading timeline…</p>
+          <p class="pt-2 text-sm text-muted-foreground">Loading timeline…</p>
         {:else if !selectedId}
-          <EmptyState
-            title="Select a person"
-            body="Click a name on the left. Groups stay hidden until you tick include groups."
-          />
-        {:else if timeline.length === 0}
-          <EmptyState
-            title="No messages in this view"
-            body="This person may only appear in groups. Tick include groups, or import more sources."
-          />
+          <div class="py-6">
+            <EmptyState
+              title="Select a person"
+              body="Click a name on the left. Groups stay hidden until you tick include groups."
+            />
+          </div>
+        {:else if filteredTimeline.length === 0}
+          <div class="py-6">
+            <EmptyState
+              title="No messages in this view"
+              body={timeline.length === 0
+                ? "This person may only appear in groups. Tick include groups, or import more sources."
+                : "Nothing matches the current platform or kind filter. Try All, or another chip."}
+            />
+          </div>
         {/if}
-        {#if timeline.length && oldestCursor}
+        {#if timeline.length && oldestCursor && filteredTimeline.length > 0}
           <Button
             variant="outline"
             size="sm"
-            class="mb-3"
+            class="mb-4 mt-4"
             disabled={tlLoading}
             onclick={() => !tlLoading && selectedId && selectPerson(selectedId, true)}
             >Load older</Button

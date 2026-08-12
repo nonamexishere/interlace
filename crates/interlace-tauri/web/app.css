@@ -90,6 +90,11 @@ body {
   vertical-align: middle;
 }
 
+/* Align Platform / Kind labels in the grouped filter panel */
+.timeline-filters .filter-section-label {
+  min-width: 4.25rem;
+}
+
 .bubble-me,
 .bubble-them {
   overflow-wrap: anywhere;

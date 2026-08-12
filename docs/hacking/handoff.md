@@ -75,7 +75,7 @@ Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`,
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: **#115** timeline platform chips + filter after **#138**.
+HEAD when this was rewritten: **#116** timeline kind filter (with #115 platform chips) after **#115**.
 Re-check with `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
@@ -122,6 +122,7 @@ Treat counts as approximate; never paste real names or message text here.
 | #156 | Boot: centered CSS spinner (pre-JS + Opening last archive) |
 | #138 | People `/` filter matches linked phone/email identity values |
 | #115 | Timeline platform chips + All / platform filter |
+| #116 | Timeline kind filter (DMs / email / groups) AND platform |
 | #127 / PR #146 | Merge by picking a person (no raw ids) |
 | #147 / PR #148 | Exact folded Contacts+WA names → review, never auto-merge |
 | #149 / PR #150 | Review card: both sides’ samples / counts |
@@ -141,7 +142,6 @@ not need the full three-role loop unless behavior is load-bearing.
 
 | # | Note |
 | --- | --- |
-| **#116** | Filter timeline by conversation kind |
 | **#117** | Gmail rows: subject + from/to, fold quoted tails |
 | **#120** | Virtualize person timeline (10k+) |
 | **#118** / **#119** | Local photo lightbox; voice-note player chrome |
@@ -163,8 +163,8 @@ Full board: issue **#108** and milestone [Phase 2.1 product UI](https://github.c
 
 ## Recommended next steps
 
-1. **#116** filter timeline by conversation kind (epic order).
-2. Continue **#108** board: filters (#117), media (#118–#119),
+1. **#117** Gmail rows subject/from-to / fold quotes (epic order).
+2. Continue **#108** board: media (#118–#119),
    virtualize (#120), then search (#121–#126), then app chrome.
 3. Optional hygiene PR when idle: rewrite **#52** “now” table; decide **#84**.
 4. Do **not** start 1.1 / P3 / P4. Do **not** cut `app-v*` without asking.
@@ -237,7 +237,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 
 > Read `docs/hacking/handoff.md` and `docs/hacking/pipeline.md`. Sequence
 > test-author → impl → reviewer when load-bearing. Do not spawn agents from a
-> child. Product now is Phase 2.1 (#108): next coding **#116** (conversation kind filter)
+> child. Product now is Phase 2.1 (#108): next coding **#117** (Gmail timeline rows)
 > then remaining board. Do not start 1.1 / P3 / P4. Do not dump chat bodies.
 > Ask before crates.io, `v*`, or `app-v*` tags. After merges, update this handoff
 > in the same session.

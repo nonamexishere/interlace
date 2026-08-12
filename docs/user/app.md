@@ -83,7 +83,10 @@ mail subject; platform and last activity). **All** is the default (the merged D1
 conversation filters the timeline to that chat. Groups still need **include
 groups** to appear in the conversation list and in All. A **platform filter**
 toolbar (All | WhatsApp | Gmail | …) lists only sources present for that
-person; **All** is the default and switching people resets it. Each bubble
+person; **All** is the default and switching people resets it. A **kind filter**
+(All | DMs | Email threads | Groups) ANDs with the platform filter on
+`conversation_kind`; groups still need **include groups** to load at all.
+Switching people resets both filters. Each bubble
 shows a small text **platform chip** (not a brand logo). **Identity chrome**
 (Merge, include groups, unlink) is hidden until you click the person name at
 the top of the conversation. The person timeline is a **chat**, not a log:
