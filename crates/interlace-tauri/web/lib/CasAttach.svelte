@@ -157,7 +157,10 @@
       document.querySelectorAll<HTMLAudioElement>("[data-voice-note] audio").forEach((other) => {
         if (other !== el && !other.paused) other.pause();
       });
-      void el.play().catch(() => {
+      void el.play().catch((err: unknown) => {
+        // pause() / switching notes aborts a pending play(); not a bad file.
+        const name = err && typeof err === "object" && "name" in err ? String((err as { name: string }).name) : "";
+        if (name === "AbortError" || name === "NotAllowedError") return;
         broken = { ...broken, [key]: true };
       });
     } else {
