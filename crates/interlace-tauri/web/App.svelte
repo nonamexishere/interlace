@@ -560,62 +560,62 @@
       }}
     />
   {:else if st}
-    <div class="grid min-h-0 min-w-0 flex-1 grid-cols-[18rem_minmax(0,1fr)]">
-      <ScrollArea class="border-r border-border p-4">
+    <div class="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+      <ScrollArea class="min-w-0 border-r border-border p-4" data-people-sidebar>
         <p class="break-all text-xs text-muted-foreground">{st.path}</p>
-        <dl class="mt-3 grid grid-cols-[7rem_1fr] gap-x-2 gap-y-1 text-sm">
+        <dl class="mt-3 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-sm">
           <dt class="text-muted-foreground">owner</dt>
-          <dd>{st.owner_display_name || "—"}</dd>
+          <dd class="min-w-0 truncate">{st.owner_display_name || "—"}</dd>
           <dt class="text-muted-foreground">region</dt>
-          <dd>{st.default_phone_region || "—"}</dd>
+          <dd class="min-w-0 truncate">{st.default_phone_region || "—"}</dd>
           <dt class="text-muted-foreground">messages</dt>
-          <dd>{st.messages}</dd>
+          <dd class="min-w-0 truncate">{st.messages}</dd>
           <dt class="text-muted-foreground">identities</dt>
-          <dd>{st.identities}</dd>
+          <dd class="min-w-0 truncate">{st.identities}</dd>
           <dt class="text-muted-foreground">persons</dt>
-          <dd>{st.persons_live}</dd>
+          <dd class="min-w-0 truncate">{st.persons_live}</dd>
           <dt class="text-muted-foreground">review</dt>
-          <dd>{st.review_open}</dd>
+          <dd class="min-w-0 truncate">{st.review_open}</dd>
         </dl>
-        <p class="mt-2 text-xs text-muted-foreground">
+        <p class="mt-2 truncate text-xs text-muted-foreground">
           {st.last_import
             ? `last import id=${st.last_import.id} status=${st.last_import.status}`
             : "no imports yet"}
         </p>
         {#if st.warnings?.length}
-          <ul class="mt-2 list-disc pl-4 text-sm text-amber-700 dark:text-amber-400">
+          <ul class="mt-2 min-w-0 list-disc pl-4 text-sm text-amber-700 dark:text-amber-400">
             {#each st.warnings as w}
-              <li>{w}</li>
+              <li class="break-words">{w}</li>
             {/each}
           </ul>
         {/if}
         {#if doctor.length}
-          <div class="mt-2 rounded-md border border-amber-700/40 bg-amber-950/20 p-2 text-sm text-amber-800 dark:text-amber-300">
+          <div class="mt-2 min-w-0 rounded-md border border-amber-700/40 bg-amber-950/20 p-2 text-sm text-amber-800 dark:text-amber-300">
             <p class="font-medium">Doctor found {doctor.length} issue{doctor.length === 1 ? "" : "s"}</p>
-            <ul class="mt-1 list-disc pl-4">
+            <ul class="mt-1 min-w-0 list-disc pl-4">
               {#each doctor as d}
-                <li>{d}</li>
+                <li class="break-words">{d}</li>
               {/each}
             </ul>
             <p class="mt-1 text-xs">Open the Doctor tab to run integrity, rebuild FTS, or GC CAS in-app.</p>
           </div>
         {/if}
-        <div class="mt-4 space-y-1.5">
+        <div class="mt-4 min-w-0 space-y-1.5">
           <Label for="person-filter">Filter people</Label>
-          <Input id="person-filter" type="search" bind:value={filter} placeholder="name" />
+          <Input id="person-filter" type="search" bind:value={filter} placeholder="name" class="min-w-0" />
         </div>
-        <ul class="mt-2 space-y-0.5">
+        <ul class="mt-2 min-w-0 space-y-0.5">
           {#each filtered as p}
-            <li>
+            <li class="min-w-0">
               <button
                 type="button"
-                class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent {selectedId ===
+                class="w-full min-w-0 max-w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent {selectedId ===
                 p.id
                   ? 'bg-accent'
                   : ''} {p.is_self ? 'font-semibold' : ''}"
                 onclick={() => selectPerson(p.id)}
               >
-                <span>{p.is_self ? `${p.display_name} (self)` : p.display_name}</span>
+                <span class="block truncate">{p.is_self ? `${p.display_name} (self)` : p.display_name}</span>
                 {#if p.last_activity_at || p.preview}
                   <span class="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
                     {p.last_activity_at ?? ""}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
@@ -626,26 +626,30 @@
           {/each}
         </ul>
         {#if people.length === 0}
-          <div class="mt-3">
+          <div class="mt-3 min-w-0">
             <EmptyState
               title="No people yet"
               body="Import a WhatsApp ZIP or Takeout from the Import tab. Name-only chats become people after import."
             />
           </div>
         {:else if filtered.length === 0}
-          <div class="mt-3">
+          <div class="mt-3 min-w-0">
             <EmptyState title="No match" body="Clear the filter or try another spelling." />
           </div>
         {/if}
-        <ul class="mt-3 space-y-1 text-xs">
+        <ul class="mt-3 min-w-0 space-y-1 text-xs">
           {#each events as e}
-            <li class="flex items-center justify-between gap-2">
-              <span>#{e.id} {e.op}</span>
-              <Button variant="outline" size="sm" onclick={() => doUndo(e.id, e.op)}>undo</Button>
+            <li class="flex min-w-0 items-center justify-between gap-2">
+              <span class="min-w-0 truncate">#{e.id} {e.op}</span>
+              <Button variant="outline" size="sm" class="shrink-0" onclick={() => doUndo(e.id, e.op)}>
+                undo
+              </Button>
             </li>
           {/each}
         </ul>
-        <Button variant="outline" size="sm" class="mt-4" onclick={openPicker}>Open other archive…</Button>
+        <Button variant="outline" size="sm" class="mt-4 max-w-full" onclick={openPicker}>
+          Open other archive…
+        </Button>
       </ScrollArea>
       <div class="flex min-h-0 min-w-0 flex-col">
         <div class="relative z-20 shrink-0 bg-background px-4 pt-4">

@@ -10,6 +10,7 @@
   }: HTMLAttributes<HTMLDivElement> & { children?: Snippet } = $props();
 </script>
 
-<div class={cn("min-h-0 overflow-auto", className)} {...rest}>
+<!-- Vertical scroll only — long labels/timestamps must not pan sideways. -->
+<div class={cn("min-h-0 overflow-x-hidden overflow-y-auto", className)} {...rest}>
   {@render children?.()}
 </div>
