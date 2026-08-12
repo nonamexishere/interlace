@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""UI0: unpublished tauri shell, macOS deny exception, CSP, no network entitlement."""
+"""UI0: unpublished tauri shell, macOS deny exception, CSP, no network entitlement.
+
+#111: person timeline must be chat bubbles (from_me right / else left), not a log.
+"""
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -16,6 +20,160 @@ CSP = (
     "connect-src ipc: http://ipc.localhost https://ipc.localhost; "
     "frame-src 'none'; font-src 'self'"
 )
+
+# #111 — person timeline is a chat (me right / them left), not a metadata log.
+_FROM_ME_LAYOUT = re.compile(
+    r"(data-from-me\s*=\s*\{row\.from_me\}"
+    r"|class:[A-Za-z0-9_-]+\s*=\s*\{!?row\.from_me\}"
+    r"|class=\{[^}]*row\.from_me[^}]*\})",
+)
+_ALIGN_RIGHT = (
+    "ml-auto",
+    "justify-end",
+    "self-end",
+    "items-end",
+    "margin-left: auto",
+    "margin-inline-start: auto",
+    "justify-content: flex-end",
+    "justify-content: end",
+    "align-self: flex-end",
+    "align-self: end",
+)
+_ALIGN_LEFT = (
+    "mr-auto",
+    "justify-start",
+    "self-start",
+    "items-start",
+    "margin-right: auto",
+    "margin-inline-end: auto",
+    "justify-content: flex-start",
+    "justify-content: start",
+    "align-self: flex-start",
+    "align-self: start",
+)
+_BUBBLE_ME_VARS = ("--bubble-me", "--color-bubble-me")
+_BUBBLE_THEM_VARS = ("--bubble-them", "--color-bubble-them")
+_BUBBLE_ME_USE = ("var(--bubble-me)", "var(--color-bubble-me)", "bg-bubble-me", "bubble-me")
+_BUBBLE_THEM_USE = (
+    "var(--bubble-them)",
+    "var(--color-bubble-them)",
+    "bg-bubble-them",
+    "bubble-them",
+)
+_PRE_WRAP = re.compile(
+    r"<([a-zA-Z][\w:-]*)([^>]*\bwhitespace-pre-wrap\b[^>]*)>(.*?)</\1>",
+    re.S,
+)
+
+
+def _web_sources(crate: Path) -> list[Path]:
+    web = crate / "web"
+    return [
+        p
+        for p in sorted(web.rglob("*"))
+        if p.suffix in {".svelte", ".css"} and "node_modules" not in p.parts
+    ]
+
+
+def _timeline_block(crate: Path) -> str:
+    found: list[str] = []
+    for p in _web_sources(crate):
+        if p.suffix != ".svelte":
+            continue
+        text = p.read_text()
+        i = 0
+        while True:
+            start = text.find("{#each timeline", i)
+            if start < 0:
+                break
+            end = text.find("{/each}", start)
+            if end < 0:
+                fail(f"#111: unclosed {{#each timeline}} in {p.relative_to(crate)}")
+            found.append(text[start:end])
+            i = end + len("{/each}")
+    if not found:
+        fail("#111: person timeline must {#each timeline} as chat rows")
+    return "\n".join(found)
+
+
+def _css_var(blob: str, names: tuple[str, ...]) -> str | None:
+    for name in names:
+        m = re.search(rf"{re.escape(name)}\s*:\s*([^;]+);", blob)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+def assert_chat_bubbles(crate: Path) -> None:
+    """#111: from_me → right bubble; else left. Caption, not a log dump."""
+    block = _timeline_block(crate)
+    blob = "\n".join(p.read_text() for p in _web_sources(crate))
+
+    if not _FROM_ME_LAYOUT.search(block):
+        fail(
+            "#111: from_me must choose a right/left bubble "
+            "(class or data-from-me), not a you/them log label"
+        )
+    # Utility classes must be on the timeline row. Colon tokens live in CSS.
+    # "Else left" may be default flow; do not require a left utility. Do forbid
+    # forcing the not-from_me branch to the right.
+    css_right = tuple(t for t in _ALIGN_RIGHT if ":" in t)
+    util_right = tuple(t for t in _ALIGN_RIGHT if ":" not in t)
+    util_left = tuple(t for t in _ALIGN_LEFT if ":" not in t)
+    me_right = any(t in block for t in util_right) or (
+        ("bubble-me" in block or "data-from-me" in block) and any(t in blob for t in css_right)
+    )
+    if not me_right:
+        fail("#111: from_me rows must sit on the right (bubble, not a log)")
+    tern = re.search(
+        r"row\.from_me\s*\?\s*['\"]([^'\"]*)['\"]\s*:\s*['\"]([^'\"]*)['\"]",
+        block,
+    )
+    if tern:
+        them_cls = tern.group(2)
+        if any(t in them_cls for t in util_right) and not any(t in them_cls for t in util_left):
+            fail("#111: rows that are not from_me must sit on the left")
+
+    if re.search(r"\.join\(\s*[\"'] · [\"']\s*\)", block):
+        fail("#111: date/platform must be a caption, not a dumped · field list")
+    if "caption" not in block.lower() and "<time" not in block.lower():
+        fail("#111: date/platform must be a caption (caption class or <time>), not a dump")
+    if "row.sent_at" not in block or "row.platform" not in block:
+        fail("#111: caption must still show date and platform")
+
+    pre = _PRE_WRAP.search(block)
+    if not pre:
+        fail("#111: timeline body must stay a whitespace-pre-wrap text node")
+    attrs, inner = pre.group(2), pre.group(3)
+    if re.search(r"\baria-hidden\b", attrs) or re.search(r"\bsr-only\b", attrs):
+        fail("#111: screen reader must still get the visible message text")
+    if "displayBody" not in inner and "body_text" not in inner:
+        fail("#111: screen reader must still get the message text")
+    if not (
+        "overflow-wrap" in blob
+        or "break-words" in block
+        or "break-all" in block
+        or "overflow-wrap" in block
+    ):
+        fail("#111: long tokens (URLs) must wrap inside the bubble")
+
+    me = _css_var(blob, _BUBBLE_ME_VARS)
+    them = _css_var(blob, _BUBBLE_THEM_VARS)
+    if not me or not them:
+        fail(
+            "#111: distinct bubble colors via CSS variables "
+            "(--bubble-me / --bubble-them or --color-bubble-*)"
+        )
+    if me == them:
+        fail("#111: --bubble-me and --bubble-them must be distinct colors")
+    if re.search(r"https?://", me) or re.search(r"https?://", them):
+        fail("#111: bubble colors must not load images from the network")
+    if not any(tok in blob for tok in _BUBBLE_ME_USE):
+        fail("#111: --bubble-me must be applied to the me bubble")
+    if not any(tok in blob for tok in _BUBBLE_THEM_USE):
+        fail("#111: --bubble-them must be applied to the them bubble")
+    if re.search(r"url\(\s*['\"]?https?://", blob, re.I):
+        fail("#111: no network images in the person timeline chrome")
 
 
 def main() -> None:
@@ -105,6 +263,7 @@ def main() -> None:
         fail("App.svelte must show a persistent cloud-path banner")
     if "UI7 will run doctor" in app:
         fail("placeholder UI7 CLI-only copy must be gone")
+    assert_chat_bubbles(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")

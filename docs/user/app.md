@@ -76,7 +76,11 @@ groups). The people list is **recent-first** by last D18 activity (you sent
 the message, or you share a DM / email thread). Each row shows that time and
 a one-line **plain-text** preview (the last message’s subject if it has one,
 otherwise a truncated body — never HTML). Contacts with no matching messages
-stay listed at the bottom. `/` still filters by name only. `j`/`k` move
+stay listed at the bottom. The person timeline is a **chat**, not a log:
+messages you sent sit on the right, the other person on the left. Date and
+platform sit under the bubble as a caption. Bodies stay visible plain-text
+nodes (`whitespace-pre-wrap`) so a screen reader still hears them — never
+HTML. Long URLs wrap inside the bubble; they do not widen the pane. `/` still filters by name only. `j`/`k` move
 messages. Merge by picking a name: select a person, **Merge…**, search the
 list (display name only — typing an id matches nobody), then confirm. Targets
 show the same last-activity preview as the sidebar so same-name cards differ.
