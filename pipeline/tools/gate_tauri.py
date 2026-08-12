@@ -26,6 +26,8 @@
 #156: boot screen — centered CSS spinner (pre-JS splash + Opening-last-archive),
 #     not a blank page with a corner Loading line; keep “Opening last archive”;
 #     light/dark; no network images / CDN / splash video / server progress %.
+#138: people `/` filter matches linked identity values (phone/email haystack on the
+#     loaded list), not only display_name. Still client-side; no country-code UI.
 """
 
 from __future__ import annotations
@@ -2854,6 +2856,111 @@ def assert_boot_spinner(crate: Path) -> None:
         )
 
 
+# #138 — people `/` filter: identity values on the loaded list, not display_name only.
+_PEOPLE_FILTER_IDENTITY_TOKENS = re.compile(
+    r"\b(?:"
+    r"identity_values|identityValues|"
+    r"filter_haystack|filterHaystack|"
+    r"value_normalized|valueNormalized"
+    r")\b"
+)
+# `identities` alone is too broad (person detail chrome). Require a person-field
+# access (p.identities / person.identities) or the tokens above.
+_PEOPLE_FILTER_IDENTITIES_FIELD = re.compile(
+    r"(?:\bp|person|row)\s*\??\.\s*identities\b"
+    r"|\bidentities\s*\?\?|\bidentities\s*\|\|"
+    r"|\b\.\.\.\s*(?:\bp|person)\s*\??\.\s*identities\b"
+)
+_PEOPLE_FILTER_SKIP_CALLS = frozenset(
+    {
+        "if",
+        "for",
+        "while",
+        "switch",
+        "catch",
+        "function",
+        "return",
+        "typeof",
+        "new",
+        "await",
+        "void",
+        "toLowerCase",
+        "toUpperCase",
+        "trim",
+        "includes",
+        "filter",
+        "map",
+        "join",
+        "concat",
+        "some",
+        "every",
+        "find",
+        "String",
+        "Boolean",
+        "Number",
+        "Array",
+        "Math",
+        "parseInt",
+        "console",
+    }
+)
+
+
+def _people_filter_window(src: str) -> str:
+    """Logic for the people sidebar filter (`filtered` derived + named helpers)."""
+    m = re.search(
+        r"(?:const|let)\s+filtered\s*=\s*\$derived\s*\(",
+        src,
+    )
+    if not m:
+        m = re.search(r"(?:const|let)\s+filtered\s*=", src)
+    if not m:
+        return ""
+    window = src[m.start() : m.start() + 1600]
+    # Expand small named helpers referenced from the filter expression.
+    for call in re.finditer(r"\b([A-Za-z_]\w*)\s*\(", window):
+        name = call.group(1)
+        if name in _PEOPLE_FILTER_SKIP_CALLS:
+            continue
+        body = _function_body(src, name)
+        if body and len(body) < 4000:
+            window += "\n" + body
+    return window
+
+
+def assert_people_filter_identity(crate: Path) -> None:
+    """#138: people `/` filter matches linked identity values, not only display_name.
+
+    Static: filter expression (or its helpers) must read identity material from
+    the loaded person row (identity_values / filter_haystack / p.identities).
+    Display-name-only matching is a fail. Still client-side on the list.
+    """
+    app = (crate / "web" / "App.svelte").read_text()
+    logic = _web_logic(crate)
+    src = _without_comments(app + "\n" + logic)
+
+    if "person-filter" not in src:
+        fail("#138: people sidebar must keep id=person-filter")
+    if not _PEOPLE_EACH.search(app):
+        fail("#138: people list must still {#each filtered …} as person rows")
+
+    window = _people_filter_window(src)
+    if not window.strip():
+        fail("#138: people sidebar `filtered` list derivation missing")
+
+    has_identity = bool(_PEOPLE_FILTER_IDENTITY_TOKENS.search(window)) or bool(
+        _PEOPLE_FILTER_IDENTITIES_FIELD.search(window)
+    )
+    if not has_identity:
+        fail(
+            "#138: people `/` filter must match linked identity values "
+            "(identity_values / filter_haystack / p.identities on the loaded list), "
+            "not only display_name"
+        )
+    if "display_name" not in window and "displayName" not in window:
+        fail("#138: people filter must still match display_name")
+
+
 def assert_people_sidebar_no_x_scroll(crate: Path) -> None:
     """#159: people sidebar must not pan sideways; vertical scroll only.
 
@@ -3052,6 +3159,7 @@ def main() -> None:
     assert_timeline_latest(crate)
     assert_conversation_switcher(crate)
     assert_people_sidebar_no_x_scroll(crate)
+    assert_people_filter_identity(crate)
     assert_boot_spinner(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
