@@ -28,6 +28,9 @@
 #     light/dark; no network images / CDN / splash video / server progress %.
 #138: people `/` filter matches linked identity values (phone/email haystack on the
 #     loaded list), not only display_name. Still client-side; no country-code UI.
+#115: timeline bubble platform chip (text badge, not CDN img) + toolbar filter
+#     All | WhatsApp | Gmail — only platforms present for this person; WhatsApp
+#     only hides Gmail (client filter on row.platform or core/API platform arg).
 """
 
 from __future__ import annotations
@@ -2928,6 +2931,327 @@ def _people_filter_window(src: str) -> str:
     return window
 
 
+# #115 — platform chip on timeline bubbles + All | platform toolbar filter.
+_PLATFORM_CHIP = re.compile(
+    r"("
+    r"data-platform-chip"
+    r"|platform-chip"
+    r"|platformChip"
+    r"|class:[A-Za-z0-9_-]*chip\b"
+    r"|class=[\"'][^\"']*\b(?:platform-)?chip\b"
+    r"|class=[\"'][^\"']*\bbadge\b"
+    r"|class:badge\b"
+    r"|class=\{[^}]*(?:chip|badge)[^}]*\}"
+    r")",
+    re.I,
+)
+_PLATFORM_CHIP_NEAR = re.compile(
+    r"("
+    r"data-platform-chip"
+    r"|platform-chip"
+    r"|platformChip"
+    r"|\bchip\b[^;{]{0,160}(?:\.platform\b|platformLabel|platform)"
+    r"|(?:\.platform\b|platformLabel|platform)[^;{]{0,160}\bchip\b"
+    r"|\bbadge\b[^;{]{0,160}(?:\.platform\b|platformLabel|platform)"
+    r"|(?:\.platform\b|platformLabel|platform)[^;{]{0,160}\bbadge\b"
+    r")",
+    re.I | re.S,
+)
+_REMOTE_PLATFORM_IMG = re.compile(
+    r"<img\b[^>]{0,400}https?://[^>]{0,200}"
+    r"(?:logo|brand|whatsapp|gmail|favicon|cdn)",
+    re.I | re.S,
+)
+_REMOTE_PLATFORM_URL = re.compile(
+    r"url\(\s*['\"]?https?://[^)]*(?:logo|brand|whatsapp|gmail|cdn)",
+    re.I,
+)
+_PLATFORM_FILTER_STATE = re.compile(
+    r"\b(?:"
+    r"selectedPlatform|platformFilter|timelinePlatform|tlPlatform|"
+    r"platformTab|activePlatform|pickedPlatform|filterPlatform|"
+    r"platformOnly|timelinePlatformFilter"
+    r")\b"
+)
+_PLATFORM_FILTER_HOOK = re.compile(
+    r"(data-platform-filter|id=[\"']platform-filter[\"']|"
+    r"data-timeline-platform|class=[\"'][^\"']*platform-filter)",
+    re.I,
+)
+_PLATFORM_TOOLBAR_ALL = re.compile(
+    r"("
+    r">\s*All\s*<"
+    r"|[\"']All[\"']"
+    r"|platformFilter\s*===\s*[\"']all[\"']"
+    r"|selectedPlatform\s*(?:===?|==)\s*(?:null|undefined|[\"']all[\"'])"
+    r")",
+    re.I,
+)
+_PRETTY_PLATFORM_MAP = re.compile(
+    r"("
+    r"[\"']whatsapp[\"']\s*[:=]\s*[\"']WhatsApp[\"']"
+    r"|[\"']gmail[\"']\s*[:=]\s*[\"']Gmail[\"']"
+    r"|case\s+[\"']whatsapp[\"']\s*:[^;]{0,40}WhatsApp"
+    r"|case\s+[\"']gmail[\"']\s*:[^;]{0,40}Gmail"
+    r"|platform\s*===\s*[\"']whatsapp[\"'][^?]{0,40}\?\s*[\"']WhatsApp[\"']"
+    r"|platform\s*===\s*[\"']gmail[\"'][^?]{0,40}\?\s*[\"']Gmail[\"']"
+    r")",
+    re.I,
+)
+# Client-side: keep row when All or row.platform matches the selection.
+_CLIENT_PLATFORM_FILTER = re.compile(
+    r"("
+    r"\.filter\s*\(\s*(?:\(?)(?:row|r|item|m|msg|t|tl)[^)]{0,80}"
+    r"\.platform\b"
+    r"|(?:row|r|item|m)\.platform\s*===?\s*(?:selectedPlatform|platformFilter|"
+    r"timelinePlatform|tlPlatform|activePlatform|pickedPlatform|filterPlatform|"
+    r"platformOnly|p|plat)\b"
+    r"|(?:selectedPlatform|platformFilter|timelinePlatform|tlPlatform|"
+    r"activePlatform|pickedPlatform|filterPlatform|platformOnly)"
+    r"\s*===?\s*(?:row|r|item|m)\.platform\b"
+    r"|(?:selectedPlatform|platformFilter|timelinePlatform|tlPlatform|"
+    r"activePlatform|filterPlatform)\s*(?:===?|==)\s*[\"']all[\"']"
+    r"[^|]{0,80}\|\|"
+    r")",
+    re.I | re.S,
+)
+# API / core: personTimeline({ … platform: … }) or person_timeline platform arg.
+_API_PLATFORM_FILTER = re.compile(
+    r"("
+    r"personTimeline\s*\(\s*\{[^}]{0,400}\bplatform\s*:"
+    r"|\bplatform\s*:\s*(?:selectedPlatform|platformFilter|timelinePlatform|"
+    r"tlPlatform|activePlatform|filterPlatform|null)"
+    r")",
+    re.I | re.S,
+)
+# Toolbar options come from this person's conversations / timeline platforms.
+_PLATFORM_OPTIONS_FROM_DATA = re.compile(
+    r"("
+    r"(?:conversations|convos|timeline|personConversations|conversationList)"
+    r"\s*(?:\?\.|\.)\s*(?:map|flatMap|reduce|forEach|filter)\s*\([^)]{0,120}"
+    r"\.platform\b"
+    r"|\.platform\b[^;]{0,80}(?:Set|unique|uniq|platformsFor|personPlatforms|"
+    r"availablePlatforms|timelinePlatforms|presentPlatforms)"
+    r"|(?:Set|unique|uniq|platformsFor|personPlatforms|availablePlatforms|"
+    r"timelinePlatforms|presentPlatforms|platformOptions)"
+    r"[^;]{0,160}\.platform\b"
+    r"|new\s+Set\s*\([^)]{0,200}\.platform\b"
+    r"|for\s*\(\s*(?:const|let)\s+\w+\s+of\s+"
+    r"(?:conversations|convos|timeline|personConversations)\b[^)]{0,80}\)"
+    r"[^;]{0,120}\.platform\b"
+    r"|(?:conversations|convos|timeline|personConversations)"
+    r"[^;]{0,200}\.platform\b[^;]{0,80}(?:add|push|Set)"
+    r")",
+    re.I | re.S,
+)
+# Hard-coded forever list of invented platforms (slack/discord/telegram/signal…)
+# used as the toolbar source without deriving from the person.
+_INVENTED_PLATFORM_LIST = re.compile(
+    r"\[\s*[\"'](?:whatsapp|gmail|contacts)[\"']\s*,\s*"
+    r"[\"'](?:whatsapp|gmail|contacts|telegram|signal|slack|discord|imessage|"
+    r"sms|messenger|instagram|twitter)[\"']"
+    r"[^\]]{0,200}\]",
+    re.I,
+)
+
+
+def assert_timeline_platform_chips(crate: Path) -> None:
+    """#115: platform chip on each bubble + All | platform toolbar for this person.
+
+    Acceptance: “WhatsApp only” hides Gmail for that person. Chip is text/badge,
+    not a remote CDN brand image. Toolbar offers All plus only platforms present
+    for this person (from conversations / timeline). Client filter on
+    row.platform is OK; API/core platform arg also OK when paging.
+    """
+    app = (crate / "web" / "App.svelte").read_text()
+    logic = _web_logic(crate)
+    api_src = (crate / "web" / "lib" / "api.ts").read_text()
+    whole = app + "\n" + logic
+    cleaned = _without_comments(whole)
+    block = _timeline_block(crate)
+    blob = "\n".join(p.read_text() for p in _web_sources(crate))
+    detail = _person_detail_markup(app)
+
+    # 1) Bubble/row shows platform as a chip/badge — not only bare caption text.
+    chip_in_row = bool(_PLATFORM_CHIP.search(block)) and (
+        "platform" in block or "platformLabel" in block or "PlatformChip" in block
+    )
+    if not chip_in_row:
+        chip_in_row = bool(_PLATFORM_CHIP_NEAR.search(block))
+    if not chip_in_row:
+        # Dedicated chip component used from the row (markup may live next door).
+        chip_component = bool(
+            re.search(
+                r"<(?:PlatformChip|platform-chip)\b|data-platform-chip",
+                block,
+                re.I,
+            )
+        ) or (
+            bool(re.search(r"data-platform-chip|PlatformChip|platform-chip", blob, re.I))
+            and bool(
+                re.search(
+                    r"<(?:PlatformChip|platform-chip)\b|data-platform-chip",
+                    block + "\n" + cleaned,
+                    re.I,
+                )
+            )
+        )
+        if not chip_component:
+            fail(
+                "#115: each timeline bubble/row must show platform as a chip "
+                "(text chip / badge / data-platform-chip), not only bare caption "
+                "text like {row.platform}"
+            )
+    if not re.search(r"\.platform\b|platformLabel|row\.platform", block + "\n" + cleaned):
+        fail("#115: chip must still come from the row/conversation platform field")
+
+    # 2) Chip is not a remote image / CDN brand logo.
+    timeline_chrome = block + "\n" + detail
+    if _REMOTE_PLATFORM_IMG.search(timeline_chrome) or _REMOTE_PLATFORM_IMG.search(blob):
+        fail("#115: platform chip must not be a remote <img> / CDN brand logo")
+    if _REMOTE_PLATFORM_URL.search(blob):
+        fail("#115: platform chip must not load brand logos via url(https://…)")
+    if re.search(
+        r"<img\b[^>]{0,200}(?:platform|whatsapp|gmail)[^>]{0,200}"
+        r"src\s*=\s*[\"']https?://",
+        blob,
+        re.I | re.S,
+    ):
+        fail("#115: platform chip must not be an http(s) image (text chip only)")
+
+    # Pretty labels (WhatsApp / Gmail) are OK; raw whatsapp/gmail also OK on chip.
+    has_pretty = bool(_PRETTY_WHATSAPP.search(cleaned) and _PRETTY_GMAIL.search(cleaned))
+    has_map = bool(_PRETTY_PLATFORM_MAP.search(cleaned))
+    if not (has_pretty or has_map or _RAW_WHATSAPP.search(block)):
+        # Still require some platform surface on the row.
+        if "row.platform" not in block and ".platform" not in block:
+            fail(
+                "#115: chip may use pretty labels (WhatsApp / Gmail) or raw "
+                "platform; must still bind the row platform"
+            )
+
+    # 3) Platform filter toolbar: All + platform options (not the conversation switcher alone).
+    has_filter_state = bool(_PLATFORM_FILTER_STATE.search(cleaned))
+    has_filter_hook = bool(_PLATFORM_FILTER_HOOK.search(blob))
+    # Toolbar chrome: All plus a WhatsApp/Gmail control outside pure bubble body.
+    toolbar_blob = detail if detail.strip() else app
+    # Exclude the message {#each} body so conversation switcher / caption is not enough.
+    toolbar_only = toolbar_blob
+    for m in _EACH_TIMELINE.finditer(toolbar_blob):
+        end = _matching_each_end(toolbar_blob, m.start())
+        if end > m.start():
+            toolbar_only = toolbar_only.replace(toolbar_blob[m.start() : end], "", 1)
+    has_toolbar_all = bool(_PLATFORM_TOOLBAR_ALL.search(toolbar_only)) or bool(
+        _PLATFORM_TOOLBAR_ALL.search(cleaned)
+    )
+    has_wa_ctrl = bool(
+        re.search(r">\s*WhatsApp\s*<|[\"']WhatsApp[\"']", toolbar_only)
+    ) or bool(re.search(r">\s*WhatsApp\s*<|[\"']WhatsApp[\"']", cleaned))
+    has_gm_ctrl = bool(
+        re.search(r">\s*Gmail\s*<|[\"']Gmail[\"']", toolbar_only)
+    ) or bool(re.search(r">\s*Gmail\s*<|[\"']Gmail[\"']", cleaned))
+    # Raw option values also count if pretty labels live only in a helper.
+    has_raw_opts = bool(
+        re.search(
+            r"(?:platformFilter|selectedPlatform|timelinePlatform|tlPlatform|"
+            r"activePlatform|filterPlatform|platformOnly)[^;]{0,200}"
+            r"[\"'](?:whatsapp|gmail)[\"']",
+            cleaned,
+            re.I | re.S,
+        )
+    )
+    if not (has_filter_state or has_filter_hook):
+        fail(
+            "#115: person timeline must have a platform filter toolbar state "
+            "(selectedPlatform / platformFilter / data-platform-filter) — "
+            "All | WhatsApp | Gmail (only platforms for this person)"
+        )
+    if not has_toolbar_all:
+        fail("#115: platform filter toolbar must offer All (default = every platform)")
+    if not (has_wa_ctrl or has_gm_ctrl or has_raw_opts or has_pretty):
+        fail(
+            "#115: platform filter toolbar must offer platform options "
+            "(WhatsApp / Gmail pretty labels, or raw whatsapp / gmail values)"
+        )
+
+    # Default selection is All (null / undefined / "all").
+    if not re.search(
+        r"(?:selectedPlatform|platformFilter|timelinePlatform|tlPlatform|"
+        r"activePlatform|pickedPlatform|filterPlatform|platformOnly|"
+        r"timelinePlatformFilter)"
+        r"\s*=\s*\$state\s*(?:<[^>]*>)?\s*\(\s*(?:null|undefined|[\"']all[\"'])",
+        cleaned,
+        re.I,
+    ) and not re.search(
+        r"(?:selectedPlatform|platformFilter|timelinePlatform|tlPlatform|"
+        r"activePlatform|filterPlatform|platformOnly)"
+        r"\s*=\s*(?:null|undefined|[\"']all[\"'])",
+        cleaned,
+        re.I,
+    ):
+        fail(
+            "#115: platform filter must default to All "
+            "(selected platform state starts null / undefined / \"all\")"
+        )
+
+    # 4) Filtering WhatsApp excludes other platforms (client row.platform or API arg).
+    client_ok = bool(_CLIENT_PLATFORM_FILTER.search(cleaned))
+    api_ok = bool(_API_PLATFORM_FILTER.search(cleaned))
+    # Also accept derived list filtered by platform before {#each}.
+    derived_ok = bool(
+        re.search(
+            r"(?:filteredTimeline|visibleTimeline|timelineRows|platformRows|"
+            r"shownTimeline|displayTimeline|tlRows)"
+            r"[^;]{0,300}\.platform\b"
+            r"|\.platform\b[^;]{0,200}"
+            r"(?:filteredTimeline|visibleTimeline|platformRows|displayTimeline)",
+            cleaned,
+            re.I | re.S,
+        )
+    )
+    if not (client_ok or api_ok or derived_ok):
+        fail(
+            "#115: “WhatsApp only” must hide other platforms for that person "
+            "(filter timeline rows by row.platform client-side, or pass platform "
+            "into personTimeline / the core query so Load older stays consistent)"
+        )
+
+    # If filter is pushed into the API, personTimeline args must accept platform.
+    if api_ok:
+        api_args = re.search(
+            r"personTimeline\s*:\s*\(\s*args\s*:\s*\{([^}]*)\}",
+            api_src,
+            re.S,
+        )
+        if not api_args or not re.search(r"\bplatform\b", api_args.group(1)):
+            fail(
+                "#115: personTimeline args must include optional platform when "
+                "the UI passes a platform filter into the timeline query"
+            )
+
+    # 5) Only platforms present for this person — not a hard-coded invented forever-list.
+    if not _PLATFORM_OPTIONS_FROM_DATA.search(cleaned):
+        fail(
+            "#115: platform toolbar options must come from platforms present for "
+            "this person (unique platform values from conversations / timeline), "
+            "not a hard-coded forever list of invented platforms"
+        )
+    # A static array that invents non-archive platforms as the sole option source.
+    for m in _INVENTED_PLATFORM_LIST.finditer(cleaned):
+        window = cleaned[max(0, m.start() - 80) : m.end() + 80]
+        if re.search(
+            r"platformFilter|selectedPlatform|platformOptions|toolbar|platforms\s*=",
+            window,
+            re.I,
+        ) and not _PLATFORM_OPTIONS_FROM_DATA.search(
+            cleaned[max(0, m.start() - 400) : m.end() + 400]
+        ):
+            fail(
+                "#115: do not invent toolbar platforms (slack/discord/…) — "
+                "only offer platforms that exist for this person"
+            )
+
+
 def assert_people_filter_identity(crate: Path) -> None:
     """#138: people `/` filter matches linked identity values, not only display_name.
 
@@ -3158,6 +3482,7 @@ def main() -> None:
     assert_day_separators(crate)
     assert_timeline_latest(crate)
     assert_conversation_switcher(crate)
+    assert_timeline_platform_chips(crate)
     assert_people_sidebar_no_x_scroll(crate)
     assert_people_filter_identity(crate)
     assert_boot_spinner(crate)

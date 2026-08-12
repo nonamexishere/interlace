@@ -85,6 +85,11 @@ body {
   padding-bottom: 0.25rem;
 }
 
+.platform-chip {
+  display: inline-block;
+  vertical-align: middle;
+}
+
 .bubble-me,
 .bubble-them {
   overflow-wrap: anywhere;
