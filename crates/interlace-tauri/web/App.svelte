@@ -316,7 +316,7 @@
   );
 
   /** Pretty platform labels for chips and the filter toolbar. */
-  function platformLabel(platform: string | null | undefined): string {
+  function platformLabel(platform: string | null | undefined) {
     const p = (platform ?? "").trim().toLowerCase();
     if (p === "whatsapp") return "WhatsApp";
     if (p === "gmail") return "Gmail";
