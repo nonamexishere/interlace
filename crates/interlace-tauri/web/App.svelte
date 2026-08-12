@@ -100,6 +100,46 @@
     return s.replace(/<attached:\s*[^>]+>/gi, "").trim();
   }
 
+  /** UTC calendar day key (`YYYY-MM-DD`) from RFC3339 `sent_at`. Empty if missing. */
+  function utcDay(iso: string | null | undefined): string {
+    if (!iso || iso.length < 10) return "";
+    return iso.slice(0, 10);
+  }
+
+  /** UTC day heading as day/month/year. Empty if `sent_at` is missing. */
+  function utcDayLabel(iso: string | null | undefined): string {
+    const key = utcDay(iso);
+    if (!key) return "";
+    const [y, m, d] = key.split("-");
+    if (!y || !m || !d) return "";
+    return `${d}/${m}/${y}`;
+  }
+
+  /** UTC hour:minute from RFC3339 `sent_at`. Empty if missing. */
+  function utcTime(iso: string | null | undefined): string {
+    if (!iso) return "";
+    const t = iso.indexOf("T");
+    if (t < 0 || iso.length < t + 6) return "";
+    return iso.slice(t + 1, t + 6);
+  }
+
+  const dayGroups = $derived.by(() => {
+    const groups: { key: string; label: string; rows: { row: TimelineRow; index: number }[] }[] =
+      [];
+    for (let i = 0; i < timeline.length; i++) {
+      const row = timeline[i];
+      const key = utcDay(row.sent_at);
+      const dayChanged = key !== utcDay(timeline[i - 1]?.sent_at);
+      const last = groups[groups.length - 1];
+      if (!last || dayChanged) {
+        groups.push({ key, label: key ? utcDayLabel(row.sent_at) : "", rows: [{ row, index: i }] });
+      } else {
+        last.rows.push({ row, index: i });
+      }
+    }
+    return groups;
+  });
+
   function ask(title: string, description: string, run: () => Promise<void>) {
     confirmTitle = title;
     confirmDesc = description;
@@ -491,7 +531,8 @@
         </ul>
         <Button variant="outline" size="sm" class="mt-4" onclick={openPicker}>Open other archive…</Button>
       </ScrollArea>
-      <ScrollArea class="min-w-0 p-4">
+      <div class="flex min-h-0 min-w-0 flex-col">
+        <div class="shrink-0 px-4 pt-4">
         <div class="mb-3 flex items-baseline justify-between gap-3">
           <h1 class="text-xl font-semibold tracking-tight">{personTitle}</h1>
           <div class="flex items-center gap-3">
@@ -516,6 +557,8 @@
             </li>
           {/each}
         </ul>
+        </div>
+        <ScrollArea class="min-h-0 min-w-0 flex-1 px-4">
         {#if tlLoading}
           <p class="text-sm text-muted-foreground">Loading timeline…</p>
         {:else if !selectedId}
@@ -530,26 +573,38 @@
           />
         {/if}
         <ol class="min-w-0 space-y-2">
-          {#each timeline as row, i}
-            <li class="flex min-w-0">
-              <button
-                type="button"
-                class="min-w-0 max-w-[min(36rem,85%)] rounded-2xl px-3 py-2 text-left {i === tlIndex
-                  ? 'ring-2 ring-ring'
-                  : ''}"
-                class:bubble-me={row.from_me}
-                class:bubble-them={!row.from_me}
-                class:ml-auto={row.from_me}
-                data-from-me={row.from_me}
-                onclick={() => (tlIndex = i)}
-              >
-                <p class="caption text-xs text-muted-foreground">
-                  <time>{row.sent_at || "no date"}</time>
-                  {row.platform}
-                </p>
-                <p class="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">{displayBody(row.body_text || row.subject || "")}</p>
-                <CasAttach items={row.attachments || []} />
-              </button>
+          {#each dayGroups as group}
+            <li class="day-group min-w-0">
+              {#if utcDay(group.rows[0]?.row.sent_at)}
+                <h3 class="day-heading mb-2 text-center text-xs font-medium text-muted-foreground">
+                  {group.label} UTC
+                </h3>
+              {/if}
+              <div class="space-y-2">
+                {#each group.rows as item}
+                  <div class="flex min-w-0">
+                    <button
+                      type="button"
+                      class="min-w-0 max-w-[94%] rounded-2xl px-3 py-2 text-left {item.index ===
+                      tlIndex
+                        ? 'ring-2 ring-ring'
+                        : ''}"
+                      class:bubble-me={item.row.from_me}
+                      class:bubble-them={!item.row.from_me}
+                      class:ml-auto={item.row.from_me}
+                      data-from-me={item.row.from_me}
+                      onclick={() => (tlIndex = item.index)}
+                    >
+                      <p class="caption text-xs text-muted-foreground">
+                        <time>{utcTime(item.row.sent_at)}</time>
+                        {item.row.platform}
+                      </p>
+                      <p class="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">{displayBody(item.row.body_text || item.row.subject || "")}</p>
+                      <CasAttach items={item.row.attachments || []} />
+                    </button>
+                  </div>
+                {/each}
+              </div>
             </li>
           {/each}
         </ol>
@@ -558,14 +613,15 @@
             >Load older</Button
           >
         {/if}
-        <p class="mt-4 text-xs text-muted-foreground">
-          Bodies are text only. <kbd class="rounded border border-border px-1">j</kbd>/<kbd
+        </ScrollArea>
+        <p class="shrink-0 px-4 pb-4 pt-2 text-xs text-muted-foreground">
+          Bodies are text only. Day headings are UTC. <kbd class="rounded border border-border px-1">j</kbd>/<kbd
             class="rounded border border-border px-1">k</kbd
           >
           move.
           <kbd class="rounded border border-border px-1">/</kbd> filters people.
         </p>
-      </ScrollArea>
+      </div>
     </div>
   {/if}
 </div>

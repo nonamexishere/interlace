@@ -2,6 +2,7 @@
 """UI0: unpublished tauri shell, macOS deny exception, CSP, no network entitlement.
 
 #111: person timeline must be chat bubbles (from_me right / else left), not a log.
+#112: UTC calendar-day headings (2024-03-15) when sent_at's day changes.
 """
 
 from __future__ import annotations
@@ -23,8 +24,8 @@ CSP = (
 
 # #111 — person timeline is a chat (me right / them left), not a metadata log.
 _FROM_ME_LAYOUT = re.compile(
-    r"(data-from-me\s*=\s*\{row\.from_me\}"
-    r"|class:[A-Za-z0-9_-]+\s*=\s*\{!?row\.from_me\}"
+    r"(data-from-me\s*=\s*\{(?:\w+\.)?row\.from_me\}"
+    r"|class:[A-Za-z0-9_-]+\s*=\s*\{!?(?:\w+\.)?row\.from_me\}"
     r"|class=\{[^}]*row\.from_me[^}]*\})",
 )
 _ALIGN_RIGHT = (
@@ -65,6 +66,60 @@ _PRE_WRAP = re.compile(
     re.S,
 )
 
+# #112 — day heading when the UTC calendar day of sent_at changes.
+_DAY_HEADING = re.compile(
+    r"(<h[2-4]\b"
+    r"|role\s*=\s*[\"']heading[\"']"
+    r"|day-heading"
+    r"|day-separator"
+    r"|day-sep\b"
+    r"|data-day-heading)",
+    re.I,
+)
+_PREV_DAY = re.compile(
+    r"("
+    r"timeline\s*\[\s*i\s*-\s*1\s*\]"
+    r"|prev(?:ious)?Day"
+    r"|lastDay"
+    r"|dayChanged"
+    r"|isNewDay"
+    r")",
+    re.I,
+)
+# RFC3339 UTC `2024-03-15T…Z` → calendar day is the `YYYY-MM-DD` prefix (or UTC getters).
+_ISO_DAY = re.compile(
+    r"("
+    r"\.slice\s*\(\s*0\s*,\s*10\s*\)"
+    r"|\.substring\s*\(\s*0\s*,\s*10\s*\)"
+    r"|toISOString\s*\(\s*\)\s*\.\s*slice\s*\(\s*0\s*,\s*10\s*\)"
+    r"|getUTCFullYear"
+    r")",
+)
+_LOCAL_DAY = re.compile(
+    r"("
+    r"toLocaleDateString"
+    r"|\.getFullYear\s*\("
+    r"|\.getMonth\s*\("
+    r"|\.getDate\s*\("
+    r")",
+)
+_YESTERDAY = re.compile(r"\byesterday\b", re.I)
+_TZ_PICKER = re.compile(
+    r"(<select\b[^>]{0,120}(timezone|timeZone|tz)\b"
+    r"|bind:value=\{[^}]*timeZone"
+    r"|name=[\"']timezone[\"'])",
+    re.I,
+)
+_HEADING_IF = re.compile(r"\{#if\s+([^}]+)\}")
+_SENT_AT_GUARD = re.compile(
+    r"("
+    r"sent_at\s*\?\.|"
+    r"sent_at\s*&&|"
+    r"!\s*(?:row\.)?sent_at|"
+    r"if\s*\(\s*!\s*(?:iso|day)\b"
+    r")",
+)
+
 
 def _web_sources(crate: Path) -> list[Path]:
     web = crate / "web"
@@ -73,6 +128,16 @@ def _web_sources(crate: Path) -> list[Path]:
         for p in sorted(web.rglob("*"))
         if p.suffix in {".svelte", ".css"} and "node_modules" not in p.parts
     ]
+
+
+def _web_logic(crate: Path) -> str:
+    """Svelte + TS sources (helpers may live next to App.svelte)."""
+    web = crate / "web"
+    parts: list[str] = []
+    for p in sorted(web.rglob("*")):
+        if p.suffix in {".svelte", ".ts"} and "node_modules" not in p.parts:
+            parts.append(p.read_text())
+    return "\n".join(parts)
 
 
 def _timeline_block(crate: Path) -> str:
@@ -85,6 +150,8 @@ def _timeline_block(crate: Path) -> str:
         while True:
             start = text.find("{#each timeline", i)
             if start < 0:
+                start = text.find("{#each dayGroups", i)
+            if start < 0:
                 break
             end = text.find("{/each}", start)
             if end < 0:
@@ -92,7 +159,7 @@ def _timeline_block(crate: Path) -> str:
             found.append(text[start:end])
             i = end + len("{/each}")
     if not found:
-        fail("#111: person timeline must {#each timeline} as chat rows")
+        fail("#111: person timeline must {#each timeline} or {#each dayGroups} as chat rows")
     return "\n".join(found)
 
 
@@ -138,8 +205,16 @@ def assert_chat_bubbles(crate: Path) -> None:
         fail("#111: date/platform must be a caption, not a dumped · field list")
     if "caption" not in block.lower() and "<time" not in block.lower():
         fail("#111: date/platform must be a caption (caption class or <time>), not a dump")
-    if "row.sent_at" not in block or "row.platform" not in block:
-        fail("#111: caption must still show date and platform")
+    if "row.platform" not in block:
+        fail("#111: caption must still show platform")
+    if not re.search(
+        r"(utcTime|hh:?mm|slice\s*\(\s*11\s*,\s*16\s*\))",
+        block + "\n" + blob,
+        re.I,
+    ):
+        fail("#111: caption must show hour:minute, not the full ISO date again")
+    if re.search(r"\{row\.sent_at\s*\|\|", block):
+        fail("#111: do not dump the full sent_at ISO string in the bubble caption")
 
     pre = _PRE_WRAP.search(block)
     if not pre:
@@ -174,6 +249,110 @@ def assert_chat_bubbles(crate: Path) -> None:
         fail("#111: --bubble-them must be applied to the them bubble")
     if re.search(r"url\(\s*['\"]?https?://", blob, re.I):
         fail("#111: no network images in the person timeline chrome")
+
+
+def assert_day_separators(crate: Path) -> None:
+    """#112: UTC day heading (DD/MM/YYYY) when sent_at's day changes; sticky."""
+    block = _timeline_block(crate)
+    app = (crate / "web" / "App.svelte").read_text()
+    logic = _web_logic(crate)
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+
+    if not _DAY_HEADING.search(block):
+        fail(
+            "#112: person timeline must insert a day heading "
+            "(h2–h4, role=heading, or day-heading) when the UTC calendar day changes"
+        )
+    # Heading is a timeline separator, not a label inside the #111 bubble.
+    outside_bubbles = block
+    for btn in re.findall(r"<button\b.*?</button>", block, re.S):
+        outside_bubbles = outside_bubbles.replace(btn, "", 1)
+    if not _DAY_HEADING.search(outside_bubbles):
+        fail(
+            "#112: day heading must sit on the timeline when the UTC day changes, "
+            "not inside a chat bubble"
+        )
+
+    if_conds = _HEADING_IF.findall(block)
+    if not if_conds:
+        fail(
+            "#112: day heading must be conditional "
+            "(when sent_at's UTC calendar day changes; no heading if sent_at is missing)"
+        )
+    if not any(re.search(r"sent_at|utcDay|dayKey|calendarDay|isoDay|\bday\b", c, re.I) for c in if_conds):
+        fail(
+            "#112: day heading {#if} must key off the UTC calendar day of sent_at "
+            "(do not invent a heading for a row with no date)"
+        )
+
+    if not _PREV_DAY.search(block) and not _PREV_DAY.search(app):
+        fail(
+            "#112: must compare the current row's UTC calendar day to the previous "
+            "row (timeline[i - 1]) so a multi-year DM gets day/month/year separators"
+        )
+
+    if not _ISO_DAY.search(app) and not _ISO_DAY.search(block) and not _ISO_DAY.search(logic):
+        fail(
+            "#112: compare days on the UTC ISO date prefix of sent_at "
+            "(slice(0, 10) or UTC getters / toISOString)"
+        )
+    if not re.search(
+        r"("
+        r"utcDayLabel"
+        r"|split\s*\(\s*[\"']-[\"']\s*\)"
+        r"|/\$\{"
+        r"|day\s*/\s*month"
+        r"|padStart"
+        r")",
+        app + "\n" + logic,
+        re.I,
+    ):
+        fail("#112: day headings must display day/month/year (15/03/2024), not YYYY-MM-DD")
+
+    chrome = app + "\n" + block
+    if _LOCAL_DAY.search(chrome) and not re.search(r"getUTC(?:FullYear|Month|Date)", chrome):
+        fail("#112: days are UTC; do not format archive-local or the host timezone")
+
+    if _YESTERDAY.search(block) or _YESTERDAY.search(app):
+        fail("#112: day headings must be day/month/year, not relative “yesterday”")
+
+    if _TZ_PICKER.search(app) or _TZ_PICKER.search(block):
+        fail("#112: no timezone picker")
+
+    # Caption may use `row.sent_at || "no date"` — that is not a day heading.
+    if re.search(r"<h[2-4]\b[^>]*>[^<{]*no date", block, re.I):
+        fail("#112: do not invent a day heading for a row with no date")
+
+    if not _SENT_AT_GUARD.search(block) and not _SENT_AT_GUARD.search(app):
+        fail(
+            "#112: missing sent_at must not crash; guard before reading a calendar day "
+            "(do not invent a heading for a row with no date)"
+        )
+    day_src = app + "\n" + block
+    if re.search(r"(?:row\.)?sent_at\.slice\s*\(", day_src) and not re.search(
+        r"sent_at\s*\?\.", day_src
+    ):
+        if not re.search(r"if\s*\(\s*!\s*(?:row\.)?sent_at", day_src):
+            fail("#112: missing sent_at must not crash; guard before slicing")
+
+    markup = app
+    script_end = app.rfind("</script>")
+    if script_end >= 0:
+        markup = app[script_end:]
+    if "UTC" not in markup and "UTC" not in block:
+        fail("#112: say UTC in the UI copy (timeline days are UTC)")
+
+    if "UTC" not in dtxt:
+        fail("#112: docs/user/app.md must say timeline days are UTC")
+    if not re.search(r"(day heading|day separator)", dtxt, re.I):
+        fail("#112: docs/user/app.md must describe UTC day headings")
+    if not re.search(r"(day/month/year|DD/MM/YYYY|15/03/2024)", dtxt, re.I):
+        fail("#112: docs/user/app.md must say day headings are day/month/year")
+
+    sticky_src = "\n".join(p.read_text() for p in _web_sources(crate))
+    if not re.search(r"(position\s*:\s*sticky|\bsticky\b)", sticky_src, re.I):
+        fail("#112: day heading must stick to the top of the message list while scrolling")
 
 
 def main() -> None:
@@ -264,6 +443,7 @@ def main() -> None:
     if "UI7 will run doctor" in app:
         fail("placeholder UI7 CLI-only copy must be gone")
     assert_chat_bubbles(crate)
+    assert_day_separators(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
