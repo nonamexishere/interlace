@@ -126,6 +126,7 @@ Treat counts as approximate; never paste real names or message text here.
 | #117 | Gmail rows: subject title + fold quoted tails |
 | #118 | In-window photo lightbox (local CAS) |
 | #119 | Voice-note player chrome (local CAS; play/pause + time) |
+| #120 | Virtualize person timeline (visible + overscan rows only) |
 | #127 / PR #146 | Merge by picking a person (no raw ids) |
 | #147 / PR #148 | Exact folded Contacts+WA names → review, never auto-merge |
 | #149 / PR #150 | Review card: both sides’ samples / counts |
@@ -145,7 +146,6 @@ not need the full three-role loop unless behavior is load-bearing.
 
 | # | Note |
 | --- | --- |
-| **#120** | Virtualize person timeline (10k+) |
 | **#121**–**#126** | Search: platform select, kind, person pick, jump-to-hit, has:media, safe highlight |
 | **#128** | Review card shows both sides’ identifiers (not only names) |
 | **#129**–**#136** | Window title, macOS menu, en+tr chrome, keyboard map, a11y, drag-drop, copy/reveal, defer doctor CAS |
@@ -164,10 +164,9 @@ Full board: issue **#108** and milestone [Phase 2.1 product UI](https://github.c
 
 ## Recommended next steps
 
-1. **#120** virtualize person timeline (10k+).
-2. Continue **#108** board: search (#121–#126), then app chrome (#128–#136).
-3. Optional hygiene PR when idle: rewrite **#52** “now” table; decide **#84**.
-4. Do **not** start 1.1 / P3 / P4. Do **not** cut `app-v*` without asking.
+1. Next coding **#121** (search platform select) — continue **#108** search board (#121–#126), then app chrome (#128–#136).
+2. Optional hygiene PR when idle: rewrite **#52** “now” table; decide **#84**.
+3. Do **not** start 1.1 / P3 / P4. Do **not** cut `app-v*` without asking.
 
 ## Commands (copy-paste)
 
@@ -237,7 +236,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 
 > Read `docs/hacking/handoff.md` and `docs/hacking/pipeline.md`. Sequence
 > test-author → impl → reviewer when load-bearing. Do not spawn agents from a
-> child. Product now is Phase 2.1 (#108): next coding **#120** (virtualize timeline)
+> child. Product now is Phase 2.1 (#108): next coding **#121** (search platform select)
 > then remaining board. Do not start 1.1 / P3 / P4. Do not dump chat bodies.
 > Ask before crates.io, `v*`, or `app-v*` tags. After merges, update this handoff
 > in the same session.
