@@ -32,6 +32,8 @@
   let includeGroups = $state(false);
   let selectedConversationId = $state<number | null>(null);
   let conversations = $state<PersonConversation[]>([]);
+  /** Timeline platform toolbar: "all" or a platform value present for this person. */
+  let platformFilter = $state<string>("all");
   let showPersonChrome = $state(false);
   let mergeOpen = $state(false);
   let mergeQuery = $state("");
@@ -133,18 +135,69 @@
     return iso.slice(t + 1, t + 6);
   }
 
+  /** Platforms present for this person (conversations + loaded timeline). */
+  const availablePlatforms = $derived.by(() => {
+    const set = new Set<string>();
+    for (const c of conversations) {
+      const p = (c.platform ?? "").trim();
+      if (p) set.add(p);
+    }
+    for (const row of timeline) {
+      const p = (row.platform ?? "").trim();
+      if (p) set.add(p);
+    }
+    return [...set].sort();
+  });
+
+  /** Client-side platform filter for the loaded timeline page. */
+  const filteredTimeline = $derived(
+    platformFilter === "all"
+      ? timeline.map((row, index) => ({ row, index }))
+      : timeline
+          .map((row, index) => ({ row, index }))
+          .filter((item) => item.row.platform === platformFilter),
+  );
+
+  /** Original `timeline` indices currently shown (j/k and highlight use these). */
+  const visibleTlIndices = $derived(filteredTimeline.map((item) => item.index));
+
+  /** Nearest visible index to `from` (later wins ties). */
+  function nearestVisibleTlIndex(from: number, visible: number[]): number {
+    if (!visible.length) return from;
+    let best = visible[0];
+    let bestDist = Math.abs(visible[0] - from);
+    for (let i = 1; i < visible.length; i++) {
+      const idx = visible[i];
+      const d = Math.abs(idx - from);
+      if (d < bestDist || (d === bestDist && idx > best)) {
+        best = idx;
+        bestDist = d;
+      }
+    }
+    return best;
+  }
+
+  /** Keep selection ring on a row that is actually rendered. */
+  $effect(() => {
+    const visible = visibleTlIndices;
+    if (!visible.length) return;
+    if (!visible.includes(tlIndex)) {
+      tlIndex = nearestVisibleTlIndex(tlIndex, visible);
+    }
+  });
+
   const dayGroups = $derived.by(() => {
     const groups: { key: string; label: string; rows: { row: TimelineRow; index: number }[] }[] =
       [];
-    for (let i = 0; i < timeline.length; i++) {
-      const row = timeline[i];
+    for (let i = 0; i < filteredTimeline.length; i++) {
+      const { row, index } = filteredTimeline[i];
       const key = utcDay(row.sent_at);
-      const dayChanged = key !== utcDay(timeline[i - 1]?.sent_at);
+      const dayChanged = key !== utcDay(filteredTimeline[i - 1]?.row.sent_at);
       const last = groups[groups.length - 1];
       if (!last || dayChanged) {
-        groups.push({ key, label: key ? utcDayLabel(row.sent_at) : "", rows: [{ row, index: i }] });
+        groups.push({ key, label: key ? utcDayLabel(row.sent_at) : "", rows: [{ row, index }] });
       } else {
-        last.rows.push({ row, index: i });
+        last.rows.push({ row, index });
       }
     }
     return groups;
@@ -262,18 +315,23 @@
     conversations.find((c) => c.id === selectedConversationId),
   );
 
+  /** Pretty platform labels for chips and the filter toolbar. */
+  function platformLabel(platform: string | null | undefined): string {
+    const p = (platform ?? "").trim().toLowerCase();
+    if (p === "whatsapp") return "WhatsApp";
+    if (p === "gmail") return "Gmail";
+    if (p === "contacts") return "Contacts";
+    if (!p) return "";
+    return p.charAt(0).toUpperCase() + p.slice(1);
+  }
+
   /** Empty / person-name titles → WhatsApp, Gmail, …; keep group names and subjects. */
   function conversationLabel(title: string | null | undefined, platform: string | null | undefined) {
     if (
       !(title ?? "").trim() ||
       (title ?? "").trim().toLowerCase() === personTitle.trim().toLowerCase()
     ) {
-      const p = (platform ?? "").trim().toLowerCase();
-      if (p === "whatsapp") return "WhatsApp";
-      if (p === "gmail") return "Gmail";
-      if (p === "contacts") return "Contacts";
-      if (!p) return "";
-      return p.charAt(0).toUpperCase() + p.slice(1);
+      return platformLabel(platform);
     }
     return title;
   }
@@ -286,6 +344,7 @@
 
     if (!append && id !== selectedId) {
       showPersonChrome = false;
+      platformFilter = "all";
     }
     selectedId = id;
     if (!append && !keepConversation) {
@@ -424,13 +483,24 @@
       document.getElementById("person-filter")?.focus();
       return;
     }
-    if (!timeline.length) return;
+    // Walk only rows currently shown (platform filter may hide some).
+    const visible = visibleTlIndices;
+    if (!visible.length) return;
+    let pos = visible.indexOf(tlIndex);
+    if (pos < 0) {
+      tlIndex = nearestVisibleTlIndex(tlIndex, visible);
+      pos = visible.indexOf(tlIndex);
+    }
     if (e.key === "j" || e.key === "ArrowDown") {
-      tlIndex = Math.min(timeline.length - 1, tlIndex + 1);
+      if (pos >= 0 && pos < visible.length - 1) {
+        tlIndex = visible[pos + 1];
+      }
       e.preventDefault();
     }
     if (e.key === "k" || e.key === "ArrowUp") {
-      tlIndex = Math.max(0, tlIndex - 1);
+      if (pos > 0) {
+        tlIndex = visible[pos - 1];
+      }
       e.preventDefault();
     }
   }
@@ -722,6 +792,36 @@
             </details>
           {/if}
         </div>
+        {#if selectedId && availablePlatforms.length > 0}
+          <div
+            data-platform-filter
+            class="platform-filter mb-3 flex flex-wrap items-center gap-1.5"
+            role="toolbar"
+            aria-label="Filter by platform"
+          >
+            <button
+              type="button"
+              class="rounded-full border border-border px-2.5 py-0.5 text-xs {platformFilter ===
+              'all'
+                ? 'bg-accent font-medium'
+                : 'text-muted-foreground hover:bg-accent/60'}"
+              onclick={() => (platformFilter = "all")}
+            >
+              All
+            </button>
+            {#each availablePlatforms as p}
+              <button
+                type="button"
+                class="rounded-full border border-border px-2.5 py-0.5 text-xs {platformFilter === p
+                  ? 'bg-accent font-medium'
+                  : 'text-muted-foreground hover:bg-accent/60'}"
+                onclick={() => (platformFilter = p)}
+              >
+                {platformLabel(p)}
+              </button>
+            {/each}
+          </div>
+        {/if}
         {#if showPersonChrome}
           <div class="mb-3 flex items-center gap-3">
             <Button variant="outline" size="sm" disabled={!personById(selectedId)} onclick={openMerge}
@@ -793,9 +893,13 @@
                       data-from-me={item.row.from_me}
                       onclick={() => (tlIndex = item.index)}
                     >
-                      <p class="caption text-xs text-muted-foreground">
+                      <p class="caption flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         <time>{utcTime(item.row.sent_at)}</time>
-                        {item.row.platform}
+                        <span
+                          class="platform-chip badge rounded-full border border-border/80 bg-background/60 px-1.5 py-px text-[0.65rem] font-medium leading-none text-muted-foreground"
+                          data-platform-chip
+                          >{platformLabel(item.row.platform)}</span
+                        >
                       </p>
                       <p class="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">{displayBody(item.row.body_text || item.row.subject || "")}</p>
                       <CasAttach items={item.row.attachments || []} />

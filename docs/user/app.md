@@ -81,12 +81,15 @@ stay listed at the bottom. After you open a person, a **compact conversation swi
 when the title is empty or the person’s name; otherwise the group name or
 mail subject; platform and last activity). **All** is the default (the merged D18 stream). Picking a
 conversation filters the timeline to that chat. Groups still need **include
-groups** to appear in the conversation list and in All. **Identity chrome**
+groups** to appear in the conversation list and in All. A **platform filter**
+toolbar (All | WhatsApp | Gmail | …) lists only sources present for that
+person; **All** is the default and switching people resets it. Each bubble
+shows a small text **platform chip** (not a brand logo). **Identity chrome**
 (Merge, include groups, unlink) is hidden until you click the person name at
 the top of the conversation. The person timeline is a **chat**, not a log:
 messages you sent sit on the right, the other person on the left. Each
-bubble caption is **hour:minute** (UTC) and platform — not the calendar
-date again. Opening a person shows the **latest messages** (the loading line
+bubble caption is **hour:minute** (UTC) plus the platform chip — not the
+calendar date again. Opening a person shows the **latest messages** (the loading line
 clears first, then the list waits for wrap and the pane is pinned
 to the bottom while heights settle, so the newest bubble is fully
 visible above the text-only footer even on a narrow pane or a long
