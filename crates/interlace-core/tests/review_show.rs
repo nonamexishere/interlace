@@ -563,8 +563,7 @@ fn assert_panel_identifiers(panel: &serde_json::Value, label: &str) {
 
 fn panel_has_ident(panel: &serde_json::Value, kind: &str, value_normalized: &str) -> bool {
     identifiers_of(panel).iter().any(|e| {
-        e["kind"].as_str() == Some(kind)
-            && e["value_normalized"].as_str() == Some(value_normalized)
+        e["kind"].as_str() == Some(kind) && e["value_normalized"].as_str() == Some(value_normalized)
     })
 }
 
@@ -850,8 +849,7 @@ fn review_show_panels_include_identifiers() {
         "evidence list must stay: {shown}"
     );
     assert!(
-        shown["review"].get("score").is_some()
-            || shown["review"].get("suggested_score").is_some(),
+        shown["review"].get("score").is_some() || shown["review"].get("suggested_score").is_some(),
         "score must stay on the review card: {shown}"
     );
 
