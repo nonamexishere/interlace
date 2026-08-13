@@ -1,7 +1,9 @@
 //! FTS5 search + person timeline (D17, D18). Dual Turkish/ASCII fold.
 
 use crate::db::Archive;
-use crate::model::{ConversationKind, CoreError, Platform, SearchHit, SearchQuery};
+use crate::model::{
+    AttachmentFilter, ConversationKind, CoreError, Platform, SearchHit, SearchQuery,
+};
 
 const DEFAULT_LIMIT: u32 = 50;
 const MAX_LIMIT: u32 = 200;
@@ -128,6 +130,25 @@ pub fn search(archive: &Archive, q: &SearchQuery) -> Result<Vec<SearchHit>, Core
         }
         None => None,
     };
+    // attachment_filter: message has ≥1 matching attachments row.
+    match q.attachment_filter {
+        Some(AttachmentFilter::HasFile) => {
+            sql.push_str(
+                " AND EXISTS (SELECT 1 FROM attachments a WHERE a.message_id = m.id AND a.cas_hash IS NOT NULL)",
+            );
+        }
+        Some(AttachmentFilter::Omitted) => {
+            sql.push_str(
+                " AND EXISTS (SELECT 1 FROM attachments a WHERE a.message_id = m.id AND a.omitted != 0)",
+            );
+        }
+        Some(AttachmentFilter::Missing) => {
+            sql.push_str(
+                " AND EXISTS (SELECT 1 FROM attachments a WHERE a.message_id = m.id AND a.missing != 0)",
+            );
+        }
+        None => {}
+    }
     if q.person_id.is_some() {
         sql.push_str(
             " AND (
@@ -357,6 +378,7 @@ impl Default for SearchQuery {
             platform: None,
             conversation_id: None,
             conversation_kind: None,
+            attachment_filter: None,
             include_groups: false,
             limit: DEFAULT_LIMIT,
         }

@@ -151,7 +151,7 @@ not need the full three-role loop unless behavior is load-bearing.
 
 | # | Note |
 | --- | --- |
-| **#125**–**#126** | Search: has:media, safe highlight (#124 jump-to-hit done on `feat/ui-search-jump-to-message`) |
+| **#125**–**#126** | Search: attachment filter on `feat/search-attachment-filter` (#125), then safe highlight (#126); #124 jump-to-hit done |
 | **#128** | Review card shows both sides’ identifiers (not only names) |
 | **#129**–**#136** | Window title, macOS menu, en+tr chrome, keyboard map, a11y, drag-drop, copy/reveal, defer doctor CAS |
 
@@ -169,7 +169,7 @@ Full board: issue **#108** and milestone [Phase 2.1 product UI](https://github.c
 
 ## Recommended next steps
 
-1. Next coding **#125** (search has:media) — continue **#108** search board (#125–#126), then app chrome (#128–#136).
+1. Next coding after **#125** merge: **#126** (safe highlight) — continue **#108** search board, then app chrome (#128–#136).
 2. Optional hygiene PR when idle: rewrite **#52** “now” table; decide **#84**.
 3. Do **not** start 1.1 / P3 / P4. Do **not** cut `app-v*` without asking.
 
@@ -241,7 +241,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 
 > Read `docs/hacking/handoff.md` and `docs/hacking/pipeline.md`. Sequence
 > test-author → impl → reviewer when load-bearing. Do not spawn agents from a
-> child. Product now is Phase 2.1 (#108): next coding **#125** (search has:media)
-> then remaining board. Do not start 1.1 / P3 / P4. Do not dump chat bodies.
+> child. Product now is Phase 2.1 (#108): next coding after **#125** is **#126**
+> (safe highlight) then remaining board. Do not start 1.1 / P3 / P4. Do not dump chat bodies.
 > Ask before crates.io, `v*`, or `app-v*` tags. After merges, update this handoff
 > in the same session.

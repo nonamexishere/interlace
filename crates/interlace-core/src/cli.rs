@@ -16,8 +16,8 @@ use crate::import::ImporterRegistry;
 use crate::session::{init_owner_archive, read_last_path, write_last_path};
 use crate::{
     person_list, person_merge, person_timeline, person_undo, person_unlink, review_resolve,
-    review_show, search, ConversationKind, CoreError, ImportOpts, ImportStats, PersonMergeOpts,
-    Platform, SearchQuery, SourceKind,
+    review_show, search, AttachmentFilter, ConversationKind, CoreError, ImportOpts, ImportStats,
+    PersonMergeOpts, Platform, SearchQuery, SourceKind,
 };
 
 /// Local-first archive that unifies conversations across platforms.
@@ -83,6 +83,9 @@ enum Commands {
         /// Conversation kind: dm | group | email_thread (empty = any)
         #[arg(long = "kind", value_enum)]
         kind: Option<KindArg>,
+        /// Attachment presence: has_file | omitted | missing (empty = any)
+        #[arg(long = "attachment", value_enum)]
+        attachment: Option<AttachmentArg>,
         #[arg(long = "include-groups")]
         include_groups: bool,
         #[arg(long, default_value_t = 50)]
@@ -221,6 +224,24 @@ impl From<KindArg> for ConversationKind {
     }
 }
 
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum AttachmentArg {
+    #[value(name = "has_file")]
+    HasFile,
+    Omitted,
+    Missing,
+}
+
+impl From<AttachmentArg> for AttachmentFilter {
+    fn from(a: AttachmentArg) -> Self {
+        match a {
+            AttachmentArg::HasFile => AttachmentFilter::HasFile,
+            AttachmentArg::Omitted => AttachmentFilter::Omitted,
+            AttachmentArg::Missing => AttachmentFilter::Missing,
+        }
+    }
+}
+
 /// Run the CLI. Both bins must stay identical (no stderr nag).
 pub fn run() -> ExitCode {
     match Cli::try_parse() {
@@ -331,6 +352,7 @@ fn dispatch(cli: Cli) -> Result<(), CliError> {
             to,
             platform,
             kind,
+            attachment,
             include_groups,
             limit,
         } => cmd_search(
@@ -343,6 +365,7 @@ fn dispatch(cli: Cli) -> Result<(), CliError> {
             to,
             platform,
             kind,
+            attachment,
             include_groups,
             limit,
         ),
@@ -518,6 +541,7 @@ fn cmd_search(
     to: Option<String>,
     platform: Option<PlatArg>,
     kind: Option<KindArg>,
+    attachment: Option<AttachmentArg>,
     include_groups: bool,
     limit: u32,
 ) -> Result<(), CliError> {
@@ -531,6 +555,7 @@ fn cmd_search(
         platform: platform.map(Into::into),
         conversation_id: None,
         conversation_kind: kind.map(Into::into),
+        attachment_filter: attachment.map(Into::into),
         include_groups,
         limit,
     };

@@ -137,10 +137,14 @@ core tokens (`whatsapp` / `gmail` / `contacts`). Empty means any platform.
 **Kind** is another closed select — **Any** (default), **DM**, **Group**,
 **Email thread** (`dm` / `group` / `email_thread`). Choosing DM never returns
 group hits; Group still needs **include groups** ticked. CLI:
-`interlace search --kind dm|group|email_thread`. **Review** (accept/reject
-name-only pairs), **Import** (ZIP/mbox/vcf/Takeout via the folder picker;
-progress in-window), **Doctor** (integrity / rebuild FTS / GC CAS with a confirm
-dialog — same as the CLI, no extra window).
+`interlace search --kind dm|group|email_thread`. **Attachment** is a closed
+select — **Any** (default), **Has file**, **Omitted**, **Missing**
+(`has_file` / `omitted` / `missing`). Has file keeps only messages with a
+stored CAS blob; Omitted / Missing match the corresponding attachment flags.
+CLI: `interlace search --attachment has_file|omitted|missing`. **Review**
+(accept/reject name-only pairs), **Import** (ZIP/mbox/vcf/Takeout via the
+folder picker; progress in-window), **Doctor** (integrity / rebuild FTS / GC
+CAS with a confirm dialog — same as the CLI, no extra window).
 
 Empty lists, loading, lock conflicts, and doctor findings are shown as copy
 in the window (not only in the terminal).

@@ -32,9 +32,23 @@ Display text always comes from `messages.body_text`, never from the folded
 | Flag | Column |
 | --- | --- |
 | `--from` / `--to` | `search_doc.sent_at` (RFC3339) |
-| `--platform` | `whatsapp` / `gmail` |
+| `--platform` | `whatsapp` / `gmail` / `contacts` |
+| `--kind` | `dm` / `group` / `email_thread` (group still needs `--include-groups`) |
+| `--attachment` | `has_file` / `omitted` / `missing` (message has ≥1 matching attachment row) |
 | `--conversation` | `conversation_id` |
 | `--limit` | default 50, max 200 |
+
+### Attachment presence
+
+Closed filter (UI select or CLI `--attachment`), not free-text FTS tokens and
+not MIME-type taxonomy:
+
+| Value | SQL (message has ≥1 row) |
+| --- | --- |
+| *(empty / any)* | no attachment predicate |
+| `has_file` | `attachments.cas_hash IS NOT NULL` (stored CAS blob) |
+| `omitted` | `attachments.omitted != 0` |
+| `missing` | `attachments.missing != 0` |
 
 ## `--person` and `--include-groups` (D18)
 
