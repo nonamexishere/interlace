@@ -127,9 +127,11 @@ filter (Clear / empty = no person filter). You can search “messages with Ada�
 without knowing her numeric id (single person only; no multi-person OR). After
 hits load, **j**/**k** or arrow keys move the highlight; **Enter** or click
 opens a hit that has a linked person on the **People** timeline at that message
-(scroll + highlight once). Group hits turn **include groups** on when needed so
-the row can appear. A hit with no `person_id` stays on Search and expands the
-body as before. Platform is a closed **select** — **Any** (default, empty value),
+(scroll + highlight once; seeks near the hit’s `sent_at` when present). If the
+message cannot be placed after a bounded load, the window shows an error instead
+of highlighting an unrelated row. Group hits turn **include groups** on when
+needed so the row can appear. A hit with no `person_id` stays on Search and
+expands the body as before. Platform is a closed **select** — **Any** (default, empty value),
 **WhatsApp**, **Gmail**, and **Contacts** — not a free-text box; values are the
 core tokens (`whatsapp` / `gmail` / `contacts`). Empty means any platform.
 **Kind** is another closed select — **Any** (default), **DM**, **Group**,

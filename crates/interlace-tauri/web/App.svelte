@@ -287,6 +287,8 @@
   /** Keep selection ring on a row that is actually rendered. */
   $effect(() => {
     const visible = visibleTlIndices;
+    // Jump miss sets tlIndex < 0 (no ring); do not claim a visible row.
+    if (tlIndex < 0) return;
     if (!visible.length) return;
     if (!visible.includes(tlIndex)) {
       tlIndex = nearestVisibleTlIndex(tlIndex, visible);
@@ -607,8 +609,14 @@
   /**
    * Search hit → People: select person, page the timeline until message_id is
    * loaded (bounded), set tlIndex, scroll virtual window + highlight once.
+   * Optional sentAt seeks the first page near the hit (before just after it).
+   * Miss after the walk: showErr — never ring an unrelated row as the hit.
    */
-  async function openPersonAtMessage(personId: number, messageId: number) {
+  async function openPersonAtMessage(
+    personId: number,
+    messageId: number,
+    sentAt?: string | null,
+  ) {
     showPersonChrome = false;
     platformFilter = "all";
     kindFilter = "all";
@@ -630,10 +638,13 @@
       if (gen !== tlGen) return;
 
       // Newest-first pages; reverse each batch and prepend until hit or cap.
+      // Core cursor is exclusive (`m.sent_at < before`); seed just after hit
+      // sent_at so the first page can include it instead of walking from newest.
       const pageLimit = 200;
       const maxPages = 80;
+      const seekAt = (sentAt ?? "").trim();
       let loaded: TimelineRow[] = [];
-      let before: string | null = null;
+      let before: string | null = seekAt ? `${seekAt}~` : null;
       for (let page = 0; page < maxPages; page++) {
         const batch = await api.personTimeline({
           id: personId,
@@ -655,7 +666,14 @@
 
       timeline = loaded;
       const idx = loaded.findIndex((r) => r.message_id === messageId);
-      tlIndex = idx >= 0 ? idx : Math.max(0, loaded.length - 1);
+      if (idx < 0) {
+        tlIndex = -1;
+        showErr(
+          "Could not find that message on the person timeline (too far back or not in this view).",
+        );
+        return;
+      }
+      tlIndex = idx;
 
       // Estimate scroll so the virtual window covers the target on first paint.
       const estTop = Math.max(0, tlIndex * ESTIMATED_ROW_HEIGHT - ESTIMATED_ROW_HEIGHT * 2);
@@ -680,6 +698,7 @@
     personId: number;
     messageId: number;
     conversationKind?: string | null;
+    sentAt?: string | null;
   }) {
     view = "people";
     // Group hits need include-groups so group rows can appear.
@@ -690,7 +709,7 @@
       includeGroups = true;
     }
     await tick();
-    await openPersonAtMessage(args.personId, args.messageId);
+    await openPersonAtMessage(args.personId, args.messageId, args.sentAt);
   }
 
   async function pickConversation(conversationId: number | null) {

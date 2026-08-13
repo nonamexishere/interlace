@@ -19,6 +19,7 @@
       personId: number;
       messageId: number;
       conversationKind?: string | null;
+      sentAt?: string | null;
     }) => void | Promise<void>;
   } = $props();
 
@@ -178,6 +179,7 @@
         personId: h.person_id,
         messageId: h.message_id,
         conversationKind: h.conversation_kind,
+        sentAt: h.sent_at,
       });
       return;
     }
