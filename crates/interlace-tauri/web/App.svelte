@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { api, type Identity, type LinkEvent, type Person, type PersonConversation, type Status, type TimelineRow } from "./lib/api";
   import { mergeTargets } from "./lib/utils";
@@ -838,6 +839,25 @@
 
   onMount(() => {
     window.addEventListener("keydown", onKey);
+    let menuGone = false;
+    const menuUnlisten: Array<() => void> = [];
+    const keepMenu = (unlisten: () => void) => {
+      if (menuGone) unlisten();
+      else menuUnlisten.push(unlisten);
+    };
+    void listen("menu-open-archive", () => {
+      void openPicker();
+    }).then(keepMenu);
+    void listen("menu-import", () => {
+      view = "import";
+    }).then(keepMenu);
+    void listen("menu-view", (e) => {
+      const next = e.payload;
+      if (next === "people") view = "people";
+      else if (next === "search") view = "search";
+      else if (next === "review") view = "review";
+      else if (next === "doctor") view = "doctor";
+    }).then(keepMenu);
     (async () => {
       try {
         const remembered = await api.rememberedPath();
@@ -854,6 +874,8 @@
       setup = true;
     })();
     return () => {
+      menuGone = true;
+      for (const unlisten of menuUnlisten) unlisten();
       window.removeEventListener("keydown", onKey);
       stopPinLatest();
     };

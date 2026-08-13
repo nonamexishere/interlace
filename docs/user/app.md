@@ -75,6 +75,11 @@ The native **window title** (Cmd-tab) follows the open view or person — e.g.
 `Ada — Interlace`, `Search — Interlace`; setup / People with no selection stays
 bare `Interlace`. Message text never appears in the title.
 
+The native macOS **menu bar** has **File → Open archive** (same folder picker as
+**Open existing…**) and **File → Import**; **View** switches People, Search,
+Review, and Doctor. About states the app is offline and not encrypted at rest
+(FileVault). There is no Check for Updates item.
+
 After open: **people list + timeline** (groups hidden unless you tick include
 groups). The people list is **recent-first** by last D18 activity (you sent
 the message, or you share a DM / email thread). Each row shows that time and
