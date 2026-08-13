@@ -604,6 +604,95 @@
     }
   }
 
+  /**
+   * Search hit → People: select person, page the timeline until message_id is
+   * loaded (bounded), set tlIndex, scroll virtual window + highlight once.
+   */
+  async function openPersonAtMessage(personId: number, messageId: number) {
+    showPersonChrome = false;
+    platformFilter = "all";
+    kindFilter = "all";
+    quotedOpen = {};
+    selectedId = personId;
+    selectedConversationId = null;
+    const gen = ++tlGen;
+    tlLoading = true;
+    stopPinLatest();
+    try {
+      const show = await api.personShow(personId);
+      if (gen !== tlGen) return;
+      personTitle = show.display_name || `person ${personId}`;
+      identities = show.identities || [];
+      conversations = await api.personConversations({
+        id: personId,
+        includeGroups,
+      });
+      if (gen !== tlGen) return;
+
+      // Newest-first pages; reverse each batch and prepend until hit or cap.
+      const pageLimit = 200;
+      const maxPages = 80;
+      let loaded: TimelineRow[] = [];
+      let before: string | null = null;
+      for (let page = 0; page < maxPages; page++) {
+        const batch = await api.personTimeline({
+          id: personId,
+          includeGroups,
+          limit: pageLimit,
+          before,
+          conversationId: null,
+        });
+        if (gen !== tlGen) return;
+        if (batch.length === 0) break;
+        const chrono = batch.toReversed();
+        loaded = page === 0 ? chrono : chrono.concat(loaded);
+        if (loaded.some((r) => r.message_id === messageId)) break;
+        const nextBefore = oldestSentAt(loaded);
+        if (!nextBefore || batch.length < pageLimit) break;
+        before = nextBefore;
+      }
+      if (gen !== tlGen) return;
+
+      timeline = loaded;
+      const idx = loaded.findIndex((r) => r.message_id === messageId);
+      tlIndex = idx >= 0 ? idx : Math.max(0, loaded.length - 1);
+
+      // Estimate scroll so the virtual window covers the target on first paint.
+      const estTop = Math.max(0, tlIndex * ESTIMATED_ROW_HEIGHT - ESTIMATED_ROW_HEIGHT * 2);
+      tlScrollTop = estTop;
+      tlLoading = false;
+      await tick();
+      if (gen !== tlGen) return;
+      ensureTlIndexVisible(tlIndex);
+      requestAnimationFrame(() => {
+        if (gen !== tlGen) return;
+        ensureTlIndexVisible(tlIndex);
+      });
+    } catch (e) {
+      if (gen === tlGen) showErr(e);
+    } finally {
+      if (gen === tlGen) tlLoading = false;
+    }
+  }
+
+  /** SearchPane hit with person_id: People view + open at that message. */
+  async function jumpToMessage(args: {
+    personId: number;
+    messageId: number;
+    conversationKind?: string | null;
+  }) {
+    view = "people";
+    // Group hits need include-groups so group rows can appear.
+    if (
+      (args.conversationKind ?? "").toLowerCase() === "group" &&
+      !includeGroups
+    ) {
+      includeGroups = true;
+    }
+    await tick();
+    await openPersonAtMessage(args.personId, args.messageId);
+  }
+
   async function pickConversation(conversationId: number | null) {
     if (!selectedId) return;
     selectedConversationId = conversationId;
@@ -818,7 +907,7 @@
       </p>
     </main>
   {:else if st && view === "search"}
-    <SearchPane {people} onError={showErr} />
+    <SearchPane {people} onError={showErr} onJumpToMessage={jumpToMessage} />
   {:else if st && view === "review"}
     <ReviewPane
       onError={showErr}

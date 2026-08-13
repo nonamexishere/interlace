@@ -8,7 +8,19 @@
   import EmptyState from "./EmptyState.svelte";
   import CasAttach from "./CasAttach.svelte";
 
-  let { people, onError }: { people: Person[]; onError: (e: unknown) => void } = $props();
+  let {
+    people,
+    onError,
+    onJumpToMessage,
+  }: {
+    people: Person[];
+    onError: (e: unknown) => void;
+    onJumpToMessage: (args: {
+      personId: number;
+      messageId: number;
+      conversationKind?: string | null;
+    }) => void | Promise<void>;
+  } = $props();
 
   let q = $state("");
   /** Stored person_id for api.search; null when cleared / no pick. */
@@ -159,6 +171,19 @@
     }
   }
 
+  /** With person_id → People timeline at that message; else expand body on Search. */
+  function activateHit(h: SearchHit) {
+    if (h.person_id != null) {
+      void onJumpToMessage({
+        personId: h.person_id,
+        messageId: h.message_id,
+        conversationKind: h.conversation_kind,
+      });
+      return;
+    }
+    void toggle(h.message_id);
+  }
+
   function scrollHitIntoView(i: number) {
     requestAnimationFrame(() => {
       document
@@ -195,7 +220,7 @@
       e.preventDefault();
       e.stopPropagation();
       const h = hits[hitIndex];
-      if (h) void toggle(h.message_id);
+      if (h) activateHit(h);
     }
   }
 
@@ -358,7 +383,7 @@
             : ''}"
           onclick={() => {
             hitIndex = i;
-            toggle(h.message_id);
+            activateHit(h);
           }}
         >
           <div class="text-xs text-muted-foreground">
@@ -381,7 +406,8 @@
         class="rounded border border-border px-1">k</kbd
       >
       or arrows move hits;
-      <kbd class="rounded border border-border px-1">Enter</kbd> expands.
+      <kbd class="rounded border border-border px-1">Enter</kbd> opens on
+      People when linked, else expands.
     </p>
   {/if}
 </ScrollArea>

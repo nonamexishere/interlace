@@ -119,14 +119,17 @@ shows display names, not ids. Names never auto-merge. Unlink stays on each
 identity row.
 Merge/unlink/undo do not rewrite `messages.sender_identity_id`.
 
-Tabs: **Search** (same FTS as CLI; expand a hit for the full body). **Person** is
+Tabs: **Search** (same FTS as CLI). **Person** is
 a name-facing combobox over the same people list as the sidebar: type to filter
 by display name (case-insensitive substring; self gets a “(self)” label), Enter
 or click to pick — the archive stores `person_id` under the hood for the search
 filter (Clear / empty = no person filter). You can search “messages with Ada”
 without knowing her numeric id (single person only; no multi-person OR). After
-hits load, **j**/**k** or arrow keys move the highlight; **Enter** expands the
-body. Platform is a closed **select** — **Any** (default, empty value),
+hits load, **j**/**k** or arrow keys move the highlight; **Enter** or click
+opens a hit that has a linked person on the **People** timeline at that message
+(scroll + highlight once). Group hits turn **include groups** on when needed so
+the row can appear. A hit with no `person_id` stays on Search and expands the
+body as before. Platform is a closed **select** — **Any** (default, empty value),
 **WhatsApp**, **Gmail**, and **Contacts** — not a free-text box; values are the
 core tokens (`whatsapp` / `gmail` / `contacts`). Empty means any platform.
 **Kind** is another closed select — **Any** (default), **DM**, **Group**,
