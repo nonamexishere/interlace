@@ -33,6 +33,7 @@
   let to = $state("");
   let platform = $state("");
   let conversationKind = $state("");
+  let attachmentFilter = $state("");
   let includeGroups = $state(false);
   let hits = $state<SearchHit[]>([]);
   /** Highlighted hit in the results list (j/k and arrow keys). */
@@ -146,6 +147,7 @@
         to: to.trim() || null,
         platform: platform || null,
         conversationKind: conversationKind || null,
+        attachmentFilter: attachmentFilter || null,
         includeGroups,
         limit: 50,
       });
@@ -340,6 +342,19 @@
         <option value="dm">DM</option>
         <option value="group">Group</option>
         <option value="email_thread">Email thread</option>
+      </select>
+    </div>
+    <div class="space-y-1.5">
+      <Label for="satt">Attachment</Label>
+      <select
+        id="satt"
+        bind:value={attachmentFilter}
+        class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+      >
+        <option value="">Any</option>
+        <option value="has_file">Has file</option>
+        <option value="omitted">Omitted</option>
+        <option value="missing">Missing</option>
       </select>
     </div>
     <div class="space-y-1.5">

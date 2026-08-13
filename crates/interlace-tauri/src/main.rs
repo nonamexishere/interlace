@@ -21,8 +21,9 @@ use interlace_core::session::{
 };
 use interlace_core::{
     open_archive, person_merge, person_undo, person_unlink, review_list, review_resolve,
-    review_resolve_selected, review_show, search, Archive, ConversationKind, CoreError, ImportOpts,
-    ImporterRegistry, LockMode, PersonMergeOpts, Platform, SearchQuery, SourceKind,
+    review_resolve_selected, review_show, search, Archive, AttachmentFilter, ConversationKind,
+    CoreError, ImportOpts, ImporterRegistry, LockMode, PersonMergeOpts, Platform, SearchQuery,
+    SourceKind,
 };
 use tauri::http::{header, StatusCode};
 use tauri::AppHandle;
@@ -319,6 +320,16 @@ fn parse_conversation_kind(s: &str) -> Result<Option<ConversationKind>, String> 
     }
 }
 
+fn parse_attachment_filter(s: &str) -> Result<Option<AttachmentFilter>, String> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "" | "any" | "all" => Ok(None),
+        "has_file" => Ok(Some(AttachmentFilter::HasFile)),
+        "omitted" => Ok(Some(AttachmentFilter::Omitted)),
+        "missing" => Ok(Some(AttachmentFilter::Missing)),
+        other => Err(format!("unknown attachment filter {other}")),
+    }
+}
+
 #[tauri::command]
 fn remembered_path() -> Option<String> {
     if let Some(bytes) = read_last_bookmark() {
@@ -579,6 +590,7 @@ struct SearchArgs {
     to: Option<String>,
     platform: Option<String>,
     conversation_kind: Option<String>,
+    attachment_filter: Option<String>,
     include_groups: bool,
     limit: Option<u32>,
 }
@@ -598,6 +610,9 @@ fn search_cmd(
             conversation_id: None,
             conversation_kind: parse_conversation_kind(
                 args.conversation_kind.as_deref().unwrap_or(""),
+            )?,
+            attachment_filter: parse_attachment_filter(
+                args.attachment_filter.as_deref().unwrap_or(""),
             )?,
             include_groups: args.include_groups,
             limit: args.limit.unwrap_or(50),

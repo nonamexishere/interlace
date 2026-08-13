@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use interlace_core::db::init_archive;
 use interlace_core::search::{index_import_run, turkish_fold};
-use interlace_core::{person_timeline, search, ConversationKind, SearchQuery};
+use interlace_core::{person_timeline, search, AttachmentFilter, ConversationKind, SearchQuery};
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -358,5 +358,214 @@ fn search_kind_group_respects_include_groups() {
         !ids(&with).contains(&p.dm_msg),
         "kind=group must not return dm hits, got {with:?}"
     );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// #125 — same FTS token on messages with different attachment presence.
+struct AttPlanted {
+    has_file: i64,
+    omitted: i64,
+    missing: i64,
+    plain: i64,
+}
+
+fn plant_attachment(arch: &interlace_core::db::Archive) -> AttPlanted {
+    arch.conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('whatsapp_android_zip', 't', '/t.zip')",
+            [],
+        )
+        .unwrap();
+    let src = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO import_runs(source_id, status) VALUES (?1, 'done')",
+            [src],
+        )
+        .unwrap();
+    let run = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('whatsapp', 'display_name', 'Ada', 'ada', 'Ada')",
+            [],
+        )
+        .unwrap();
+    let iid = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('whatsapp', 'dm', 'whatsapp:dm-ada-att', 'Ada')",
+            [],
+        )
+        .unwrap();
+    let dm = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![dm, iid],
+        )
+        .unwrap();
+
+    let ins = |body: &str, key: &str| -> i64 {
+        arch.conn
+            .execute(
+                "INSERT INTO messages(
+                    conversation_id, source_id, import_run_id, sender_identity_id,
+                    sent_at, sent_at_precision, kind, body_text, idempotency_key
+                 ) VALUES (?1, ?2, ?3, ?4, '2024-03-15T14:32:00Z', 'second', 'text', ?5, ?6)",
+                rusqlite::params![dm, src, run, iid, body, key],
+            )
+            .unwrap();
+        arch.conn.last_insert_rowid()
+    };
+    // Shared FTS token across all four messages (placeholder Ada only).
+    let has_file = ins("attachtoken has file for Ada", "k-att-has");
+    let omitted = ins("attachtoken omitted for Ada", "k-att-omit");
+    let missing = ins("attachtoken missing for Ada", "k-att-miss");
+    let plain = ins("attachtoken plain for Ada", "k-att-plain");
+
+    // Stored CAS blob: cas_blobs row + attachments.cas_hash set.
+    let cas = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    arch.conn
+        .execute("INSERT INTO cas_blobs(hash, size) VALUES (?1, 4)", [cas])
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO attachments(message_id, cas_hash, filename, kind, omitted, missing)
+             VALUES (?1, ?2, 'photo.jpg', 'image', 0, 0)",
+            rusqlite::params![has_file, cas],
+        )
+        .unwrap();
+    // Omitted placeholder attachment (no CAS).
+    arch.conn
+        .execute(
+            "INSERT INTO attachments(message_id, filename, kind, omitted, missing)
+             VALUES (?1, 'omitted.bin', 'file', 1, 0)",
+            [omitted],
+        )
+        .unwrap();
+    // Missing referenced attachment (no CAS).
+    arch.conn
+        .execute(
+            "INSERT INTO attachments(message_id, filename, kind, omitted, missing)
+             VALUES (?1, 'gone.bin', 'file', 0, 1)",
+            [missing],
+        )
+        .unwrap();
+    // plain: no attachments row.
+
+    index_import_run(arch, run).unwrap();
+    AttPlanted {
+        has_file,
+        omitted,
+        missing,
+        plain,
+    }
+}
+
+#[test]
+fn search_attachment_has_file_only_cas_backed() {
+    let root = tmp_root();
+    let arch = init_archive(&root).unwrap();
+    let p = plant_attachment(&arch);
+    let hits = search(
+        &arch,
+        &SearchQuery {
+            q: "attachtoken".into(),
+            attachment_filter: Some(AttachmentFilter::HasFile),
+            ..SearchQuery::default()
+        },
+    )
+    .unwrap();
+    let got = ids(&hits);
+    assert_eq!(
+        got,
+        vec![p.has_file],
+        "HasFile must return only the CAS-backed row, got {hits:?}"
+    );
+    assert!(
+        !got.contains(&p.omitted) && !got.contains(&p.missing) && !got.contains(&p.plain),
+        "HasFile must exclude omitted/missing/plain, got {hits:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn search_attachment_omitted_only() {
+    let root = tmp_root();
+    let arch = init_archive(&root).unwrap();
+    let p = plant_attachment(&arch);
+    let hits = search(
+        &arch,
+        &SearchQuery {
+            q: "attachtoken".into(),
+            attachment_filter: Some(AttachmentFilter::Omitted),
+            ..SearchQuery::default()
+        },
+    )
+    .unwrap();
+    let got = ids(&hits);
+    assert_eq!(
+        got,
+        vec![p.omitted],
+        "Omitted must return only the omitted-attachment row, got {hits:?}"
+    );
+    assert!(
+        !got.contains(&p.has_file) && !got.contains(&p.missing) && !got.contains(&p.plain),
+        "Omitted must exclude has_file/missing/plain, got {hits:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn search_attachment_missing_only() {
+    let root = tmp_root();
+    let arch = init_archive(&root).unwrap();
+    let p = plant_attachment(&arch);
+    let hits = search(
+        &arch,
+        &SearchQuery {
+            q: "attachtoken".into(),
+            attachment_filter: Some(AttachmentFilter::Missing),
+            ..SearchQuery::default()
+        },
+    )
+    .unwrap();
+    let got = ids(&hits);
+    assert_eq!(
+        got,
+        vec![p.missing],
+        "Missing must return only the missing-attachment row, got {hits:?}"
+    );
+    assert!(
+        !got.contains(&p.has_file) && !got.contains(&p.omitted) && !got.contains(&p.plain),
+        "Missing must exclude has_file/omitted/plain, got {hits:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn search_attachment_any_returns_all_fts_hits() {
+    let root = tmp_root();
+    let arch = init_archive(&root).unwrap();
+    let p = plant_attachment(&arch);
+    let hits = search(
+        &arch,
+        &SearchQuery {
+            q: "attachtoken".into(),
+            attachment_filter: None,
+            ..SearchQuery::default()
+        },
+    )
+    .unwrap();
+    let got = ids(&hits);
+    for id in [p.has_file, p.omitted, p.missing, p.plain] {
+        assert!(
+            got.contains(&id),
+            "Any (no attachment_filter) must return all FTS hits including {id}, got {hits:?}"
+        );
+    }
     let _ = std::fs::remove_dir_all(&root);
 }

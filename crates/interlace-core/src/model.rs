@@ -41,6 +41,17 @@ pub enum ConversationKind {
     EmailThread,
 }
 
+/// Attachment presence filter for search (closed select; not MIME taxonomy).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttachmentFilter {
+    /// EXISTS attachment with `cas_hash IS NOT NULL`.
+    HasFile,
+    /// EXISTS attachment with `omitted != 0`.
+    Omitted,
+    /// EXISTS attachment with `missing != 0`.
+    Missing,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageKind {
     Text,
@@ -239,6 +250,8 @@ pub struct SearchQuery {
     /// When set, only conversations of this kind (`dm` / `group` / `email_thread`).
     /// `group` still requires `include_groups`; dm/email_thread never return groups.
     pub conversation_kind: Option<ConversationKind>,
+    /// When set, only messages with at least one matching attachment row.
+    pub attachment_filter: Option<AttachmentFilter>,
     pub include_groups: bool,
     pub limit: u32,
 }
