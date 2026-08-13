@@ -71,6 +71,10 @@ The app holds an **exclusive flock** on the archive for the session. A second
 Interlace window or a CLI writer (`import`, `doctor --gc-cas`) fails with the
 holder pid — close this window first.
 
+The native **window title** (Cmd-tab) follows the open view or person — e.g.
+`Ada — Interlace`, `Search — Interlace`; setup / People with no selection stays
+bare `Interlace`. Message text never appears in the title.
+
 After open: **people list + timeline** (groups hidden unless you tick include
 groups). The people list is **recent-first** by last D18 activity (you sent
 the message, or you share a DM / email thread). Each row shows that time and

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { api, type Identity, type LinkEvent, type Person, type PersonConversation, type Status, type TimelineRow } from "./lib/api";
   import { mergeTargets } from "./lib/utils";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -67,6 +68,25 @@
       /iCloud|Mobile Documents|Dropbox|Google Drive/i.test(w),
     ),
   );
+
+  /** Native window / Cmd-tab title: view or selected person only — never body/snippet/query. */
+  const windowTitle = $derived.by(() => {
+    if (setup || booting || !st) return "Interlace";
+    if (view === "search") return "Search — Interlace";
+    if (view === "review") return "Review — Interlace";
+    if (view === "import") return "Import — Interlace";
+    if (view === "doctor") return "Doctor — Interlace";
+    // People: selected display name, else bare Interlace (not "People — …").
+    if (selectedId != null && personTitle && personTitle !== "Select a person") {
+      return personTitle + " — Interlace";
+    }
+    return "Interlace";
+  });
+
+  $effect(() => {
+    const title = windowTitle;
+    void getCurrentWindow().setTitle(title).catch(() => {});
+  });
 
   const filtered = $derived(
     people.filter((p) => {
