@@ -144,7 +144,9 @@ select — **Any** (default), **Has file**, **Omitted**, **Missing**
 (`has_file` / `omitted` / `missing`). Has file keeps only messages with a
 stored CAS blob; Omitted / Missing match the corresponding attachment flags.
 CLI: `interlace search --attachment has_file|omitted|missing`. **Review**
-(accept/reject name-only pairs), **Import** (ZIP/mbox/vcf/Takeout via the
+(accept/reject name-only pairs; each side shows linked identifier
+kind + normalized value — phone/email/display_name — under the title so a
+name-similarity card is decidable without the CLI), **Import** (ZIP/mbox/vcf/Takeout via the
 folder picker; progress in-window), **Doctor** (integrity / rebuild FTS / GC
 CAS with a confirm dialog — same as the CLI, no extra window).
 

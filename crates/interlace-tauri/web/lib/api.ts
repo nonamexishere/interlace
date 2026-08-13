@@ -94,10 +94,18 @@ export type ReviewSample = {
   body_text: string;
 };
 
+/** Linked identity on a review side: kind + normalized value (#128). */
+export type ReviewIdentifier = {
+  kind: string;
+  value_normalized: string;
+  platform?: string | null;
+};
+
 export type ReviewPanel = {
   person_id?: number | null;
   display_name: string | null;
   platforms: string[];
+  identifiers: ReviewIdentifier[];
   message_count: number;
   samples: ReviewSample[];
 };
