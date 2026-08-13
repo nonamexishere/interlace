@@ -804,14 +804,16 @@
   function onKey(e: KeyboardEvent) {
     const t = e.target as HTMLElement | null;
     const digit = e.key >= "1" && e.key <= "5" ? e.key : /^Digit[1-5]$/.test(e.code) ? e.code.slice(5) : "";
+    // AltGr is ctrlKey+altKey; do not treat it as ⌘/Ctrl (AZERTY/Turkish-Q type ~#{[ via AltGr+digit).
+    const mod = e.metaKey || (e.ctrlKey && !e.altKey);
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) {
       // ⌘F / ⌘1–5 still apply from a field (stop the webview Find / tab accel).
-      if (!((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "F" || digit !== ""))) {
+      if (!(mod && (e.key === "f" || e.key === "F" || digit !== ""))) {
         if (e.key === "Escape") t.blur();
         return;
       }
     }
-    if ((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "F")) {
+    if (mod && (e.key === "f" || e.key === "F")) {
       e.preventDefault();
       if (view === "people") {
         document.getElementById("person-filter")?.focus();
@@ -821,7 +823,7 @@
       }
       return;
     }
-    if ((e.metaKey || e.ctrlKey) && digit !== "") {
+    if (mod && digit !== "") {
       e.preventDefault();
       const tabs = ["people", "search", "review", "import", "doctor"] as const;
       const next = tabs[Number(digit) - 1];
