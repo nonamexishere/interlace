@@ -76,6 +76,13 @@
 #     and expand body (toggle / searchBody) as today. Not: FTS rewrite.
 #     Miss after bounded load: surface showErr (or equivalent); never set tlIndex
 #     to last-loaded (idx >= 0 ? idx : length-1) as a successful hit ring.
+#125: SearchPane attachment presence is a closed <select> (Any | has_file |
+#     omitted | missing), not free text. Empty value = any. Wire
+#     attachmentFilter / attachment_filter into api.search. Not: MIME taxonomy.
+#126: Search snippets highlight match tokens via <mark> siblings (split on core
+#     FTS «…» markers or matched query terms), never innerHTML / {@html} of the
+#     full snippet or expanded body. Yellow mark styling. A body containing
+#     <script> stays text. Not: regex HTML inject, HTML mail renderer.
 """
 
 from __future__ import annotations
@@ -7185,6 +7192,307 @@ def assert_search_attachment_filter(crate: Path) -> None:
         fail("#125: keep search hits list (#124 jump chrome) when adding attachment filter")
 
 
+# #126 — safe search snippet highlight: <mark> siblings, never innerHTML of body.
+# Core FTS snippets already wrap hits with «…» (see docs/user/search.md).
+_SEARCH_HIGHLIGHT_HELPER = re.compile(
+    r"\b(?:"
+    r"splitSnippet|snippetSegments|snippetParts|highlightSnippet|highlightSegments|"
+    r"markSegments|markSnippet|segmentSnippet|parseSnippet|snippetMarks|"
+    r"highlightSearch|searchHighlight|ftsSnippet|splitFtsSnippet|"
+    r"splitMarkers|markerSegments|wrapMarks"
+    r")\b",
+    re.I,
+)
+# Split evidence: FTS guillemet markers or a snippet-aware split / segment helper.
+_SEARCH_SNIPPET_SPLIT = re.compile(
+    r"("
+    r"[«»]"  # core FTS snippet markers
+    r"|\\u00ab|\\u00bb"  # unicode escapes
+    r"|\bsplit\s*\([^)]*(?:snippet|«|»|marker)"
+    r"|\.split\s*\(\s*(?:/[«»]|[\"']«|new\s+RegExp\s*\(\s*[\"']«)"
+    r"|\b(?:snippetSegments|snippetParts|markSegments|highlightSegments|"
+    r"segmentSnippet|splitSnippet|splitMarkers|markerSegments)\b"
+    r"|\b(?:segments?|parts)\s*(?:=|:)\s*(?:splitSnippet|highlightSnippet|"
+    r"snippetSegments|markSegments|segmentSnippet)\b"
+    r")",
+    re.I,
+)
+# <mark> with yellow / highlight / mark class, or bare <mark> used as the hit wrap.
+_SEARCH_MARK_TAG = re.compile(r"<mark\b", re.I)
+_SEARCH_MARK_STYLE = re.compile(
+    r"("
+    r"<mark\b[^>]{0,200}\bclass\s*=\s*[\"'][^\"']*"
+    r"(?:yellow|highlight|mark|bg-yellow|bg-amber|bg-\[|search-hit|hit-mark)"
+    r"|<mark\b"  # intentional <mark> (UA default is yellow-ish; class optional)
+    r"|\b(?:bg-yellow-\d+|bg-amber-\d+|text-yellow|highlight|hit-mark|search-mark)\b"
+    r")",
+    re.I,
+)
+# Dangerous HTML injection on search snippet/body path.
+_SEARCH_UNSAFE_HTML = re.compile(
+    r"("
+    r"\{@html\b"
+    r"|\.innerHTML\s*="
+    r"|insertAdjacentHTML\s*\("
+    r"|dangerouslySetInnerHTML"
+    r")",
+    re.I,
+)
+# Building an HTML string of <mark> via replace (regex highlight → inject path).
+_SEARCH_REGEX_HTML_MARK = re.compile(
+    r"("
+    r"\.replace\s*\([^)]{0,200},\s*[`'\"][^`'\"]*<mark\b"
+    r"|replace\s*\(\s*(?:new\s+)?RegExp\b[\s\S]{0,200}<mark\b"
+    r"|return\s+[`'\"][^`'\"]*<mark\b[^`'\"]*[`'\"]"  # helper returns HTML string
+    r")",
+    re.I,
+)
+# HTML mail renderer (out of scope for #126).
+_SEARCH_HTML_MAIL = re.compile(
+    r"("
+    r"\bDOMParser\b"
+    r"|\bsrcdoc\s*="
+    r"|\brenderHtmlMail\b|\bhtmlMail\b|\bMimeHtml\b|\brenderMime\b"
+    r"|iframe[^>]{0,80}(?:body|snippet|mail|message)"
+    r")",
+    re.I,
+)
+
+
+def _search_highlight_surface(crate: Path) -> tuple[str, str, list[Path]]:
+    """SearchPane + relative snippet/highlight helpers (not CasAttach / general UI)."""
+    web = crate / "web"
+    lib = web / "lib"
+    search_path = lib / "SearchPane.svelte"
+    paths: list[Path] = []
+    seen: set[Path] = set()
+    if search_path.is_file():
+        paths.append(search_path)
+        seen.add(search_path.resolve())
+        text = search_path.read_text()
+        for m in re.finditer(r"""from\s+["'](\.[^"']+)["']""", text):
+            rel = m.group(1)
+            base = (search_path.parent / rel).resolve()
+            candidates = [base]
+            if not base.suffix:
+                candidates.extend(
+                    [
+                        Path(str(base) + ".ts"),
+                        Path(str(base) + ".js"),
+                        Path(str(base) + ".svelte"),
+                        base / "index.ts",
+                        base / "index.js",
+                    ]
+                )
+            for c in candidates:
+                if not c.is_file() or c.resolve() in seen:
+                    continue
+                try:
+                    c.relative_to(web.resolve())
+                except ValueError:
+                    continue
+                name = c.name.lower()
+                body = c.read_text()
+                # Only pull helpers involved in snippet split / mark render.
+                if re.search(
+                    r"snippet|highlight|mark.?segment|fts.?marker|split.?marker",
+                    name + "\n" + body[:4000],
+                    re.I,
+                ) and not re.search(
+                    r"CasAttach|EmptyState|DoctorPane|ImportPane|ReviewPane",
+                    c.name,
+                ):
+                    # Skip pure API types modules unless they define a split helper.
+                    if c.name in {"api.ts", "api.js"} and not _SEARCH_HIGHLIGHT_HELPER.search(
+                        body
+                    ):
+                        continue
+                    paths.append(c)
+                    seen.add(c.resolve())
+    blob = "\n".join(p.read_text() for p in paths)
+    cleaned = _without_comments(blob)
+    return blob, cleaned, paths
+
+
+def assert_search_safe_highlight(crate: Path) -> None:
+    """#126: highlight search tokens with <mark> siblings; never innerHTML the body.
+
+    Split the snippet on core FTS markers («…») or matched query terms; render
+    plain text + <mark> Svelte elements (text children only). Yellow / mark
+    styling so query e.g. fatura shows a visible mark. Expanded search body
+    (api.searchBody → body_text) stays text — a body containing <script> must
+    not execute. Not: regex HTML inject, HTML mail. Keep #121–#125 chrome.
+    """
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    if not search_path.is_file():
+        fail("#126: SearchPane.svelte required (search snippet highlight lives there)")
+    src = search_path.read_text()
+    cleaned = _without_comments(src)
+    markup = _svelte_markup(src)
+    surface = markup if markup.strip() else src
+    _blob, blob_clean, helper_paths = _search_highlight_surface(crate)
+    # Hits list region is the snippet path; expanded body is the other surface.
+    hits_m = re.search(
+        r"\{#each\s+hits\b[\s\S]{0,8000}?\{/each\}",
+        surface,
+        re.I,
+    )
+    hits_region = hits_m.group(0) if hits_m else surface
+
+    # 1) Primary red: snippet path must render <mark> for hit highlights.
+    #    Not a single raw string of h.snippet alone.
+    has_mark = bool(_SEARCH_MARK_TAG.search(hits_region)) or bool(
+        _SEARCH_MARK_TAG.search(surface)
+    )
+    # Allow a small child component used only for the snippet line (e.g. SnippetHighlight).
+    if not has_mark:
+        for p in helper_paths:
+            if p.suffix == ".svelte" and p.name != "SearchPane.svelte":
+                htxt = p.read_text()
+                if _SEARCH_MARK_TAG.search(htxt) and re.search(
+                    r"snippet|highlight|mark|segment",
+                    htxt,
+                    re.I,
+                ):
+                    has_mark = True
+                    break
+    if not has_mark:
+        fail(
+            "#126: search snippet path must render <mark> for hit highlights "
+            "(text + <mark> Svelte element siblings — not a single raw snippet string). "
+            "Split on core FTS markers «…» or matched query terms"
+        )
+
+    # 2) Must actually split into segments (siblings), not wrap the whole snippet
+    #    once without a split path. Evidence: FTS markers, segment helper, or
+    #    {#each} over parts next to <mark>.
+    has_split = bool(_SEARCH_SNIPPET_SPLIT.search(blob_clean)) or bool(
+        _SEARCH_HIGHLIGHT_HELPER.search(blob_clean)
+    )
+    has_each_segments = bool(
+        re.search(
+            r"\{#each\s+(?:[^}]*\b(?:seg(?:ment)?s?|parts|tokens|chunks|marks|"
+            r"highlighted|snippetParts|snippetSegments)\b|"
+            r"[^}]{0,80}(?:splitSnippet|highlightSnippet|snippetSegments|"
+            r"markSegments|segmentSnippet)\s*\()",
+            hits_region + "\n" + surface,
+            re.I,
+        )
+    )
+    # <mark> text content must be a segment field, not the full raw snippet alone.
+    mark_wraps_full_snippet = bool(
+        re.search(
+            r"<mark\b[^>]*>\s*\{(?:\(?\s*)?(?:h\.)?snippet\b[^}]{0,120}\}\s*</mark>",
+            hits_region,
+            re.I,
+        )
+    )
+    if not has_split and not has_each_segments:
+        fail(
+            "#126: split the snippet into plain-text + <mark> siblings "
+            "(core FTS markers «…», or a pure segment helper / {#each} over parts) — "
+            "do not leave the hit as one unsplit string"
+        )
+    if mark_wraps_full_snippet and not has_each_segments and not has_split:
+        fail(
+            "#126: do not wrap the entire raw snippet in one <mark> — "
+            "split on matched terms / FTS «…» markers into text + <mark> siblings"
+        )
+
+    # 3) Yellow / highlight styling on the mark (class or intentional <mark>).
+    style_blob = hits_region + "\n" + surface
+    for p in helper_paths:
+        if p.suffix in {".svelte", ".css"}:
+            style_blob += "\n" + p.read_text()
+    if not _SEARCH_MARK_STYLE.search(style_blob):
+        fail(
+            "#126: <mark> must be visibly highlighted "
+            "(yellow/amber/highlight class e.g. bg-yellow-200, or intentional <mark> styling) "
+            "so a query match is obvious"
+        )
+
+    # 4) Ban innerHTML / {@html on search snippet and expanded body path.
+    if _SEARCH_UNSAFE_HTML.search(blob_clean) or _SEARCH_UNSAFE_HTML.search(cleaned):
+        # Narrow: only fail if it touches snippet/body/search surfaces (not unrelated).
+        unsafe = re.search(
+            r"(?:snippet|body_text|searchBody|\bbody\b|highlight|mark)[\s\S]{0,160}"
+            r"(?:\{@html\b|\.innerHTML\s*=|insertAdjacentHTML\s*\()"
+            r"|(?:\{@html\b|\.innerHTML\s*=|insertAdjacentHTML\s*\()[\s\S]{0,160}"
+            r"(?:snippet|body_text|searchBody|\bbody\b|highlight)",
+            blob_clean,
+            re.I,
+        )
+        bare_html = _HTML_BODY.search(blob_clean) or re.search(
+            r"\.innerHTML\s*=", blob_clean
+        )
+        if unsafe or bare_html:
+            fail(
+                "#126: never assign innerHTML / {@html on the search snippet or body path "
+                "(render text + <mark> Svelte elements with text children only — "
+                "a body containing <script> must stay text)"
+            )
+
+    # Expanded body path specifically: {body} / body_text must stay text bindings.
+    expanded_region = ""
+    exp = re.search(
+        r"\{#if\s+expanded\b[\s\S]{0,800}?\{/if\}",
+        surface,
+        re.I,
+    )
+    if exp:
+        expanded_region = exp.group(0)
+    if expanded_region and (
+        _HTML_BODY.search(expanded_region)
+        or re.search(r"\.innerHTML\s*=", expanded_region)
+        or re.search(r"\{@html\s+body\b", expanded_region)
+    ):
+        fail(
+            "#126: expanded search body must stay text-safe "
+            "(no {@html body} / innerHTML of full body — <script> in body stays text)"
+        )
+    # Global SearchPane ban on {@html body} even outside the if-region.
+    if re.search(r"\{@html\s+(?:body|body_text|snippet)\b", blob_clean):
+        fail(
+            "#126: expanded search body / snippet must stay text-safe — "
+            "no {@html body} / {@html snippet}"
+        )
+
+    # 5) Not: regex highlight that builds HTML strings to inject.
+    if _SEARCH_REGEX_HTML_MARK.search(blob_clean):
+        fail(
+            "#126: not in scope — regex highlight that builds HTML mark strings "
+            "(no .replace(…, '<mark>…') inject path; use text + <mark> element siblings)"
+        )
+
+    # 6) Not: HTML mail renderer.
+    if _SEARCH_HTML_MAIL.search(blob_clean):
+        # Ignore false positives in comments already stripped; still scope to search.
+        fail(
+            "#126: not in scope — HTML mail renderer "
+            "(DOMParser / srcdoc / htmlMail on search path); snippets and body stay text"
+        )
+
+    # 7) Keep #121–#125 search chrome.
+    if not re.search(r"\bplatform\b", cleaned) or not re.search(
+        r"<select\b", surface, re.I
+    ):
+        fail("#126: keep the search platform <select> (#121) when adding safe highlight")
+    if not re.search(r"conversationKind|conversation_kind", cleaned):
+        fail(
+            "#126: keep the search conversation-kind <select> (#122) when adding safe highlight"
+        )
+    if not re.search(r"personId|person_id|personFilter|data-person-picker", cleaned):
+        fail("#126: keep the search person picker (#123) when adding safe highlight")
+    if not re.search(r"\{#each\s+hits\b", surface) and not re.search(
+        r"\{#each\s+hits\b", src
+    ):
+        fail("#126: keep search hits list (#124 jump chrome) when adding safe highlight")
+    if not re.search(r"attachmentFilter|attachment_filter", cleaned):
+        fail(
+            "#126: keep the search attachment filter (#125) when adding safe highlight"
+        )
+
+
 def assert_virtualized_timeline(crate: Path) -> None:
     """#120: window person timeline (visible + overscan); keep j/k + Load older.
 
@@ -7386,6 +7694,7 @@ def main() -> None:
     assert_search_person_picker(crate)
     assert_search_jump_to_message(crate)
     assert_search_attachment_filter(crate)
+    assert_search_safe_highlight(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
