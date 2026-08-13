@@ -21,8 +21,8 @@ use interlace_core::session::{
 };
 use interlace_core::{
     open_archive, person_merge, person_undo, person_unlink, review_list, review_resolve,
-    review_resolve_selected, review_show, search, Archive, CoreError, ImportOpts, ImporterRegistry,
-    LockMode, PersonMergeOpts, Platform, SearchQuery, SourceKind,
+    review_resolve_selected, review_show, search, Archive, ConversationKind, CoreError, ImportOpts,
+    ImporterRegistry, LockMode, PersonMergeOpts, Platform, SearchQuery, SourceKind,
 };
 use tauri::http::{header, StatusCode};
 use tauri::AppHandle;
@@ -309,6 +309,16 @@ fn parse_platform(s: &str) -> Result<Option<Platform>, String> {
     }
 }
 
+fn parse_conversation_kind(s: &str) -> Result<Option<ConversationKind>, String> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "" | "any" | "all" => Ok(None),
+        "dm" => Ok(Some(ConversationKind::Dm)),
+        "group" => Ok(Some(ConversationKind::Group)),
+        "email_thread" => Ok(Some(ConversationKind::EmailThread)),
+        other => Err(format!("unknown conversation kind {other}")),
+    }
+}
+
 #[tauri::command]
 fn remembered_path() -> Option<String> {
     if let Some(bytes) = read_last_bookmark() {
@@ -568,6 +578,7 @@ struct SearchArgs {
     from: Option<String>,
     to: Option<String>,
     platform: Option<String>,
+    conversation_kind: Option<String>,
     include_groups: bool,
     limit: Option<u32>,
 }
@@ -585,6 +596,9 @@ fn search_cmd(
             to: args.to,
             platform: parse_platform(args.platform.as_deref().unwrap_or(""))?,
             conversation_id: None,
+            conversation_kind: parse_conversation_kind(
+                args.conversation_kind.as_deref().unwrap_or(""),
+            )?,
             include_groups: args.include_groups,
             limit: args.limit.unwrap_or(50),
         };

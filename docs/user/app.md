@@ -122,7 +122,11 @@ Merge/unlink/undo do not rewrite `messages.sender_identity_id`.
 Tabs: **Search** (same FTS as CLI; expand a hit for the full body). Platform is
 a closed **select** — **Any** (default, empty value), **WhatsApp**, **Gmail**,
 and **Contacts** — not a free-text box; values are the core tokens
-(`whatsapp` / `gmail` / `contacts`). Empty means any platform. **Review**
+(`whatsapp` / `gmail` / `contacts`). Empty means any platform. **Kind** is
+another closed select — **Any** (default), **DM**, **Group**, **Email thread**
+(`dm` / `group` / `email_thread`). Choosing DM never returns group hits; Group
+still needs **include groups** ticked. CLI: `interlace search --kind dm|group|email_thread`.
+**Review**
 (accept/reject name-only pairs), **Import** (ZIP/mbox/vcf/Takeout via the
 folder picker; progress in-window), **Doctor** (integrity / rebuild FTS /
 GC CAS with a confirm dialog — same as the CLI, no extra window).

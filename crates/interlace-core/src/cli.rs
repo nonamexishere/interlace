@@ -16,8 +16,8 @@ use crate::import::ImporterRegistry;
 use crate::session::{init_owner_archive, read_last_path, write_last_path};
 use crate::{
     person_list, person_merge, person_timeline, person_undo, person_unlink, review_resolve,
-    review_show, search, CoreError, ImportOpts, ImportStats, PersonMergeOpts, Platform,
-    SearchQuery, SourceKind,
+    review_show, search, ConversationKind, CoreError, ImportOpts, ImportStats, PersonMergeOpts,
+    Platform, SearchQuery, SourceKind,
 };
 
 /// Local-first archive that unifies conversations across platforms.
@@ -80,6 +80,9 @@ enum Commands {
         to: Option<String>,
         #[arg(long)]
         platform: Option<PlatArg>,
+        /// Conversation kind: dm | group | email_thread (empty = any)
+        #[arg(long = "kind", value_enum)]
+        kind: Option<KindArg>,
         #[arg(long = "include-groups")]
         include_groups: bool,
         #[arg(long, default_value_t = 50)]
@@ -200,6 +203,24 @@ impl From<PlatArg> for Platform {
     }
 }
 
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum KindArg {
+    Dm,
+    Group,
+    #[value(name = "email_thread")]
+    EmailThread,
+}
+
+impl From<KindArg> for ConversationKind {
+    fn from(k: KindArg) -> Self {
+        match k {
+            KindArg::Dm => ConversationKind::Dm,
+            KindArg::Group => ConversationKind::Group,
+            KindArg::EmailThread => ConversationKind::EmailThread,
+        }
+    }
+}
+
 /// Run the CLI. Both bins must stay identical (no stderr nag).
 pub fn run() -> ExitCode {
     match Cli::try_parse() {
@@ -309,6 +330,7 @@ fn dispatch(cli: Cli) -> Result<(), CliError> {
             from,
             to,
             platform,
+            kind,
             include_groups,
             limit,
         } => cmd_search(
@@ -320,6 +342,7 @@ fn dispatch(cli: Cli) -> Result<(), CliError> {
             from,
             to,
             platform,
+            kind,
             include_groups,
             limit,
         ),
@@ -494,6 +517,7 @@ fn cmd_search(
     from: Option<String>,
     to: Option<String>,
     platform: Option<PlatArg>,
+    kind: Option<KindArg>,
     include_groups: bool,
     limit: u32,
 ) -> Result<(), CliError> {
@@ -506,6 +530,7 @@ fn cmd_search(
         to,
         platform: platform.map(Into::into),
         conversation_id: None,
+        conversation_kind: kind.map(Into::into),
         include_groups,
         limit,
     };

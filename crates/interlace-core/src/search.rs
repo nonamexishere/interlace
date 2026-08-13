@@ -1,7 +1,7 @@
 //! FTS5 search + person timeline (D17, D18). Dual Turkish/ASCII fold.
 
 use crate::db::Archive;
-use crate::model::{CoreError, Platform, SearchHit, SearchQuery};
+use crate::model::{ConversationKind, CoreError, Platform, SearchHit, SearchQuery};
 
 const DEFAULT_LIMIT: u32 = 50;
 const MAX_LIMIT: u32 = 200;
@@ -115,6 +115,19 @@ pub fn search(archive: &Archive, q: &SearchQuery) -> Result<Vec<SearchHit>, Core
     if q.conversation_id.is_some() {
         sql.push_str(" AND d.conversation_id = ?");
     }
+    // conversation_kind: exact c.kind match. group still needs include_groups.
+    let kind_sql = match q.conversation_kind {
+        Some(ConversationKind::Group) if !q.include_groups => {
+            // kind=group with include_groups=false → no hits
+            sql.push_str(" AND 0");
+            None
+        }
+        Some(k) => {
+            sql.push_str(" AND c.kind = ?");
+            Some(conversation_kind_sql(k))
+        }
+        None => None,
+    };
     if q.person_id.is_some() {
         sql.push_str(
             " AND (
@@ -145,6 +158,9 @@ pub fn search(archive: &Archive, q: &SearchQuery) -> Result<Vec<SearchHit>, Core
     }
     if let Some(cid) = q.conversation_id {
         vals.push(cid.into());
+    }
+    if let Some(k) = kind_sql {
+        vals.push(k.to_string().into());
     }
     if let Some(pid) = q.person_id {
         vals.push(pid.into());
@@ -306,6 +322,14 @@ fn platform_sql(p: Platform) -> &'static str {
     }
 }
 
+fn conversation_kind_sql(k: ConversationKind) -> &'static str {
+    match k {
+        ConversationKind::Dm => "dm",
+        ConversationKind::Group => "group",
+        ConversationKind::EmailThread => "email_thread",
+    }
+}
+
 fn strip_cf(s: &str) -> String {
     s.chars()
         .filter(|c| {
@@ -332,6 +356,7 @@ impl Default for SearchQuery {
             to: None,
             platform: None,
             conversation_id: None,
+            conversation_kind: None,
             include_groups: false,
             limit: DEFAULT_LIMIT,
         }
