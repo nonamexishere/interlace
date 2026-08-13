@@ -673,10 +673,12 @@
 
   function onKey(e: KeyboardEvent) {
     const t = e.target as HTMLElement | null;
-    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) {
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) {
       if (e.key === "Escape") t.blur();
       return;
     }
+    // Timeline j/k only on People; Search has its own hit list keys.
+    if (view !== "people") return;
     if (e.key === "/") {
       e.preventDefault();
       document.getElementById("person-filter")?.focus();
