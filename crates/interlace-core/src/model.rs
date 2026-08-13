@@ -236,6 +236,9 @@ pub struct SearchQuery {
     pub to: Option<String>,
     pub platform: Option<Platform>,
     pub conversation_id: Option<i64>,
+    /// When set, only conversations of this kind (`dm` / `group` / `email_thread`).
+    /// `group` still requires `include_groups`; dm/email_thread never return groups.
+    pub conversation_kind: Option<ConversationKind>,
     pub include_groups: bool,
     pub limit: u32,
 }

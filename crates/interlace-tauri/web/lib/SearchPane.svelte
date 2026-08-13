@@ -14,6 +14,7 @@
   let from = $state("");
   let to = $state("");
   let platform = $state("");
+  let conversationKind = $state("");
   let includeGroups = $state(false);
   let hits = $state<SearchHit[]>([]);
   let expanded = $state<number | null>(null);
@@ -35,6 +36,7 @@
         from: from.trim() || null,
         to: to.trim() || null,
         platform: platform || null,
+        conversationKind: conversationKind || null,
         includeGroups,
         limit: 50,
       });
@@ -94,6 +96,19 @@
         <option value="whatsapp">WhatsApp</option>
         <option value="gmail">Gmail</option>
         <option value="contacts">Contacts</option>
+      </select>
+    </div>
+    <div class="space-y-1.5">
+      <Label for="skind">Kind</Label>
+      <select
+        id="skind"
+        bind:value={conversationKind}
+        class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+      >
+        <option value="">Any</option>
+        <option value="dm">DM</option>
+        <option value="group">Group</option>
+        <option value="email_thread">Email thread</option>
       </select>
     </div>
     <div class="space-y-1.5">

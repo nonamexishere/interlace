@@ -177,6 +177,7 @@ export const api = {
     from?: string | null;
     to?: string | null;
     platform?: string | null;
+    conversationKind?: string | null;
     includeGroups: boolean;
     limit?: number;
   }) => invoke<SearchHit[]>("search_cmd", { args }),
