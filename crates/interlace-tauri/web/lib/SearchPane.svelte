@@ -56,11 +56,34 @@
     personListOpen = false;
   }
 
+  let personBlurCloseTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function cancelPersonBlurClose() {
+    if (personBlurCloseTimer != null) {
+      clearTimeout(personBlurCloseTimer);
+      personBlurCloseTimer = null;
+    }
+  }
+
   function onPersonFilterInput() {
     // Typing invalidates a previous pick so search does not keep a stale id.
     personId = null;
     personListOpen = true;
     personHighlight = 0;
+  }
+
+  function onPersonFocus() {
+    cancelPersonBlurClose();
+    personListOpen = true;
+  }
+
+  /** Close list after blur; delay so option mousedown can pick first. */
+  function onPersonBlur() {
+    cancelPersonBlurClose();
+    personBlurCloseTimer = setTimeout(() => {
+      personListOpen = false;
+      personBlurCloseTimer = null;
+    }, 150);
   }
 
   function onPersonKeydown(e: KeyboardEvent) {
@@ -178,7 +201,21 @@
 
   onMount(() => {
     window.addEventListener("keydown", onHitsKey);
-    return () => window.removeEventListener("keydown", onHitsKey);
+    // Close person list when clicking outside the combobox.
+    const onPointerDown = (e: PointerEvent) => {
+      const root = document.querySelector("[data-person-picker]");
+      if (!root || !(e.target instanceof Node)) return;
+      if (!root.contains(e.target)) {
+        cancelPersonBlurClose();
+        personListOpen = false;
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      window.removeEventListener("keydown", onHitsKey);
+      document.removeEventListener("pointerdown", onPointerDown);
+      cancelPersonBlurClose();
+    };
   });
 </script>
 
@@ -209,7 +246,8 @@
           autocomplete="off"
           class={personId != null ? "pr-14" : undefined}
           oninput={onPersonFilterInput}
-          onfocus={() => (personListOpen = true)}
+          onfocus={onPersonFocus}
+          onblur={onPersonBlur}
           onkeydown={onPersonKeydown}
         />
         {#if personId != null}
