@@ -7,6 +7,7 @@
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import EmptyState from "./EmptyState.svelte";
   import CasAttach from "./CasAttach.svelte";
+  import { splitSnippet } from "./snippetHighlight";
 
   let {
     people,
@@ -408,7 +409,15 @@
               .filter(Boolean)
               .join(" · ")}
           </div>
-          <p class="mt-1 whitespace-pre-wrap text-sm">{(h.snippet || h.subject || "").replace(/<attached:\s*[^>]+>/gi, "").trim()}</p>
+          <p class="mt-1 whitespace-pre-wrap text-sm">
+            {#each splitSnippet(h.snippet || h.subject || "") as seg}
+              {#if seg.kind === "mark"}
+                <mark class="rounded-sm bg-yellow-200 px-0.5 text-foreground dark:bg-yellow-700/60">{seg.text}</mark>
+              {:else}
+                {seg.text}
+              {/if}
+            {/each}
+          </p>
         </button>
         <CasAttach items={h.attachments || []} />
         {#if expanded === h.message_id}
