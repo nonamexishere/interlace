@@ -287,6 +287,8 @@
   /** Keep selection ring on a row that is actually rendered. */
   $effect(() => {
     const visible = visibleTlIndices;
+    // Jump miss sets tlIndex < 0 (no ring); do not claim a visible row.
+    if (tlIndex < 0) return;
     if (!visible.length) return;
     if (!visible.includes(tlIndex)) {
       tlIndex = nearestVisibleTlIndex(tlIndex, visible);
@@ -604,6 +606,112 @@
     }
   }
 
+  /**
+   * Search hit → People: select person, page the timeline until message_id is
+   * loaded (bounded), set tlIndex, scroll virtual window + highlight once.
+   * Optional sentAt seeks the first page near the hit (before just after it).
+   * Miss after the walk: showErr — never ring an unrelated row as the hit.
+   */
+  async function openPersonAtMessage(
+    personId: number,
+    messageId: number,
+    sentAt?: string | null,
+  ) {
+    showPersonChrome = false;
+    platformFilter = "all";
+    kindFilter = "all";
+    quotedOpen = {};
+    selectedId = personId;
+    selectedConversationId = null;
+    const gen = ++tlGen;
+    tlLoading = true;
+    stopPinLatest();
+    try {
+      const show = await api.personShow(personId);
+      if (gen !== tlGen) return;
+      personTitle = show.display_name || `person ${personId}`;
+      identities = show.identities || [];
+      conversations = await api.personConversations({
+        id: personId,
+        includeGroups,
+      });
+      if (gen !== tlGen) return;
+
+      // Newest-first pages; reverse each batch and prepend until hit or cap.
+      // Core cursor is exclusive (`m.sent_at < before`); seed just after hit
+      // sent_at so the first page can include it instead of walking from newest.
+      const pageLimit = 200;
+      const maxPages = 80;
+      const seekAt = (sentAt ?? "").trim();
+      let loaded: TimelineRow[] = [];
+      let before: string | null = seekAt ? `${seekAt}~` : null;
+      for (let page = 0; page < maxPages; page++) {
+        const batch = await api.personTimeline({
+          id: personId,
+          includeGroups,
+          limit: pageLimit,
+          before,
+          conversationId: null,
+        });
+        if (gen !== tlGen) return;
+        if (batch.length === 0) break;
+        const chrono = batch.toReversed();
+        loaded = page === 0 ? chrono : chrono.concat(loaded);
+        if (loaded.some((r) => r.message_id === messageId)) break;
+        const nextBefore = oldestSentAt(loaded);
+        if (!nextBefore || batch.length < pageLimit) break;
+        before = nextBefore;
+      }
+      if (gen !== tlGen) return;
+
+      timeline = loaded;
+      const idx = loaded.findIndex((r) => r.message_id === messageId);
+      if (idx < 0) {
+        tlIndex = -1;
+        showErr(
+          "Could not find that message on the person timeline (too far back or not in this view).",
+        );
+        return;
+      }
+      tlIndex = idx;
+
+      // Estimate scroll so the virtual window covers the target on first paint.
+      const estTop = Math.max(0, tlIndex * ESTIMATED_ROW_HEIGHT - ESTIMATED_ROW_HEIGHT * 2);
+      tlScrollTop = estTop;
+      tlLoading = false;
+      await tick();
+      if (gen !== tlGen) return;
+      ensureTlIndexVisible(tlIndex);
+      requestAnimationFrame(() => {
+        if (gen !== tlGen) return;
+        ensureTlIndexVisible(tlIndex);
+      });
+    } catch (e) {
+      if (gen === tlGen) showErr(e);
+    } finally {
+      if (gen === tlGen) tlLoading = false;
+    }
+  }
+
+  /** SearchPane hit with person_id: People view + open at that message. */
+  async function jumpToMessage(args: {
+    personId: number;
+    messageId: number;
+    conversationKind?: string | null;
+    sentAt?: string | null;
+  }) {
+    view = "people";
+    // Group hits need include-groups so group rows can appear.
+    if (
+      (args.conversationKind ?? "").toLowerCase() === "group" &&
+      !includeGroups
+    ) {
+      includeGroups = true;
+    }
+    await tick();
+    await openPersonAtMessage(args.personId, args.messageId, args.sentAt);
+  }
+
   async function pickConversation(conversationId: number | null) {
     if (!selectedId) return;
     selectedConversationId = conversationId;
@@ -818,7 +926,7 @@
       </p>
     </main>
   {:else if st && view === "search"}
-    <SearchPane {people} onError={showErr} />
+    <SearchPane {people} onError={showErr} onJumpToMessage={jumpToMessage} />
   {:else if st && view === "review"}
     <ReviewPane
       onError={showErr}
