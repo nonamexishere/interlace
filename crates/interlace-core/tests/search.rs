@@ -7,9 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use interlace_core::db::init_archive;
 use interlace_core::search::{index_import_run, turkish_fold};
-use interlace_core::{
-    person_timeline, search, AttachmentFilter, ConversationKind, SearchQuery,
-};
+use interlace_core::{person_timeline, search, AttachmentFilter, ConversationKind, SearchQuery};
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -431,10 +429,7 @@ fn plant_attachment(arch: &interlace_core::db::Archive) -> AttPlanted {
     // Stored CAS blob: cas_blobs row + attachments.cas_hash set.
     let cas = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     arch.conn
-        .execute(
-            "INSERT INTO cas_blobs(hash, size) VALUES (?1, 4)",
-            [cas],
-        )
+        .execute("INSERT INTO cas_blobs(hash, size) VALUES (?1, 4)", [cas])
         .unwrap();
     arch.conn
         .execute(
