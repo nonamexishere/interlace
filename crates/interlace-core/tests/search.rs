@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use interlace_core::db::init_archive;
 use interlace_core::search::{index_import_run, turkish_fold};
-use interlace_core::{person_timeline, search, SearchQuery};
+use interlace_core::{person_timeline, search, ConversationKind, SearchQuery};
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -206,5 +206,157 @@ fn search_s3_ascii_islak_hits_islak() {
     );
     let tl_g = person_timeline(&arch, p.person, true, 50).unwrap();
     assert!(ids(&tl_g).contains(&p.group_msg));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// #122 — same FTS token in a dm and a group; kind=dm must not return the group.
+struct KindPlanted {
+    dm_msg: i64,
+    group_msg: i64,
+}
+
+fn plant_kind(arch: &interlace_core::db::Archive) -> KindPlanted {
+    arch.conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('whatsapp_android_zip', 't', '/t.zip')",
+            [],
+        )
+        .unwrap();
+    let src = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO import_runs(source_id, status) VALUES (?1, 'done')",
+            [src],
+        )
+        .unwrap();
+    let run = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('whatsapp', 'display_name', 'Ada', 'ada', 'Ada')",
+            [],
+        )
+        .unwrap();
+    let iid = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('whatsapp', 'dm', 'whatsapp:dm-ada', 'Ada')",
+            [],
+        )
+        .unwrap();
+    let dm = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![dm, iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('whatsapp', 'group', 'whatsapp:g-kind', 'Project Ada')",
+            [],
+        )
+        .unwrap();
+    let grp = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![grp, iid],
+        )
+        .unwrap();
+
+    let ins = |conv: i64, body: &str, key: &str| -> i64 {
+        arch.conn
+            .execute(
+                "INSERT INTO messages(
+                    conversation_id, source_id, import_run_id, sender_identity_id,
+                    sent_at, sent_at_precision, kind, body_text, idempotency_key
+                 ) VALUES (?1, ?2, ?3, ?4, '2024-03-15T14:32:00Z', 'second', 'text', ?5, ?6)",
+                rusqlite::params![conv, src, run, iid, body, key],
+            )
+            .unwrap();
+        arch.conn.last_insert_rowid()
+    };
+    // Shared FTS token in both dm and group.
+    let dm_msg = ins(dm, "sharedhit from Ada dm", "k-kind-dm");
+    let group_msg = ins(grp, "sharedhit from Ada group", "k-kind-grp");
+    index_import_run(arch, run).unwrap();
+    KindPlanted { dm_msg, group_msg }
+}
+
+#[test]
+fn search_kind_dm_excludes_group_hits() {
+    let root = tmp_root();
+    let arch = init_archive(&root).unwrap();
+    let p = plant_kind(&arch);
+    let hits = search(
+        &arch,
+        &SearchQuery {
+            q: "sharedhit".into(),
+            conversation_kind: Some(ConversationKind::Dm),
+            include_groups: true,
+            ..SearchQuery::default()
+        },
+    )
+    .unwrap();
+    let got = ids(&hits);
+    assert!(
+        got.contains(&p.dm_msg),
+        "kind=dm must return the dm message, got {hits:?}"
+    );
+    assert!(
+        !got.contains(&p.group_msg),
+        "kind=dm must not return group hits even with include_groups, got {hits:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn search_kind_group_respects_include_groups() {
+    let root = tmp_root();
+    let arch = init_archive(&root).unwrap();
+    let p = plant_kind(&arch);
+
+    let without = search(
+        &arch,
+        &SearchQuery {
+            q: "sharedhit".into(),
+            conversation_kind: Some(ConversationKind::Group),
+            include_groups: false,
+            ..SearchQuery::default()
+        },
+    )
+    .unwrap();
+    assert!(
+        !ids(&without).contains(&p.group_msg),
+        "kind=group with include_groups=false must not return group hits, got {without:?}"
+    );
+    assert!(
+        !ids(&without).contains(&p.dm_msg),
+        "kind=group must not return dm hits, got {without:?}"
+    );
+
+    let with = search(
+        &arch,
+        &SearchQuery {
+            q: "sharedhit".into(),
+            conversation_kind: Some(ConversationKind::Group),
+            include_groups: true,
+            ..SearchQuery::default()
+        },
+    )
+    .unwrap();
+    assert!(
+        ids(&with).contains(&p.group_msg),
+        "kind=group with include_groups=true must return the group message, got {with:?}"
+    );
+    assert!(
+        !ids(&with).contains(&p.dm_msg),
+        "kind=group must not return dm hits, got {with:?}"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }

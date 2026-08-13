@@ -61,6 +61,10 @@
 #     (null/empty to api.search from select state). Only core tokens Tauri
 #     parse_platform accepts (contacts OK; no owner option unless IPC accepts it;
 #     no invented twitter/slack/…). Not: new platforms, regex.
+#122: SearchPane conversation kind is a closed <select> (Any | dm | group |
+#     email_thread), not free text. Empty value = any. Wire conversationKind /
+#     conversation_kind into api.search. Groups still respect include-groups.
+#     Not: Gmail label filter, invented kinds beyond dm/group/email_thread.
 """
 
 from __future__ import annotations
@@ -5639,6 +5643,286 @@ def assert_search_platform_select(crate: Path) -> None:
         )
 
 
+# #122 — SearchPane conversation-kind select (closed control; dm|group|email_thread).
+_CORE_SEARCH_KIND_TOKENS = frozenset({"dm", "group", "email_thread"})
+_INVENTED_SEARCH_KIND_TOKENS = frozenset(
+    {
+        "channel",
+        "room",
+        "broadcast",
+        "community",
+        "thread",
+        "space",
+        "channel_thread",
+        "mailing_list",
+        "list",
+        "forum",
+        "chat",
+        "private",
+        "public",
+        "supergroup",
+    }
+)
+# State bindings accepted for the kind select (camel/snake + short names).
+_SEARCH_KIND_STATE = (
+    r"(?:conversationKind|conversation_kind|searchKind|kindFilter|kind)"
+)
+# Free-text textbox bound to search kind state (invalid tokens typable).
+_SEARCH_KIND_FREE_TEXT = re.compile(
+    rf"<Input\b[^>]{{0,400}}\bbind:value=\{{{_SEARCH_KIND_STATE}\}}"
+    rf"|<input\b(?![^>]*\btype\s*=\s*[\"'](?:hidden|checkbox|radio|submit|button)[\"'])"
+    rf"[^>]{{0,400}}\bbind:value=\{{{_SEARCH_KIND_STATE}\}}"
+    rf"|<Input\b[^>]{{0,200}}\bid\s*=\s*[\"'](?:skind|kind|conv-kind|conversation-kind)[\"']"
+    rf"[^>]{{0,200}}>"
+    rf"|<input\b(?![^>]*\btype\s*=\s*[\"'](?:hidden|checkbox|radio|submit|button)[\"'])"
+    rf"[^>]{{0,200}}\bid\s*=\s*[\"'](?:skind|kind|conv-kind|conversation-kind)[\"']"
+    rf"[^>]{{0,200}}>",
+    re.I,
+)
+# Closed kind control: native <select> or bits-ui Select.
+_SEARCH_KIND_SELECT = re.compile(
+    rf"<select\b[^>]{{0,400}}(?:\bbind:value=\{{{_SEARCH_KIND_STATE}\}}"
+    rf"|\bid\s*=\s*[\"'](?:skind|kind|conv-kind|conversation-kind)[\"'])"
+    rf"|(?:\bbind:value=\{{{_SEARCH_KIND_STATE}\}}"
+    rf"|\bid\s*=\s*[\"'](?:skind|kind|conv-kind|conversation-kind)[\"'])[^>]{{0,400}}>"
+    rf"|<(?:[A-Za-z][\w]*\.)?Select(?:\.Root)?\b[^>]{{0,400}}"
+    rf"\b(?:conversationKind|conversation_kind|searchKind|kindFilter)\b",
+    re.I,
+)
+_SEARCH_API_KIND_ARG = re.compile(
+    r"\b(?:conversationKind|conversation_kind)\s*:\s*([^,\n}]+)",
+    re.I,
+)
+# Empty select value must mean any → null/empty from select *state*.
+_SEARCH_KIND_EMPTY_AS_ANY = re.compile(
+    r"(?:conversationKind|conversation_kind)\s*:\s*(?:"
+    rf"{_SEARCH_KIND_STATE}\s*\|\|\s*(?:null|undefined)"
+    rf"|{_SEARCH_KIND_STATE}\s*\?\?\s*(?:null|undefined)"
+    rf"|{_SEARCH_KIND_STATE}\s*\?\s*{_SEARCH_KIND_STATE}\s*:\s*(?:null|undefined)"
+    rf"|{_SEARCH_KIND_STATE}\s*===\s*[\"'][\"']\s*\?\s*(?:null|undefined)"
+    rf"|!{_SEARCH_KIND_STATE}\s*\?\s*(?:null|undefined)\s*:\s*{_SEARCH_KIND_STATE}"
+    rf"|{_SEARCH_KIND_STATE}\b"
+    r")",
+    re.I,
+)
+# api.search kind arg must read the select binding (not a decorative control).
+_SEARCH_KIND_STATE_FLOW = re.compile(
+    rf"(?:conversationKind|conversation_kind)\s*:\s*{_SEARCH_KIND_STATE}\b",
+    re.I,
+)
+
+
+def assert_search_conversation_kind(crate: Path) -> None:
+    """#122: Search conversation kind is a closed <select>, not free-text.
+
+    Options: empty/any + dm + group + email_thread. Empty value means any and is
+    sent as null/empty to api.search (conversationKind / conversation_kind).
+    Groups still respect include-groups (checkbox must remain). Do not invent
+    kinds beyond those three. Not: Gmail label filter.
+    """
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    if not search_path.is_file():
+        fail("#122: SearchPane.svelte required (search conversation-kind control lives there)")
+    src = search_path.read_text()
+    cleaned = _without_comments(src)
+    markup = _svelte_markup(src)
+    surface = markup if markup.strip() else src
+    whole = cleaned
+
+    # 1) api.search must receive conversationKind / conversation_kind from select state.
+    api_m = _SEARCH_API_PLATFORM_ARG.search(whole)
+    if not api_m:
+        if not re.search(r"api\.search\s*\(", whole):
+            fail("#122: SearchPane must call api.search")
+        if not re.search(r"\b(?:conversationKind|conversation_kind)\s*:", whole):
+            fail(
+                "#122: api.search must receive conversationKind / conversation_kind "
+                "from the select (conversationKind: … in the search args)"
+            )
+        api_args = whole
+    else:
+        api_args = api_m.group(1)
+        if not re.search(r"\b(?:conversationKind|conversation_kind)\s*:", api_args):
+            fail(
+                "#122: api.search must receive conversationKind / conversation_kind "
+                "from the select (conversationKind: … in the search args)"
+            )
+
+    kind_arg_m = _SEARCH_API_KIND_ARG.search(api_args)
+    kind_arg = (kind_arg_m.group(1).strip() if kind_arg_m else "") or ""
+    if kind_arg and re.fullmatch(
+        r"[\"'](?:" + "|".join(sorted(_INVENTED_SEARCH_KIND_TOKENS)) + r")[\"']",
+        kind_arg,
+        re.I,
+    ):
+        fail(
+            "#122: api.search conversation kind must come from the select state, "
+            "not a hard-coded invented token"
+        )
+    if kind_arg and re.fullmatch(r"[\"'](?:dm|group|email_thread)[\"']", kind_arg, re.I):
+        fail(
+            "#122: api.search conversation kind must be user-selected from the control, "
+            "not hard-coded to a single kind"
+        )
+    if not _SEARCH_KIND_STATE_FLOW.search(api_args) and not _SEARCH_KIND_STATE_FLOW.search(whole):
+        fail(
+            "#122: api.search conversation kind must read the select state "
+            "(e.g. conversationKind: conversationKind || null) — not a bare null / ignored control"
+        )
+
+    # 2) Fail free-text Input/textbox for kind (invalid tokens typable).
+    if _SEARCH_KIND_FREE_TEXT.search(surface) or _SEARCH_KIND_FREE_TEXT.search(src):
+        fail(
+            "#122: search conversation kind must not be a free-text Input/textbox "
+            "(invalid tokens cannot be typed — use a closed <select>)"
+        )
+    # Label "Kind" only — do not match the "kind" suffix inside id="skind".
+    if re.search(
+        r"(?:Conversation\s+kind|>\s*Kind\s*<|for\s*=\s*[\"'](?:skind|kind)[\"'])",
+        surface,
+        re.I,
+    ) and re.search(
+        r"<Input\b|<input\b(?![^>]*\btype\s*=\s*[\"'](?:hidden|checkbox|radio)[\"'])",
+        surface,
+        re.I,
+    ):
+        for m in re.finditer(
+            r"(?:Conversation\s+kind|>\s*Kind\s*<|for\s*=\s*[\"'](?:skind|kind)[\"'])",
+            surface,
+            re.I,
+        ):
+            window = surface[m.start() : m.start() + 400]
+            if re.search(
+                rf"<Input\b[^>]{{0,200}}(?:kind|skind)|"
+                rf"<input\b[^>]{{0,200}}(?:kind|skind)|"
+                rf"bind:value=\{{{_SEARCH_KIND_STATE}\}}",
+                window,
+                re.I,
+            ) and not re.search(r"<select\b|Select\.Root|SelectItem", window, re.I):
+                fail(
+                    "#122: search conversation kind must not be a free-text Input/textbox "
+                    "(invalid tokens cannot be typed — use a closed <select>)"
+                )
+
+    # 3) Closed control: <select> (or equivalent) bound to kind state.
+    has_select = bool(_SEARCH_KIND_SELECT.search(surface)) or bool(
+        _SEARCH_KIND_SELECT.search(src)
+    )
+    if not has_select:
+        kind_label = re.search(
+            r"(?:for\s*=\s*[\"'](?:skind|kind|conv-kind|conversation-kind)[\"']"
+            r"|>\s*(?:Conversation\s*kind|Kind)\s*<"
+            r"|id\s*=\s*[\"'](?:skind|kind|conv-kind|conversation-kind)[\"'])",
+            surface,
+            re.I,
+        )
+        if kind_label:
+            window = surface[kind_label.start() : kind_label.start() + 800]
+            has_select = bool(re.search(r"<select\b", window, re.I)) or bool(
+                re.search(r"<(?:[A-Za-z][\w]*\.)?Select(?:\.Root)?\b", window, re.I)
+            )
+    if not has_select:
+        fail(
+            "#122: search conversation kind must be a closed <select> "
+            "(or equivalent Select control) with fixed options — not free text"
+        )
+
+    # 4) Options: empty/any + dm + group + email_thread; only those tokens.
+    option_region = surface
+    sel = re.search(
+        rf"<select\b[^>]{{0,400}}(?:\bbind:value=\{{{_SEARCH_KIND_STATE}\}}"
+        rf"|\bid\s*=\s*[\"'](?:skind|kind|conv-kind|conversation-kind)[\"'])"
+        rf"[^>]*>[\s\S]{{0,2000}}?</select>",
+        surface,
+        re.I,
+    )
+    if not sel:
+        sel = re.search(
+            r"(?:for\s*=\s*[\"'](?:skind|kind|conv-kind|conversation-kind)[\"']"
+            r"|>\s*(?:Conversation\s*kind|Kind)\s*<)[\s\S]{0,200}"
+            r"<select\b[^>]*>[\s\S]{0,2000}?</select>",
+            surface,
+            re.I,
+        )
+    if sel:
+        option_region = sel.group(0)
+
+    values = _search_platform_option_values(option_region)
+    if not values:
+        # Fallback only if a dedicated kind select region was found; do not
+        # swallow platform <option> values from the rest of SearchPane.
+        if sel:
+            values = _search_platform_option_values(surface)
+
+    norm = [v.strip() for v in values]
+    lower = [v.lower() for v in norm]
+
+    if "" not in norm:
+        fail(
+            "#122: conversation-kind <select> must include an empty-value option for Any "
+            '(value="" — empty means any; do not send a literal "any" token)'
+        )
+    if "dm" not in lower:
+        fail("#122: conversation-kind <select> must offer dm")
+    if "group" not in lower:
+        fail("#122: conversation-kind <select> must offer group")
+    if "email_thread" not in lower:
+        fail("#122: conversation-kind <select> must offer email_thread")
+
+    for v in lower:
+        if v == "":
+            continue
+        if v in _INVENTED_SEARCH_KIND_TOKENS:
+            fail(
+                f"#122: do not invent search conversation-kind option {v!r} "
+                "(only: dm, group, email_thread)"
+            )
+        if v not in _CORE_SEARCH_KIND_TOKENS:
+            if v in {"any", "all"}:
+                fail(
+                    "#122: Any/all must use empty value=\"\" "
+                    "(core has no \"any\" conversation_kind token — empty means any)"
+                )
+            fail(
+                f"#122: conversation-kind option value {v!r} is not accepted "
+                "(allowed: dm, group, email_thread; empty = any)"
+            )
+
+    # 5) Empty value means any → null/empty from select state to api.search.
+    if not _SEARCH_KIND_EMPTY_AS_ANY.search(whole):
+        fail(
+            "#122: empty conversation kind must mean any "
+            "(send null/empty from select state — e.g. conversationKind: conversationKind || null)"
+        )
+
+    # Default state should be empty/any, not a forced kind.
+    if re.search(
+        rf"\b(?:let|const|var)\s+{_SEARCH_KIND_STATE}\s*=\s*\$state\s*\(\s*[\"']"
+        r"(?:dm|group|email_thread|"
+        + "|".join(sorted(_INVENTED_SEARCH_KIND_TOKENS))
+        + r")[\"']\s*\)",
+        whole,
+        re.I,
+    ) or re.search(
+        rf"\b{_SEARCH_KIND_STATE}\s*=\s*\$state\s*\(\s*[\"']"
+        r"(?:dm|group|email_thread)[\"']\s*\)",
+        whole,
+        re.I,
+    ):
+        fail(
+            "#122: conversation-kind state must default to empty/any "
+            "(not pre-selected to a single kind)"
+        )
+
+    # Groups still respect include-groups — checkbox must remain on SearchPane.
+    if not re.search(r"include groups", src, re.I) and not re.search(
+        r"includeGroups", whole
+    ):
+        fail(
+            "#122: keep include-groups on Search (kind=group still respects include_groups)"
+        )
+
+
 def assert_virtualized_timeline(crate: Path) -> None:
     """#120: window person timeline (visible + overscan); keep j/k + Load older.
 
@@ -5836,6 +6120,7 @@ def main() -> None:
     assert_voice_note_player(crate)
     assert_virtualized_timeline(crate)
     assert_search_platform_select(crate)
+    assert_search_conversation_kind(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
