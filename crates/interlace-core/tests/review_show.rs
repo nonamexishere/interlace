@@ -1,4 +1,5 @@
 //! Review card: both sides' message counts and samples (#149).
+//! Identifiers on each side panel (#128): kind + value_normalized.
 //!
 //! Not a Phase 1 matrix ID. Do not add to test_plan.json.
 //! Matrix IDs (gate grep):
@@ -8,6 +9,11 @@
 //! does not. Each panel lists `platforms`. Do not assume which panel is
 //! WhatsApp vs Contacts — classify from `review.left_identity_id` /
 //! `review.right_person_id`.
+//!
+//! #128: each side panel (left / right, and every entry of `sides` when present)
+//! exposes `identifiers: [{ kind, value_normalized, platform? }, …]` so a
+//! name_similarity card is decidable without CLI `review show`. Samples stay
+//! plain `body_text` (no body_html). Score / evidence chrome unchanged.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -500,6 +506,76 @@ fn assert_empty_side(panel: &serde_json::Value, label: &str) {
     );
 }
 
+/// #128 — panel identifiers: kind + value_normalized (platform optional).
+fn identifiers_of(panel: &serde_json::Value) -> &[serde_json::Value] {
+    panel["identifiers"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_else(|| {
+            panic!(
+                "panel.identifiers must be an array (kind + value_normalized per entry), got {panel}"
+            )
+        })
+}
+
+fn assert_identifier_shape(entry: &serde_json::Value, label: &str) {
+    let kind = entry
+        .get("kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| panic!("{label}: identifier.kind must be a non-empty string: {entry}"));
+    assert!(
+        !kind.is_empty(),
+        "{label}: identifier.kind must be non-empty: {entry}"
+    );
+    let norm = entry
+        .get("value_normalized")
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| {
+            panic!("{label}: identifier.value_normalized must be a non-empty string: {entry}")
+        });
+    assert!(
+        !norm.is_empty(),
+        "{label}: identifier.value_normalized must be non-empty: {entry}"
+    );
+    if let Some(plat) = entry.get("platform") {
+        if !plat.is_null() {
+            let p = plat.as_str().unwrap_or_else(|| {
+                panic!("{label}: identifier.platform must be a string when present: {entry}")
+            });
+            assert!(
+                !p.is_empty(),
+                "{label}: identifier.platform must be non-empty when present: {entry}"
+            );
+        }
+    }
+}
+
+fn assert_panel_identifiers(panel: &serde_json::Value, label: &str) {
+    let ids = identifiers_of(panel);
+    assert!(
+        !ids.is_empty(),
+        "{label}: identifiers must list at least one kind+value_normalized: {panel}"
+    );
+    for (i, entry) in ids.iter().enumerate() {
+        assert_identifier_shape(entry, &format!("{label}.identifiers[{i}]"));
+    }
+}
+
+fn panel_has_ident(panel: &serde_json::Value, kind: &str, value_normalized: &str) -> bool {
+    identifiers_of(panel).iter().any(|e| {
+        e["kind"].as_str() == Some(kind) && e["value_normalized"].as_str() == Some(value_normalized)
+    })
+}
+
+fn review_panels_for_idents<'a>(shown: &'a serde_json::Value) -> Vec<&'a serde_json::Value> {
+    if let Some(sides) = shown.get("sides").and_then(|v| v.as_array()) {
+        if !sides.is_empty() {
+            return sides.iter().collect();
+        }
+    }
+    vec![&shown["left"], &shown["right"]]
+}
+
 #[test]
 fn review_show_empty_contacts_plus_wa_dm() {
     let root = tmp_root();
@@ -727,5 +803,106 @@ fn review_show_caps_samples_at_three_count_is_full() {
     assert!(!got.iter().any(|b| b.contains("Ada cap 2")));
     assert!(!got.iter().any(|b| b.contains("Ada cap 5 html")));
     assert_empty_side(panels.contacts, "Contacts");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// #128: name_similarity card exposes kind+value_normalized on every panel.
+///
+/// Plant: Contacts Ada (phone) + WhatsApp Ada (display_name). User must see
+/// identifiers (not only display_name / platforms) so Accept is decidable
+/// without CLI `review show`. Samples stay body_text; score/evidence kept.
+#[test]
+fn review_show_panels_include_identifiers() {
+    let root = tmp_root();
+    let mut arch = init_archive(&root).unwrap();
+    let pair = plant_ada_pair(&mut arch);
+    let infra = ensure_msg_infra(&arch);
+    plant_dm_from(
+        &arch,
+        &infra,
+        pair.wa_iid,
+        "whatsapp:ada-id-dm",
+        "2024-03-05T10:00:00Z",
+        "Ada id sample",
+        "k-ada-id-dm",
+    );
+
+    let stats = resolve_run(&mut arch, 0).unwrap();
+    assert_eq!(
+        live_non_self(&arch),
+        2,
+        "I2 remains: names never auto-merge"
+    );
+    assert!(
+        stats.review_enqueued >= 1,
+        "same-name Ada pair must enqueue review"
+    );
+
+    let shown = show(&arch);
+    assert_panel_shell(&shown);
+    assert!(
+        shown
+            .get("evidence")
+            .and_then(|e| e.as_array())
+            .map(|a| !a.is_empty())
+            .unwrap_or(false),
+        "evidence list must stay: {shown}"
+    );
+    assert!(
+        shown["review"].get("score").is_some() || shown["review"].get("suggested_score").is_some(),
+        "score must stay on the review card: {shown}"
+    );
+
+    // left / right always carry identifiers (kind + value_normalized).
+    assert_panel_identifiers(&shown["left"], "left");
+    assert_panel_identifiers(&shown["right"], "right");
+
+    // n-way sides[] (when present): same shape on every side.
+    if let Some(sides) = shown.get("sides").and_then(|v| v.as_array()) {
+        for (i, side) in sides.iter().enumerate() {
+            assert_panel_identifiers(side, &format!("sides[{i}]"));
+        }
+    }
+
+    let panels = both_panels(&arch, &shown);
+    let ada_fold = name_fold_join("Ada");
+    assert!(
+        panel_has_ident(panels.wa, "display_name", &ada_fold),
+        "WA panel must expose the display_name identity (kind=display_name, \
+         value_normalized={ada_fold:?}): identifiers={:?}",
+        identifiers_of(panels.wa)
+    );
+    assert!(
+        panel_has_ident(panels.contacts, "phone", "+905321110100"),
+        "Contacts panel must expose the linked phone (kind=phone, \
+         value_normalized=+905321110100): identifiers={:?}",
+        identifiers_of(panels.contacts)
+    );
+
+    // Samples remain text nodes (body_text only; no body_html dump).
+    assert!(
+        bodies_contain(panels.wa, "Ada id sample"),
+        "WA samples must still show the planted body: {:?}",
+        sample_bodies(panels.wa)
+    );
+    for panel in review_panels_for_idents(&shown) {
+        let _ = sample_bodies(panel); // panics if body_html / non-text
+    }
+
+    // Platform on an identifier entry is optional; when present it is a string.
+    for panel in review_panels_for_idents(&shown) {
+        for entry in identifiers_of(panel) {
+            if let Some(p) = entry.get("platform") {
+                if !p.is_null() {
+                    assert!(
+                        p.as_str().map(|s| !s.is_empty()).unwrap_or(false),
+                        "platform when present must be a non-empty string: {entry}"
+                    );
+                }
+            }
+        }
+    }
+
+    assert_eq!(live_non_self(&arch), 2);
     let _ = std::fs::remove_dir_all(&root);
 }

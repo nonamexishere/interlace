@@ -137,6 +137,10 @@
     return `${name} (No source)`;
   }
 
+  function identifierLabel(id: { kind: string; value_normalized: string }): string {
+    return `${id.kind}: ${id.value_normalized}`;
+  }
+
   function countLabel(n: number): string {
     return n === 1 ? "1 message" : `${n} messages`;
   }
@@ -194,6 +198,13 @@
               />
             {/if}
             <span class="mb-1 text-xs font-medium">{panelTitle(panel)}</span>
+            {#if panel.identifiers && panel.identifiers.length > 0}
+              <ul class="mb-1 space-y-0.5 text-xs text-muted-foreground">
+                {#each panel.identifiers as id}
+                  <li>{identifierLabel(id)}</li>
+                {/each}
+              </ul>
+            {/if}
             <p class="mb-1 text-xs text-muted-foreground">{countLabel(panel.message_count)}</p>
             {#if panel.samples.length === 0}
               <p class="text-sm text-muted-foreground">No messages on this side</p>

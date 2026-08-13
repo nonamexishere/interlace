@@ -59,11 +59,13 @@ interlace review reject <id>
 (`left` / `right`) plus `sides` — one panel per live person in the exact-fold
 cluster (just the pair when folds differ or the fold is empty). Each panel
 has the display name with **where the name came from** (`Ada (WhatsApp)` /
-`Ada (Contacts)` / `Ada (Gmail)`), each evidence line, and each side’s
-message count with up to three newest sample lines (`sent_at · body_text`).
-Messages **sent** in a group count; received-only group chatter does not. An
-empty side shows “No messages on this side” (a Contacts card with no DMs or
-mail is not hidden). Names never auto-merge.
+`Ada (Contacts)` / `Ada (Gmail)`), the side’s linked identifiers as
+**kind + normalized value** (phone / email / display_name — so a
+name-similarity card is decidable without the CLI), each evidence line, and
+each side’s message count with up to three newest sample lines
+(`sent_at · body_text`). Messages **sent** in a group count; received-only
+group chatter does not. An empty side shows “No messages on this side” (a
+Contacts card with no DMs or mail is not hidden). Names never auto-merge.
 
 Accept merges the **checked** people in that cluster (Select all by default)
 into one survivor (queued `right_person_id` when that person is still live

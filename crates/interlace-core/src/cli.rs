@@ -717,6 +717,13 @@ fn print_review_panel(label: &str, panel: &serde_json::Value) {
     };
     let count = panel["message_count"].as_i64().unwrap_or(0);
     println!("{label}: {title}");
+    if let Some(idents) = panel["identifiers"].as_array() {
+        for id in idents {
+            let kind = id["kind"].as_str().unwrap_or("?");
+            let norm = id["value_normalized"].as_str().unwrap_or("");
+            println!("  {kind}: {norm}");
+        }
+    }
     println!(
         "  {} {}",
         count,

@@ -305,6 +305,7 @@ pub fn review_show(archive: &Archive, id: i64) -> Result<serde_json::Value, Core
             "person_id": null,
             "display_name": review["right_name"],
             "platforms": [],
+            "identifiers": [],
             "message_count": 0,
             "samples": [],
         })
@@ -640,11 +641,13 @@ fn review_side_panel(
     display_name: serde_json::Value,
 ) -> Result<serde_json::Value, CoreError> {
     let platforms = side_platforms(archive, identity_ids)?;
+    let identifiers = side_identifiers(archive, identity_ids)?;
     if identity_ids.is_empty() {
         return Ok(serde_json::json!({
             "person_id": person_id,
             "display_name": display_name,
             "platforms": platforms,
+            "identifiers": identifiers,
             "message_count": 0,
             "samples": [],
         }));
@@ -700,9 +703,45 @@ fn review_side_panel(
         "person_id": person_id,
         "display_name": display_name,
         "platforms": platforms,
+        "identifiers": identifiers,
         "message_count": message_count,
         "samples": samples,
     }))
+}
+
+/// Kind + normalized value for each identity on a review side (#128).
+/// Stable order: platform rank, then kind, then value_normalized.
+fn side_identifiers(
+    archive: &Archive,
+    identity_ids: &[i64],
+) -> Result<Vec<serde_json::Value>, CoreError> {
+    if identity_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = identity_ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
+    let mut stmt = archive.conn.prepare(&format!(
+        "SELECT kind, value_normalized, platform FROM identities
+         WHERE id IN ({placeholders})
+         ORDER BY CASE platform
+            WHEN 'whatsapp' THEN 0
+            WHEN 'gmail' THEN 1
+            WHEN 'contacts' THEN 2
+            WHEN 'owner' THEN 3
+            ELSE 4
+         END, platform, kind, value_normalized"
+    ))?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(identity_ids), |r| {
+        Ok(serde_json::json!({
+            "kind": r.get::<_, String>(0)?,
+            "value_normalized": r.get::<_, String>(1)?,
+            "platform": r.get::<_, String>(2)?,
+        }))
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
 fn side_platforms(archive: &Archive, identity_ids: &[i64]) -> Result<Vec<String>, CoreError> {
