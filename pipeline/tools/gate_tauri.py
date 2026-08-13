@@ -65,6 +65,11 @@
 #     email_thread), not free text. Empty value = any. Wire conversationKind /
 #     conversation_kind into api.search. Groups still respect include-groups.
 #     Not: Gmail label filter, invented kinds beyond dm/group/email_thread.
+#123: SearchPane person is a name-facing combobox / filtered list (same people
+#     source as the sidebar), not free-text “Person id” + datalist of numeric
+#     ids. Selecting stores person_id for api.search({ personId }). Keyboard:
+#     type to filter display names, Enter to pick (first match or highlighted).
+#     Clear = no person filter. Not: multi-person OR, fuzzy beyond list filter.
 """
 
 from __future__ import annotations
@@ -5923,6 +5928,411 @@ def assert_search_conversation_kind(crate: Path) -> None:
         )
 
 
+# #123 — SearchPane person picker by display name (not free-text numeric id).
+# State names accepted for the chosen person id (numeric under the hood).
+_SEARCH_PERSON_ID_STATE = (
+    r"(?:personId|person_id|selectedPersonId|pickedPersonId|searchPersonId)"
+)
+# Free-text filter / query over display names (not the stored id).
+_SEARCH_PERSON_FILTER_STATE = (
+    r"(?:personFilter|personQuery|personSearch|searchPersonFilter|personNameFilter|"
+    r"personPickQuery|personPickerQuery|personText|nameFilter)"
+)
+# Label that treats the control as a raw id field (pre-impl UX).
+_SEARCH_PERSON_ID_LABEL = re.compile(
+    r">\s*Person\s*id\s*<"
+    r"|for\s*=\s*[\"']sp[\"'][^>]*>\s*Person\s*id\s*<"
+    r"|placeholder\s*=\s*[\"'][^\"']*\bperson\s*id\b[^\"']*[\"']",
+    re.I,
+)
+# Free-text Input bound to the stored person id (user types a number).
+# id="sp" alone is fine for a name-filter field; fail only when bound to id state
+# or when the id field uses list= datalist of people ids.
+_SEARCH_PERSON_ID_FREE_TEXT = re.compile(
+    rf"<Input\b[^>]{{0,400}}\bbind:value=\{{{_SEARCH_PERSON_ID_STATE}\}}"
+    rf"|<input\b(?![^>]*\btype\s*=\s*[\"'](?:hidden|checkbox|radio|submit|button)[\"'])"
+    rf"[^>]{{0,400}}\bbind:value=\{{{_SEARCH_PERSON_ID_STATE}\}}"
+    rf"|<Input\b[^>]{{0,200}}(?:\bid\s*=\s*[\"']sp[\"'][^>]{{0,200}}\blist\s*="
+    rf"|\blist\s*=\s*[\"']people-ids[\"'][^>]{{0,200}}\bbind:value=\{{{_SEARCH_PERSON_ID_STATE}\}})"
+    rf"|<input\b(?![^>]*\btype\s*=\s*[\"'](?:hidden|checkbox|radio|submit|button)[\"'])"
+    rf"[^>]{{0,200}}(?:\bid\s*=\s*[\"']sp[\"'][^>]{{0,200}}\blist\s*="
+    rf"|\blist\s*=\s*[\"']people-ids[\"'])",
+    re.I,
+)
+# datalist whose option values are numeric person ids (primary pre-impl UX).
+_SEARCH_PERSON_DATALIST_ID_VALUE = re.compile(
+    r"<datalist\b[^>]{0,200}(?:people-ids|person-ids|people_ids)[^>]*>[\s\S]{0,1200}?"
+    r"<option\b[^>]*\bvalue\s*=\s*\{[^}]{0,40}\b(?:p\.id|person\.id|String\s*\(\s*p\.id)",
+    re.I,
+)
+_SEARCH_PERSON_DATALIST_ID_VALUE_LOOSE = re.compile(
+    r"<datalist\b[^>]*>[\s\S]{0,1200}?"
+    r"<option\b[^>]*\bvalue\s*=\s*\{\s*(?:String\s*\(\s*)?(?:p|person)\.id",
+    re.I,
+)
+# Visible each of people (or a filtered people list) for the name picker.
+_SEARCH_PERSON_EACH = re.compile(
+    r"\{#each\s+(?:"
+    r"people|filteredPeople|personOptions|searchPeople|filteredSearchPeople|"
+    r"personMatches|personList|pickerPeople|visiblePeople|nameMatches|"
+    r"filteredPerson(?:s|Options)?|personPicker(?:People|List|Options)?"
+    r")\b",
+    re.I,
+)
+# Name-facing control chrome (combobox / listbox / select / filtered list).
+_SEARCH_PERSON_NAME_CONTROL = re.compile(
+    r"("
+    r"<(?:[A-Za-z][\w]*\.)?Combobox(?:\.Root)?\b"
+    r"|role\s*=\s*[\"'](?:combobox|listbox)[\"']"
+    r"|aria-autocomplete\s*="
+    r"|data-person-picker"
+    r"|id\s*=\s*[\"'](?:person-picker|sp-person|search-person)[\"']"
+    r"|<select\b[^>]{0,400}(?:"
+    rf"\bbind:value=\{{{_SEARCH_PERSON_ID_STATE}\}}"
+    r"|\bid\s*=\s*[\"'](?:sp|person|search-person|person-picker)[\"']"
+    r")"
+    r")",
+    re.I,
+)
+# Type-to-filter path over people display names (plain includes / fold OK).
+_SEARCH_PERSON_TYPE_FILTER = re.compile(
+    r"("
+    r"people\.filter\s*\("
+    r"|(?:filteredPeople|personOptions|searchPeople|personMatches|pickerPeople|"
+    r"visiblePeople|nameMatches|filteredPerson(?:s|Options)?|"
+    r"personPicker(?:People|List|Options)?)\s*="
+    r"|display_name[^;\n]{0,100}\.toLowerCase"
+    r"|display_name[^;\n]{0,100}\.includes"
+    r"|(?:toLowerCase\s*\(\s*\)[^;\n]{0,60}includes|"
+    r"includes\s*\([^)]{0,60}toLowerCase)"
+    rf"|{_SEARCH_PERSON_FILTER_STATE}"
+    r"|Combobox\.(?:Input|Root)|cmdk|command-input"
+    r")",
+    re.I,
+)
+# Enter to pick (first match or highlighted row).
+_SEARCH_PERSON_ENTER = re.compile(
+    r"("
+    r"(?:key|code)\s*===?\s*[\"']Enter[\"']"
+    r"|(?:on:keydown|onkeydown)(?:\|\w+)*\s*=\s*\{[^}]{0,300}Enter"
+    r"|keydown[^;\n]{0,160}Enter"
+    r"|case\s*[\"']Enter[\"']"
+    r")",
+    re.I,
+)
+# Enter handler must actually choose a person (not only submit Search).
+_SEARCH_PERSON_ENTER_PICK = re.compile(
+    rf"("
+    rf"(?:key|code)\s*===?\s*[\"']Enter[\"'][\s\S]{{0,400}}"
+    rf"(?:{_SEARCH_PERSON_ID_STATE}\s*="
+    r"|pickPerson|selectPerson|choosePerson|setPerson|onPickPerson"
+    r"|\.id\b)"
+    rf"|(?:pickPerson|selectPerson|choosePerson)\s*\("
+    rf"|{_SEARCH_PERSON_ID_STATE}\s*=\s*(?:p|person|match|first|hit|row|selected)\.id"
+    r")",
+    re.I,
+)
+# api.search personId flows from picker state (empty → null).
+_SEARCH_API_PERSON_ARG = re.compile(
+    rf"\b(?:personId|person_id)\s*:\s*([^,\n}}]+)",
+    re.I,
+)
+_SEARCH_PERSON_STATE_FLOW = re.compile(
+    rf"(?:personId|person_id)\s*:\s*(?:"
+    rf"{_SEARCH_PERSON_ID_STATE}\s*\?\s*Number\s*\(\s*{_SEARCH_PERSON_ID_STATE}\s*\)"
+    rf"|{_SEARCH_PERSON_ID_STATE}\s*\?\s*{_SEARCH_PERSON_ID_STATE}"
+    rf"|Number\s*\(\s*{_SEARCH_PERSON_ID_STATE}\s*\)"
+    rf"|{_SEARCH_PERSON_ID_STATE}\s*\|\|"
+    rf"|{_SEARCH_PERSON_ID_STATE}\s*\?\?"
+    rf"|{_SEARCH_PERSON_ID_STATE}\b"
+    r")",
+    re.I,
+)
+# Multi-person OR scope creep (single personId only).
+_SEARCH_MULTI_PERSON_OR = re.compile(
+    r"("
+    r"\bpersonIds\s*:"
+    r"|\bperson_ids\s*:"
+    r"|\bselectedPersonIds\b"
+    r"|\bpickedPersonIds\b"
+    r"|\bsearchPersonIds\b"
+    r"|multi(?:ple)?[-\s]?person"
+    r"|person\s*OR\s*person"
+    r"|any\s+of\s+(?:these\s+)?people"
+    r"|multiple\s+people"
+    r"|bind:value=\{[^}]{0,40}personIds"
+    r"|type\s*=\s*[\"']checkbox[\"'][^>]{0,200}person"
+    r")",
+    re.I,
+)
+# Fuzzy-beyond-filter product claims (plain includes is fine; fuse.js etc. not).
+_SEARCH_PERSON_FUZZY_CREEP = re.compile(
+    r"("
+    r"\bfuse\.js\b"
+    r"|\bfuzzysort\b"
+    r"|\bfuseSearch\b"
+    r"|\bfuzzy(?:Match|Search|Filter)?\b"
+    r"|levenshtein"
+    r"|string-similarity"
+    r")",
+    re.I,
+)
+
+
+def assert_search_person_picker(crate: Path) -> None:
+    """#123: search person is a name-facing combobox/list, not free-text Person id.
+
+    Same people source as the sidebar (people prop). Selecting stores person_id
+    for api.search({ personId }). Keyboard required: type-to-filter display names
+    AND Enter to pick (first match or highlighted). Clear = no person filter.
+    Fail free-text “Person id” + datalist of numeric ids as primary UX.
+    Not: multi-person OR, fuzzy name search beyond plain list filter.
+    """
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    if not search_path.is_file():
+        fail("#123: SearchPane.svelte required (search person picker lives there)")
+    src = search_path.read_text()
+    cleaned = _without_comments(src)
+    markup = _svelte_markup(src)
+    surface = markup if markup.strip() else src
+    whole = cleaned
+
+    # 1) Reject free-text id-only UX (current pre-impl SearchPane). Prefer this
+    # as the red gate so the fix target is obvious before positive checks.
+    if _SEARCH_PERSON_ID_LABEL.search(surface) or _SEARCH_PERSON_ID_LABEL.search(src):
+        fail(
+            "#123: search person must not be labeled “Person id” — "
+            "use a name-facing picker (combobox / filtered list of display names); "
+            "store person_id underneath for api.search"
+        )
+    if _SEARCH_PERSON_DATALIST_ID_VALUE.search(surface) or _SEARCH_PERSON_DATALIST_ID_VALUE.search(
+        src
+    ) or _SEARCH_PERSON_DATALIST_ID_VALUE_LOOSE.search(surface) or _SEARCH_PERSON_DATALIST_ID_VALUE_LOOSE.search(
+        src
+    ):
+        fail(
+            "#123: datalist of numeric person ids is not a name picker "
+            "(option value = p.id / String(p.id) forces users to know the id). "
+            "Show display names; keep person_id only as the stored value"
+        )
+    if _SEARCH_PERSON_ID_FREE_TEXT.search(surface) or _SEARCH_PERSON_ID_FREE_TEXT.search(src):
+        # Allow type=hidden storage of the id next to a name-facing control.
+        hidden_only = True
+        for m in _SEARCH_PERSON_ID_FREE_TEXT.finditer(surface + "\n" + src):
+            tag = m.group(0)
+            if not re.search(r"type\s*=\s*[\"']hidden[\"']", tag, re.I):
+                hidden_only = False
+                break
+        if not hidden_only:
+            fail(
+                "#123: search person must not be a free-text Input bound to personId "
+                "(users must not type a numeric id). Use a name-facing combobox / "
+                "filtered list; personId stays under the hood"
+            )
+
+    # 2) api.search must still receive personId from picker state when chosen.
+    api_m = _SEARCH_API_PLATFORM_ARG.search(whole)
+    if not api_m:
+        if not re.search(r"api\.search\s*\(", whole):
+            fail("#123: SearchPane must call api.search")
+        if not re.search(r"\b(?:personId|person_id)\s*:", whole):
+            fail(
+                "#123: api.search must receive personId when a person is chosen "
+                "(personId: … in the search args; null/empty when cleared)"
+            )
+        api_args = whole
+    else:
+        api_args = api_m.group(1)
+        if not re.search(r"\b(?:personId|person_id)\s*:", api_args):
+            fail(
+                "#123: api.search must receive personId when a person is chosen "
+                "(personId: … in the search args; null/empty when cleared)"
+            )
+
+    person_arg_m = _SEARCH_API_PERSON_ARG.search(api_args)
+    person_arg = (person_arg_m.group(1).strip() if person_arg_m else "") or ""
+    if person_arg and re.fullmatch(r"\d+", person_arg):
+        fail(
+            "#123: api.search personId must come from the picker state, "
+            "not a hard-coded numeric id"
+        )
+    if person_arg and re.fullmatch(r"null|undefined", person_arg, re.I):
+        # Bare null with no state read means the picker is ignored.
+        if not _SEARCH_PERSON_STATE_FLOW.search(api_args) and not _SEARCH_PERSON_STATE_FLOW.search(
+            whole
+        ):
+            fail(
+                "#123: api.search personId must read picker state "
+                "(e.g. personId: personId ? Number(personId) : null) — "
+                "not a bare null / ignored control"
+            )
+    if not _SEARCH_PERSON_STATE_FLOW.search(api_args) and not _SEARCH_PERSON_STATE_FLOW.search(
+        whole
+    ):
+        fail(
+            "#123: api.search personId must read picker state "
+            "(e.g. personId: personId ? Number(personId) : null) — "
+            "not a decorative control"
+        )
+
+    # 3) Name-facing picker: list/combobox of display names from people prop.
+    has_people_prop = bool(
+        re.search(r"\bpeople\b", whole)
+        and re.search(r"people\s*:\s*Person\[\]|\{[^}]*\bpeople\b[^}]*\}", whole)
+    ) or bool(re.search(r"\bpeople\b", src))
+    if not has_people_prop:
+        fail(
+            "#123: SearchPane must take the same people list as the sidebar "
+            "(people prop) for the name picker"
+        )
+
+    has_each = bool(_SEARCH_PERSON_EACH.search(surface) or _SEARCH_PERSON_EACH.search(src))
+    # {#each people as p} is the minimum source loop.
+    if not has_each and not re.search(r"\{#each\s+people\b", surface):
+        fail(
+            "#123: person picker must iterate people (or a filtered people list) "
+            "so display names can be chosen — same source as the sidebar"
+        )
+
+    # display_name must appear as the visible label (not only as datalist text
+    # beside value=id — already rejected above).
+    picker_region = surface
+    each_m = _SEARCH_PERSON_EACH.search(surface) or re.search(r"\{#each\s+people\b", surface)
+    if each_m:
+        end = _matching_each_end(surface, each_m.start())
+        picker_region = surface[each_m.start() : end if end > 0 else each_m.start() + 800]
+    if not re.search(r"\bdisplay_name\b", picker_region) and not re.search(
+        r"\bdisplay_name\b", surface
+    ):
+        fail(
+            "#123: person picker must show display_name (name-facing), "
+            "not raw person ids as the primary label"
+        )
+    # Visible text node / binding of the name in the each body.
+    if each_m and not re.search(
+        r"\{[^}]{0,80}display_name[^}]{0,40}\}|display_name\s*\}",
+        picker_region,
+    ):
+        # Allow personLabel(p) / format helpers that read display_name in script.
+        if not re.search(
+            r"(?:personLabel|displayName|formatPerson|personName)\s*\(",
+            surface + "\n" + whole,
+        ):
+            fail(
+                "#123: person picker list/options must present display_name to the user "
+                "(search “messages with Ada” without knowing her id)"
+            )
+
+    has_name_control = bool(
+        _SEARCH_PERSON_NAME_CONTROL.search(surface)
+        or _SEARCH_PERSON_NAME_CONTROL.search(src)
+        or re.search(
+            rf"bind:value=\{{{_SEARCH_PERSON_FILTER_STATE}\}}",
+            surface,
+        )
+        or re.search(
+            r"<(?:ul|ol|div|menu)\b[^>]{0,200}(?:person-picker|person-options|people-picker)",
+            surface,
+            re.I,
+        )
+    )
+    # Filtered list with clickable name rows counts even without combobox role.
+    has_pick_action = bool(
+        re.search(
+            r"(?:onclick|on:click)(?:\|\w+)*\s*=\s*\{[^}]{0,200}"
+            rf"(?:{_SEARCH_PERSON_ID_STATE}\s*="
+            r"|pickPerson|selectPerson|choosePerson|onPickPerson)",
+            surface,
+            re.I,
+        )
+        or re.search(
+            rf"{_SEARCH_PERSON_ID_STATE}\s*=\s*(?:p|person|match|row)\.id",
+            whole,
+        )
+    )
+    if not has_name_control and not has_pick_action:
+        fail(
+            "#123: require a name-facing person control "
+            "(combobox / select / filtered list of display names with pick action) — "
+            "not free-text id entry"
+        )
+
+    # 4) Keyboard: type-to-filter display names AND Enter to pick.
+    # Required (issue): type to filter, Enter to pick first/highlighted.
+    # bits-ui / role=combobox may supply both without an explicit key===Enter
+    # handler in app code — accept that as the keyboard path.
+    has_combobox_widget = bool(
+        re.search(
+            r"<(?:[A-Za-z][\w]*\.)?Combobox(?:\.Root|\.Input)?\b"
+            r"|role\s*=\s*[\"']combobox[\"']"
+            r"|aria-autocomplete\s*=",
+            surface,
+            re.I,
+        )
+        or re.search(
+            r"<(?:[A-Za-z][\w]*\.)?Combobox(?:\.Root|\.Input)?\b",
+            whole,
+            re.I,
+        )
+    )
+    has_type_filter = bool(
+        _SEARCH_PERSON_TYPE_FILTER.search(whole) or _SEARCH_PERSON_TYPE_FILTER.search(surface)
+    )
+    if not has_type_filter and not has_combobox_widget:
+        fail(
+            "#123: keyboard path requires type-to-filter on display names "
+            "(people.filter / includes / personFilter — plain case-insensitive "
+            "substring is fine; same spirit as the sidebar filter). "
+            "A Combobox widget also counts"
+        )
+    has_enter = bool(
+        _SEARCH_PERSON_ENTER.search(whole) or _SEARCH_PERSON_ENTER.search(surface)
+    )
+    has_enter_pick = bool(
+        _SEARCH_PERSON_ENTER_PICK.search(whole) or _SEARCH_PERSON_ENTER_PICK.search(surface)
+    )
+    if not has_combobox_widget:
+        if not has_enter:
+            fail(
+                "#123: keyboard path requires Enter to pick "
+                "(first match or highlighted row — key === \"Enter\" / onkeydown Enter). "
+                "A Combobox widget’s built-in Enter also counts"
+            )
+        if not has_enter_pick:
+            # Enter might only submit the Search form — require a pick path.
+            fail(
+                "#123: Enter on the person control must pick a person "
+                "(set personId / pickPerson from the filtered list), "
+                "not only submit the search form"
+            )
+
+    # 5) Forbid multi-person OR and fuzzy-beyond-list-filter scope creep.
+    if _SEARCH_MULTI_PERSON_OR.search(whole) or _SEARCH_MULTI_PERSON_OR.search(surface):
+        # type=checkbox for include groups is fine; only fail person multi-select.
+        multi = _SEARCH_MULTI_PERSON_OR.search(whole) or _SEARCH_MULTI_PERSON_OR.search(surface)
+        snippet = multi.group(0) if multi else ""
+        if re.search(r"includeGroups|include groups", snippet, re.I):
+            pass
+        else:
+            fail(
+                "#123: not in scope — multi-person OR / personIds multi-select "
+                f"(found {snippet!r}). Single person_id filter only"
+            )
+    if _SEARCH_PERSON_FUZZY_CREEP.search(whole) or _SEARCH_PERSON_FUZZY_CREEP.search(src):
+        fail(
+            "#123: not in scope — fuzzy name search beyond the existing list filter "
+            "(plain case-insensitive includes / fold is enough)"
+        )
+
+    # 6) Keep platform (#121) and kind (#122) selects present.
+    if not re.search(r"\bplatform\b", whole) or not re.search(r"<select\b", surface, re.I):
+        fail("#123: keep the search platform <select> (#121) when adding the person picker")
+    if not re.search(r"conversationKind|conversation_kind", whole):
+        fail(
+            "#123: keep the search conversation-kind <select> (#122) when adding the person picker"
+        )
+
+
 def assert_virtualized_timeline(crate: Path) -> None:
     """#120: window person timeline (visible + overscan); keep j/k + Load older.
 
@@ -6121,6 +6531,7 @@ def main() -> None:
     assert_virtualized_timeline(crate)
     assert_search_platform_select(crate)
     assert_search_conversation_kind(crate)
+    assert_search_person_picker(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
