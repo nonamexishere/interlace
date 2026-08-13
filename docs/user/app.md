@@ -124,17 +124,18 @@ a name-facing combobox over the same people list as the sidebar: type to filter
 by display name (case-insensitive substring; self gets a “(self)” label), Enter
 or click to pick — the archive stores `person_id` under the hood for the search
 filter (Clear / empty = no person filter). You can search “messages with Ada”
-without knowing her numeric id (single person only; no multi-person OR). Platform is
-a closed **select** — **Any** (default, empty value), **WhatsApp**, **Gmail**,
-and **Contacts** — not a free-text box; values are the core tokens
-(`whatsapp` / `gmail` / `contacts`). Empty means any platform. **Kind** is
-another closed select — **Any** (default), **DM**, **Group**, **Email thread**
-(`dm` / `group` / `email_thread`). Choosing DM never returns group hits; Group
-still needs **include groups** ticked. CLI: `interlace search --kind dm|group|email_thread`.
-**Review**
-(accept/reject name-only pairs), **Import** (ZIP/mbox/vcf/Takeout via the
-folder picker; progress in-window), **Doctor** (integrity / rebuild FTS /
-GC CAS with a confirm dialog — same as the CLI, no extra window).
+without knowing her numeric id (single person only; no multi-person OR). After
+hits load, **j**/**k** or arrow keys move the highlight; **Enter** expands the
+body. Platform is a closed **select** — **Any** (default, empty value),
+**WhatsApp**, **Gmail**, and **Contacts** — not a free-text box; values are the
+core tokens (`whatsapp` / `gmail` / `contacts`). Empty means any platform.
+**Kind** is another closed select — **Any** (default), **DM**, **Group**,
+**Email thread** (`dm` / `group` / `email_thread`). Choosing DM never returns
+group hits; Group still needs **include groups** ticked. CLI:
+`interlace search --kind dm|group|email_thread`. **Review** (accept/reject
+name-only pairs), **Import** (ZIP/mbox/vcf/Takeout via the folder picker;
+progress in-window), **Doctor** (integrity / rebuild FTS / GC CAS with a confirm
+dialog — same as the CLI, no extra window).
 
 Empty lists, loading, lock conflicts, and doctor findings are shown as copy
 in the window (not only in the terminal).

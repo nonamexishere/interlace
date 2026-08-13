@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { api, type Person, type SearchHit } from "./api";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
@@ -21,6 +22,8 @@
   let conversationKind = $state("");
   let includeGroups = $state(false);
   let hits = $state<SearchHit[]>([]);
+  /** Highlighted hit in the results list (j/k and arrow keys). */
+  let hitIndex = $state(0);
   let expanded = $state<number | null>(null);
   let body = $state("");
   let empty = $state(false);
@@ -98,6 +101,7 @@
     searching = true;
     expanded = null;
     body = "";
+    hitIndex = 0;
     try {
       hits = await api.search({
         q: q.trim(),
@@ -110,6 +114,7 @@
         limit: 50,
       });
       empty = hits.length === 0;
+      hitIndex = 0;
     } catch (e) {
       onError(e);
     } finally {
@@ -130,6 +135,51 @@
       onError(e);
     }
   }
+
+  function scrollHitIntoView(i: number) {
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-search-hit="${i}"]`)
+        ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  }
+
+  function onHitsKey(e: KeyboardEvent) {
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) {
+      return;
+    }
+    if (!hits.length || searching) return;
+    if (e.key === "j" || e.key === "ArrowDown") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (hitIndex < hits.length - 1) {
+        hitIndex += 1;
+        scrollHitIntoView(hitIndex);
+      }
+      return;
+    }
+    if (e.key === "k" || e.key === "ArrowUp") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (hitIndex > 0) {
+        hitIndex -= 1;
+        scrollHitIntoView(hitIndex);
+      }
+      return;
+    }
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      e.stopPropagation();
+      const h = hits[hitIndex];
+      if (h) void toggle(h.message_id);
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener("keydown", onHitsKey);
+    return () => window.removeEventListener("keydown", onHitsKey);
+  });
 </script>
 
 <ScrollArea class="p-4">
@@ -256,10 +306,23 @@
     />
   {/if}
 
-  <ol class="divide-y divide-border">
-    {#each hits as h}
-      <li class="px-1 py-2">
-        <button type="button" class="w-full text-left hover:bg-accent" onclick={() => toggle(h.message_id)}>
+  <ol class="divide-y divide-border" data-search-hits>
+    {#each hits as h, i}
+      <li
+        class="px-1 py-2"
+        class:bg-accent={i === hitIndex}
+        data-search-hit={i}
+      >
+        <button
+          type="button"
+          class="w-full rounded-md text-left hover:bg-accent {i === hitIndex
+            ? 'ring-2 ring-ring'
+            : ''}"
+          onclick={() => {
+            hitIndex = i;
+            toggle(h.message_id);
+          }}
+        >
           <div class="text-xs text-muted-foreground">
             {[h.sent_at || "no date", h.platform, h.conversation_kind, h.person_name || "", h.conversation_title || ""]
               .filter(Boolean)
@@ -274,4 +337,13 @@
       </li>
     {/each}
   </ol>
+  {#if hits.length > 0}
+    <p class="mt-2 text-xs text-muted-foreground">
+      <kbd class="rounded border border-border px-1">j</kbd>/<kbd
+        class="rounded border border-border px-1">k</kbd
+      >
+      or arrows move hits;
+      <kbd class="rounded border border-border px-1">Enter</kbd> expands.
+    </p>
+  {/if}
 </ScrollArea>
