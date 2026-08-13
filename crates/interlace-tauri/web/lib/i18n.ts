@@ -3,14 +3,13 @@ import { tr } from "./locales/tr";
 
 export type PackLang = "en" | "tr";
 
-/** OS locale: `tr` / `tr-*` → tr pack; everything else → en. */
+/** OS locale: first supported tag in preference order; `tr`/`tr-*` → tr, `en`/`en-*` → en; default en. */
 export function detectLocale(): PackLang {
   const tags: string[] = [];
   if (typeof navigator !== "undefined") {
-    if (Array.isArray(navigator.languages)) {
+    if (Array.isArray(navigator.languages) && navigator.languages.length > 0) {
       tags.push(...navigator.languages);
-    }
-    if (navigator.language) {
+    } else if (navigator.language) {
       tags.push(navigator.language);
     }
   }
@@ -19,8 +18,11 @@ export function detectLocale(): PackLang {
       .trim()
       .toLowerCase()
       .replaceAll("_", "-");
-    if (tag === "tr" || tag.startsWith("tr-")) {
+    if (tag === "tr" || tag.startsWith("tr")) {
       return "tr";
+    }
+    if (tag === "en" || tag.startsWith("en")) {
+      return "en";
     }
   }
   return "en";
