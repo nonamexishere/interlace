@@ -74,6 +74,8 @@
 #     switch to People, select person, load a window around message_id, scroll
 #     into view, highlight once (tlIndex ring). No person_id → stay on Search
 #     and expand body (toggle / searchBody) as today. Not: FTS rewrite.
+#     Miss after bounded load: surface showErr (or equivalent); never set tlIndex
+#     to last-loaded (idx >= 0 ? idx : length-1) as a successful hit ring.
 """
 
 from __future__ import annotations
@@ -6488,6 +6490,51 @@ _HIT_PERSON_GUARD = re.compile(
     r")",
     re.I,
 )
+# #124 miss path — do not treat last loaded row as the hit when findIndex misses.
+_IDX_NAME = r"(?:idx|index|foundIdx|foundIndex|tlIdx|pos|foundAt|messageIdx|messageIndex)"
+_LOADED_NAME = r"(?:loaded|timeline|rows|chrono|batch|msgs|messages|page|window)"
+# tlIndex = idx >= 0 ? idx : Math.max(0, loaded.length - 1)  (and close variants)
+_SEARCH_JUMP_LAST_ROW_FALLBACK = re.compile(
+    rf"("
+    rf"tlIndex\s*=\s*{_IDX_NAME}\s*>=?\s*0\s*\?\s*{_IDX_NAME}\s*:\s*"
+    rf"(?:Math\.max\s*\(\s*0\s*,\s*)?{_LOADED_NAME}\s*\.length\s*-\s*1"
+    rf"|{_IDX_NAME}\s*>=?\s*0\s*\?\s*{_IDX_NAME}\s*:\s*"
+    rf"(?:Math\.max\s*\(\s*0\s*,\s*)?{_LOADED_NAME}\s*\.length\s*-\s*1"
+    rf"|{_IDX_NAME}\s*(?:<\s*0|===?\s*-1)\s*\?\s*"
+    rf"(?:Math\.max\s*\(\s*0\s*,\s*)?{_LOADED_NAME}\s*\.length\s*-\s*1"
+    rf"|findIndex\s*\([\s\S]{{0,160}}(?:message_id|messageId)[\s\S]{{0,280}}"
+    rf"tlIndex\s*=\s*[^;\n]{{0,120}}{_LOADED_NAME}\s*\.length\s*-\s*1"
+    rf"|tlIndex\s*=\s*{_IDX_NAME}\s*>=?\s*0\s*\?\s*{_IDX_NAME}\s*:"
+    rf")",
+    re.I,
+)
+# Any ternary that sets tlIndex from findIndex-style idx with a non-idx false branch
+# (wrong-row success) — pairs with the last-row ban above.
+_SEARCH_JUMP_TLINDEX_MISS_TERNARY = re.compile(
+    rf"tlIndex\s*=\s*{_IDX_NAME}\s*(?:>=?\s*0|<\s*0|===?\s*-1)\s*\?",
+    re.I,
+)
+# Miss branch must surface showErr / onError / throw (not only catch).
+_SEARCH_JUMP_MISS_ERROR = re.compile(
+    rf"("
+    rf"if\s*\(\s*{_IDX_NAME}\s*(?:<\s*0|===?\s*-1)\s*\)\s*\{{[\s\S]{{0,280}}"
+    rf"(?:showErr|onError)\s*\("
+    rf"|if\s*\(\s*{_IDX_NAME}\s*(?:<\s*0|===?\s*-1)\s*\)[\s\S]{{0,120}}"
+    rf"(?:showErr|onError)\s*\("
+    rf"|if\s*\(\s*{_IDX_NAME}\s*(?:<\s*0|===?\s*-1)\s*\)\s*\{{[\s\S]{{0,200}}\bthrow\b"
+    rf"|if\s*\(\s*{_IDX_NAME}\s*>=?\s*0\s*\)[\s\S]{{0,400}}"
+    rf"else\s*\{{[\s\S]{{0,200}}(?:showErr|onError)\s*\("
+    rf"|if\s*\(\s*!(?:found|row|hit|target|match|located)\b[\s\S]{{0,160}}"
+    rf"(?:showErr|onError)\s*\("
+    rf"|if\s*\(\s*!{_LOADED_NAME}\.some\s*\([\s\S]{{0,200}}"
+    rf"(?:message_id|messageId)[\s\S]{{0,100}}\)\s*\)\s*\{{[\s\S]{{0,240}}"
+    rf"(?:showErr|onError)\s*\("
+    rf"|if\s*\(\s*{_LOADED_NAME}\.findIndex\s*\([\s\S]{{0,200}}"
+    rf"(?:message_id|messageId)[\s\S]{{0,80}}\)\s*(?:<\s*0|===?\s*-1)"
+    rf"[\s\S]{{0,200}}(?:showErr|onError)\s*\("
+    rf")",
+    re.I,
+)
 
 
 def _search_jump_handler_bodies(blob: str) -> list[str]:
@@ -6520,12 +6567,60 @@ def _search_jump_handler_bodies(blob: str) -> list[str]:
     return bodies
 
 
+def _assert_search_jump_miss_path(web_blob: str, jump_bodies: list[str]) -> None:
+    """#124 miss: error on unfound message_id; never ring last loaded as the hit."""
+    path = "\n".join(jump_bodies) if jump_bodies else web_blob
+    path_clean = _without_comments(path)
+    blob_clean = _without_comments(web_blob)
+
+    # 1) Forbid last-row (or any idx-ternary) fallback as a successful hit ring.
+    if _SEARCH_JUMP_LAST_ROW_FALLBACK.search(path_clean) or (
+        _SEARCH_JUMP_LAST_ROW_FALLBACK.search(blob_clean)
+        and re.search(
+            r"findIndex\s*\([\s\S]{0,120}(?:message_id|messageId)",
+            blob_clean,
+            re.I,
+        )
+    ):
+        fail(
+            "#124: when message_id is not in the loaded timeline after the jump walk, "
+            "do not set tlIndex to the last loaded row "
+            "(tlIndex = idx >= 0 ? idx : Math.max(0, loaded.length - 1)). "
+            "That rings an unrelated message with no error. Surface showErr instead"
+        )
+    if _SEARCH_JUMP_TLINDEX_MISS_TERNARY.search(path_clean):
+        fail(
+            "#124: do not assign tlIndex via idx-miss ternary "
+            "(tlIndex = idx >= 0 ? idx : <fallback>). "
+            "On miss: showErr (or equivalent) and return — only set tlIndex when "
+            "the hit row is actually found"
+        )
+
+    # 2) Require an explicit miss → error path (catch-only showErr is not enough).
+    has_miss_err = bool(
+        _SEARCH_JUMP_MISS_ERROR.search(path_clean)
+        or _SEARCH_JUMP_MISS_ERROR.search(blob_clean)
+    )
+    if not has_miss_err:
+        fail(
+            "#124: when the jump path cannot place message_id in the loaded set "
+            "(miss after bounded walk / cap), surface an error "
+            "(if (idx < 0) { showErr(...); return } / else showErr / "
+            "!loaded.some(...message_id) showErr). "
+            "Do not treat a wrong row as a successful hit highlight"
+        )
+
+    # Prefer (not hard-gated): pass hit.sent_at into onJumpToMessage /
+    # openPersonAtMessage when present so the walk can seek near the hit.
+
+
 def assert_search_jump_to_message(crate: Path) -> None:
     """#124: search hit with person_id jumps to that message on the person timeline.
 
     With person_id: switch to People, select that person, load a window around
     message_id, scroll the row into view, highlight once (tlIndex / ring as j/k).
     Without person_id: stay on Search and expand body (toggle / searchBody).
+    Miss after bounded load: showErr (or equivalent); never ring last-loaded as hit.
     Virtualized timeline (#120): ensure target index enters the window
     (ensureTlIndexVisible / scroll estimate) when that path exists.
     Not: FTS rewrite, inventing a person when person_id is missing.
@@ -6780,6 +6875,9 @@ def assert_search_jump_to_message(crate: Path) -> None:
     # 9) Keep api.search (do not rewrite FTS as part of jump-to-hit).
     if not re.search(r"api\.search\s*\(", search_clean):
         fail("#124: keep api.search (do not rewrite FTS as part of jump-to-hit)")
+
+    # 10) Miss path: error when message_id not in loaded set; never ring last row.
+    _assert_search_jump_miss_path(web_blob, jump_bodies)
 
 
 def assert_virtualized_timeline(crate: Path) -> None:
