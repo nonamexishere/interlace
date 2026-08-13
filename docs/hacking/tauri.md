@@ -79,6 +79,10 @@ python3 pipeline/tools/gate_tauri.py
 
 ## Commands (UI1)
 
+Native macOS menu (`MenuBuilder` in `main.rs`): Interlace About + Quit, File
+Open archive + Import, View (People / Search / Review / Doctor). About copy is
+offline / not encrypted at rest / FileVault. No updater / Check for Updates.
+
 `remembered_path` (bookmark first, else last-path pointer), `pick_folder` /
 `pick_import_path` (rfd on the main thread), `init`, `open`, `status`,
 `people`, `person_show`, `person_timeline`, `person_merge_cmd`,

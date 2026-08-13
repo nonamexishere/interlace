@@ -26,7 +26,8 @@ use interlace_core::{
     SourceKind,
 };
 use tauri::http::{header, StatusCode};
-use tauri::AppHandle;
+use tauri::menu::{AboutMetadata, Menu, MenuBuilder, MenuItem, SubmenuBuilder};
+use tauri::{AppHandle, Emitter};
 
 #[derive(Clone, Default, serde::Serialize)]
 struct ImportProgress {
@@ -817,6 +818,47 @@ fn import_start(
     Ok(())
 }
 
+/// About box copy: same honesty as Doctor / the cloud-path banner. No website URL.
+const ABOUT_COPY: &str = "Offline. Not encrypted at rest — FileVault is your encryption.";
+
+fn native_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let about = AboutMetadata {
+        name: Some("Interlace".into()),
+        copyright: Some(ABOUT_COPY.into()),
+        credits: Some(ABOUT_COPY.into()),
+        ..Default::default()
+    };
+    MenuBuilder::new(app)
+        .item(
+            &SubmenuBuilder::new(app, "Interlace")
+                .about(Some(about))
+                .separator()
+                .quit()
+                .build()?,
+        )
+        .item(
+            &SubmenuBuilder::new(app, "File")
+                .item(&MenuItem::with_id(
+                    app,
+                    "open-archive",
+                    "Open archive",
+                    true,
+                    Some("CmdOrCtrl+O"),
+                )?)
+                .text("menu-import", "Import")
+                .build()?,
+        )
+        .item(
+            &SubmenuBuilder::new(app, "View")
+                .text("view-people", "People")
+                .text("view-search", "Search")
+                .text("view-review", "Review")
+                .text("view-doctor", "Doctor")
+                .build()?,
+        )
+        .build()
+}
+
 fn main() {
     let archive_root: Arc<Mutex<Option<PathBuf>>> = Arc::new(Mutex::new(None));
     let proto_root = Arc::clone(&archive_root);
@@ -828,6 +870,28 @@ fn main() {
                 status: "idle".into(),
                 ..ImportProgress::default()
             })),
+        })
+        .menu(native_menu)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "open-archive" => {
+                let _ = app.emit("menu-open-archive", ());
+            }
+            "menu-import" => {
+                let _ = app.emit("menu-import", ());
+            }
+            "view-people" => {
+                let _ = app.emit("menu-view", "people");
+            }
+            "view-search" => {
+                let _ = app.emit("menu-view", "search");
+            }
+            "view-review" => {
+                let _ = app.emit("menu-view", "review");
+            }
+            "view-doctor" => {
+                let _ = app.emit("menu-view", "doctor");
+            }
+            _ => {}
         })
         .register_uri_scheme_protocol("cas", move |_ctx, req| {
             let path = req.uri().path().to_string();

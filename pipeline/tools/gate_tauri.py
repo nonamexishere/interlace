@@ -91,6 +91,10 @@
 #129: native window title via Tauri setTitle — Interlace | Ada — Interlace |
 #     Search — Interlace (and Review/Import/Doctor — Interlace). React to view +
 #     selected person name. No message body/snippet in the title. Not dock badges.
+#130: native macOS menu — Interlace (About + Quit), File (open archive + import),
+#     View (people/search/review/doctor). About: offline, not encrypted at rest,
+#     FileVault. Open uses pick_folder / openPicker. No Check for Updates,
+#     no updater, no Preferences window, no iCloud menu.
 """
 
 from __future__ import annotations
@@ -8247,6 +8251,389 @@ def assert_virtualized_timeline(crate: Path) -> None:
         )
 
 
+# #130 — native macOS menu (About/Quit, File Open+Import, View tabs). No updater.
+_TAURI_MENU_API = re.compile(
+    r"("
+    r"tauri::menu::"
+    r"|MenuBuilder"
+    r"|SubmenuBuilder"
+    r"|MenuItemBuilder"
+    r"|PredefinedMenuItem"
+    r"|CheckMenuItemBuilder"
+    r"|@tauri-apps/api/menu"
+    r")",
+)
+_MENU_ATTACH = re.compile(
+    r"("
+    r"\.menu\s*\("
+    r"|\.set_menu\s*\("
+    r"|\bset_menu\s*\("
+    r"|\bsetMenu\s*\("
+    r"|\bsetAsAppMenu\s*\("
+    r"|\bsetAsWindowMenu\s*\("
+    r")",
+)
+_ABOUT_ITEM = re.compile(
+    r"("
+    r"PredefinedMenuItem::about"
+    r"|\.about\s*\("
+    r"|item\s*:\s*[\"']About[\"']"
+    r"|[\"']About(?: Interlace)?[\"']"
+    r")",
+)
+_QUIT_ITEM = re.compile(
+    r"("
+    r"PredefinedMenuItem::quit"
+    r"|\.quit\s*\("
+    r"|item\s*:\s*[\"']Quit[\"']"
+    r"|[\"']Quit(?: Interlace)?[\"']"
+    r")",
+)
+_FILE_SUBMENU = re.compile(r"[\"']File[\"']")
+_VIEW_SUBMENU = re.compile(r"[\"']View[\"']")
+_OPEN_ITEM = re.compile(
+    r"[\"']("
+    r"Open archive"
+    r"|Open existing(?:…|\.\.\.)?"
+    r"|Open(?:…|\.\.\.)?"
+    r"|open-archive"
+    r"|open_archive"
+    r"|file-open"
+    r"|menu-open"
+    r")[\"']",
+    re.I,
+)
+_IMPORT_ITEM = re.compile(
+    r"[\"']("
+    r"Import(?:…|\.\.\.)?"
+    r"|file-import"
+    r"|menu-import"
+    r"|import-archive"
+    r")[\"']",
+)
+_CHECK_UPDATES_ITEM = re.compile(
+    r"[\"']Check for [Uu]pdates?[\"']"
+    r"|PredefinedMenuItem::check_for_updates"
+    r"|tauri_plugin_updater"
+    r"|plugin-updater"
+    r"|UpdaterExt",
+)
+_PREFERENCES_ITEM = re.compile(
+    r"("
+    r"PredefinedMenuItem::preferences"
+    r"|[\"']Preferences(?:…|\.\.\.)?[\"']"
+    r"|[\"']Settings(?:…|\.\.\.)?[\"']"
+    r"|PreferencesWindow"
+    r"|open_preferences"
+    r")",
+)
+_ICLOUD_MENU_ITEM = re.compile(
+    r"[\"'][^\"']*iCloud[^\"']*[\"']",
+    re.I,
+)
+_ABOUT_ANCHOR = re.compile(
+    r"("
+    r"AboutMetadata"
+    r"|PredefinedMenuItem::about"
+    r"|\.about\s*\("
+    r"|[\"']About(?: Interlace)?[\"']"
+    r"|(?:const|static|let)\s+ABOUT\w*"
+    r")",
+)
+_MENU_HANDLER_NAMES = (
+    "on_menu_event",
+    "handle_menu_event",
+    "handle_menu",
+    "menu_event",
+    "applyMenu",
+    "onMenu",
+    "onMenuEvent",
+    "handleMenu",
+)
+_LISTEN_CALL = re.compile(
+    r"\b(?:listen|once|onMenuEvent)\s*\(",
+)
+_VIEW_MENU_TOKENS = ("people", "search", "review", "doctor")
+_ABOUT_OFFLINE = re.compile(r"\boffline\b", re.I)
+_ABOUT_NOT_ENCRYPTED = re.compile(r"not encrypted at rest", re.I)
+_ABOUT_FILEVAULT = re.compile(r"\bFileVault\b")
+_DOCS_MENU = re.compile(
+    r"("
+    r"native menu"
+    r"|menu bar"
+    r"|File menu"
+    r"|macOS menu"
+    r"|Open archive"
+    r")",
+    re.I,
+)
+
+
+def _tauri_rust_sources(crate: Path) -> list[Path]:
+    src = crate / "src"
+    if not src.is_dir():
+        return []
+    return [p for p in sorted(src.rglob("*.rs")) if p.is_file()]
+
+
+def _tauri_rust_blob(crate: Path) -> str:
+    return "\n".join(p.read_text() for p in _tauri_rust_sources(crate))
+
+
+def _menu_web_blob(crate: Path) -> str:
+    """Web sources that build a Tauri menu (not the in-window nav / bits-ui menus)."""
+    parts: list[str] = []
+    web = crate / "web"
+    if not web.is_dir():
+        return ""
+    for p in sorted(web.rglob("*")):
+        if p.suffix not in {".svelte", ".ts", ".js"} or "node_modules" in p.parts:
+            continue
+        text = p.read_text()
+        if (
+            "@tauri-apps/api/menu" in text
+            or "PredefinedMenuItem" in text
+            or "MenuItem.new" in text
+            or "Menu.new" in text
+        ):
+            parts.append(text)
+    return "\n".join(parts)
+
+
+def _on_menu_event_bodies(src: str) -> list[str]:
+    bodies: list[str] = []
+    for m in re.finditer(r"\.on_menu_event\s*\(", src):
+        arg = _call_arg(src, m.end() - 1)
+        if arg:
+            bodies.append(arg)
+    for name in _MENU_HANDLER_NAMES:
+        body = _function_body(src, name)
+        if body:
+            bodies.append(body)
+    return bodies
+
+
+def _listen_bodies(src: str) -> list[str]:
+    bodies: list[str] = []
+    for m in _LISTEN_CALL.finditer(src):
+        open_paren = src.find("(", m.start())
+        if open_paren < 0:
+            continue
+        arg = _call_arg(src, open_paren)
+        if arg:
+            bodies.append(arg)
+    return bodies
+
+
+def _menu_handler_surface(rust: str, web: str) -> str:
+    """Rust on_menu_event + frontend listen / menu-handler bodies (and one callee)."""
+    chunks = _on_menu_event_bodies(rust) + _listen_bodies(web)
+    seen = set(_MENU_HANDLER_NAMES)
+    extra: list[str] = []
+    blob = "\n".join(chunks)
+    for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\(", blob):
+        name = m.group(1)
+        if name in seen or name in _SCROLL_HELPER_SKIP:
+            continue
+        seen.add(name)
+        body = _function_body(web, name) or _function_body(rust, name)
+        if body:
+            extra.append(body)
+    return "\n".join(chunks + extra)
+
+
+def _about_copy_surface(rust: str, web_menu: str) -> str:
+    chunks: list[str] = []
+    for src in (rust, web_menu):
+        if not src:
+            continue
+        for m in _ABOUT_ANCHOR.finditer(src):
+            chunks.append(src[max(0, m.start() - 200) : m.end() + 900])
+    return "\n".join(chunks)
+
+
+def _quoted_view_token(blob: str, token: str) -> bool:
+    return bool(
+        re.search(
+            rf"("
+            rf"view\s*=\s*[\"']{token}[\"']"
+            rf"|[\"'](?:view-|menu-)?{token}[\"']"
+            rf")",
+            blob,
+        )
+    )
+
+
+def assert_macos_menu(crate: Path) -> None:
+    """#130: native macOS menu — About/Quit, File Open+Import, View tabs; no updater."""
+    rust = _tauri_rust_blob(crate)
+    web_all = _web_logic(crate)
+    web_menu = _menu_web_blob(crate)
+    menu_src = rust + "\n" + web_menu
+    app_path = crate / "web" / "App.svelte"
+    app = app_path.read_text() if app_path.is_file() else ""
+    toml = (crate / "Cargo.toml").read_text() if (crate / "Cargo.toml").is_file() else ""
+    deny_path = crate / "deny.toml"
+    deny = deny_path.read_text() if deny_path.is_file() else ""
+    docs_app = repo_root() / "docs" / "user" / "app.md"
+    docs_tauri = repo_root() / "docs" / "hacking" / "tauri.md"
+    dtxt = (docs_app.read_text() if docs_app.is_file() else "") + "\n" + (
+        docs_tauri.read_text() if docs_tauri.is_file() else ""
+    )
+    caps_path = crate / "capabilities" / "default.json"
+    caps = caps_path.read_text() if caps_path.is_file() else ""
+
+    # 1) Native Tauri menu construction (not the default app menu, not HTML nav).
+    if not _TAURI_MENU_API.search(menu_src):
+        fail(
+            "#130: native macOS menu must be built with Tauri Menu / MenuBuilder / "
+            "PredefinedMenuItem (or @tauri-apps/api/menu), not the default app menu alone"
+        )
+
+    if not _MENU_ATTACH.search(rust) and not _MENU_ATTACH.search(web_menu):
+        fail(
+            "#130: the constructed menu must be attached to the app "
+            "(.menu(...) / set_menu / setMenu) — building items and never installing "
+            "them leaves the default macOS menu"
+        )
+
+    if "@tauri-apps/api/menu" in web_menu and "core:menu" not in caps:
+        fail(
+            "#130: JS @tauri-apps/api/menu needs a core:menu capability "
+            "(or build the menu in Rust)"
+        )
+
+    # 2) App menu: About + Quit (predefined preferred; custom About Interlace / Quit OK).
+    if not _ABOUT_ITEM.search(menu_src):
+        fail(
+            "#130: app menu must include About "
+            "(PredefinedMenuItem::about / About Interlace)"
+        )
+    if not _QUIT_ITEM.search(menu_src):
+        fail(
+            "#130: app menu must include native Quit "
+            "(PredefinedMenuItem::quit — not a custom network-y exit)"
+        )
+
+    # 3) File: Open archive + Import.
+    if not _FILE_SUBMENU.search(menu_src):
+        fail('#130: File submenu required (Open archive + Import)')
+    if not _OPEN_ITEM.search(menu_src):
+        fail(
+            "#130: File menu must include Open archive "
+            "(same folder picker as the in-window Open existing… button)"
+        )
+    if not _IMPORT_ITEM.search(menu_src):
+        fail("#130: File menu must include Import")
+
+    # 4) View: People, Search, Review, Doctor (Import may live under File only).
+    if not _VIEW_SUBMENU.search(menu_src):
+        fail("#130: View submenu required (People, Search, Review, Doctor)")
+    for label in ("People", "Search", "Review", "Doctor"):
+        if not re.search(rf"[\"']{label}[\"']", menu_src):
+            fail(
+                f"#130: View menu must include {label} "
+                "(same view token as the in-window nav buttons)"
+            )
+
+    # 5) About copy: offline + not encrypted at rest + FileVault (About surface, not Doctor).
+    about_src = _about_copy_surface(rust, web_menu)
+    if not about_src.strip():
+        fail(
+            "#130: About copy must live on the About item / AboutMetadata "
+            "(offline, not encrypted at rest, FileVault — same honesty as Doctor)"
+        )
+    if not _ABOUT_OFFLINE.search(about_src):
+        fail("#130: About copy must say the app is offline")
+    if not _ABOUT_NOT_ENCRYPTED.search(about_src):
+        fail("#130: About copy must say not encrypted at rest")
+    if not _ABOUT_FILEVAULT.search(about_src):
+        fail("#130: About copy must mention FileVault")
+    if re.search(r"https?://", about_src):
+        fail(
+            "#130: About must stay offline — no website / http(s) URL on the About item"
+        )
+
+    # 6) Open uses the same picker path (pick_folder / openPicker), not a remote open.
+    handlers = _menu_handler_surface(rust, web_all)
+    if not handlers.strip():
+        fail(
+            "#130: menu Open must be wired (on_menu_event and/or a frontend listen) "
+            "to the existing folder picker — pick_folder / openPicker"
+        )
+    open_wired = bool(
+        re.search(r"\bpick_folder\b", handlers)
+        or re.search(r"\bopenPicker\b", handlers)
+        or re.search(r"\bpickFolder\b", handlers)
+    )
+    if not open_wired:
+        fail(
+            "#130: menu Open must call the same folder picker as the UI button "
+            "(openPicker / pickFolder / pick_folder), not a new remote/URL open"
+        )
+    if re.search(r"https?://", handlers) or re.search(
+        r"\b(?:webbrowser|open::that|opener::)\b", handlers
+    ):
+        fail("#130: menu handlers must not open a remote URL")
+
+    # 7) Import: same Import-tab picker, or switch to Import + existing flow.
+    import_wired = bool(
+        re.search(r"\bpick_import_path\b", handlers)
+        or re.search(r"\bpickImportPath\b", handlers)
+        or re.search(r"view\s*=\s*[\"']import[\"']", handlers)
+        or re.search(r"[\"'](?:view-|menu-)?import[\"']", handlers)
+    )
+    if not import_wired:
+        fail(
+            "#130: menu Import must use pick_import_path / pickImportPath "
+            "or switch view to import (existing Import tab flow)"
+        )
+
+    # 8) View items set the same `view` tokens as the nav buttons.
+    if not re.search(r"\bview\s*=", handlers) and not any(
+        _quoted_view_token(handlers, tok) for tok in _VIEW_MENU_TOKENS
+    ):
+        fail(
+            "#130: View menu items must set `view` the same as the nav buttons "
+            "(people / search / review / doctor) via on_menu_event emit + listen"
+        )
+    for tok in _VIEW_MENU_TOKENS:
+        if not _quoted_view_token(handlers, tok):
+            fail(
+                f"#130: View menu must switch to {tok} "
+                "(same view token as the in-window nav)"
+            )
+
+    # 9) Bans: Check for Updates, updater plugin, Preferences window, iCloud menu.
+    if _CHECK_UPDATES_ITEM.search(menu_src) or _CHECK_UPDATES_ITEM.search(handlers):
+        fail("#130: no Check for Updates menu item (and no updater plugin)")
+    if "tauri-plugin-updater" in toml:
+        fail("#130: tauri-plugin-updater must not be a dependency")
+    if "tauri-plugin-updater" not in deny:
+        fail(
+            "#130: crates/interlace-tauri/deny.toml must keep banning "
+            "tauri-plugin-updater"
+        )
+    if _PREFERENCES_ITEM.search(menu_src):
+        fail("#130: no Preferences / Settings window or menu item (out of scope)")
+    if _ICLOUD_MENU_ITEM.search(menu_src):
+        fail("#130: no iCloud / iCloud Drive menu item (out of scope)")
+
+    # 10) User-visible: one line in docs/user/app.md and/or docs/hacking/tauri.md.
+    if not _DOCS_MENU.search(dtxt):
+        fail(
+            "#130: docs/user/app.md and/or docs/hacking/tauri.md must mention "
+            "the native menu (File → Open archive; no Check for Updates)"
+        )
+
+    # Keep using the existing in-window picker — do not drop openPicker.
+    if "openPicker" not in app and "pickFolder" not in web_all:
+        fail(
+            "#130: keep the in-window openPicker / pickFolder path "
+            "(menu Open must share it, not replace it with a second picker)"
+        )
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -8355,6 +8742,7 @@ def main() -> None:
     assert_search_safe_highlight(crate)
     assert_review_identifiers(crate)
     assert_window_title(crate)
+    assert_macos_menu(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
