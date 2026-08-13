@@ -70,6 +70,10 @@
 #     ids. Selecting stores person_id for api.search({ personId }). Keyboard:
 #     type to filter display names, Enter to pick (first match or highlighted).
 #     Clear = no person filter. Not: multi-person OR, fuzzy beyond list filter.
+#124: search hit with person_id jumps to that message on the person timeline —
+#     switch to People, select person, load a window around message_id, scroll
+#     into view, highlight once (tlIndex ring). No person_id → stay on Search
+#     and expand body (toggle / searchBody) as today. Not: FTS rewrite.
 """
 
 from __future__ import annotations
@@ -6333,6 +6337,451 @@ def assert_search_person_picker(crate: Path) -> None:
         )
 
 
+# #124 — search hit jumps to that message on the person timeline (not a dead end).
+# Jump / open-at-message handlers (App callback or local + parent wire).
+_SEARCH_JUMP_FN = re.compile(
+    r"\b(?:"
+    r"jumpToMessage|jumpToHit|jumpToSearchHit|openSearchHit|openHit|goToMessage|"
+    r"openPersonAtMessage|selectPersonAtMessage|openAtMessage|jumpToPersonMessage|"
+    r"onJumpToMessage|onOpenHit|onOpenSearchHit|onJumpHit|onSearchHit|"
+    r"handleSearchHit|activateSearchHit|openHitOnTimeline"
+    r")\b",
+    re.I,
+)
+# Props / callbacks SearchPane may receive from App for the jump path.
+_SEARCH_JUMP_PROP = re.compile(
+    r"\b(?:"
+    r"onJumpToMessage|onOpenHit|onOpenSearchHit|onJumpHit|onSearchHit|"
+    r"jumpToMessage|openSearchHit|openHit|onJump"
+    r")\b",
+    re.I,
+)
+# Switching to the People view (leave Search).
+_VIEW_PEOPLE = re.compile(
+    r"view\s*=\s*[\"']people[\"']"
+    r"|view\s*=\s*\{?\s*[\"']people[\"']"
+    r"|\bsetView\s*\(\s*[\"']people[\"']\s*\)"
+    r"|\bnavigate\s*\(\s*[\"']people[\"']\s*\)",
+    re.I,
+)
+# Selecting / opening a person (existing selectPerson or jump-specific open).
+_SELECT_PERSON_CALL = re.compile(
+    r"\b(?:"
+    r"selectPerson|openPerson|pickPerson|showPerson|loadPerson|"
+    r"openPersonAtMessage|selectPersonAtMessage|jumpToPersonMessage"
+    r")\s*\(",
+    re.I,
+)
+# Hit activation must read person_id from the hit (not the search filter state).
+_HIT_PERSON_ID_READ = re.compile(
+    r"(?:h|hit|row|item|searchHit)\s*\.\s*(?:person_id|personId)\b"
+    r"|\b(?:h|hit|row|item|searchHit)\s*\?\s*\.\s*(?:person_id|personId)\b"
+    r"|(?:person_id|personId)\s*:\s*(?:h|hit|row|item|searchHit)\s*\.\s*(?:person_id|personId)",
+    re.I,
+)
+# Message id from the hit carried into the jump / scroll path (not only toggle expand).
+_HIT_MESSAGE_ID_READ = re.compile(
+    r"(?:h|hit|row|item|searchHit)\s*\.\s*(?:message_id|messageId)\b"
+    r"|(?:message_id|messageId)\s*:\s*(?:h|hit|row|item|searchHit)\s*\.\s*(?:message_id|messageId)",
+    re.I,
+)
+# Expand-body path (no person_id / stay on Search) — current toggle + searchBody.
+_SEARCH_EXPAND_BODY = re.compile(
+    r"\b(?:api\.)?searchBody\s*\("
+    r"|\bexpanded\s*="
+    r"|\btoggle\s*\(\s*(?:h|hit|id|message_id|messageId)",
+    re.I,
+)
+# Scroll / highlight once the target row is known.
+_SEARCH_JUMP_SCROLL_HL = re.compile(
+    r"("
+    r"\bensureTlIndexVisible\s*\("
+    r"|\bscrollIntoView\s*\("
+    r"|\btlIndex\s*="
+    r"|data-message-id"
+    r"|data-tl-index"
+    r"|data-message="
+    r"|\bfindIndex\s*\([^)]{0,80}(?:message_id|messageId)"
+    r"|\.findIndex\s*\("
+    r"|\bscrollToMessage\s*\("
+    r"|\bscrollMessageIntoView\s*\("
+    r"|\bhighlightMessage\s*\("
+    r"|ring-2\s+ring-ring"
+    r")",
+    re.I,
+)
+# Loading a timeline window that can include the target message (around / after /
+# before cursor, or messageId arg). Repeated Load older is OK if bounded — we
+# only require some load path that can place message_id in the loaded set.
+_SEARCH_JUMP_LOAD_WINDOW = re.compile(
+    r"("
+    r"\bpersonTimeline\s*\("
+    r"|\bapi\.personTimeline\s*\("
+    r"|\baround\s*:"
+    r"|\bafter\s*:"
+    r"|\bbefore\s*:"
+    r"|\bmessageId\s*:"
+    r"|\bmessage_id\s*:"
+    r"|\baroundMessage\b"
+    r"|\bloadAround\b"
+    r"|\bopenAround\b"
+    r"|\bjumpLoad\b"
+    r"|\bselectPerson\s*\("
+    r")",
+    re.I,
+)
+# Names accepted for the open-hit / jump entry point (click + Enter call this).
+# Plain string (adjacent literals) so it embeds cleanly in larger patterns.
+_SEARCH_JUMP_CALL_RE = (
+    r"jumpToMessage|jumpToHit|jumpToSearchHit|openSearchHit|openHit|goToMessage|"
+    r"openPersonAtMessage|selectPersonAtMessage|openAtMessage|jumpToPersonMessage|"
+    r"onJumpToMessage|onOpenHit|onOpenSearchHit|onJumpHit|onSearchHit|"
+    r"handleSearchHit|activateSearchHit|openHitOnTimeline|activateHit|openHitRow"
+)
+# Hit click / Enter invokes a jump or activate entry (not only toggle).
+_HIT_ACTIVATES_JUMP = re.compile(
+    rf"("
+    rf"(?:onclick|on:click)(?:\|\w+)*\s*=\s*\{{[\s\S]{{0,400}}\b(?:"
+    rf"{_SEARCH_JUMP_CALL_RE}"
+    rf")\s*\("
+    rf"|(?:onclick|on:click)(?:\|\w+)*\s*=\s*\{{[\s\S]{{0,400}}"
+    rf"(?:h|hit)\s*\.\s*(?:person_id|personId)"
+    rf"|(?:key|code)\s*===?\s*[\"']Enter[\"'][\s\S]{{0,400}}\b(?:"
+    rf"{_SEARCH_JUMP_CALL_RE}"
+    rf")\s*\("
+    rf"|(?:key|code)\s*===?\s*[\"']Enter[\"'][\s\S]{{0,400}}"
+    rf"(?:h|hit)\s*\.\s*(?:person_id|personId)"
+    rf")",
+    re.I,
+)
+# Jump handler body must select person + carry message id (not a no-op name).
+_JUMP_BODY_SELECTS_PERSON = re.compile(
+    r"("
+    r"\bselectPerson\s*\("
+    r"|\bopenPerson\s*\("
+    r"|\bopenPersonAtMessage\s*\("
+    r"|\bselectPersonAtMessage\s*\("
+    r"|view\s*=\s*[\"']people[\"']"
+    r")",
+    re.I,
+)
+_JUMP_BODY_USES_MESSAGE = re.compile(
+    r"("
+    r"\b(?:message_id|messageId)\b"
+    r"|\bensureTlIndexVisible\s*\("
+    r"|\btlIndex\s*="
+    r"|data-message-id"
+    r"|\bfindIndex\s*\("
+    r"|\bscrollIntoView\s*\("
+    r")",
+    re.I,
+)
+# person_id presence guard on the hit (not the Search filter personId state alone).
+_HIT_PERSON_GUARD = re.compile(
+    r"("
+    r"(?:h|hit|row|item|searchHit)\s*\.\s*(?:person_id|personId)\s*"
+    r"(?:\?\?|\|\||&&|!=|!==|==|===|\?)"
+    r"|(?:h|hit|row|item|searchHit)\s*\?\s*\.\s*(?:person_id|personId)"
+    r"|\bif\s*\([^)]{0,100}(?:h|hit|row|item|searchHit)\s*\.\s*(?:person_id|personId)"
+    r"|\b(?:person_id|personId)\s*(?:!=|!==|==|===)\s*(?:null|undefined)[\s\S]{0,120}"
+    r"(?:jumpTo|openHit|openSearch|onJump|goToMessage|selectPerson|view\s*=)"
+    r")",
+    re.I,
+)
+
+
+def _search_jump_handler_bodies(blob: str) -> list[str]:
+    """Bodies of jump/open-hit functions (placeholder names from the gate list)."""
+    names = (
+        "jumpToMessage",
+        "jumpToHit",
+        "jumpToSearchHit",
+        "openSearchHit",
+        "openHit",
+        "goToMessage",
+        "openPersonAtMessage",
+        "selectPersonAtMessage",
+        "openAtMessage",
+        "jumpToPersonMessage",
+        "handleSearchHit",
+        "activateSearchHit",
+        "openHitOnTimeline",
+        "activateHit",
+        "openHitRow",
+        "onJumpToMessage",
+        "onOpenHit",
+        "onOpenSearchHit",
+    )
+    bodies: list[str] = []
+    for name in names:
+        body = _function_body(blob, name)
+        if body.strip():
+            bodies.append(body)
+    return bodies
+
+
+def assert_search_jump_to_message(crate: Path) -> None:
+    """#124: search hit with person_id jumps to that message on the person timeline.
+
+    With person_id: switch to People, select that person, load a window around
+    message_id, scroll the row into view, highlight once (tlIndex / ring as j/k).
+    Without person_id: stay on Search and expand body (toggle / searchBody).
+    Virtualized timeline (#120): ensure target index enters the window
+    (ensureTlIndexVisible / scroll estimate) when that path exists.
+    Not: FTS rewrite, inventing a person when person_id is missing.
+    """
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    app_path = crate / "web" / "App.svelte"
+    if not search_path.is_file():
+        fail("#124: SearchPane.svelte required (search hit jump lives there)")
+    if not app_path.is_file():
+        fail("#124: App.svelte required (People view / selectPerson / timeline scroll)")
+
+    search_src = search_path.read_text()
+    app_src = app_path.read_text()
+    logic = _web_logic(crate)
+    search_clean = _without_comments(search_src)
+    app_clean = _without_comments(app_src)
+    logic_clean = _without_comments(logic)
+    search_markup = _svelte_markup(search_src)
+    surface = search_markup if search_markup.strip() else search_src
+    # Jump path may live in SearchPane, App, or a small helper under web/.
+    web_blob = search_clean + "\n" + app_clean + "\n" + logic_clean
+
+    # 1) Hits must still be listed and activatable (click and/or keyboard Enter).
+    if not re.search(r"\{#each\s+hits\b", surface) and not re.search(
+        r"\{#each\s+hits\b", search_src
+    ):
+        fail("#124: SearchPane must list hits ({#each hits}) so a hit can be opened")
+    has_hit_click = bool(
+        re.search(r"(?:onclick|on:click)(?:\|\w+)*\s*=\s*\{", surface)
+        and re.search(
+            r"message_id|messageId|toggle|jump|openHit|openSearch|activate",
+            surface + "\n" + search_clean,
+            re.I,
+        )
+    )
+    has_hit_enter = bool(
+        re.search(r"(?:key|code)\s*===?\s*[\"']Enter[\"']", search_clean)
+    )
+    if not has_hit_click and not has_hit_enter:
+        fail(
+            "#124: search hits must be activatable (click and/or Enter) — "
+            "a hit is not a dead end"
+        )
+
+    # 2) Without person_id: keep expand-body on Search (toggle / searchBody).
+    if not _SEARCH_EXPAND_BODY.search(search_clean) and not _SEARCH_EXPAND_BODY.search(
+        search_src
+    ):
+        fail(
+            "#124: without person_id, stay on Search and expand body as today "
+            "(toggle / api.searchBody / expanded = message_id) — do not invent a person"
+        )
+
+    # 3) Hit activation must invoke a jump/activate path (primary pre-impl red).
+    #    Current SearchPane only toggle(h.message_id) / Enter → toggle — fail that.
+    hit_activates_jump = bool(
+        _HIT_ACTIVATES_JUMP.search(search_src)
+        or _HIT_ACTIVATES_JUMP.search(search_clean)
+        or _HIT_ACTIVATES_JUMP.search(surface)
+    )
+    if not hit_activates_jump:
+        fail(
+            "#124: search hit with person_id must not only expand the body on Search — "
+            "click/Enter must call a jump handler (jumpToMessage / openSearchHit / "
+            "activateHit / onJumpToMessage…) or branch on hit.person_id. "
+            "Without person_id, expand body stays"
+        )
+
+    # 4) Jump handler must exist and do real work: People + person + message.
+    jump_bodies = _search_jump_handler_bodies(web_blob)
+    # Inline arrow assigned to prop: onJumpToMessage={async (pid, mid) => { ... }}
+    inline_jump = re.findall(
+        r"(?:onJumpToMessage|onOpenHit|onOpenSearchHit|onJumpHit|onSearchHit|onJump)\s*="
+        r"\s*\{([\s\S]{0,1500}?)\}(?=\s|/?>)",
+        app_src + "\n" + search_src,
+        re.I,
+    )
+    jump_bodies.extend(inline_jump)
+
+    has_jump_symbol = bool(
+        _SEARCH_JUMP_FN.search(web_blob) or _SEARCH_JUMP_PROP.search(web_blob)
+    )
+    if not has_jump_symbol and not jump_bodies:
+        fail(
+            "#124: require a jump handler (jumpToMessage / openSearchHit / "
+            "onJumpToMessage / activateHit / …) that opens the hit on the person timeline"
+        )
+
+    # App wires SearchPane callback, or SearchPane jumps itself (view/selectPerson).
+    app_wires_jump = bool(
+        re.search(
+            r"<SearchPane\b[^>]{0,500}(?:"
+            r"onJumpToMessage|onOpenHit|onOpenSearchHit|onJumpHit|onSearchHit|"
+            r"jumpToMessage|openSearchHit|onJump|activateHit"
+            r")",
+            app_src,
+            re.I,
+        )
+        or re.search(
+            r"SearchPane[\s\S]{0,500}(?:"
+            r"onJumpToMessage|onOpenHit|onOpenSearchHit|onJumpHit|onSearchHit|"
+            r"jumpToMessage|openSearchHit|onJump|activateHit"
+            r")",
+            app_clean,
+            re.I,
+        )
+    )
+    search_jumps_inline = bool(
+        _HIT_PERSON_ID_READ.search(search_clean)
+        and (
+            _VIEW_PEOPLE.search(search_clean)
+            or re.search(r"\bselectPerson\s*\(|\bopenPerson\s*\(", search_clean)
+        )
+    )
+    if not app_wires_jump and not search_jumps_inline and not jump_bodies:
+        fail(
+            "#124: wire SearchPane → App jump (onJumpToMessage={…} / jumpToMessage) "
+            "or jump from SearchPane into People + selectPerson"
+        )
+
+    # Real work inside a jump handler (reject no-op name-only stubs).
+    body_selects = any(_JUMP_BODY_SELECTS_PERSON.search(b) for b in jump_bodies)
+    body_message = any(_JUMP_BODY_USES_MESSAGE.search(b) for b in jump_bodies)
+    # selectPerson / view=people near a jump call site also counts (thin wrapper).
+    jump_call_near_select = bool(
+        re.search(
+            rf"(?:{_SEARCH_JUMP_CALL_RE})\s*\([\s\S]{{0,600}}"
+            r"(?:selectPerson\s*\(|openPerson\s*\(|view\s*=\s*[\"']people[\"'])"
+            rf"|(?:selectPerson\s*\(|view\s*=\s*[\"']people[\"'])[\s\S]{{0,600}}"
+            rf"(?:{_SEARCH_JUMP_CALL_RE})\s*\(",
+            web_blob,
+            re.I,
+        )
+    )
+    # Combined handler in SearchPane: if (h.person_id) { onJump… } else toggle
+    search_branches_to_jump = bool(
+        re.search(
+            r"(?:h|hit)\s*\.\s*(?:person_id|personId)[\s\S]{0,200}"
+            rf"(?:{_SEARCH_JUMP_CALL_RE})\s*\(",
+            search_clean,
+            re.I,
+        )
+    )
+
+    if not (body_selects or jump_call_near_select or search_jumps_inline):
+        fail(
+            "#124: jump path must switch to People and select the hit's person "
+            "(view = \"people\" + selectPerson / openPerson / openPersonAtMessage — "
+            "not a no-op jump name)"
+        )
+    if not (body_message or search_branches_to_jump or _HIT_MESSAGE_ID_READ.search(
+        "\n".join(jump_bodies) if jump_bodies else ""
+    )):
+        # Message id must reach the open/scroll path.
+        if not re.search(
+            rf"(?:{_SEARCH_JUMP_CALL_RE})\s*\([^)]{{0,120}}"
+            r"(?:message_id|messageId|h\.message|hit\.message)",
+            web_blob,
+            re.I,
+        ) and not re.search(
+            r"(?:h|hit)\s*\.\s*(?:message_id|messageId)[\s\S]{0,200}"
+            rf"(?:{_SEARCH_JUMP_CALL_RE}|selectPerson|tlIndex|ensureTlIndexVisible)",
+            web_blob,
+            re.I,
+        ):
+            fail(
+                "#124: jump path must carry hit.message_id "
+                "(open around that message, set tlIndex / scroll to that row)"
+            )
+
+    # 5) Only jump when person_id is present (no inventing a person).
+    if not _HIT_PERSON_GUARD.search(web_blob) and not _HIT_PERSON_ID_READ.search(
+        search_clean
+    ):
+        fail(
+            "#124: only jump when hit.person_id is present — without it stay on Search "
+            "and expand body (do not invent a person from the hit)"
+        )
+    # Prefer an explicit guard near jump (hit.person_id ? jump : toggle).
+    if not _HIT_PERSON_GUARD.search(web_blob):
+        fail(
+            "#124: branch on hit.person_id before jumping "
+            "(if present → People timeline; else → expand body on Search)"
+        )
+
+    # 6) Load a window that can contain message_id.
+    # Require load signal inside jump bodies or within a jump-related window —
+    # not only the ordinary selectPerson used for sidebar clicks.
+    load_in_jump = any(_SEARCH_JUMP_LOAD_WINDOW.search(b) for b in jump_bodies)
+    load_near_jump = bool(
+        re.search(
+            rf"(?:{_SEARCH_JUMP_CALL_RE})[\s\S]{{0,800}}"
+            r"(?:personTimeline|around\s*:|after\s*:|before\s*:|aroundMessage|"
+            r"loadAround|openAround|selectPerson\s*\()"
+            rf"|(?:personTimeline|aroundMessage|loadAround)[\s\S]{{0,400}}"
+            rf"(?:{_SEARCH_JUMP_CALL_RE}|message_id|messageId)",
+            web_blob,
+            re.I,
+        )
+    )
+    if not load_in_jump and not load_near_jump and not body_selects:
+        fail(
+            "#124: jump path must load a timeline window around message_id "
+            "(personTimeline before/after/around, or selectPerson load that can "
+            "place the hit in the loaded set — bounded Load older OK for dogfood)"
+        )
+
+    # 7) Scroll into view + highlight once — must appear in jump path, not only j/k.
+    # Require coupling to a jump handler name (bare tlIndex/message_id elsewhere is j/k / mail fold).
+    scroll_in_jump = any(_SEARCH_JUMP_SCROLL_HL.search(b) for b in jump_bodies)
+    scroll_near_jump = bool(
+        re.search(
+            rf"(?:{_SEARCH_JUMP_CALL_RE})[\s\S]{{0,900}}"
+            r"(?:ensureTlIndexVisible\s*\(|tlIndex\s*=|scrollIntoView\s*\(|"
+            r"data-message-id|scrollToMessage|scrollMessageIntoView|findIndex\s*\()"
+            rf"|(?:ensureTlIndexVisible\s*\(|scrollToMessage\s*\(|scrollMessageIntoView\s*\()"
+            rf"[\s\S]{{0,400}}(?:{_SEARCH_JUMP_CALL_RE}|message_id|messageId)",
+            web_blob,
+            re.I,
+        )
+    )
+    if not scroll_in_jump and not scroll_near_jump:
+        fail(
+            "#124: after jump, scroll the target message into view and highlight once "
+            "(tlIndex = … / ensureTlIndexVisible / scrollIntoView / data-message-id — "
+            "same ring as j/k selection; must be on the jump path, not only j/k)"
+        )
+    # Virtualized timeline: ensureTlIndexVisible (or scroll) must exist in App.
+    if not re.search(r"\bensureTlIndexVisible\s*\(", app_clean) and not re.search(
+        r"scrollIntoView|data-message-id", app_clean
+    ):
+        fail(
+            "#124: timeline must be able to bring the jumped-to index into view "
+            "(ensureTlIndexVisible or scrollIntoView / data-message-id; "
+            "virtualized lists must open the virtual window on that index)"
+        )
+
+    # 8) Keep #121–#123 search chrome.
+    if not re.search(r"\bplatform\b", search_clean) or not re.search(
+        r"<select\b", surface, re.I
+    ):
+        fail("#124: keep the search platform <select> (#121) when adding jump-to-hit")
+    if not re.search(r"conversationKind|conversation_kind", search_clean):
+        fail(
+            "#124: keep the search conversation-kind <select> (#122) when adding jump-to-hit"
+        )
+    if not re.search(
+        r"personId|person_id|personFilter|data-person-picker", search_clean
+    ):
+        fail("#124: keep the search person picker (#123) when adding jump-to-hit")
+
+    # 9) Keep api.search (do not rewrite FTS as part of jump-to-hit).
+    if not re.search(r"api\.search\s*\(", search_clean):
+        fail("#124: keep api.search (do not rewrite FTS as part of jump-to-hit)")
+
+
 def assert_virtualized_timeline(crate: Path) -> None:
     """#120: window person timeline (visible + overscan); keep j/k + Load older.
 
@@ -6532,6 +6981,7 @@ def main() -> None:
     assert_search_platform_select(crate)
     assert_search_conversation_kind(crate)
     assert_search_person_picker(crate)
+    assert_search_jump_to_message(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
