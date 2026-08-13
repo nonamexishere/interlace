@@ -90,10 +90,10 @@
         bind:value={platform}
         class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
       >
-        <option value="">any</option>
-        <option value="whatsapp">whatsapp</option>
-        <option value="gmail">gmail</option>
-        <option value="contacts">contacts</option>
+        <option value="">Any</option>
+        <option value="whatsapp">WhatsApp</option>
+        <option value="gmail">Gmail</option>
+        <option value="contacts">Contacts</option>
       </select>
     </div>
     <div class="space-y-1.5">
