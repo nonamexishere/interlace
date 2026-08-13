@@ -95,6 +95,11 @@
 #     View (people/search/review/doctor). About: offline, not encrypted at rest,
 #     FileVault. Open uses pick_folder / openPicker. No Check for Updates,
 #     no updater, no Preferences window, no iCloud menu.
+#131: UI chrome locale packs (en + tr) under web/ — not WA fixture toml.
+#     Resolve from OS locale (navigator.language / Intl / Tauri); tr* → tr, else en.
+#     tr pack has “Arşiv aç” / “Doktor”; App setup/nav uses the chrome helper
+#     (not only hardcoded English). Never t(body_text)/snippet. English remains
+#     the default so existing doctor / empty / backup English gates still pass.
 """
 
 from __future__ import annotations
@@ -2914,16 +2919,22 @@ def assert_boot_spinner(crate: Path) -> None:
             "#156: App.svelte must keep a {#if booting || opening} (or opening || booting) "
             "branch for the Opening-last-archive state"
         )
-    if "Opening last archive" not in boot and "Opening last archive" not in app:
-        fail(
-            "#156: boot screen must keep the exact copy substring "
-            "“Opening last archive” (existing gate string)"
-        )
-    if "Opening last archive" not in boot:
-        fail(
-            "#156: “Opening last archive” must appear in the booting/opening branch, "
-            "not only elsewhere in App.svelte"
-        )
+    en_pack = _chrome_en_text(crate)
+    boot_has_copy = "Opening last archive" in boot
+    pack_has_copy = "Opening last archive" in en_pack
+    boot_uses_chrome = _markup_uses_chrome_helper(boot, _chrome_helper_names(_web_logic(crate)))
+    if not boot_has_copy and "Opening last archive" not in app:
+        if not (pack_has_copy and boot_uses_chrome):
+            fail(
+                "#156: boot screen must keep the exact copy substring "
+                "“Opening last archive” (existing gate string; English default / en pack)"
+            )
+    if not boot_has_copy:
+        if not (pack_has_copy and boot_uses_chrome):
+            fail(
+                "#156: “Opening last archive” must appear in the booting/opening branch "
+                "(literal English, or chrome helper + en pack — default stays English)"
+            )
     # Spinner may use Tailwind utilities in the branch and/or shared CSS.
     boot_with_css = boot + "\n" + css_blob
     if not _has_css_spinner(boot) and not (
@@ -8634,6 +8645,653 @@ def assert_macos_menu(crate: Path) -> None:
         )
 
 
+# #131 — UI chrome locale packs (en + tr). Not WA parser packs, not message bodies.
+_CHROME_PACK_SUFFIXES = {".json", ".ts", ".toml"}
+_CHROME_PACK_DIR_HINTS = frozenset(
+    {"locale", "locales", "i18n", "l10n", "chrome", "messages", "strings"}
+)
+_CHROME_PACK_FILE_HINTS = ("chrome", "i18n", "l10n", "messages", "strings", "locale")
+_CHROME_HELPER_NAMES = (
+    "t",
+    "tt",
+    "i18n",
+    "i18nT",
+    "chromeT",
+    "chromeText",
+    "chromeString",
+    "uiText",
+    "uiString",
+    "msg",
+    "translate",
+    "tChrome",
+    "chromeMsg",
+)
+_CHROME_PACK_NS = (
+    "chrome",
+    "i18n",
+    "strings",
+    "messages",
+    "ui",
+    "m",
+    "pack",
+    "packs",
+    "c",
+)
+_WA_PARSER_KEYS = frozenset(
+    {
+        "id",
+        "family_hints",
+        "you_tokens",
+        "date_time_patterns",
+        "media_omitted",
+        "file_attached_pattern",
+        "file_attached_alt",
+        "forwarded_tokens",
+        "title_prefixes_dm",
+        "title_prefixes_group",
+        "system_created_group",
+        "system_added",
+        "system_subject",
+        "system_encryption",
+        "encryption_banner_startswith",
+    }
+)
+_WA_UI_BAN = ("Arşiv aç", "Open existing", "Open an archive")
+_CHROME_NO_TRANSLATE_FIELDS = (
+    "body_text",
+    "bodyText",
+    "snippet",
+    "displayBody",
+    "searchBody",
+    "display_name",
+    "displayName",
+    "personTitle",
+    "preview",
+    "sample",
+    "sample_body",
+    "sampleBody",
+)
+_EN_EMPTY_TITLES = (
+    "No people yet",
+    "Select a person",
+    "No doctor issues",
+    "Nothing to review",
+    "Type a query",
+    "No hits",
+)
+_OS_LOCALE_READ = re.compile(
+    r"("
+    r"navigator\.language"
+    r"|navigator\.languages"
+    r"|Intl\.DateTimeFormat\s*\("
+    r"|resolvedOptions\s*\(\s*\)\s*\.\s*locale"
+    r"|@tauri-apps/plugin-os"
+    r"|\bosLocale\b"
+    r"|\bgetLocale\s*\("
+    r"|\blocaleIdentifier\b"
+    r")",
+)
+_TR_STAR_PICK = re.compile(
+    r"("
+    r"startsWith\s*\(\s*[\"']tr"
+    r"|starts_with\s*\(\s*[\"']tr"
+    r"|slice\s*\(\s*0\s*,\s*2\s*\)\s*===?\s*[\"']tr[\"']"
+    r"|substring\s*\(\s*0\s*,\s*2\s*\)\s*===?\s*[\"']tr[\"']"
+    r"|===?\s*[\"']tr[\"']"
+    r"|===?\s*[\"']tr-[A-Za-z]{2}[\"']"
+    r"|/\^tr/i?"
+    r"|match\s*\(\s*/\^tr"
+    r")",
+)
+_EN_DEFAULT_PICK = re.compile(
+    r"("
+    r":\s*[\"']en[\"']"
+    r"|\|\|\s*[\"']en[\"']"
+    r"|\?\?\s*[\"']en[\"']"
+    r"|else\s+[\"']en[\"']"
+    r"|return\s+[\"']en[\"']"
+    r"|fallback(?:Locale|Lang|Pack)?\s*[:=]\s*[\"']en[\"']"
+    r"|default(?:Locale|Lang|Pack)?\s*[:=]\s*[\"']en[\"']"
+    r"|\?\s*[\"']tr[\"']\s*:\s*[\"']en[\"']"
+    r")",
+)
+_CHROME_OVERRIDE_UI = re.compile(
+    r"("
+    r"\bchromeLocale\b"
+    r"|\buiLocale\b"
+    r"|\buiLanguage\b"
+    r"|\bdisplayLanguage\b"
+    r"|[\"']UI language[\"']"
+    r"|[\"']Display language[\"']"
+    r"|[\"']App language[\"']"
+    r"|[\"']Chrome language[\"']"
+    r")",
+    re.I,
+)
+_DIR_RTL = re.compile(r"\bdir\s*=\s*[\"']rtl[\"']", re.I)
+_CHROME_IMPORT_SPEC = re.compile(
+    r"chrome|i18n|l10n|locale|messages|strings|paraglide",
+    re.I,
+)
+_LANG_STEM = re.compile(
+    r"(?:^|[._-])(en|tr)(?:[-_][A-Za-z]+)?$",
+    re.I,
+)
+
+
+def _looks_like_wa_pack(text: str) -> bool:
+    return (
+        "you_tokens" in text
+        and "media_omitted" in text
+        and "file_attached_pattern" in text
+    )
+
+
+def _web_pack_candidates(crate: Path) -> list[Path]:
+    web = crate / "web"
+    if not web.is_dir():
+        return []
+    out: list[Path] = []
+    for p in sorted(web.rglob("*")):
+        if not p.is_file():
+            continue
+        if "node_modules" in p.parts or "dist" in p.parts:
+            continue
+        if p.suffix not in _CHROME_PACK_SUFFIXES:
+            continue
+        if p.name.endswith(".d.ts"):
+            continue
+        out.append(p)
+    return out
+
+
+def _stem_chrome_lang(path: Path) -> str | None:
+    m = _LANG_STEM.search(path.stem)
+    if not m:
+        return None
+    return m.group(1).lower()
+
+
+def _chrome_file_hinted(path: Path) -> bool:
+    name = path.name.lower()
+    parent = path.parent.name.lower()
+    if parent in _CHROME_PACK_DIR_HINTS:
+        return True
+    return any(h in name for h in _CHROME_PACK_FILE_HINTS)
+
+
+def _is_combined_chrome_pack(path: Path, text: str) -> bool:
+    if not _chrome_file_hinted(path):
+        return False
+    if _looks_like_wa_pack(text):
+        return False
+    has_en = bool(re.search(r"""(?:\ben\b\s*[:=]|["']en["']\s*:)""", text))
+    has_tr = bool(re.search(r"""(?:\btr\b\s*[:=]|["']tr["']\s*:)""", text))
+    return has_en and has_tr
+
+
+def _chrome_pack_files(crate: Path) -> tuple[list[Path], list[Path], list[Path]]:
+    """Dedicated en files, dedicated tr files, combined en+tr modules under web/."""
+    en: list[Path] = []
+    tr: list[Path] = []
+    combined: list[Path] = []
+    for p in _web_pack_candidates(crate):
+        text = p.read_text()
+        if _looks_like_wa_pack(text):
+            continue
+        lang = _stem_chrome_lang(p)
+        if lang == "en":
+            en.append(p)
+            continue
+        if lang == "tr":
+            tr.append(p)
+            continue
+        if _is_combined_chrome_pack(p, text):
+            combined.append(p)
+    return en, tr, combined
+
+
+def _extract_lang_object(text: str, lang: str) -> str:
+    for pat in (
+        rf"(?:export\s+)?(?:const|let|var)\s+{re.escape(lang)}\s*=\s*\{{",
+        rf"[\"']{re.escape(lang)}[\"']\s*:\s*\{{",
+        rf"\b{re.escape(lang)}\s*:\s*\{{",
+    ):
+        m = re.search(pat, text)
+        if not m:
+            continue
+        brace = text.find("{", m.start())
+        if brace < 0:
+            continue
+        end = _match_closer(text, brace)
+        if end > brace:
+            return text[brace : end + 1]
+    m = re.search(rf"^\[{re.escape(lang)}\]\s*$", text, re.M)
+    if m:
+        rest = text[m.end() :]
+        nxt = re.search(r"^\[", rest, re.M)
+        return rest[: nxt.start()] if nxt else rest
+    return ""
+
+
+def _chrome_lang_text(crate: Path, lang: str) -> str:
+    en, tr, combined = _chrome_pack_files(crate)
+    dedicated = en if lang == "en" else tr
+    parts = [p.read_text() for p in dedicated]
+    for p in combined:
+        text = p.read_text()
+        extracted = _extract_lang_object(text, lang)
+        parts.append(extracted if extracted.strip() else text)
+    return "\n".join(parts)
+
+
+def _chrome_en_text(crate: Path) -> str:
+    return _chrome_lang_text(crate, "en")
+
+
+def _chrome_tr_text(crate: Path) -> str:
+    return _chrome_lang_text(crate, "tr")
+
+
+def _chrome_import_names(logic: str) -> set[str]:
+    names: set[str] = set()
+    for m in re.finditer(
+        r"import\s+(?:type\s+)?(?:(\w+)\s*,\s*)?\{([^}]+)\}\s+from\s+[\"']([^\"']+)[\"']",
+        logic,
+    ):
+        if not _CHROME_IMPORT_SPEC.search(m.group(3)):
+            continue
+        if m.group(1):
+            names.add(m.group(1))
+        for part in m.group(2).split(","):
+            bit = part.strip()
+            if not bit or bit.startswith("type "):
+                continue
+            names.add(re.split(r"\s+as\s+", bit)[-1].strip())
+    for m in re.finditer(
+        r"import\s+(\w+)\s+from\s+[\"']([^\"']+)[\"']",
+        logic,
+    ):
+        if _CHROME_IMPORT_SPEC.search(m.group(2)):
+            names.add(m.group(1))
+    for m in re.finditer(
+        r"import\s+\*\s+as\s+(\w+)\s+from\s+[\"']([^\"']+)[\"']",
+        logic,
+    ):
+        if _CHROME_IMPORT_SPEC.search(m.group(2)):
+            names.add(m.group(1))
+    return {n for n in names if n}
+
+
+def _chrome_helper_names(logic: str) -> set[str]:
+    names = _chrome_import_names(logic)
+    for name in _CHROME_HELPER_NAMES:
+        if re.search(
+            rf"(?:function\s+{re.escape(name)}\s*\("
+            rf"|(?:const|let)\s+{re.escape(name)}\s*=\s*(?:async\s*)?(?:function\b|\())",
+            logic,
+        ):
+            names.add(name)
+    return names
+
+
+def _ident_assigned_from_chrome(logic: str, ident: str, helpers: set[str]) -> bool:
+    if not ident or ident in {"#if", ":else", "/if", "#each", "/each"}:
+        return False
+    ns = set(helpers) | set(_CHROME_PACK_NS)
+    for m in re.finditer(
+        rf"(?:const|let|var)\s+{re.escape(ident)}\s*=",
+        logic,
+    ):
+        window = logic[m.start() : m.start() + 500]
+        if any(re.search(rf"\b{re.escape(h)}\s*\(", window) for h in helpers):
+            return True
+        if any(re.search(rf"\b{re.escape(n)}\.\w+", window) for n in ns):
+            return True
+    return False
+
+
+def _markup_uses_chrome_helper(inner: str, helpers: set[str], logic: str = "") -> bool:
+    """True if visible copy comes from t()/chrome.x / a derived chrome label."""
+    if not inner.strip():
+        return False
+    ns = set(helpers) | set(_CHROME_PACK_NS)
+    for h in helpers:
+        if re.search(rf"\b{re.escape(h)}\s*\(", inner):
+            return True
+        if re.search(rf"\b{re.escape(h)}\.\w+", inner):
+            return True
+    for n in ns:
+        if re.search(rf"\b{re.escape(n)}\.\w+", inner):
+            return True
+        if re.search(rf"\b{re.escape(n)}\.\w+\s*\(", inner):
+            return True
+    if re.search(r"\$_\s*\(", inner):
+        return True
+    for m in re.finditer(r"\{([A-Za-z_]\w*)\}", inner):
+        if _ident_assigned_from_chrome(logic, m.group(1), helpers):
+            return True
+    return False
+
+
+def _control_inners(src: str, needle: re.Pattern[str], tags: tuple[str, ...] = ("Button", "button")) -> list[str]:
+    """Inner HTML of a Button/button whose open tag (or nearby) matches needle.
+
+    Closing tags may split across lines (`</Button\\n>`).
+    """
+    inners: list[str] = []
+    for m in needle.finditer(src):
+        before = src[: m.start()]
+        open_idx = -1
+        tag_found = ""
+        for tag in tags:
+            idx = before.lower().rfind("<" + tag.lower())
+            if idx > open_idx:
+                open_idx = idx
+                tag_found = tag
+        if open_idx < 0 or m.start() - open_idx > 900:
+            continue
+        gt = src.find(">", open_idx)
+        if gt < 0:
+            continue
+        close_m = re.search(rf"</{re.escape(tag_found)}\s*>", src[gt:], re.I)
+        if not close_m:
+            continue
+        inners.append(src[gt + 1 : gt + close_m.start()])
+    return inners
+
+
+def _nav_block(src: str) -> str:
+    m = re.search(r"<nav\b[^>]*>(.*?)</nav>", src, re.S | re.I)
+    return m.group(0) if m else ""
+
+
+def _locale_resolver_surface(src: str) -> str:
+    """Windows around OS-locale reads / named resolvers — not pack dictionaries."""
+    chunks: list[str] = []
+    for m in _OS_LOCALE_READ.finditer(src):
+        chunks.append(src[max(0, m.start() - 400) : m.end() + 500])
+    for name in (
+        "resolveLocale",
+        "chromeLocale",
+        "pickLocale",
+        "detectLocale",
+        "localeFromOs",
+        "osLang",
+        "chromeLang",
+        "resolvedLocale",
+        "uiLang",
+    ):
+        body = _function_body(src, name)
+        if body:
+            chunks.append(body)
+        for dm in re.finditer(rf"(?:const|let|var|function)\s+{re.escape(name)}\b", src):
+            chunks.append(src[dm.start() : dm.start() + 800])
+    return "\n".join(chunks)
+
+
+def _heading_inners(src: str) -> list[str]:
+    return [m.group(1) for m in re.finditer(r"<h1\b[^>]*>(.*?)</h1>", src, re.S | re.I)]
+
+
+def _chrome_helper_on_body(blob: str, helpers: set[str]) -> bool:
+    if not helpers:
+        return False
+    names = "|".join(re.escape(h) for h in sorted(helpers, key=len, reverse=True))
+    fields = "|".join(_CHROME_NO_TRANSLATE_FIELDS)
+    return bool(
+        re.search(
+            rf"\b(?:{names})\s*\(\s*(?:[^)]{{0,100}}\.)?(?:{fields})\b",
+            blob,
+        )
+    )
+
+
+def _toml_top_keys(text: str) -> set[str]:
+    return set(re.findall(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=", text, re.M))
+
+
+def _assert_wa_locale_not_chrome(root: Path) -> None:
+    """UI chrome must not land in WhatsApp/Gmail parser packs."""
+    for rel in (
+        Path("crates") / "interlace-fixtures" / "locale",
+        Path("crates") / "interlace-core" / "locale",
+    ):
+        folder = root / rel
+        if not folder.is_dir():
+            continue
+        for p in sorted(folder.iterdir()):
+            if not p.is_file():
+                continue
+            loc = p.relative_to(root)
+            if p.suffix != ".toml":
+                fail(
+                    f"#131: {loc} is not a WA parser pack — "
+                    "do not add UI chrome files under interlace-fixtures/locale "
+                    "(or core locale copies)"
+                )
+            text = p.read_text()
+            extra = _toml_top_keys(text) - _WA_PARSER_KEYS
+            if extra:
+                fail(
+                    f"#131: do not add UI chrome keys to WA locale pack {loc}: "
+                    f"{sorted(extra)} — chrome lives under crates/interlace-tauri/web/"
+                )
+            for s in _WA_UI_BAN:
+                if s in text:
+                    fail(
+                        f"#131: do not put UI chrome string {s!r} in WA locale pack {loc}"
+                    )
+
+
+def assert_chrome_locale(crate: Path) -> None:
+    """#131: en+tr UI chrome packs; OS locale; not bodies; not WA packs.
+
+    Ship chrome strings (nav, setup Open archive, doctor, empty states, backup
+    banner, common buttons) as en + tr packs under web/. Resolve from the OS
+    locale: tr / tr-TR → tr, everything else → en. Message bodies stay stored.
+    English remains the default so existing doctor / empty / backup greps pass.
+    """
+    root = repo_root()
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#131: App.svelte required (setup Open archive + nav Doctor chrome)")
+    app = app_path.read_text()
+    doctor_path = crate / "web" / "lib" / "DoctorPane.svelte"
+    doctor = doctor_path.read_text() if doctor_path.is_file() else ""
+    logic = _web_logic(crate)
+    cleaned = _without_comments(logic)
+    docs = root / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+
+    # 1) en + tr chrome packs under web/ (json / ts / toml) — not WA fixture toml.
+    en_files, tr_files, combined = _chrome_pack_files(crate)
+    if not en_files and not combined:
+        fail(
+            "#131: English UI chrome pack missing under crates/interlace-tauri/web/ "
+            "(en.json / en.ts / en.toml, or a combined chrome/i18n module) — "
+            "not interlace-fixtures/locale/*.toml"
+        )
+    if not tr_files and not combined:
+        fail(
+            "#131: Turkish UI chrome pack missing under crates/interlace-tauri/web/ "
+            "(tr.json / tr.ts / tr.toml, or a combined chrome/i18n module) — "
+            "not interlace-fixtures/locale/*.toml"
+        )
+    en_text = _chrome_en_text(crate)
+    tr_text = _chrome_tr_text(crate)
+    if not en_text.strip():
+        fail("#131: English chrome pack is empty")
+    if not tr_text.strip():
+        fail("#131: Turkish chrome pack is empty")
+
+    # 2) Resolver follows OS locale; tr* → tr, else en (English default).
+    if not _OS_LOCALE_READ.search(cleaned) and not _OS_LOCALE_READ.search(logic):
+        fail(
+            "#131: chrome locale must follow the OS "
+            "(navigator.language / navigator.languages / Intl / Tauri locale) — "
+            "not the Import pane WhatsApp/Gmail probe `locale` field"
+        )
+    resolver = _locale_resolver_surface(cleaned) or _locale_resolver_surface(logic)
+    if not _TR_STAR_PICK.search(resolver):
+        fail(
+            "#131: OS locale tr / tr-TR / tr* must select the tr chrome pack "
+            "(startsWith('tr') or equivalent, next to the OS locale read)"
+        )
+    if not _EN_DEFAULT_PICK.search(resolver):
+        fail(
+            "#131: every non-tr OS locale must fall back to the en chrome pack "
+            "(English is the default so existing fixture/gate copy still passes)"
+        )
+
+    # 3) Acceptance strings in the tr pack.
+    if "Arşiv aç" not in tr_text:
+        fail('#131: tr chrome pack must contain “Arşiv aç” (Open archive / Open existing)')
+    if "Doktor" not in tr_text:
+        fail('#131: tr chrome pack must contain “Doktor” (Doctor nav + pane title)')
+
+    # 4) English pack keeps the acceptance keys (default / fixtures).
+    if not re.search(r"[\"']Doctor[\"']", en_text) and "Doctor" not in en_text:
+        fail(
+            "#131: en chrome pack must contain “Doctor” "
+            "(English default — existing doctor chrome gates stay green)"
+        )
+    if not re.search(
+        r"Open(?: an)? archive|Open existing",
+        en_text,
+        re.I,
+    ):
+        fail(
+            "#131: en chrome pack must contain “Open archive” / “Open existing” "
+            "(English default for setup)"
+        )
+
+    # 5) App setup/nav uses the chrome helper — not only hardcoded English.
+    helpers = _chrome_helper_names(logic)
+    if not helpers and not any(
+        re.search(rf"\b{re.escape(n)}\.\w+", logic) for n in _CHROME_PACK_NS
+    ):
+        fail(
+            "#131: App/setup/nav must use a chrome helper "
+            "(t / chromeT / i18n / imported chrome pack) — "
+            "not only hardcoded English “Open existing…” / “Doctor”"
+        )
+
+    open_inners = _control_inners(app, re.compile(r"\bopenPicker\b"))
+    if not open_inners:
+        open_inners = _control_inners(app, re.compile(r"\bopenPath\b|\bpickFolder\b"))
+    if not open_inners:
+        fail(
+            "#131: setup Open archive / Open existing control missing "
+            "(openPicker button must show the chrome string)"
+        )
+    if not any(_markup_uses_chrome_helper(inner, helpers, logic) for inner in open_inners):
+        fail(
+            "#131: setup Open archive / Open existing must use the chrome helper "
+            "(tr-TR shows “Arşiv aç” — not only hardcoded English on openPicker)"
+        )
+
+    nav = _nav_block(app)
+    nav_inners = _control_inners(nav or app, re.compile(r"view\s*=\s*[\"']doctor[\"']"))
+    if not nav_inners:
+        fail(
+            "#131: nav Doctor button missing "
+            "(in-window nav must use the chrome helper for “Doktor”)"
+        )
+    if not any(_markup_uses_chrome_helper(inner, helpers, logic) for inner in nav_inners):
+        fail(
+            "#131: nav Doctor must use the chrome helper "
+            "(tr-TR shows “Doktor” — not only hardcoded English)"
+        )
+
+    # Doctor pane title (acceptance: nav + pane).
+    if doctor:
+        doc_headings = _heading_inners(doctor)
+        if not doc_headings:
+            fail("#131: Doctor pane must keep a title heading (chrome “Doktor” / “Doctor”)")
+        if not any(_markup_uses_chrome_helper(inner, helpers, logic) for inner in doc_headings):
+            fail(
+                "#131: Doctor pane title must use the chrome helper "
+                "(not only hardcoded English “Doctor”)"
+            )
+
+    # 6) Never translate stored message bodies / snippets / names via the helper.
+    body_blob = logic + "\n" + app + "\n" + doctor
+    if _chrome_helper_on_body(body_blob, helpers):
+        fail(
+            "#131: do not pass body_text / snippet / display_name / preview "
+            "through the chrome helper — message bodies stay as stored"
+        )
+
+    # 7) WA parser packs must not grow UI chrome strings.
+    _assert_wa_locale_not_chrome(root)
+
+    # 8) English empty / doctor / backup copy still present (pack or svelte)
+    #    so existing English gates keep passing for the default locale.
+    svelte_en = app + "\n" + doctor
+    for pane_name in ("EmptyState.svelte", "SearchPane.svelte", "ReviewPane.svelte"):
+        p = crate / "web" / "lib" / pane_name
+        if p.is_file():
+            svelte_en += "\n" + p.read_text()
+    en_surface = svelte_en + "\n" + en_text
+    missing_empty = [s for s in _EN_EMPTY_TITLES if s not in en_surface]
+    if len(missing_empty) == len(_EN_EMPTY_TITLES):
+        fail(
+            "#131: English empty-state copy must remain in the en pack or the panes "
+            f"({_EN_EMPTY_TITLES[0]!r}, …) so existing empty-state gates stay English"
+        )
+    if "Not encrypted at rest" not in en_surface or "FileVault" not in en_surface:
+        fail(
+            "#131: English doctor / backup honesty copy must remain in the en pack "
+            "or Doctor pane (“Not encrypted at rest”, FileVault)"
+        )
+    if "backup unit" not in en_surface and "data-cloud-warning" not in app:
+        fail(
+            "#131: English backup / cloud banner copy must remain "
+            "(en pack or existing data-cloud-warning banner)"
+        )
+
+    # 9) Docs: chrome follows OS language (en/tr); bodies stay as imported.
+    if not re.search(
+        r"("
+        r"OS language"
+        r"|OS locale"
+        r"|follows (?:the )?OS"
+        r"|chrome follows"
+        r"|UI chrome.{0,40}(?:language|locale)"
+        r"|en(?:glish)?\s*/\s*tr"
+        r")",
+        dtxt,
+        re.I,
+    ):
+        fail(
+            "#131: docs/user/app.md must say chrome follows the OS language (en/tr)"
+        )
+    if not re.search(
+        r"("
+        r"message bodies? stay"
+        r"|bodies stay as"
+        r"|as (?:imported|stored)"
+        r"|not (?:translate|translating) (?:message )?bod"
+        r"|bodies? (?:are|stay|remain) (?:as )?(?:imported|stored|unchanged)"
+        r")",
+        dtxt,
+        re.I,
+    ):
+        fail(
+            "#131: docs/user/app.md must say message bodies stay as imported / stored"
+        )
+
+    # 10) Out of scope: chrome-language override UI, RTL layout.
+    if _CHROME_OVERRIDE_UI.search(app) or _CHROME_OVERRIDE_UI.search(logic):
+        fail(
+            "#131: no chrome-language override / settings UI "
+            "(optional later — Import pane WhatsApp locale probe is not chrome)"
+        )
+    if _DIR_RTL.search(app) or _DIR_RTL.search(logic):
+        fail("#131: RTL layout is out of scope")
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -8705,13 +9363,15 @@ def main() -> None:
     empty = crate / "web" / "lib" / "EmptyState.svelte"
     if not empty.is_file():
         fail("EmptyState.svelte required for UI empty/loading copy")
-    if "Opening last archive" not in app:
+    en_chrome = app + "\n" + _chrome_en_text(crate)
+    if "Opening last archive" not in en_chrome:
         fail("boot screen must say Opening last archive (no blank flash)")
     doctor = crate / "web" / "lib" / "DoctorPane.svelte"
     if not doctor.is_file():
         fail("DoctorPane.svelte required for UI7")
     dtxt = doctor.read_text()
-    if "Not encrypted at rest" not in dtxt or "FileVault" not in dtxt:
+    doctor_en = dtxt + "\n" + _chrome_en_text(crate)
+    if "Not encrypted at rest" not in doctor_en or "FileVault" not in doctor_en:
         fail("Doctor pane must say not encrypted at rest; FileVault is encryption")
     if "database is encrypted" in dtxt or "your data is encrypted" in dtxt.lower():
         fail("UI must not claim the DB is encrypted at rest")
@@ -8743,6 +9403,7 @@ def main() -> None:
     assert_review_identifiers(crate)
     assert_window_title(crate)
     assert_macos_menu(crate)
+    assert_chrome_locale(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
