@@ -5,6 +5,7 @@
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
   import EmptyState from "$lib/EmptyState.svelte";
+  import { t } from "$lib/i18n";
 
   let {
     issues = $bindable<string[]>([]),
@@ -77,7 +78,7 @@
 </script>
 
 <ScrollArea class="p-4">
-  <h1 class="mb-1 text-xl font-semibold tracking-tight">Doctor</h1>
+  <h1 class="mb-1 text-xl font-semibold tracking-tight">{t("doctor")}</h1>
   <p class="mb-4 text-sm text-muted-foreground">
     Same checks as <code class="text-xs">interlace doctor</code>. This window already holds the
     archive lock — close it before running doctor in a terminal.

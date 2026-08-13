@@ -16,6 +16,7 @@
   import DoctorPane from "$lib/DoctorPane.svelte";
   import EmptyState from "$lib/EmptyState.svelte";
   import CasAttach from "$lib/CasAttach.svelte";
+  import { t } from "$lib/i18n";
 
   let err = $state("");
   let setup = $state(true);
@@ -890,19 +891,19 @@
   {#if !setup && st}
     <nav class="flex flex-wrap gap-1 border-b border-border px-3 py-1 text-sm">
       <Button size="sm" variant={view === "people" ? "default" : "ghost"} onclick={() => (view = "people")}
-        >People</Button
+        >{t("people")}</Button
       >
       <Button size="sm" variant={view === "search" ? "default" : "ghost"} onclick={() => (view = "search")}
-        >Search</Button
+        >{t("search")}</Button
       >
       <Button size="sm" variant={view === "review" ? "default" : "ghost"} onclick={() => (view = "review")}
-        >Review{#if st.review_open} ({st.review_open}){/if}</Button
+        >{t("review")}{#if st.review_open} ({st.review_open}){/if}</Button
       >
       <Button size="sm" variant={view === "import" ? "default" : "ghost"} onclick={() => (view = "import")}
-        >Import</Button
+        >{t("import")}</Button
       >
       <Button size="sm" variant={view === "doctor" ? "default" : "ghost"} onclick={() => (view = "doctor")}
-        >Doctor{#if doctor.length} ({doctor.length}){/if}</Button
+        >{t("doctor")}{#if doctor.length} ({doctor.length}){/if}</Button
       >
     </nav>
   {/if}
@@ -938,7 +939,7 @@
     </main>
   {:else if setup}
     <main class="mx-auto w-full max-w-lg space-y-4 p-6">
-      <h1 class="text-2xl font-semibold tracking-tight">Open an archive</h1>
+      <h1 class="text-2xl font-semibold tracking-tight">{t("openAnArchive")}</h1>
       <p class="text-muted-foreground">
         Offline archive. No account. No sync. This window never phones home.
       </p>
@@ -959,8 +960,8 @@
         <Input id="phones" bind:value={phones} placeholder="optional" />
       </div>
       <div class="flex gap-2">
-        <Button onclick={createArchive}>Create archive…</Button>
-        <Button variant="outline" onclick={openPicker}>Open existing…</Button>
+        <Button onclick={createArchive}>{t("createArchive")}</Button>
+        <Button variant="outline" onclick={openPicker}>{t("openExisting")}</Button>
       </div>
       <p class="text-sm text-muted-foreground">
         Folder picker only — no URLs. Phone-region has no silent default. The folder is the backup

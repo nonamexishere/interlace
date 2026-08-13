@@ -80,6 +80,9 @@ The native macOS **menu bar** has **File → Open archive** (same folder picker 
 Review, and Doctor. About states the app is offline and not encrypted at rest
 (FileVault). There is no Check for Updates item.
 
+UI chrome (buttons, nav, empty states, Doctor) follows the OS language
+(`en` / `tr`). Message bodies stay as imported.
+
 After open: **people list + timeline** (groups hidden unless you tick include
 groups). The people list is **recent-first** by last D18 activity (you sent
 the message, or you share a DM / email thread). Each row shows that time and
