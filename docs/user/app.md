@@ -122,7 +122,7 @@ HTML. **Gmail / email-thread** bubbles show the subject as a title when present
 and fold quoted reply tails (`On … wrote:`, lines starting with `>`) behind
 **Show quoted** / **Hide quoted** — still plain text, not HTML layout. WhatsApp
 and other non-mail rows stay a single body paragraph. Long URLs wrap inside the bubble; they do not widen the pane. `/` filters the loaded people list client-side by display name and linked identity values (phone digits / E.164, email local part or full address). `j`/`k` move
-messages. Merge by picking a name: select a person, **Merge…**, search the
+messages. **⌘F** (Ctrl+F) focuses that people filter on People, or switches to Search and focuses the query (`#q`). **Esc** blurs a typing field, or goes back to People from Search / Review / Import / Doctor (it does not quit). **⌘1…5** (Ctrl+1…5) open People, Search, Review, Import, and Doctor. Letter shortcuts are ignored while a field is focused. Merge by picking a name: select a person, **Merge…**, search the
 list (display name only — typing an id matches nobody), then confirm. Targets
 show the same last-activity preview as the sidebar so same-name cards differ.
 Self is hidden unless you tick **Allow absorbing self into this person** (that
