@@ -69,7 +69,7 @@
   }
 
   $effect(() => {
-    tick();
+    poll();
     return () => {
       if (timer) clearInterval(timer);
     };

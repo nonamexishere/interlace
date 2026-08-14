@@ -162,6 +162,7 @@ kind + normalized value — phone/email/display_name — under the title so a
 name-similarity card is decidable without the CLI), **Import** (ZIP/mbox/vcf/Takeout via the
 folder picker; progress in-window), **Doctor** (integrity / rebuild FTS / GC
 CAS with a confirm dialog — same as the CLI, no extra window).
+Drop a local ZIP or mbox onto the window (any tab) to start import — no URLs.
 
 Empty lists, loading, lock conflicts, and doctor findings are shown as copy
 in the window (not only in the terminal).

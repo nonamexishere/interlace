@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { listen } from "@tauri-apps/api/event";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { api, type Identity, type LinkEvent, type Person, type PersonConversation, type Status, type TimelineRow } from "./lib/api";
   import { mergeTargets } from "./lib/utils";
@@ -126,6 +127,30 @@
 
   function showErr(e: unknown) {
     err = friendly(e instanceof Error ? e.message : String(e ?? ""));
+  }
+
+  /** Tauri file-drop paths only — reject http(s) and other URL schemes. */
+  function isDroppedUrl(path: string): boolean {
+    const s = path.trim();
+    if (s.startsWith("http://") || s.startsWith("https://")) return true;
+    return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(s);
+  }
+
+  async function importDroppedPaths(paths: string[]) {
+    const local = paths.find((p) => p && p.trim() && !isDroppedUrl(p));
+    if (!local) {
+      if (paths.some((p) => (p ?? "").trim())) {
+        showErr(new Error("Drop a local ZIP or mbox — URLs are not imported."));
+      }
+      return;
+    }
+    err = "";
+    view = "import";
+    try {
+      await api.importStart({ path: local });
+    } catch (e) {
+      showErr(e);
+    }
   }
 
   function csv(s: string) {
@@ -886,6 +911,13 @@
       else if (next === "review") view = "review";
       else if (next === "doctor") view = "doctor";
     }).then(keepMenu);
+    void getCurrentWebview()
+      .onDragDropEvent((event) => {
+        if (event.payload.type !== "drop") return;
+        const paths = event.payload.paths ?? [];
+        void importDroppedPaths(paths);
+      })
+      .then(keepMenu);
     (async () => {
       try {
         const remembered = await api.rememberedPath();
