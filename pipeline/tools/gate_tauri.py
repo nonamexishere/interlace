@@ -110,6 +110,14 @@
 #     focus-visible rings on people options + timeline rows; honor
 #     prefers-reduced-motion (no spin / sticky-date animation); keep SearchPane
 #     listbox; no WCAG certificate claim; tab order is not a trap.
+#134: drop a local ZIP/mbox on the window (any tab) → same path as the Import
+#     picker: Tauri onDragDropEvent / DragDropEvent / file-drop (not HTML
+#     ondrop of remote URLs, not fetch). Reject http(s) / URL-scheme drops
+#     (error, do not import). First local path into existing importStart
+#     (auto-detect) and switch view to Import so importProgress / Status
+#     running→done still shows. No new folder-of-folders walker (UI5
+#     folder-of-zips via existing import is OK). Docs: drop local ZIP/mbox,
+#     no URLs.
 """
 
 from __future__ import annotations
@@ -10354,6 +10362,524 @@ def assert_a11y_listbox_focus_motion(crate: Path) -> None:
         )
 
 
+# #134 — drag-drop local ZIP/mbox onto the window → existing importStart + progress.
+_TAURI_DRAG_DROP_API = re.compile(
+    r"("
+    r"\.onDragDropEvent\s*\("
+    r"|\bon_drag_drop_event\s*\("
+    r"|tauri://drag-drop"
+    r"|tauri://file-drop"
+    r")",
+)
+_TAURI_DRAG_DROP_TYPE = re.compile(r"\bDragDropEvent\b")
+_TAURI_DRAG_DROP_PLUGIN = re.compile(
+    r"("
+    r"@tauri-apps/plugin-fs"
+    r"|tauri-plugin-fs"
+    r"|plugin-file-drop"
+    r"|tauri-plugin-drag"
+    r")",
+)
+_HTML_DROP_ATTR = re.compile(
+    r"("
+    r"\bon:?drop\b"
+    r"|\bondrop\b"
+    r"|\bon:?dragover\b"
+    r"|\bondragover\b"
+    r"|\bon:?dragenter\b"
+    r")",
+    re.I,
+)
+_DROP_EVENT_TYPE = re.compile(
+    r"("
+    r"(?:payload\.)?type\s*===?\s*[\"']drop[\"']"
+    r"|[\"']drop[\"']\s*===?\s*(?:[\w$.]+\.)?type"
+    r"|DragDropEvent::Drop"
+    r"|DragDrop::Drop"
+    r"|WindowEvent::DragDrop"
+    r")",
+)
+_DROP_PATHS = re.compile(
+    r"("
+    r"(?:payload\.)?paths\b"
+    r"|\.paths\s*\["
+    r")"
+)
+_IMPORT_START_CALL = re.compile(r"\b(?:api\.)?importStart\s*\(")
+_IMPORT_START_KIND_AUTO = re.compile(
+    r"("
+    r"kind\s*:\s*null"
+    r"|kind\s*:\s*(?:undefined|kind\s*===?\s*[\"']auto[\"']\s*\?\s*null)"
+    r")"
+)
+_VIEW_IMPORT_ASSIGN = re.compile(r"\bview\s*=\s*[\"']import[\"']")
+_URL_SCHEME_REJECT = re.compile(
+    r"("
+    r"https?://"
+    r"|/?\\^https\\?:"
+    r"|\\bhttps?:"
+    r"|startsWith\s*\(\s*[\"']https?"
+    r"|includes\s*\(\s*[\"']https?"
+    r"|protocol\s*===?\s*[\"']https?:"
+    r"|[\"']https?://"
+    r"|isRemote(?:Url|Path)?"
+    r"|isHttps?"
+    r"|isUrl\b"
+    r"|looksLikeUrl"
+    r"|hasUrlScheme"
+    r"|urlScheme"
+    r"|reject(?:Http|Url|Remote)"
+    r")",
+    re.I,
+)
+_HTTPS_TOKEN = re.compile(r"https://|[\"']https://|https\\?:|[\"']https[\"']", re.I)
+_HTTP_TOKEN = re.compile(r"http://|[\"']http://|[\"']http[\"']|https\\?:", re.I)
+_SHOW_ERR = re.compile(
+    r"("
+    r"\bonError\s*\("
+    r"|\bshowErr\s*\("
+    r"|\berr\s*="
+    r"|progress\.error"
+    r")",
+)
+_FETCH_CALL = re.compile(r"\bfetch\s*\(")
+_XHR = re.compile(r"\bXMLHttpRequest\b|\baxios\s*\.")
+_DATATRANSFER = re.compile(r"\bdataTransfer\b")
+_DROP_WALK = re.compile(
+    r"("
+    r"\bwalkDir\b"
+    r"|\bwalkSync\b"
+    r"|\bfs\.walk\b"
+    r"|\breadDir\s*\("
+    r"|\bread_dir\s*\("
+    r"|\breaddir\s*\("
+    r"|recursive\s*:\s*true"
+    r"|@tauri-apps/plugin-fs"
+    r"|\bfolderOfFolders\b"
+    r"|\bwalkImport\b"
+    r"|\bimportWalk\b"
+    r"|\brglob\s*\("
+    r")",
+)
+_HTTP_CAP = re.compile(
+    r"("
+    r"http:default"
+    r"|http:allow-fetch"
+    r"|http:allow-request"
+    r"|tauri-plugin-http"
+    r"|allow-http"
+    r")",
+    re.I,
+)
+_IMPORT_PANE_PATH_PROP = re.compile(
+    r"<ImportPane\b[^>]{0,500}(?:"
+    r"bind:path"
+    r"|droppedPath|dropPath|startPath|importPath|queuedPath|pendingPath"
+    r"|autoStart|dropQueued"
+    r")",
+    re.I | re.S,
+)
+_DROP_CALL_SKIP = frozenset(
+    {
+        "if",
+        "for",
+        "while",
+        "switch",
+        "catch",
+        "function",
+        "return",
+        "typeof",
+        "new",
+        "await",
+        "void",
+        "Promise",
+        "Math",
+        "Number",
+        "String",
+        "Boolean",
+        "parseInt",
+        "document",
+        "getElementById",
+        "querySelector",
+        "querySelectorAll",
+        "Error",
+        "setTimeout",
+        "setInterval",
+        "clearInterval",
+        "requestAnimationFrame",
+        "getCurrentWebview",
+        "getCurrentWindow",
+        "onDragDropEvent",
+        "listen",
+        "console",
+        "JSON",
+        "Array",
+        "Object",
+        "RegExp",
+        "Date",
+        "Map",
+        "Set",
+        "unlisten",
+        "onMount",
+        "tick",
+    }
+)
+
+
+def _web_ts_sources(crate: Path) -> list[Path]:
+    web = crate / "web"
+    if not web.is_dir():
+        return []
+    return [
+        p
+        for p in sorted(web.rglob("*"))
+        if p.suffix in {".svelte", ".ts", ".js"} and "node_modules" not in p.parts
+    ]
+
+
+def _import_pane_conditionally_mounted(app: str) -> bool:
+    """True when every ImportPane mounts only under view === \"import\"."""
+    seen = False
+    only_conditional = True
+    for m in re.finditer(r"<ImportPane\b", app):
+        seen = True
+        window = app[max(0, m.start() - 400) : m.start()]
+        if not re.search(r"view\s*===?\s*[\"']import[\"']", window):
+            only_conditional = False
+    return seen and only_conditional
+
+
+def _drop_api_files(crate: Path) -> list[Path]:
+    found: list[Path] = []
+    for p in _web_ts_sources(crate) + _tauri_rust_sources(crate):
+        text = p.read_text()
+        if _TAURI_DRAG_DROP_API.search(text) or (
+            _TAURI_DRAG_DROP_TYPE.search(text) and re.search(r"\.paths\b", text)
+        ):
+            found.append(p)
+    return found
+
+
+def _extract_call_callback(src: str, call_rx: re.Pattern[str]) -> list[str]:
+    bodies: list[str] = []
+    for m in call_rx.finditer(src):
+        open_paren = src.find("(", m.start())
+        if open_paren < 0:
+            continue
+        arg = _call_arg(src, open_paren)
+        if not arg:
+            continue
+        bodies.append(arg)
+        named = re.match(r"\s*([A-Za-z_][\w]*)\s*$", arg.strip())
+        if named and named.group(1) not in _DROP_CALL_SKIP:
+            inner = _ts_fn_body(src, named.group(1)) or _function_body(src, named.group(1))
+            if inner:
+                bodies.append(inner)
+    return bodies
+
+
+def _expand_drop_calls(src: str, body: str, depth: int = 3) -> str:
+    chunks = [body]
+    seen: set[str] = set()
+
+    def walk(blob: str, left: int) -> None:
+        for name in re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", blob):
+            if name in seen or name in _DROP_CALL_SKIP:
+                continue
+            seen.add(name)
+            inner = _ts_fn_body(src, name) or _function_body(src, name)
+            if not inner:
+                continue
+            chunks.append(inner)
+            if left > 0:
+                walk(inner, left - 1)
+
+    walk(body, depth)
+    return "\n".join(chunks)
+
+
+def _drop_handler_surface(crate: Path) -> str:
+    """Bodies that run on Tauri drag-drop (and named callees)."""
+    chunks: list[str] = []
+    sources: list[str] = []
+    for p in _web_ts_sources(crate) + _tauri_rust_sources(crate):
+        text = p.read_text()
+        cleaned = _without_comments(text)
+        sources.append(text)
+        sources.append(cleaned)
+        chunks.extend(_extract_call_callback(cleaned, re.compile(r"\.onDragDropEvent\s*\(")))
+        chunks.extend(_extract_call_callback(text, re.compile(r"\.onDragDropEvent\s*\(")))
+        chunks.extend(_extract_call_callback(cleaned, re.compile(r"\bon_drag_drop_event\s*\(")))
+        chunks.extend(_extract_call_callback(text, re.compile(r"\bon_drag_drop_event\s*\(")))
+        for src in (cleaned, text):
+            for m in re.finditer(
+                r"listen\s*(?:<[^>]*>)?\s*\(\s*[\"']tauri://(?:drag-drop|file-drop)[\"']",
+                src,
+            ):
+                open_paren = src.find("(", m.start())
+                arg = _call_arg(src, open_paren) if open_paren >= 0 else ""
+                if arg:
+                    chunks.append(arg)
+    joined = "\n".join(chunks)
+    if not joined.strip():
+        return ""
+    whole = "\n".join(sources)
+    return _expand_drop_calls(whole, joined)
+
+
+def _drop_rejects_url_scheme(surface: str) -> bool:
+    """True if http and https (or a generic URL-scheme helper) are rejected."""
+    if not _URL_SCHEME_REJECT.search(surface):
+        return False
+    has_http = bool(_HTTP_TOKEN.search(surface))
+    has_https = bool(_HTTPS_TOKEN.search(surface))
+    generic = bool(
+        re.search(
+            r"("
+            r"urlScheme"
+            r"|hasUrlScheme"
+            r"|looksLikeUrl"
+            r"|isUrl\b"
+            r"|isRemote"
+            r"|reject(?:Http|Url|Remote)"
+            r"|/?\\^[a-zA-Z][a-zA-Z0-9+.\-]*:"
+            r")",
+            surface,
+        )
+    )
+    return (has_http and has_https) or generic
+
+
+def _drop_starts_import(crate: Path, surface: str, app: str, import_pane: str) -> bool:
+    if _IMPORT_START_CALL.search(surface):
+        return True
+    if re.search(r"\bstart\s*\(", surface) and _IMPORT_START_CALL.search(import_pane):
+        return True
+    if _IMPORT_PANE_PATH_PROP.search(app) and _IMPORT_START_CALL.search(import_pane):
+        if re.search(
+            r"("
+            r"droppedPath|dropPath|startPath|importPath|queuedPath|pendingPath"
+            r"|\$effect"
+            r")",
+            import_pane,
+        ) and _IMPORT_START_CALL.search(import_pane):
+            return True
+    return False
+
+
+def assert_drag_drop_import(crate: Path) -> None:
+    """#134: drop local ZIP/mbox → existing importStart + progress; reject URLs.
+
+    Tauri file-drop (onDragDropEvent), not HTML ondrop of remote URLs and not
+    fetch. First local path into importStart (auto-detect). Switch to Import
+    so the existing progress UI shows. No new folder-of-folders walker.
+    """
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#134: App.svelte required (window-level drop must reach Import)")
+    app = app_path.read_text()
+    import_path = crate / "web" / "lib" / "ImportPane.svelte"
+    import_pane = import_path.read_text() if import_path.is_file() else ""
+    web = _web_logic(crate)
+    rust = _tauri_rust_blob(crate)
+    blob = web + "\n" + rust
+    cleaned = _without_comments(blob)
+    caps_path = crate / "capabilities" / "default.json"
+    caps = caps_path.read_text() if caps_path.is_file() else ""
+    pkg = (crate / "package.json").read_text() if (crate / "package.json").is_file() else ""
+    toml = (crate / "Cargo.toml").read_text() if (crate / "Cargo.toml").is_file() else ""
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+
+    # 1) Tauri drag-drop API — not a raw http fetch, not HTML ondrop alone.
+    if "@tauri-apps/api" not in pkg:
+        fail("#134: @tauri-apps/api must remain a dependency (onDragDropEvent)")
+    if not _TAURI_DRAG_DROP_API.search(cleaned) and not _TAURI_DRAG_DROP_API.search(blob):
+        fail(
+            "#134: must listen for Tauri file-drop "
+            "(getCurrentWebview/Window().onDragDropEvent or on_drag_drop_event), "
+            "not a raw http fetch / HTML ondrop of remote URLs"
+        )
+    api_files = _drop_api_files(crate)
+    if not api_files:
+        fail(
+            "#134: must listen for Tauri file-drop "
+            "(getCurrentWebview/Window().onDragDropEvent or on_drag_drop_event)"
+        )
+    only_import_pane = api_files and all(p.name == "ImportPane.svelte" for p in api_files)
+    if only_import_pane and _import_pane_conditionally_mounted(app):
+        fail(
+            "#134: drop listener must run on any tab "
+            "(App / always-mounted helper), not only inside the Import view "
+            "(ImportPane unmounts when view !== \"import\")"
+        )
+
+    surface = _drop_handler_surface(crate)
+    if not surface.strip():
+        surface = "\n".join(p.read_text() for p in api_files)
+
+    # 2) Drop branch reads Tauri local paths (payload.paths), not dataTransfer URLs.
+    if not _DROP_PATHS.search(surface):
+        fail(
+            "#134: drop handler must read Tauri local paths "
+            "(event.payload.paths) — not HTML dataTransfer of a remote URL"
+        )
+    if _DATATRANSFER.search(surface) and not _DROP_PATHS.search(surface):
+        fail(
+            "#134: do not import from HTML dataTransfer URLs; "
+            "use Tauri payload.paths (local filesystem only)"
+        )
+    if not _DROP_EVENT_TYPE.search(surface) and not re.search(
+        r"\bpaths\b", surface
+    ):
+        fail(
+            "#134: handle the drop event (payload.type === \"drop\" / "
+            "DragDropEvent::Drop), not hover/enter"
+        )
+
+    # 3) First local path starts existing import (not only fills the path field).
+    if not import_pane.strip():
+        fail("#134: ImportPane.svelte required (existing progress UI)")
+    if not _drop_starts_import(crate, surface, app, import_pane):
+        fail(
+            "#134: drop of a local path must call existing importStart "
+            "(or ImportPane start / path prop that starts import) — "
+            "filling the path field alone is not enough"
+        )
+    start_win = _windows_around(surface, _IMPORT_START_CALL, before=200, after=240)
+    if not start_win.strip():
+        start_win = surface
+    if _IMPORT_START_CALL.search(surface) and re.search(
+        r"kind\s*:\s*[\"']whatsapp[\"']", start_win
+    ) and not _IMPORT_START_KIND_AUTO.search(start_win):
+        fail(
+            "#134: drop must use the picker auto-detect path "
+            "(importStart({ path, kind: null })) — not a WhatsApp-only kind"
+        )
+
+    # 4) Switch to Import so importProgress / Status running→done is visible.
+    if not _VIEW_IMPORT_ASSIGN.search(surface) and not _VIEW_IMPORT_ASSIGN.search(app):
+        fail(
+            "#134: drop on another tab must set view = \"import\" "
+            "so the existing import progress UI is visible"
+        )
+    if not _VIEW_IMPORT_ASSIGN.search(surface):
+        # Assignment exists somewhere in App (⌘4 / nav). Require it on the drop path.
+        fail(
+            "#134: drop handler must set view = \"import\" "
+            "(progress UI is the Import tab; drop may land on People/Search/…)"
+        )
+    if "importProgress" not in import_pane:
+        fail(
+            "#134: keep ImportPane importProgress polling "
+            "(drop starts the existing progress UI, not a new one)"
+        )
+    if not re.search(r"progress\.status|Status:", import_pane):
+        fail("#134: keep the Import status / progress UI (running → done)")
+
+    # 5) Reject http(s) / URL-scheme drops: show error, do not import.
+    if not _drop_rejects_url_scheme(surface):
+        fail(
+            "#134: drop handler must reject http:// and https:// "
+            "(and other URL schemes) — local filesystem paths only"
+        )
+    if not _SHOW_ERR.search(surface):
+        fail(
+            "#134: rejected URL drops must show an error "
+            "(onError / showErr) and must not call importStart"
+        )
+
+    # 6) Bans: fetch of the dropped file, remote URL as import path, new walker.
+    if _FETCH_CALL.search(surface) or _XHR.search(surface):
+        fail(
+            "#134: do not fetch() the dropped file "
+            "(no remote URLs as the import path)"
+        )
+    if re.search(r"importStart\s*\(\s*\{[^}]{0,200}https?://", surface, re.I | re.S):
+        fail("#134: importStart path must not be a remote http(s) URL")
+    walk_src = surface
+    for p in api_files:
+        if p.suffix in {".svelte", ".ts", ".js", ".rs"}:
+            walk_src += "\n" + p.read_text()
+    if _DROP_WALK.search(walk_src) or _DROP_WALK.search(surface):
+        fail(
+            "#134: do not add a new folder-of-folders walker "
+            "(UI5 folder-of-zips via existing importStart auto-detect is OK)"
+        )
+    if _TAURI_DRAG_DROP_PLUGIN.search(toml) or _TAURI_DRAG_DROP_PLUGIN.search(pkg):
+        if "plugin-fs" in toml or "plugin-fs" in pkg or "@tauri-apps/plugin-fs" in web:
+            fail(
+                "#134: do not add @tauri-apps/plugin-fs / a recursive walk "
+                "for drop — pass the local path to existing importStart"
+            )
+    if _HTTP_CAP.search(caps) or "tauri-plugin-http" in toml:
+        fail("#134: no HTTP client capability / tauri-plugin-http (local paths only)")
+    if re.search(r"network\.server", caps):
+        fail("#134: capabilities must not add network.server")
+
+    # Optional: smallest drag-drop ACL if the generated schema lists one.
+    schema_blob = ""
+    schemas = crate / "gen" / "schemas"
+    if schemas.is_dir():
+        for p in schemas.glob("*.json"):
+            schema_blob += p.read_text()
+    if re.search(r"allow-on-drag-drop-event", schema_blob) and not re.search(
+        r"allow-on-drag-drop-event", caps
+    ):
+        fail(
+            "#134: capabilities/default.json must include the smallest "
+            "drag-drop permission (core:webview:allow-on-drag-drop-event "
+            "or core:window:allow-on-drag-drop-event)"
+        )
+
+    # 7) HTML ondrop of remote URLs is not a substitute.
+    if _HTML_DROP_ATTR.search(cleaned) and not _TAURI_DRAG_DROP_API.search(cleaned):
+        fail(
+            "#134: HTML ondrop/ondragover is not enough — "
+            "use Tauri onDragDropEvent for local paths"
+        )
+
+    # 8) Docs: drop a local ZIP/mbox; no URLs.
+    if not dtxt.strip():
+        fail("#134: docs/user/app.md required (drop a local ZIP/mbox; no URLs)")
+    drop_win = ""
+    for m in re.finditer(
+        r".{0,160}(?:\bdrop(?:ping|ped)?\b|drag-and-drop|drag and drop).{0,160}",
+        dtxt,
+        re.I | re.S,
+    ):
+        drop_win += m.group(0) + "\n"
+    if not drop_win.strip():
+        fail(
+            "#134: docs/user/app.md must say you can drop a local ZIP/mbox "
+            "onto the window"
+        )
+    if not re.search(r"\blocal\b", drop_win, re.I):
+        fail("#134: docs/user/app.md must say the drop is a local path (not a URL)")
+    if not re.search(r"\bZIP\b|\.zip\b", drop_win, re.I):
+        fail("#134: docs/user/app.md must mention dropping a local ZIP")
+    if not re.search(r"\bmbox\b", drop_win, re.I):
+        fail("#134: docs/user/app.md must mention dropping a local mbox")
+    if not re.search(r"URL", drop_win, re.I):
+        fail(
+            "#134: docs/user/app.md drop line must say no URLs "
+            "(local ZIP/mbox only)"
+        )
+    if not re.search(
+        r"("
+        r"no URLs"
+        r"|not a URL"
+        r"|URLs not"
+        r"|not URLs"
+        r"|never a URL"
+        r"|local.{0,40}not.{0,20}URL"
+        r")",
+        drop_win,
+        re.I | re.S,
+    ):
+        fail("#134: docs/user/app.md must say drop is local ZIP/mbox, no URLs")
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -10468,6 +10994,7 @@ def main() -> None:
     assert_chrome_locale(crate)
     assert_keyboard_map(crate)
     assert_a11y_listbox_focus_motion(crate)
+    assert_drag_drop_import(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
