@@ -52,6 +52,11 @@
           transform: rotate(360deg);
         }
       }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-spinner {
+          animation: none;
+        }
+      }
       .boot-status {
         margin: 0;
         font-size: 0.875rem;

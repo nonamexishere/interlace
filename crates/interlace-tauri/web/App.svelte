@@ -955,7 +955,7 @@
   {#if booting || opening}
     <main class="flex h-full flex-col items-center justify-center gap-3 p-6">
       <div
-        class="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground"
+        class="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground motion-reduce:animate-none"
         role="status"
         aria-label={opening ? "Opening archive" : "Opening last archive"}
       ></div>
@@ -1067,12 +1067,14 @@
           <Label for="person-filter">Filter people</Label>
           <Input id="person-filter" type="search" bind:value={filter} placeholder="name" class="min-w-0" />
         </div>
-        <ul class="mt-2 min-w-0 space-y-0.5">
+        <ul class="mt-2 min-w-0 space-y-0.5" role="listbox" aria-label="People">
           {#each filtered as p}
-            <li class="min-w-0">
+            <li class="min-w-0" role="presentation">
               <button
                 type="button"
-                class="w-full min-w-0 max-w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent {selectedId ===
+                role="option"
+                aria-selected={selectedId === p.id}
+                class="w-full min-w-0 max-w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {selectedId ===
                 p.id
                   ? 'bg-accent'
                   : ''} {p.is_self ? 'font-semibold' : ''}"
@@ -1326,8 +1328,8 @@
               <div class="space-y-2">
                 {#each group.rows as item}
                   <div class="flex min-w-0" data-tl-index={item.index}>
-                    <div
-                      class="min-w-0 max-w-[94%] cursor-pointer rounded-2xl px-3 py-2 text-left {item.index ===
+                    <article
+                      class="min-w-0 max-w-[94%] cursor-pointer rounded-2xl px-3 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring {item.index ===
                       tlIndex
                         ? 'ring-2 ring-ring'
                         : ''}"
@@ -1335,6 +1337,8 @@
                       class:bubble-them={!item.row.from_me}
                       class:ml-auto={item.row.from_me}
                       data-from-me={item.row.from_me}
+                      tabindex="0"
+                      aria-label={`${utcTime(item.row.sent_at)} ${displayBody(item.row.body_text || item.row.subject || "").slice(0, 80)}`}
                       onclick={() => (tlIndex = item.index)}
                     >
                       <p class="caption flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
@@ -1390,7 +1394,7 @@
                         </p>
                       {/if}
                       <CasAttach items={item.row.attachments || []} />
-                    </div>
+                    </article>
                   </div>
                 {/each}
               </div>
