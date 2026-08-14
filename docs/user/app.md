@@ -121,7 +121,7 @@ nodes (`whitespace-pre-wrap`) so a screen reader still hears them — never
 HTML. **Gmail / email-thread** bubbles show the subject as a title when present
 and fold quoted reply tails (`On … wrote:`, lines starting with `>`) behind
 **Show quoted** / **Hide quoted** — still plain text, not HTML layout. WhatsApp
-and other non-mail rows stay a single body paragraph. Long URLs wrap inside the bubble; they do not widen the pane. `/` filters the loaded people list client-side by display name and linked identity values (phone digits / E.164, email local part or full address). `j`/`k` move
+and other non-mail rows stay a single body paragraph. Long URLs wrap inside the bubble; they do not widen the pane. `/` filters the loaded people list client-side by display name and linked identity values (phone digits / E.164, email local part or full address). VoiceOver can move through people and hear the selected name. `j`/`k` move
 messages. **⌘F** (Ctrl+F) focuses that people filter on People, or switches to Search and focuses the query (`#q`). **Esc** blurs a typing field, or goes back to People from Search / Review / Import / Doctor (it does not quit). **⌘1…5** (Ctrl+1…5) open People, Search, Review, Import, and Doctor. Letter shortcuts are ignored while a field is focused. Merge by picking a name: select a person, **Merge…**, search the
 list (display name only — typing an id matches nobody), then confirm. Targets
 show the same last-activity preview as the sidebar so same-name cards differ.
