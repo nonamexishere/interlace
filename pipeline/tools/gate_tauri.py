@@ -118,6 +118,11 @@
 #     running→done still shows. No new folder-of-folders walker (UI5
 #     folder-of-zips via existing import is OK). Docs: drop local ZIP/mbox,
 #     no URLs.
+#135: context menu on a timeline bubble → Copy text (clipboard). Attachment
+#     with cas_hash → Reveal in Finder on cas/ab/cd/<hash>. Command takes the
+#     hash only (cas_blob_path + canonicalize under cas/). Open via
+#     std::process /usr/bin/open -R or file:// — not http, not plugin-shell,
+#     not arbitrary Command. Copy must not log the body. Not: Share / AirDrop.
 """
 
 from __future__ import annotations
@@ -10880,6 +10885,368 @@ def assert_drag_drop_import(crate: Path) -> None:
         fail("#134: docs/user/app.md must say drop is local ZIP/mbox, no URLs")
 
 
+# #135 — copy text / reveal CAS in Finder.
+_CTX_MENU_EVENT = re.compile(
+    r"(?:on:contextmenu|oncontextmenu)(?:\|\w+)*\s*=\s*\{",
+    re.I,
+)
+_COPY_LABEL = re.compile(r"Copy text|Copy message|copyText", re.I)
+_CLIPBOARD_WRITE = re.compile(
+    r"("
+    r"navigator\.clipboard\.writeText"
+    r"|clipboard\.writeText"
+    r"|clipboard\.write\s*\("
+    r")",
+)
+_BODY_LOG = re.compile(
+    r"("
+    r"console\.(?:log|debug|info|dir|trace)\s*\([^)]{0,200}"
+    r"(?:body_text|bodyText|displayBody|copyText|ctx\.text|menu\.text)"
+    r"|eprintln!\s*\([^)]{0,200}(?:body_text|bodyText)"
+    r"|println!\s*\([^)]{0,200}(?:body_text|bodyText)"
+    r")",
+    re.I,
+)
+_REVEAL_LABEL = re.compile(r"Reveal in Finder|revealInFinder|Reveal in finder", re.I)
+_REVEAL_INVOKE = re.compile(
+    r"("
+    r"invoke\s*(?:<[^>]*>)?\s*\(\s*[\"']reveal_cas(?:_cmd)?[\"']"
+    r"|invoke\s*(?:<[^>]*>)?\s*\(\s*[\"']reveal_in_finder[\"']"
+    r"|invoke\s*(?:<[^>]*>)?\s*\(\s*[\"']cas_reveal[\"']"
+    r"|invoke\s*(?:<[^>]*>)?\s*\(\s*[\"']reveal_cas_blob[\"']"
+    r"|revealCas\s*\("
+    r"|reveal_cas\s*\("
+    r")",
+)
+_REVEAL_FN_NAMES = (
+    "reveal_cas",
+    "reveal_cas_cmd",
+    "reveal_in_finder",
+    "cas_reveal",
+    "reveal_cas_blob",
+    "reveal_attachment",
+)
+_OPEN_BIN = re.compile(r'Command::new\s*\(\s*"(?:/usr/bin/open|open)"\s*\)')
+_OPEN_REVEAL_FLAG = re.compile(r'\.arg\s*\(\s*"-R"\s*\)')
+_FILE_URL = re.compile(r"file://")
+_REVEAL_HTTP = re.compile(r"https?://", re.I)
+_PLUGIN_SHELL = re.compile(
+    r"("
+    r"tauri-plugin-shell"
+    r"|tauri-plugin-opener"
+    r"|tauri_plugin_shell"
+    r"|tauri_plugin_opener"
+    r"|plugin-shell"
+    r"|plugin-opener"
+    r"|@tauri-apps/plugin-shell"
+    r"|@tauri-apps/plugin-opener"
+    r")",
+)
+_SHELL_CAP = re.compile(
+    r"("
+    r"shell:allow-execute"
+    r"|shell:allow-open"
+    r"|shell:allow-spawn"
+    r"|shell:allow-stdin-write"
+    r"|allow-execute"
+    r")",
+)
+_SHARE_AIRDROP = re.compile(
+    r"("
+    r"NSSharingService"
+    r"|UIActivityViewController"
+    r"|Share sheet"
+    r"|shareSheet"
+    r"|AirDrop"
+    r"|airdrop"
+    r")",
+)
+_CAS_HASH_GUARD = re.compile(
+    r"("
+    r"cas_hash"
+    r"|casHash"
+    r"|hashOf\s*\("
+    r"|hash\.len\s*\(\s*\)\s*!=\s*64"
+    r"|cas_blob_path"
+    r")",
+)
+
+
+def _rust_fn_body(src: str, name: str) -> str:
+    """Extract a Rust `fn name(...) { ... }` body (attrs / pub / async ok)."""
+    rx = re.compile(
+        rf"(?:#\[[^\]]+\]\s*)*(?:pub\s+)?(?:async\s+)?fn\s+{re.escape(name)}\s*\("
+    )
+    m = rx.search(src)
+    if not m:
+        return ""
+    close_paren = _match_closer(src, m.end() - 1)
+    if close_paren < 0:
+        return ""
+    brace = src.find("{", close_paren)
+    if brace < 0:
+        return ""
+    close = _match_closer(src, brace)
+    if close < 0:
+        return src[brace + 1 :]
+    return src[brace + 1 : close]
+
+
+def _reveal_command_body(rust: str) -> str:
+    for name in _REVEAL_FN_NAMES:
+        body = _rust_fn_body(rust, name)
+        if body.strip():
+            return body
+    return ""
+
+
+def _copy_surface(crate: Path) -> str:
+    """Timeline bubble + nearby copy helper (not the whole crate)."""
+    app = crate / "web" / "App.svelte"
+    parts: list[str] = []
+    if app.is_file():
+        parts.append(app.read_text())
+    web = crate / "web"
+    if web.is_dir():
+        for p in sorted(web.rglob("*")):
+            if p.suffix not in {".svelte", ".ts"} or "node_modules" in p.parts:
+                continue
+            if p.name == "App.svelte":
+                continue
+            text = p.read_text()
+            if _CTX_MENU_EVENT.search(text) or _CLIPBOARD_WRITE.search(text):
+                if re.search(r"article|data-from-me|bubble|timeline", text, re.I):
+                    parts.append(text)
+    return "\n".join(parts)
+
+
+def _reveal_ui_surface(crate: Path) -> str:
+    cas = crate / "web" / "lib" / "CasAttach.svelte"
+    parts: list[str] = []
+    if cas.is_file():
+        parts.append(cas.read_text())
+    web = crate / "web"
+    if web.is_dir():
+        for p in sorted(web.rglob("*")):
+            if p.suffix not in {".svelte", ".ts"} or "node_modules" in p.parts:
+                continue
+            if p.name == "CasAttach.svelte":
+                continue
+            text = p.read_text()
+            if _REVEAL_LABEL.search(text) or _REVEAL_INVOKE.search(text):
+                parts.append(text)
+    return "\n".join(parts)
+
+
+def assert_copy_reveal_cas(crate: Path) -> None:
+    """#135: bubble Copy text; attachment cas_hash Reveal in Finder.
+
+    Copy → clipboard, do not log the body. Reveal → local cas/ab/cd/<hash>
+    via std::process file-only open. No plugin-shell, no Share/AirDrop.
+    """
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#135: App.svelte required (context menu on a timeline bubble)")
+    app = app_path.read_text()
+    cas_path = crate / "web" / "lib" / "CasAttach.svelte"
+    cas = cas_path.read_text() if cas_path.is_file() else ""
+    api_path = crate / "web" / "lib" / "api.ts"
+    api = api_path.read_text() if api_path.is_file() else ""
+    web = _web_logic(crate)
+    rust = _tauri_rust_blob(crate)
+    toml = (crate / "Cargo.toml").read_text() if (crate / "Cargo.toml").is_file() else ""
+    pkg = (crate / "package.json").read_text() if (crate / "package.json").is_file() else ""
+    caps_path = crate / "capabilities" / "default.json"
+    caps = caps_path.read_text() if caps_path.is_file() else ""
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+
+    copy_src = _copy_surface(crate)
+    if not copy_src.strip():
+        copy_src = app
+    reveal_ui = _reveal_ui_surface(crate)
+    if not reveal_ui.strip():
+        reveal_ui = cas + "\n" + api + "\n" + app
+    cleaned_copy = _without_comments(copy_src)
+    cleaned_web = _without_comments(web)
+    cleaned_rust = _without_comments(rust)
+
+    # 1) Context menu on a bubble (timeline article), not only a toolbar button.
+    article = ""
+    for m in re.finditer(r"<article\b[\s\S]*?</article>", app, re.I):
+        article += m.group(0) + "\n"
+    bubble_ctx = _CTX_MENU_EVENT.search(article) or (
+        _CTX_MENU_EVENT.search(app)
+        and re.search(r"data-from-me|bubble-me|class:bubble", app)
+    )
+    if not bubble_ctx:
+        fail(
+            "#135: timeline bubble must have a context menu "
+            "(oncontextmenu on the <article> / from_me bubble) — "
+            "Copy text is not a toolbar-only action"
+        )
+    if not _COPY_LABEL.search(copy_src) and not _COPY_LABEL.search(web):
+        fail("#135: context menu must offer Copy text (clipboard)")
+
+    # 2) Copy writes the clipboard.
+    if not _CLIPBOARD_WRITE.search(cleaned_copy) and not _CLIPBOARD_WRITE.search(
+        cleaned_web
+    ):
+        fail(
+            "#135: Copy text must write the clipboard "
+            "(navigator.clipboard.writeText) — do not add a Share path"
+        )
+
+    # 3) Acceptance: copy does not log the body.
+    log_src = cleaned_copy + "\n" + cleaned_web
+    if _BODY_LOG.search(log_src) or _BODY_LOG.search(copy_src):
+        fail(
+            "#135: Copy must not write logs of the body "
+            "(no console.log / eprintln of body_text next to the copy path)"
+        )
+
+    # 4) Reveal UI on an attachment that has cas_hash.
+    if not cas.strip():
+        fail("#135: CasAttach.svelte required (Reveal in Finder on cas_hash attachments)")
+    if not _REVEAL_LABEL.search(reveal_ui) and not _REVEAL_LABEL.search(web):
+        fail(
+            "#135: attachment with cas_hash must offer Reveal in Finder "
+            "(context menu on the CAS attachment)"
+        )
+    if not _CTX_MENU_EVENT.search(cas) and not _CTX_MENU_EVENT.search(reveal_ui):
+        fail(
+            "#135: Reveal in Finder must be on a context menu "
+            "(oncontextmenu on the attachment), not a hidden debug button only"
+        )
+    if not _CAS_HASH_GUARD.search(cas) and not _CAS_HASH_GUARD.search(reveal_ui):
+        fail("#135: Reveal must require cas_hash (omit omitted/missing attachments)")
+    if not _REVEAL_INVOKE.search(reveal_ui) and not _REVEAL_INVOKE.search(web):
+        fail(
+            "#135: Reveal must invoke a hash-only command "
+            "(revealCas / invoke('reveal_cas')) — do not pass a path or URL "
+            "from the webview"
+        )
+    # Frontend must not hand a filesystem path / http URL to reveal.
+    if re.search(
+        r"revealCas\s*\(\s*[^)]*(?:https?://|/cas/|file://)",
+        reveal_ui + "\n" + web,
+        re.I,
+    ):
+        fail("#135: reveal invoke must pass the cas_hash, not a path or http URL")
+
+    # 5) Rust command: hash → cas/ab/cd/<hash> → file-only open.
+    body = _reveal_command_body(rust)
+    if not body.strip():
+        fail(
+            "#135: need a Tauri command reveal_cas (or reveal_in_finder / "
+            "cas_reveal) that takes the hash and opens the local CAS blob"
+        )
+    if "cas_blob_path" not in body and not re.search(
+        r"cas[\\/][\"']?\s*\+|join\s*\(\s*[\"']cas[\"']", body
+    ):
+        fail(
+            "#135: reveal must resolve cas/ab/cd/<hash> via cas_blob_path "
+            "(or an equivalent cas/ + two-hex prefix path)"
+        )
+    if "canonicalize" not in body:
+        fail("#135: reveal must canonicalize the blob path before opening")
+    if not re.search(r"starts_with|strip_prefix", body):
+        fail("#135: reveal must refuse a path outside cas/ (starts_with cas root)")
+    if not _OPEN_BIN.search(body):
+        fail(
+            "#135: reveal must open the local file with std::process "
+            'Command::new("/usr/bin/open") (or "open") — file only, not http'
+        )
+    if "std::process" not in rust and "process::Command" not in rust:
+        fail("#135: reveal must use std::process::Command (no plugin-shell)")
+    if not (_OPEN_REVEAL_FLAG.search(body) or _FILE_URL.search(body)):
+        fail(
+            "#135: reveal must open Finder on the blob "
+            "(`open -R` or a file:// URL of the cas path) — not Preview / http"
+        )
+    if _REVEAL_HTTP.search(body):
+        fail("#135: reveal command must not open http(s) — file / cas path only")
+    # Do not take an arbitrary path/URL argument from the webview.
+    sig_ok = bool(
+        re.search(
+            r"fn\s+(?:reveal_cas|reveal_cas_cmd|reveal_in_finder|cas_reveal|"
+            r"reveal_cas_blob|reveal_attachment)\s*\([^)]*\bhash\b",
+            rust,
+        )
+    )
+    if not sig_ok:
+        fail(
+            "#135: reveal command must take a hash argument "
+            "(not a caller-supplied filesystem path or URL)"
+        )
+    if re.search(
+        r"fn\s+(?:reveal_cas|reveal_cas_cmd|reveal_in_finder|cas_reveal|"
+        r"reveal_cas_blob|reveal_attachment)\s*\([^)]*\b(?:path|url)\b",
+        rust,
+        re.I,
+    ):
+        fail(
+            "#135: reveal command must not take a path or url argument "
+            "(hash only — resolve the cas file on the Rust side)"
+        )
+    if not re.search(
+        r"generate_handler!\s*\[[\s\S]*?(?:reveal_cas|reveal_in_finder|cas_reveal)",
+        rust,
+    ):
+        fail("#135: register the reveal command in generate_handler!")
+
+    # 6) No arbitrary shell / opener plugin / Share / AirDrop.
+    surface = toml + "\n" + pkg + "\n" + caps + "\n" + cleaned_rust + "\n" + cleaned_web
+    if _PLUGIN_SHELL.search(surface):
+        fail(
+            "#135: do not add tauri-plugin-shell / tauri-plugin-opener "
+            "(those can open http). Use std::process file-only open"
+        )
+    if _SHELL_CAP.search(caps) or _SHELL_CAP.search(surface):
+        fail(
+            "#135: capabilities must not add shell:allow-execute / "
+            "shell:allow-open (no shell of arbitrary commands)"
+        )
+    if _SHARE_AIRDROP.search(cleaned_web) or _SHARE_AIRDROP.search(cleaned_rust):
+        fail("#135: do not add a Share sheet or AirDrop (Not)")
+
+    # 7) Docs (D24): copy + reveal Finder; not Share/AirDrop as a feature.
+    if not dtxt.strip():
+        fail("#135: docs/user/app.md required (copy text / reveal in Finder)")
+    copy_win = ""
+    for m in re.finditer(
+        r".{0,180}(?:\bcopy\b|clipboard|reveal|Finder).{0,180}",
+        dtxt,
+        re.I | re.S,
+    ):
+        copy_win += m.group(0) + "\n"
+    if not copy_win.strip():
+        fail(
+            "#135: docs/user/app.md must describe right-click copy text "
+            "and reveal in Finder"
+        )
+    if not re.search(r"\bcopy\b", copy_win, re.I):
+        fail("#135: docs/user/app.md must say you can copy message text")
+    if not re.search(r"clipboard", copy_win, re.I):
+        fail("#135: docs/user/app.md must say copy goes to the clipboard")
+    if not re.search(r"Finder", copy_win):
+        fail("#135: docs/user/app.md must say Reveal in Finder")
+    if not re.search(r"\bcas\b|CAS", copy_win):
+        fail("#135: docs/user/app.md must say reveal opens the local CAS blob")
+    if re.search(r"\bShare sheet\b|\bAirDrop\b", dtxt) and not re.search(
+        r"("
+        r"no Share"
+        r"|not Share"
+        r"|no AirDrop"
+        r"|not AirDrop"
+        r"|Share sheet or AirDrop"
+        r")",
+        dtxt,
+        re.I,
+    ):
+        fail("#135: docs must not advertise Share / AirDrop (Not)")
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -10995,6 +11362,7 @@ def main() -> None:
     assert_keyboard_map(crate)
     assert_a11y_listbox_focus_motion(crate)
     assert_drag_drop_import(crate)
+    assert_copy_reveal_cas(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
