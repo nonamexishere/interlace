@@ -93,9 +93,11 @@ findings so a remounted Doctor tab does not flash the old list.
 
 After open: **people list + timeline** (groups hidden unless you tick include
 groups). The people list is **recent-first** by last D18 activity (you sent
-the message, or you share a DM / email thread). Each row shows that time and
-a one-line **plain-text** preview (the last message’s subject if it has one,
-otherwise a truncated body — never HTML). Contacts with no matching messages
+the message, or you share a DM / email thread). Each row shows that last
+activity as a **short UTC time** (`11 Aug 14:32`), not the raw ISO, and a
+one-line **plain-text** preview (the last message’s subject if it has one,
+otherwise a truncated body — never HTML). The merge-target picker uses the
+same short time. Archive JSON still stores ISO. Contacts with no matching messages
 stay listed at the bottom. After you open a person, a **compact conversation switcher** in the header
 (not a second list above the bubbles) lists their chats (WhatsApp / Gmail
 when the title is empty or the person’s name; otherwise the group name or
@@ -128,7 +130,7 @@ nodes (`whitespace-pre-wrap`) so a screen reader still hears them — never
 HTML. **Gmail / email-thread** bubbles show the subject as a title when present
 and fold quoted reply tails (`On … wrote:`, lines starting with `>`) behind
 **Show quoted** / **Hide quoted** — still plain text, not HTML layout. WhatsApp
-and other non-mail rows stay a single body paragraph. Long URLs wrap inside the bubble; they do not widen the pane. `/` filters the loaded people list client-side by display name and linked identity values (phone digits / E.164, email local part or full address). VoiceOver can move through people and hear the selected name. `j`/`k` move
+and other non-mail rows stay a single body paragraph. Long URLs wrap inside the bubble; they do not widen the pane. `/` filters the loaded people list client-side by display name and linked identity values (phone digits / E.164, email local part or full address). VoiceOver can move through people and hear the selected name plus that short time, not the raw ISO (`2024-08-11T14:32:00Z`). `j`/`k` move
 messages. **⌘F** (Ctrl+F) focuses that people filter on People, or switches to Search and focuses the query (`#q`). **Esc** blurs a typing field, or goes back to People from Search / Review / Import / Doctor (it does not quit). **⌘1…5** (Ctrl+1…5) open People, Search, Review, Import, and Doctor. Letter shortcuts are ignored while a field is focused. Merge by picking a name: select a person, **Merge…**, search the
 list (display name only — typing an id matches nobody), then confirm. Targets
 show the same last-activity preview as the sidebar so same-name cards differ.

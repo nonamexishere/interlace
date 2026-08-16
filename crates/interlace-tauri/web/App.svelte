@@ -5,6 +5,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { api, type Identity, type LinkEvent, type Person, type PersonConversation, type Status, type TimelineRow } from "./lib/api";
   import { mergeTargets } from "./lib/utils";
+  import { humanTime } from "./lib/formatTime";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
@@ -1144,6 +1145,7 @@
                 type="button"
                 role="option"
                 aria-selected={selectedId === p.id}
+                aria-label={`${p.display_name}${p.is_self ? " (self)" : ""}${p.last_activity_at ? ` ${humanTime(p.last_activity_at)}` : ""}`}
                 class="w-full min-w-0 max-w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {selectedId ===
                 p.id
                   ? 'bg-accent'
@@ -1153,7 +1155,7 @@
                 <span class="block truncate">{p.is_self ? `${p.display_name} (self)` : p.display_name}</span>
                 {#if p.last_activity_at || p.preview}
                   <span class="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
-                    {p.last_activity_at ?? ""}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
+                    {humanTime(p.last_activity_at)}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
                   </span>
                 {/if}
               </button>
@@ -1546,7 +1548,7 @@
               <span>{personLabel(p)}</span>
               {#if p.last_activity_at || p.preview}
                 <span class="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
-                  {p.last_activity_at ?? ""}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
+                  {humanTime(p.last_activity_at)}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
                 </span>
               {/if}
             </button>
