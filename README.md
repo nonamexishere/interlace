@@ -70,6 +70,7 @@ macOS window (also `publish = false`; not `cargo install interlace`).
 ## Docs
 
 - Architecture: [docs/design/DESIGN.md](docs/design/DESIGN.md)
+- Roadmap: [docs/hacking/roadmap.md](docs/hacking/roadmap.md) (issue [#52](https://github.com/nonamexishere/interlace/issues/52))
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Security: [SECURITY.md](SECURITY.md)
 - Pipeline: [docs/hacking/pipeline.md](docs/hacking/pipeline.md)
