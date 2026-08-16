@@ -428,6 +428,11 @@ fn doctor_issues_cmd(state: tauri::State<AppState>) -> Result<Vec<String>, Strin
 }
 
 #[tauri::command]
+fn doctor_issues_quick_cmd(state: tauri::State<AppState>) -> Result<Vec<String>, String> {
+    with_arch(&state, |arch| arch.doctor_issues_quick().map_err(err))
+}
+
+#[tauri::command]
 fn doctor_run_cmd(
     state: tauri::State<AppState>,
     integrity: bool,
@@ -932,6 +937,7 @@ fn main() {
             open,
             status,
             doctor_issues_cmd,
+            doctor_issues_quick_cmd,
             doctor_run_cmd,
             cas_data_url,
             reveal_cas,

@@ -472,15 +472,22 @@
     events = await api.linkEvents();
   }
 
+  async function refreshDoctorQuick() {
+    try {
+      doctor = await api.doctorIssuesQuick();
+    } catch {
+      doctor = [];
+    }
+  }
+
   async function applyStatus(next: Status) {
     st = next;
     setup = false;
     await refreshPeople();
     await refreshEvents();
-    try {
-      doctor = await api.doctorIssues();
-    } catch {
-      doctor = [];
+    // Badge: SQLite+FTS only. Do not await — opening must clear before a CAS walk.
+    if (view !== "doctor") {
+      void refreshDoctorQuick();
     }
   }
 

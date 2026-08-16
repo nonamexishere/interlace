@@ -163,8 +163,8 @@ impl Archive {
         Ok(())
     }
 
-    /// Non-mutating scan used by `interlace doctor`. Empty = healthy.
-    pub fn doctor_issues(&self) -> Result<Vec<String>> {
+    /// SQLite + FTS + trigger + stale-import checks. Does not walk `cas/`.
+    pub fn doctor_issues_quick(&self) -> Result<Vec<String>> {
         let mut issues = Vec::new();
         let ok: String = self
             .conn
@@ -204,6 +204,12 @@ impl Archive {
                 [],
             );
         }
+        Ok(issues)
+    }
+
+    /// Full scan used by `interlace doctor` and the Doctor tab. Empty = healthy.
+    pub fn doctor_issues(&self) -> Result<Vec<String>> {
+        let mut issues = self.doctor_issues_quick()?;
         let mut stmt = self
             .conn
             .prepare("SELECT DISTINCT cas_hash FROM attachments WHERE cas_hash IS NOT NULL")?;

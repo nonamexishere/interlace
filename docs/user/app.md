@@ -84,6 +84,12 @@ UI chrome (buttons, nav, empty states, Doctor) follows the OS language
 (`en` / `tr`, first supported preference). A later `tr` fallback does not
 override an earlier `en`. Message bodies stay as imported.
 
+Opening an archive is **not blocked on hashing `cas/`**. People (status and
+the people list) appear as soon as SQLite is open. The Doctor nav badge may
+fill in from a quick SQLite + FTS check, or stay empty until you open the
+**Doctor** tab. That tab still walks every referenced CAS hash and finds a
+missing blob (same as CLI `interlace doctor`).
+
 After open: **people list + timeline** (groups hidden unless you tick include
 groups). The people list is **recent-first** by last D18 activity (you sent
 the message, or you share a DM / email thread). Each row shows that time and
