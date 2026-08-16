@@ -12,7 +12,13 @@
     missing: boolean;
   };
 
-  let { items }: { items: Attachment[] } = $props();
+  let {
+    items,
+    onError,
+  }: {
+    items: Attachment[];
+    onError?: (e: unknown) => void;
+  } = $props();
 
   function isImage(a: Attachment) {
     const m = (a.mime || "").toLowerCase();
@@ -135,11 +141,15 @@
     revealMenu = null;
   }
 
-  function revealInFinder() {
+  async function revealInFinder() {
     if (!revealMenu) return;
     const hash = revealMenu.hash;
     revealMenu = null;
-    void api.revealCas(hash);
+    try {
+      await api.revealCas(hash);
+    } catch (e) {
+      onError?.(e);
+    }
   }
 
   function onRevealAway(e: MouseEvent) {

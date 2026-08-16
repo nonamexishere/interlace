@@ -172,11 +172,15 @@
     copyMenu = null;
   }
 
-  function copyText() {
+  async function copyText() {
     if (!copyMenu) return;
     const text = displayBody(copyMenu.body_text);
     copyMenu = null;
-    void navigator.clipboard.writeText(text);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      showErr(e);
+    }
   }
 
   function onCopyMenuAway(e: MouseEvent) {
@@ -885,6 +889,10 @@
         closeCopyMenu();
         return;
       }
+      if (document.querySelector("[data-context-menu]")) {
+        e.preventDefault();
+        return;
+      }
       view = "people";
       return;
     }
@@ -1457,7 +1465,7 @@
                           {displayBody(item.row.body_text || item.row.subject || "")}
                         </p>
                       {/if}
-                      <CasAttach items={item.row.attachments || []} />
+                      <CasAttach items={item.row.attachments || []} onError={showErr} />
                     </article>
                   </div>
                 {/each}

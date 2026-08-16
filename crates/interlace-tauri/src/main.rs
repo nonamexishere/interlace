@@ -482,11 +482,14 @@ fn reveal_cas(state: tauri::State<AppState>, hash: String) -> Result<(), String>
     if !canon.starts_with(&cas_root) {
         return Err("path outside cas".into());
     }
-    std::process::Command::new("/usr/bin/open")
+    let status = std::process::Command::new("/usr/bin/open")
         .arg("-R")
         .arg(&canon)
         .status()
         .map_err(err)?;
+    if !status.success() {
+        return Err("could not reveal in Finder".into());
+    }
     Ok(())
 }
 
