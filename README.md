@@ -70,6 +70,7 @@ macOS window (also `publish = false`; not `cargo install interlace`).
 ## Docs
 
 - Architecture: [docs/design/DESIGN.md](docs/design/DESIGN.md)
+- UI / UX: [docs/design/UI-DESIGN.md](docs/design/UI-DESIGN.md) (epic [#197](https://github.com/nonamexishere/interlace/issues/197))
 - Roadmap: [docs/hacking/roadmap.md](docs/hacking/roadmap.md) (issue [#52](https://github.com/nonamexishere/interlace/issues/52))
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Security: [SECURITY.md](SECURITY.md)
@@ -81,6 +82,7 @@ macOS window (also `publish = false`; not `cargo install interlace`).
 - Doctor / locks / resume: [docs/user/doctor.md](docs/user/doctor.md)
 - Backup / move: [docs/user/backup.md](docs/user/backup.md)
 - Desktop app (Phase 2): [docs/user/app.md](docs/user/app.md)
+- UI / UX (Phase 2.2): [docs/design/UI-DESIGN.md](docs/design/UI-DESIGN.md)
 - Tauri hacking: [docs/hacking/tauri.md](docs/hacking/tauri.md)
 - Release / publish: [docs/hacking/release.md](docs/hacking/release.md)
 
