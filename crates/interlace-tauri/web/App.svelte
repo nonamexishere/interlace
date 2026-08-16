@@ -161,6 +161,31 @@
     return s.replace(/<attached:\s*[^>]+>/gi, "").trim();
   }
 
+  let copyMenu = $state<{ x: number; y: number; body_text: string } | null>(null);
+
+  function openCopyMenu(e: MouseEvent, row: TimelineRow) {
+    e.preventDefault();
+    copyMenu = { x: e.clientX, y: e.clientY, body_text: row.body_text || row.subject || "" };
+  }
+
+  function closeCopyMenu() {
+    copyMenu = null;
+  }
+
+  function copyText() {
+    if (!copyMenu) return;
+    const text = displayBody(copyMenu.body_text);
+    copyMenu = null;
+    void navigator.clipboard.writeText(text);
+  }
+
+  function onCopyMenuAway(e: MouseEvent) {
+    if (!copyMenu) return;
+    const el = e.target as HTMLElement | null;
+    if (el?.closest("[data-copy-menu]")) return;
+    closeCopyMenu();
+  }
+
   /** Gmail / email_thread rows get subject title + quote fold; WA stays plain. */
   function isMailRow(row: {
     platform?: string | null;
@@ -856,6 +881,10 @@
       return;
     }
     if (e.key === "Escape") {
+      if (copyMenu) {
+        closeCopyMenu();
+        return;
+      }
       view = "people";
       return;
     }
@@ -892,6 +921,7 @@
 
   onMount(() => {
     window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onCopyMenuAway);
     let menuGone = false;
     const menuUnlisten: Array<() => void> = [];
     const keepMenu = (unlisten: () => void) => {
@@ -937,6 +967,7 @@
       menuGone = true;
       for (const unlisten of menuUnlisten) unlisten();
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onCopyMenuAway);
       stopPinLatest();
     };
   });
@@ -1372,6 +1403,7 @@
                       tabindex="0"
                       aria-label={`${utcTime(item.row.sent_at)} ${displayBody(item.row.body_text || item.row.subject || "").slice(0, 80)}`}
                       onclick={() => (tlIndex = item.index)}
+                      oncontextmenu={(e) => openCopyMenu(e, item.row)}
                     >
                       <p class="caption flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         <time>{utcTime(item.row.sent_at)}</time>
@@ -1449,6 +1481,23 @@
     </div>
   {/if}
 </div>
+
+{#if copyMenu}
+  <div
+    class="fixed z-[80] min-w-32 rounded-md border border-border bg-background py-1 shadow-md"
+    style="left: {copyMenu.x}px; top: {copyMenu.y}px"
+    data-copy-menu
+    data-context-menu
+    role="menu"
+  >
+    <button
+      type="button"
+      class="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted"
+      role="menuitem"
+      onclick={copyText}>{t("copyText")}</button
+    >
+  </div>
+{/if}
 
 <Dialog.Root bind:open={mergeOpen}>
   <Dialog.Content>
