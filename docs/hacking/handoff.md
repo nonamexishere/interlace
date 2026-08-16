@@ -1,6 +1,6 @@
 # Agent / session handoff
 
-**Date:** 2026-08-16. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
+**Date:** 2026-08-17. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -65,7 +65,7 @@ Workflow: one issue → one PR `Fixes #N` → merge when CI jobs **`check`** +
 App holds exclusive flock. Close `interlace-app` / `tauri:dev` before CLI
 `import` / `doctor --integrity` / wipe.
 
-## Snapshot (2026-08-16)
+## Snapshot (2026-08-17)
 
 Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`,
 `v0.1.1` tags). Workspace version is still **0.1.1**. App crate
@@ -159,11 +159,11 @@ Epic **#108**. Do **not** start Phase 1.1 (#57–#69) or Phase 3/4 (#72–#82)
 while 2.1 is the product focus. Prefer one issue → one PR; thin UI chrome does
 not need the full three-role loop unless behavior is load-bearing.
 
-### Suggested next (last 2.1 follow-up, then close the epic)
+### This PR — #184 (then close the epic)
 
 | # | Note |
 | --- | --- |
-| **#184** | Shorter human times + VoiceOver. Next coding. After this, close epic **#108** and milestone 6. |
+| **#184** | This PR (`feat/ui-human-time`): short human times + VoiceOver. After merge, close epic **#108** and milestone 6. Next is not another product ticket. |
 
 Full board: issue **#108** and milestone [Phase 2.1 product UI](https://github.com/nonamexishere/interlace/milestone/6)
 (only epic **#108** still open there — every listed child ticket is closed).
@@ -180,7 +180,7 @@ Full board: issue **#108** and milestone [Phase 2.1 product UI](https://github.c
 
 ## Recommended next steps
 
-1. Next coding: **#184** (short human times + VoiceOver). Then close epic **#108** and milestone 6. Do **not** start 1.1 / P3 / P4 just because 2.1 is done.
+1. This PR is **#184**. After it merges: close epic **#108** and milestone 6. Next is not another product ticket. Do **not** start 1.1 / P3 / P4 just because 2.1 is done.
 2. Optional hygiene PR when idle: rewrite **#52** “now” table; decide **#84**.
 3. Do **not** start 1.1 / P3 / P4. Do **not** cut `app-v*` without asking.
 
@@ -253,7 +253,8 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > Read `docs/hacking/handoff.md` and `docs/hacking/pipeline.md`. Sequence
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
-> Product now is Phase 2.1 (#108): next coding is **#184** (human times +
-> VoiceOver), then close #108 and milestone 6. Do not start 1.1 / P3 / P4. Do not dump
+> Product now is Phase 2.1 (#108): **#184** is this PR (human times +
+> VoiceOver). After merge, close #108 and milestone 6. Next is not another
+> product ticket. Do not start 1.1 / P3 / P4. Do not dump
 > chat bodies. Ask before crates.io, `v*`, or `app-v*` tags. After merges,
 > update this handoff in the same session.
