@@ -235,7 +235,6 @@
     if (!el) return;
     const next = Number(input.value);
     if (!Number.isFinite(next) || next < 0) return;
-    // Setting currentTime on a playing element continues from there; paused stays paused.
     el.currentTime = next;
     currentTimes = { ...currentTimes, [key]: next };
   }
