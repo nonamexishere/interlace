@@ -419,7 +419,7 @@
             {/each}
           </p>
         </button>
-        <CasAttach items={h.attachments || []} />
+        <CasAttach items={h.attachments || []} {onError} />
         {#if expanded === h.message_id}
           <p class="bg-muted px-2 py-2 text-sm whitespace-pre-wrap">{body}</p>
         {/if}

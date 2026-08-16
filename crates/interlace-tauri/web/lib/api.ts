@@ -152,6 +152,7 @@ export const api = {
   doctorRun: (args: { integrity: boolean; rebuildFts: boolean; gcCas: boolean }) =>
     invoke<string[]>("doctor_run_cmd", args),
   casDataUrl: (hash: string) => invoke<string>("cas_data_url", { hash }),
+  revealCas: (hash: string) => invoke<void>("reveal_cas", { hash }),
   people: () => invoke<Person[]>("people"),
   personShow: (id: number) =>
     invoke<{ id: number; display_name: string; identities: Identity[] }>(

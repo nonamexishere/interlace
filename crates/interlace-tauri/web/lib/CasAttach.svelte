@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api } from "./api";
+  import { t } from "./i18n";
 
   export type Attachment = {
     id: number;
@@ -11,7 +12,13 @@
     missing: boolean;
   };
 
-  let { items }: { items: Attachment[] } = $props();
+  let {
+    items,
+    onError,
+  }: {
+    items: Attachment[];
+    onError?: (e: unknown) => void;
+  } = $props();
 
   function isImage(a: Attachment) {
     const m = (a.mime || "").toLowerCase();
@@ -122,6 +129,50 @@
     return () => window.removeEventListener("keydown", handler);
   });
 
+  let revealMenu = $state<{ x: number; y: number; hash: string } | null>(null);
+
+  function openRevealMenu(e: MouseEvent, hash: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    revealMenu = { x: e.clientX, y: e.clientY, hash };
+  }
+
+  function closeRevealMenu() {
+    revealMenu = null;
+  }
+
+  async function revealInFinder() {
+    if (!revealMenu) return;
+    const hash = revealMenu.hash;
+    revealMenu = null;
+    try {
+      await api.revealCas(hash);
+    } catch (e) {
+      onError?.(e);
+    }
+  }
+
+  function onRevealAway(e: MouseEvent) {
+    if (!revealMenu) return;
+    const el = e.target as HTMLElement | null;
+    if (el?.closest("[data-reveal-menu]")) return;
+    closeRevealMenu();
+  }
+
+  function onRevealKey(e: KeyboardEvent) {
+    if (e.key === "Escape") closeRevealMenu();
+  }
+
+  $effect(() => {
+    if (!revealMenu) return;
+    window.addEventListener("keydown", onRevealKey);
+    window.addEventListener("mousedown", onRevealAway);
+    return () => {
+      window.removeEventListener("keydown", onRevealKey);
+      window.removeEventListener("mousedown", onRevealAway);
+    };
+  });
+
   function lightboxSrc(): string | null {
     const imgs = imageItems();
     const a = imgs[lightboxIndex];
@@ -177,7 +228,13 @@
 {#if items?.length}
   <ul class="mt-2 space-y-2">
     {#each items as a}
-      <li>
+      <li
+        oncontextmenu={(e) => {
+          const hash = hashOf(a);
+          if (!hash || a.omitted || a.missing) return;
+          openRevealMenu(e, hash);
+        }}
+      >
         {#if a.omitted}
           <p class="text-xs text-muted-foreground">Media omitted in this export</p>
         {:else if a.missing || !hashOf(a)}
@@ -336,5 +393,22 @@
       class="max-h-[90vh] max-w-[90vw] object-contain"
       onclick={(e) => e.stopPropagation()}
     />
+  </div>
+{/if}
+
+{#if revealMenu}
+  <div
+    class="fixed z-[80] min-w-32 rounded-md border border-border bg-background py-1 shadow-md"
+    style="left: {revealMenu.x}px; top: {revealMenu.y}px"
+    data-reveal-menu
+    data-context-menu
+    role="menu"
+  >
+    <button
+      type="button"
+      class="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted"
+      role="menuitem"
+      onclick={revealInFinder}>{t("revealInFinder")}</button
+    >
   </div>
 {/if}
