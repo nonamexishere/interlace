@@ -11,6 +11,9 @@
 | Edition | Rust 2021 |
 | Phase 1 OS | macOS only |
 
+Visual / UX language (Phase 2.2) lives in [`UI-DESIGN.md`](UI-DESIGN.md).
+This file stays architecture, data model, and CLI contracts.
+
 ---
 
 ## Overview

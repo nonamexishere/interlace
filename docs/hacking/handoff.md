@@ -31,8 +31,9 @@ SQLite+FTS5, CAS BLAKE3 (`cas/ab/cd/<hash>`). No server, no sync, no outbound
 HTTP client (cargo-deny bans `reqwest`/`hyper`/`tokio` on core+cli; Tauri may
 use `tokio` without `net`). Phase 1 = CLI; Phase 2 = Svelte 5 desktop UI
 (UI0–UI8 done). **Phase 2.1 is closed** (epic #108, milestone 6). First
-unsigned app release is **`app-v0.1.1`**. No next product ticket until
-Mustafa picks 1.1 / 3 / 4.
+unsigned app release is **`app-v0.1.1`**. **Active product track:
+Phase 2.2** UI/UX polish (epic **#197**, milestone 7). Normative:
+[`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md). Do not start 1.1 / 3 / 4.
 
 Normative spec: [`docs/design/DESIGN.md`](../design/DESIGN.md).
 Roadmap index: [`docs/hacking/roadmap.md`](roadmap.md) and issue **#52**.
@@ -80,9 +81,10 @@ ad-hoc, not notarized). Ask before another `app-v*` / `v*` / crates.io publish.
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `39030f9` **Merge pull request #195** (`Fixes #52`
-`Fixes #84`) plus tag **`app-v0.1.1`**. Epic **#108**, milestone 6, and the
-Phase 1 CLI milestone are **closed**. Re-check with `git log -1` / `gh pr list`.
+HEAD when this was rewritten: `0ebc2de` **Merge pull request #196** (app-v0.1.1
+docs) plus tag **`app-v0.1.1`**. Epic **#108**, milestone 6, and the
+Phase 1 CLI milestone are **closed**. Product track is **#197** / milestone 7.
+Re-check with `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
 
@@ -159,11 +161,22 @@ Treat counts as approximate; never paste real names or message text here.
 
 Phase 2.1 milestone (#6): **closed**.
 
-## Open — product now
+## Open — product now (Phase 2.2)
 
-No Phase 2.1 ticket. Do **not** start Phase 1.1 (#57–#69) or Phase 3/4
-(#72–#82) until Mustafa picks one. Prefer one issue → one PR; thin docs
-do not need the three-role loop.
+Epic **#197**. Normative [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md).
+Do **not** start Phase 1.1 (#57–#69) or Phase 3/4 (#72–#82). Prefer one
+issue → one PR; thin chrome still uses the three-role loop when
+load-bearing (a11y, titlebar, search).
+
+### Suggested next
+
+| # | Note |
+| --- | --- |
+| **#198** | Design tokens — 4/8 spacing, zinc colors, no hardcoded hues. First coding. |
+| **#199**–**#201** | Typography, Lucide, owned Tooltip/Separator/Badge/Card |
+| **#202**–**#222** | States, timeline/search, chrome, a11y, appearance — see #197 |
+
+Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github.com/nonamexishere/interlace/milestone/7).
 
 ### Open — parked (not product coding)
 
@@ -174,7 +187,8 @@ do not need the three-role loop.
 
 ## Recommended next steps
 
-1. Mustafa picks **1.1**, **Phase 3**, or **Phase 4**. Do not invent a 2.2 epic.
+1. Next coding: **#198** (design tokens), then the rest of **#197**.
+   Do not start 1.1 / P3 / P4.
 2. Do **not** start 1.1 / P3 / P4 unprompted. Ask before another `app-v*` / `v*` / crates.io.
 
 ## Commands (copy-paste)
@@ -246,8 +260,8 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > Read `docs/hacking/handoff.md` and `docs/hacking/pipeline.md`. Sequence
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
-> Product track: Phase 2.1 is closed (#108, milestone 6). App release
-> `app-v0.1.1` is on GitHub Releases. No next product ticket until Mustafa
-> picks 1.1 / P3 / P4. Do not start those unprompted. Do not dump chat
-> bodies. Ask before crates.io, `v*`, or another `app-v*` tag. After
-> merges, update this handoff in the same session.
+> Product track: Phase 2.2 UI/UX polish (#197). Read
+> `docs/design/UI-DESIGN.md`. Next coding is **#198** (tokens). Do not
+> start 1.1 / P3 / P4. Do not dump chat bodies. Ask before crates.io,
+> `v*`, or another `app-v*` tag. After merges, update this handoff
+> in the same session.

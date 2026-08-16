@@ -4,15 +4,15 @@ Canonical in-repo copy of issue **#52**. Work top-down. One issue → one PR
 (`Fixes #N`). How we work: [pipeline.md](pipeline.md) (test-author → impl →
 reviewer; parent chat sequences those roles as separate agents; CI is the gate).
 
-Do **not** start Phase 1.1 (#57–#69) or Phase 3/4 (#72–#82) until Mustafa
-picks one. Phase 2.1 is **done** (epic #108 and milestone 6 closed).
+Do **not** start Phase 1.1 (#57–#69) or Phase 3/4 (#72–#82) while 2.2 is
+open. Phase 2.1 is **done**. Phase 2.2 is **now**.
 
 ## Now
 
 | What | Notes |
 | --- | --- |
-| Next phase | Mustafa picks **1.1**, **Phase 3**, or **Phase 4**. Do not invent a 2.2 epic. |
-| Desktop app | **`app-v0.1.1` shipped** ([release](https://github.com/nonamexishere/interlace/releases/tag/app-v0.1.1)): unsigned aarch64 `.app.zip` + `.dmg`. Ask before another `app-v*`. |
+| Phase 2.2 | Epic [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7). Normative [`UI-DESIGN.md`](../design/UI-DESIGN.md). Next coding **#198**. |
+| Desktop app | **`app-v0.1.1` shipped** ([release](https://github.com/nonamexishere/interlace/releases/tag/app-v0.1.1)). Ask before another `app-v*`. |
 | crates.io | Published **0.1.1**. Do not `cargo publish` / `v*` without asking. |
 
 ## Done (do not re-implement)
@@ -41,4 +41,4 @@ Same CLI, not a new product. Do not start until chosen.
 
 Fake JID, name auto-merge, updater, “encrypted DB” claim, HTTP client, `network.server`.
 
-**How to look:** GitHub → Issues → Milestones: [Phase 1 CLI](https://github.com/nonamexishere/interlace/milestone/1) (closed) · [Phase 2 UI](https://github.com/nonamexishere/interlace/milestone/2) (closed) · [Phase 2.1](https://github.com/nonamexishere/interlace/milestone/6) (closed) · [Phase 1.1](https://github.com/nonamexishere/interlace/milestone/3) · [Phase 3](https://github.com/nonamexishere/interlace/milestone/4) · [Phase 4](https://github.com/nonamexishere/interlace/milestone/5).
+**How to look:** GitHub → Issues → Milestones: [Phase 1 CLI](https://github.com/nonamexishere/interlace/milestone/1) (closed) · [Phase 2 UI](https://github.com/nonamexishere/interlace/milestone/2) (closed) · [Phase 2.1](https://github.com/nonamexishere/interlace/milestone/6) (closed) · [Phase 2.2 UI/UX](https://github.com/nonamexishere/interlace/milestone/7) · [Phase 1.1](https://github.com/nonamexishere/interlace/milestone/3) · [Phase 3](https://github.com/nonamexishere/interlace/milestone/4) · [Phase 4](https://github.com/nonamexishere/interlace/milestone/5).
