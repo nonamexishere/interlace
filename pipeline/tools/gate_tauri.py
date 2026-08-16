@@ -124,6 +124,14 @@
 #     /usr/bin/open -R or file://), not http; copy does not log the body;
 #     no plugin-shell / shell:allow-execute / arbitrary Command; no Share /
 #     AirDrop; docs line in docs/user/app.md.
+#136: defer doctor CAS scan so large archives open fast — Open / applyStatus
+#     shows People without awaiting a full cas_get / attachments.cas_hash walk
+#     before opening clears. Doctor badge may load async or stay empty until
+#     the Doctor tab. Doctor tab (DoctorPane load / Refresh / doctorIssues)
+#     still runs the full scan; a missing blob is still an issue. No
+#     background GC on open (gc_cas / GC thread not started from
+#     applyStatus/open). Docs: open is not blocked on hashing cas/; Doctor
+#     tab still finds missing blobs.
 """
 
 from __future__ import annotations
@@ -11499,6 +11507,403 @@ def assert_copy_reveal_cas(crate: Path) -> None:
         fail("#135: docs/user/app.md must say no Share / AirDrop")
 
 
+# #136 — defer doctor CAS scan so large archives open fast.
+_DOCTOR_ISSUE_API = re.compile(
+    r"("
+    r"(?:api\.)?doctorIssues\b"
+    r"|(?:api\.)?doctor_issues\b"
+    r"|invoke\s*(?:<[^>]*>)?\s*\(\s*[\"']doctor_issues"
+    r")",
+)
+_DOCTOR_RUN_API = re.compile(r"(?:api\.)?doctorRun\b|doctor_run_cmd|\bdoctor_run\b")
+_QUICK_DOCTOR = re.compile(
+    r"("
+    r"doctorIssuesQuick"
+    r"|doctor_issues_quick"
+    r"|quick\s*:\s*true"
+    r"|mode\s*:\s*[\"']quick[\"']"
+    r"|doctorIssues\s*\(\s*true\s*\)"
+    r")",
+    re.I,
+)
+_GC_ON_OPEN = re.compile(r"\bgc_cas\b|\bgcCas\s*:\s*true")
+_GC_THREAD = re.compile(
+    r"("
+    r"thread::spawn"
+    r"|std::thread"
+    r"|Builder::new\s*\(\s*\)\s*\.name\s*\(\s*[\"'][^\"']*gc"
+    r")",
+    re.I,
+)
+_OPEN_AWAIT_SKIP = _SCROLL_HELPER_SKIP | {
+    "api",
+    "invoke",
+    "doctorIssues",
+    "doctorIssuesQuick",
+    "doctorRun",
+    "people",
+    "linkEvents",
+    "status",
+    "open",
+    "init",
+    "pickFolder",
+    "rememberedPath",
+    "showErr",
+    "csv",
+    "trim",
+}
+
+
+def _await_expression(src: str, start: int) -> str:
+    """Expression after `await` at `start`, up to `;` / newline at depth 0."""
+    n = len(src)
+    i = start
+    while i < n and src[i] in " \t":
+        i += 1
+    depth = 0
+    j = i
+    while j < n:
+        nxt = _js_next(src, j)
+        if nxt != j:
+            j = nxt
+            continue
+        c = src[j]
+        if c in "({[":
+            depth += 1
+        elif c in ")}]":
+            if depth == 0:
+                break
+            depth -= 1
+        elif c in ";,\n" and depth == 0:
+            break
+        j += 1
+    return src[i:j].strip()
+
+
+def _doctor_expr_is_quick(expr: str) -> bool:
+    return bool(_QUICK_DOCTOR.search(expr))
+
+
+def _doctor_expr_is_full_scan(expr: str) -> bool:
+    if not _DOCTOR_ISSUE_API.search(expr):
+        return False
+    return not _doctor_expr_is_quick(expr)
+
+
+def _open_awaited_surface(web: str, roots: tuple[str, ...]) -> str:
+    """Bodies of `roots` plus only functions they `await` (not fire-and-forget)."""
+    parts: list[str] = []
+    seen: set[str] = set()
+
+    def walk(name: str) -> None:
+        if name in seen or name in _OPEN_AWAIT_SKIP:
+            return
+        seen.add(name)
+        body = _ts_function_body(web, name) or _function_body(web, name)
+        if not body:
+            return
+        parts.append(body)
+        for m in re.finditer(r"\bawait\s+", body):
+            expr = _await_expression(body, m.end())
+            ident = re.match(r"(?:api\.)?([A-Za-z_]\w*)", expr)
+            if ident:
+                walk(ident.group(1))
+
+    for root_name in roots:
+        walk(root_name)
+    return "\n".join(parts)
+
+
+def _awaited_exprs(src: str) -> list[str]:
+    return [_await_expression(src, m.end()) for m in re.finditer(r"\bawait\s+", src)]
+
+
+def _core_rust_blob(root: Path) -> str:
+    src = root / "crates" / "interlace-core" / "src"
+    if not src.is_dir():
+        return ""
+    return "\n".join(p.read_text() for p in sorted(src.rglob("*.rs")) if p.is_file())
+
+
+def _full_doctor_scan_body(core_src: str, rust: str) -> str:
+    """Archive::doctor_issues (full) plus callees — not the quick path."""
+    blob = core_src + "\n" + rust
+    body = _rust_body_with_callees(blob, "doctor_issues")
+    if body.strip():
+        return body
+    return _rust_function_body(blob, "doctor_issues")
+
+
+def assert_defer_doctor_cas(crate: Path) -> None:
+    """#136: open shows People without awaiting a full CAS walk.
+
+    Doctor badge may load async or stay empty until the Doctor tab.
+    Doctor tab (load / Refresh) still runs the full scan that walks
+    referenced CAS hashes. A missing blob still surfaces. No background
+    GC on open.
+    """
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#136: App.svelte required (open / applyStatus must show People first)")
+    doctor_path = crate / "web" / "lib" / "DoctorPane.svelte"
+    if not doctor_path.is_file():
+        fail("#136: DoctorPane.svelte required (full CAS scan on the Doctor tab)")
+    app = app_path.read_text()
+    doctor_txt = doctor_path.read_text()
+    web = _web_logic(crate)
+    rust = _tauri_rust_blob(crate)
+    root = repo_root()
+    core_src = _core_rust_blob(root)
+    docs_app = root / "docs" / "user" / "app.md"
+    dtxt = docs_app.read_text() if docs_app.is_file() else ""
+    docs_doc = root / "docs" / "user" / "doctor.md"
+    ddoc = docs_doc.read_text() if docs_doc.is_file() else ""
+
+    apply_body = _ts_function_body(web, "applyStatus") or _function_body(web, "applyStatus")
+    if not apply_body.strip():
+        fail("#136: applyStatus required (open / create / reopen last archive)")
+    if not re.search(r"\b(?:api\.)?people\s*\(|\brefreshPeople\s*\(", apply_body):
+        fail(
+            "#136: applyStatus must still load People "
+            "(people list + status) when opening clears"
+        )
+
+    open_path = _ts_function_body(web, "openPath") or _function_body(web, "openPath")
+    if not open_path.strip():
+        fail("#136: openPath required (opening must clear before a full CAS walk)")
+    if not re.search(r"\bopening\s*=\s*true\b", open_path):
+        fail("#136: openPath must set opening = true while the archive opens")
+    if not re.search(r"\bopening\s*=\s*false\b", open_path):
+        fail("#136: opening must clear so People can render (do not wait on CAS)")
+    if not re.search(r"\bapplyStatus\s*\(", open_path):
+        fail("#136: openPath must apply status / people (applyStatus) when opening")
+
+    create_body = _ts_function_body(web, "createArchive") or _function_body(
+        web, "createArchive"
+    )
+    if not create_body.strip():
+        fail("#136: createArchive required (create must show People without a CAS walk)")
+    if not re.search(r"\bapplyStatus\s*\(", create_body):
+        fail("#136: createArchive must apply status / people without waiting on CAS")
+
+    if not re.search(r"rememberedPath|openPath\s*\(", app):
+        fail("#136: reopen last archive must go through openPath / applyStatus")
+
+    # 1) Open / applyStatus does not await a full CAS walk before People / opening.
+    open_surface = _open_awaited_surface(
+        web, ("applyStatus", "openPath", "createArchive", "openPicker")
+    )
+    if not open_surface.strip():
+        open_surface = apply_body + "\n" + open_path + "\n" + create_body
+    open_clean = _without_comments(open_surface)
+    for expr in _awaited_exprs(open_clean):
+        if _DOCTOR_RUN_API.search(expr):
+            fail(
+                "#136: open / applyStatus must not await doctorRun "
+                "(People must not wait on a doctor action / GC)"
+            )
+        if _doctor_expr_is_full_scan(expr):
+            fail(
+                "#136: open / applyStatus must show People without awaiting a full "
+                "CAS walk (cas_get / every attachments.cas_hash) before opening "
+                "clears — Doctor badge may be async or empty until the Doctor tab"
+            )
+    if re.search(r"\bcas_get\b", open_clean) and re.search(r"cas_hash", open_clean):
+        fail(
+            "#136: applyStatus / open must not walk every attachments.cas_hash / "
+            "cas_get before People render"
+        )
+
+    # Rust open / create / status must not themselves walk CAS or start GC.
+    for name in ("open", "init", "hold", "status"):
+        body = _rust_body_with_callees(rust, name)
+        if not body.strip():
+            continue
+        if _GC_ON_OPEN.search(body):
+            fail(
+                f"#136: no background GC on open "
+                f"(gc_cas must not run from Rust {name}())"
+            )
+        if re.search(r"\bcas_get\b", body) and re.search(
+            r"cas_hash|attachments", body
+        ):
+            fail(
+                f"#136: Rust {name}() must not walk attachments.cas_hash / cas_get "
+                "(opening must not wait on a full CAS scan)"
+            )
+        if re.search(r"\bdoctor_issues\s*\(", body) and not _doctor_expr_is_quick(body):
+            fail(
+                f"#136: Rust {name}() must not run the full doctor_issues CAS walk "
+                "(People stay behind opening if open/status awaits it)"
+            )
+
+    # People render when opening clears — not inside the spinner, not gated on doctor.
+    if not re.search(r"booting\s*\|\|\s*opening|opening\s*\|\|\s*booting", app):
+        fail(
+            "#136: opening must gate the spinner so People render when opening clears"
+        )
+    boot = _boot_opening_block(app)
+    if re.search(r"data-people-sidebar|{#each\s+people\b", boot):
+        fail(
+            "#136: People list must render after opening clears, "
+            "not inside the opening spinner"
+        )
+    if not re.search(r"data-people-sidebar|{#each\s+people\b", app):
+        fail("#136: People list must still render after open (sidebar / people rows)")
+
+    # 2) Doctor tab still runs the full scan (load / Refresh / doctorIssues).
+    load_body = _ts_function_body(doctor_txt, "load") or _function_body(doctor_txt, "load")
+    if not load_body.strip():
+        fail("#136: DoctorPane load must run the full doctor scan")
+    load_clean = _without_comments(load_body)
+    if not any(_doctor_expr_is_full_scan(expr) for expr in _awaited_exprs(load_clean)):
+        # Fire-and-forget still counts if load calls the full API (Refresh / tab).
+        if not _DOCTOR_ISSUE_API.search(load_clean) or _doctor_expr_is_quick(load_clean):
+            fail(
+                "#136: Doctor tab (DoctorPane load) must run a full scan "
+                "(doctorIssues / doctor_issues) that walks referenced CAS hashes "
+                "— not only a quick SQLite+FTS check"
+            )
+        if _doctor_expr_is_quick(load_clean) and not any(
+            _doctor_expr_is_full_scan(expr) for expr in _awaited_exprs(load_clean)
+        ):
+            fail(
+                "#136: Doctor tab must invoke the full doctorIssues scan "
+                "(not doctorIssuesQuick / quick: true only)"
+            )
+    if not re.search(r"\bRefresh\b", doctor_txt):
+        fail("#136: Doctor tab must keep Refresh (full scan)")
+    if not re.search(r"onclick=\{[^}]*\bload\b", doctor_txt):
+        fail("#136: Refresh must call load (full doctorIssues scan)")
+    if not re.search(r"onMount\s*\(\s*\(\s*\)\s*=>\s*\{[^}]*\bload\s*\(", doctor_txt, re.S):
+        if "load()" not in doctor_txt:
+            fail("#136: DoctorPane must load the full scan when the Doctor tab opens")
+
+    # IPC used by the Doctor tab still calls the full Archive::doctor_issues.
+    cmd_body = _rust_body_with_callees(rust, "doctor_issues_cmd")
+    if not cmd_body.strip():
+        fail(
+            "#136: doctor_issues_cmd must still run the full doctor_issues scan "
+            "(Doctor tab / Refresh)"
+        )
+    if not re.search(r"\bdoctor_issues\s*\(", cmd_body):
+        fail(
+            "#136: doctor_issues_cmd must call doctor_issues() "
+            "(full scan, not only a quick flag)"
+        )
+    if re.search(r"doctor_issues_quick", cmd_body) and not re.search(
+        r"\bdoctor_issues\s*\(", cmd_body
+    ):
+        fail("#136: Doctor-tab IPC must run the full doctor_issues path")
+
+    full_body = _full_doctor_scan_body(core_src, rust)
+    if not full_body.strip():
+        fail("#136: Archive::doctor_issues (full) must still exist for the Doctor tab")
+    if not re.search(r"\bcas_get\b", full_body):
+        fail(
+            "#136: full doctor scan must cas_get referenced hashes "
+            "(Doctor tab still walks CAS)"
+        )
+    if not re.search(r"cas_hash", full_body):
+        fail(
+            "#136: full doctor scan must walk attachments.cas_hash "
+            "(referenced CAS hashes)"
+        )
+    if not re.search(r"CAS blob missing", full_body):
+        fail(
+            "#136: a missing blob must still surface as a doctor issue "
+            "on the full path (Doctor tab / doctor_issues)"
+        )
+
+    # CLI with no flag stays a full scan.
+    cli = root / "crates" / "interlace-core" / "src" / "cli.rs"
+    if cli.is_file():
+        cli_txt = cli.read_text()
+        if not re.search(r"\bdoctor_issues\s*\(\s*\)", cli_txt):
+            fail(
+                "#136: CLI `interlace doctor` (no flag) must keep a full "
+                "doctor_issues() scan"
+            )
+
+    # 3) No background GC on open (applyStatus / open / create / boot).
+    if _GC_ON_OPEN.search(open_clean):
+        fail(
+            "#136: no background GC on open "
+            "(gc_cas / GC thread not started from applyStatus/open)"
+        )
+    if _GC_THREAD.search(open_clean) and _GC_ON_OPEN.search(open_clean + "\n" + rust):
+        fail("#136: no background GC thread on open")
+    boot_src = _without_comments(app)
+    if _GC_ON_OPEN.search(boot_src) and re.search(
+        r"rememberedPath|opening\s*=\s*true", boot_src
+    ):
+        # gcCas: true on the Doctor tab is fine; fail only if it sits on the open path.
+        for name in ("applyStatus", "openPath", "createArchive", "openPicker"):
+            body = _ts_function_body(web, name) or _function_body(web, name)
+            if body and _GC_ON_OPEN.search(_without_comments(body)):
+                fail(
+                    "#136: no background GC on open "
+                    f"(gc_cas must not start from {name})"
+                )
+    if re.search(r"thread::spawn", rust) and re.search(
+        r"gc_cas", _rust_body_with_callees(rust, "open") + _rust_body_with_callees(rust, "init")
+    ):
+        fail("#136: no background GC thread started from open/init")
+
+    # 4) Docs (D24): open is not blocked on hashing cas/; Doctor tab finds missing blobs.
+    if not dtxt.strip():
+        fail(
+            "#136: docs/user/app.md required "
+            "(open is not blocked on hashing cas/; Doctor tab still finds missing blobs)"
+        )
+    if not re.search(
+        r"("
+        r"not blocked on hashing"
+        r"|without (?:waiting|blocking).{0,60}(?:hash|cas/|CAS)"
+        r"|open(?:ing)?(?:ing an archive| of (?:an? )?archive)?.{0,80}"
+        r"not.{0,40}(?:hash|walk|scan|blocked).{0,40}cas"
+        r"|People.{0,60}(?:immediately|without waiting).{0,60}(?:cas|doctor|hash)"
+        r"|does not wait.{0,40}(?:hash|cas/|CAS)"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail("#136: docs/user/app.md must say open is not blocked on hashing cas/")
+    if not re.search(
+        r"("
+        r"Doctor tab.{0,100}(?:missing blob|referenced.{0,20}blob|walk.{0,40}cas)"
+        r"|missing blob.{0,80}Doctor"
+        r"|Doctor.{0,80}(?:still )?(?:walk|find).{0,40}(?:missing|referenced|cas|blob)"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail(
+            "#136: docs/user/app.md must say the Doctor tab still finds a missing blob "
+            "(full scan of referenced CAS hashes)"
+        )
+    if not ddoc.strip():
+        fail(
+            "#136: docs/user/doctor.md required "
+            "(Doctor tab still walks referenced CAS / finds missing blobs)"
+        )
+    if not re.search(
+        r"("
+        r"Doctor tab.{0,120}(?:missing|referenced|cas_hash|CAS)"
+        r"|CAS file missing"
+        r"|missing blob"
+        r"|cas_hash"
+        r"|referenced.{0,40}(?:CAS|blob|hash|attachments)"
+        r")",
+        ddoc,
+        re.I | re.S,
+    ):
+        fail(
+            "#136: docs/user/doctor.md must say the Doctor tab still walks "
+            "referenced CAS hashes / finds a missing blob"
+        )
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -11615,6 +12020,7 @@ def main() -> None:
     assert_a11y_listbox_focus_motion(crate)
     assert_drag_drop_import(crate)
     assert_copy_reveal_cas(crate)
+    assert_defer_doctor_cas(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
