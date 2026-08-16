@@ -203,10 +203,14 @@
     durations = { ...durations, [key]: d };
   }
 
+  function voiceAudioFrom(el: HTMLElement | null): HTMLAudioElement | null {
+    const wrap = el?.closest("[data-voice-note]");
+    return (wrap?.querySelector("audio") as HTMLAudioElement | null) ?? null;
+  }
+
   function togglePlay(e: MouseEvent, key: string) {
     e.stopPropagation();
-    const wrap = (e.currentTarget as HTMLElement).closest("[data-voice-note]");
-    const el = wrap?.querySelector("audio") as HTMLAudioElement | null;
+    const el = voiceAudioFrom(e.currentTarget as HTMLElement);
     if (!el) return;
     if (el.paused) {
       // One voice note at a time (document-wide so multiple CasAttach instances share).
@@ -222,6 +226,18 @@
     } else {
       el.pause();
     }
+  }
+
+  function seekVoice(e: Event, key: string) {
+    e.stopPropagation();
+    const input = e.currentTarget as HTMLInputElement;
+    const el = voiceAudioFrom(input);
+    if (!el) return;
+    const next = Number(input.value);
+    if (!Number.isFinite(next) || next < 0) return;
+    // Setting currentTime on a playing element continues from there; paused stays paused.
+    el.currentTime = next;
+    currentTimes = { ...currentTimes, [key]: next };
   }
 </script>
 
@@ -263,6 +279,7 @@
           </button>
         {:else if isAudio(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
           {@const key = keyOf(a)}
+          {@const dur = durations[key] ?? 0}
           <div
             class="voice-note flex max-w-xs items-center gap-2 rounded-full border border-border bg-muted/40 px-2 py-1.5"
             data-voice-note
@@ -310,12 +327,27 @@
                 <span class="pl-0.5 text-xs leading-none" aria-hidden="true">▶</span>
               {/if}
             </button>
+            <input
+              type="range"
+              class="voice-seek min-w-12 flex-1"
+              min="0"
+              max={Number.isFinite(dur) && dur > 0 ? dur : 0}
+              step="any"
+              value={currentTimes[key] ?? 0}
+              disabled={!(Number.isFinite(dur) && dur > 0)}
+              aria-label="Seek voice note"
+              data-voice-seek
+              oninput={(e) => seekVoice(e, key)}
+              onchange={(e) => seekVoice(e, key)}
+              onclick={(e) => e.stopPropagation()}
+              onpointerdown={(e) => e.stopPropagation()}
+            />
             <span
-              class="min-w-0 flex-1 font-mono text-xs tabular-nums text-muted-foreground"
+              class="shrink-0 font-mono text-xs tabular-nums text-muted-foreground"
               data-voice-time
             >
-              {formatTime(currentTimes[key] ?? 0)}{#if Number.isFinite(durations[key]) && (durations[key] ?? 0) > 0}
-                {" "}/ {formatTime(durations[key] ?? 0)}{/if}
+              {formatTime(currentTimes[key] ?? 0)}{#if Number.isFinite(dur) && dur > 0}
+                {" "}/ {formatTime(dur)}{/if}
             </span>
           </div>
         {:else if !broken[keyOf(a)] && !srcs[keyOf(a)]}
