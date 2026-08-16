@@ -7,6 +7,7 @@ mod bookmark;
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -467,6 +468,32 @@ fn cas_data_url(state: tauri::State<AppState>, hash: String) -> Result<String, S
     Ok(format!("data:{mime};base64,{}", BASE64.encode(&bytes)))
 }
 
+/// Reveal `$ARCHIVE/cas/ab/cd/<hash>` in Finder. Hash only — never a path or URL.
+#[tauri::command]
+fn reveal_cas(state: tauri::State<AppState>, hash: String) -> Result<(), String> {
+    let root = state
+        .archive_root
+        .lock()
+        .map_err(err)?
+        .clone()
+        .ok_or_else(|| "no archive open".to_string())?;
+    let path = interlace_core::cas::cas_blob_path(&root, &hash).map_err(err)?;
+    let cas_root = root.join("cas").canonicalize().map_err(err)?;
+    let canon = path.canonicalize().map_err(err)?;
+    if !canon.starts_with(&cas_root) {
+        return Err("path outside cas".into());
+    }
+    let status = Command::new("/usr/bin/open")
+        .arg("-R")
+        .arg(&canon)
+        .status()
+        .map_err(err)?;
+    if !status.success() {
+        return Err("could not reveal in Finder".into());
+    }
+    Ok(())
+}
+
 fn with_arch<T>(
     state: &AppState,
     f: impl FnOnce(&Archive) -> Result<T, String>,
@@ -908,6 +935,7 @@ fn main() {
             doctor_issues_cmd,
             doctor_run_cmd,
             cas_data_url,
+            reveal_cas,
             people,
             person_show,
             person_timeline,

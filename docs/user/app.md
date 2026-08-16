@@ -173,7 +173,9 @@ lightbox (Esc or backdrop to close; arrow keys when a message has several
 images). Voice notes play in-app with play/pause and elapsed/duration time;
 audio is loaded only from local CAS bytes (`data:`), never a remote stream.
 Nothing is fetched from the network. Exports that omitted media show a
-placeholder.
+placeholder. Right-click a bubble to copy its text to the clipboard (the
+body is not written to logs). Right-click a stored attachment to reveal the
+local CAS blob in Finder. There is no Share sheet or AirDrop.
 
 If the archive path looks like iCloud Drive, Dropbox, or Google Drive, a
 banner stays up on every tab. Time Machine of the whole folder is fine after

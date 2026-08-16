@@ -161,6 +161,49 @@
     return s.replace(/<attached:\s*[^>]+>/gi, "").trim();
   }
 
+  type BubbleMenu = { x: number; y: number; text: string };
+  let bubbleMenu = $state<BubbleMenu | null>(null);
+
+  function copyTextFor(row: TimelineRow): string {
+    const body = displayBody(row.body_text || "");
+    if (isMailRow(row) && (row.subject ?? "").trim()) {
+      const subj = (row.subject ?? "").trim();
+      return body ? `${subj}\n\n${body}` : subj;
+    }
+    return body || displayBody(row.subject || "");
+  }
+
+  function openBubbleMenu(e: MouseEvent, row: TimelineRow) {
+    e.preventDefault();
+    e.stopPropagation();
+    bubbleMenu = { x: e.clientX, y: e.clientY, text: copyTextFor(row) };
+  }
+
+  function closeBubbleMenu() {
+    bubbleMenu = null;
+  }
+
+  async function copyBubbleText() {
+    const text = bubbleMenu?.text ?? "";
+    closeBubbleMenu();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      showErr(e);
+    }
+  }
+
+  $effect(() => {
+    if (!bubbleMenu) return;
+    const onDown = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el?.closest("[data-bubble-menu]")) return;
+      closeBubbleMenu();
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  });
+
   /** Gmail / email_thread rows get subject title + quote fold; WA stays plain. */
   function isMailRow(row: {
     platform?: string | null;
@@ -827,6 +870,13 @@
   }
 
   function onKey(e: KeyboardEvent) {
+    if (bubbleMenu) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeBubbleMenu();
+      }
+      return;
+    }
     const t = e.target as HTMLElement | null;
     const digit = e.key >= "1" && e.key <= "5" ? e.key : /^Digit[1-5]$/.test(e.code) ? e.code.slice(5) : "";
     // AltGr is ctrlKey+altKey; do not treat it as ⌘/Ctrl (AZERTY/Turkish-Q type ~#{[ via AltGr+digit).
@@ -1372,6 +1422,7 @@
                       tabindex="0"
                       aria-label={`${utcTime(item.row.sent_at)} ${displayBody(item.row.body_text || item.row.subject || "").slice(0, 80)}`}
                       onclick={() => (tlIndex = item.index)}
+                      oncontextmenu={(e) => openBubbleMenu(e, item.row)}
                     >
                       <p class="caption flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         <time>{utcTime(item.row.sent_at)}</time>
@@ -1512,3 +1563,21 @@
     if (confirmRun) await confirmRun();
   }}
 />
+
+{#if bubbleMenu}
+  <div
+    class="fixed z-[200] min-w-[10rem] rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-md"
+    style="left: {bubbleMenu.x}px; top: {bubbleMenu.y}px"
+    data-bubble-menu
+    role="menu"
+  >
+    <button
+      type="button"
+      role="menuitem"
+      class="block w-full px-3 py-1.5 text-left text-sm hover:bg-accent"
+      onclick={() => void copyBubbleText()}
+    >
+      {t("copyText")}
+    </button>
+  </div>
+{/if}

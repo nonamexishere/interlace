@@ -26,4 +26,6 @@ export const tr: ChromePack = {
     "Bu arşiv iCloud, Dropbox veya Google Drive üzerinde duruyor gibi görünüyor.",
   doctorPaneLead:
     "Aynı kontroller interlace doctor. Bu pencere arşiv kilidini tutuyor — terminalde doctor çalıştırmadan önce kapatın.",
+  copyText: "Metni kopyala",
+  revealInFinder: "Finder'da göster",
 };

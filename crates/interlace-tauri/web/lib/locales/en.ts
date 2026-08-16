@@ -24,6 +24,8 @@ export const en = {
     "This archive looks like it sits on iCloud, Dropbox, or Google Drive.",
   doctorPaneLead:
     "Same checks as interlace doctor. This window already holds the archive lock — close it before running doctor in a terminal.",
+  copyText: "Copy text",
+  revealInFinder: "Reveal in Finder",
 } as const;
 
 export type ChromeKey = keyof typeof en;

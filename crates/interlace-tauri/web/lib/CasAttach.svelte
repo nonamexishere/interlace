@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api } from "./api";
+  import { t } from "./i18n";
 
   export type Attachment = {
     id: number;
@@ -152,6 +153,54 @@
     durations = { ...durations, [key]: d };
   }
 
+  let revealMenu = $state<{ x: number; y: number; hash: string } | null>(null);
+  let revealErr = $state("");
+
+  function openRevealMenu(e: MouseEvent, a: Attachment) {
+    const hash = hashOf(a);
+    if (!hash || a.omitted || a.missing) return;
+    e.preventDefault();
+    e.stopPropagation();
+    revealErr = "";
+    revealMenu = { x: e.clientX, y: e.clientY, hash };
+  }
+
+  function closeRevealMenu() {
+    revealMenu = null;
+  }
+
+  async function revealInFinder() {
+    const hash = revealMenu?.hash;
+    closeRevealMenu();
+    if (!hash) return;
+    try {
+      await api.revealCas(hash);
+    } catch (e) {
+      revealErr = e instanceof Error ? e.message : String(e ?? "");
+    }
+  }
+
+  $effect(() => {
+    if (!revealMenu) return;
+    const onDown = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el?.closest("[data-reveal-menu]")) return;
+      closeRevealMenu();
+    };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      closeRevealMenu();
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onEsc, true);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onEsc, true);
+    };
+  });
+
   function togglePlay(e: MouseEvent, key: string) {
     e.stopPropagation();
     const wrap = (e.currentTarget as HTMLElement).closest("[data-voice-note]");
@@ -177,7 +226,8 @@
 {#if items?.length}
   <ul class="mt-2 space-y-2">
     {#each items as a}
-      <li>
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <li oncontextmenu={(e) => openRevealMenu(e, a)}>
         {#if a.omitted}
           <p class="text-xs text-muted-foreground">Media omitted in this export</p>
         {:else if a.missing || !hashOf(a)}
@@ -337,4 +387,25 @@
       onclick={(e) => e.stopPropagation()}
     />
   </div>
+{/if}
+
+{#if revealMenu}
+  <div
+    class="fixed z-[200] min-w-[10rem] rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-md"
+    style="left: {revealMenu.x}px; top: {revealMenu.y}px"
+    data-reveal-menu
+    role="menu"
+  >
+    <button
+      type="button"
+      role="menuitem"
+      class="block w-full px-3 py-1.5 text-left text-sm hover:bg-accent"
+      onclick={() => void revealInFinder()}
+    >
+      {t("revealInFinder")}
+    </button>
+  </div>
+{/if}
+{#if revealErr}
+  <p class="mt-1 text-xs text-destructive">{revealErr}</p>
 {/if}
