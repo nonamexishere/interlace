@@ -5,7 +5,8 @@
 same integrity / rebuild-FTS / GC-CAS actions (confirm first) and the same
 **full** scan: SQLite + FTS plus every `attachments.cas_hash` via `cas_get`,
 so a missing blob still appears there. Opening the app is not that scan —
-People is not blocked on hashing `cas/`. Close the app before running the CLI
+People is not blocked on hashing `cas/`. The nav badge stays empty until the
+Doctor tab finishes that walk. Close the app before running the CLI
 against the same folder (exclusive flock).
 
 ```bash

@@ -472,27 +472,18 @@
     events = await api.linkEvents();
   }
 
-  async function refreshDoctorQuick() {
-    try {
-      doctor = await api.doctorIssuesQuick();
-    } catch {
-      doctor = [];
-    }
-  }
-
   async function applyStatus(next: Status) {
     st = next;
     setup = false;
     await refreshPeople();
     await refreshEvents();
-    // Badge: SQLite+FTS only. Do not await — opening must clear before a CAS walk.
-    if (view !== "doctor") {
-      void refreshDoctorQuick();
-    }
+    // Do not start doctorIssuesQuick here: badge stays empty until the Doctor
+    // tab. Integrity/GC onDone must keep the full list (do not clear doctor).
   }
 
   async function openPath(path: string) {
     err = "";
+    doctor = [];
     opening = true;
     try {
       await applyStatus(await api.open(path));
@@ -503,6 +494,7 @@
 
   async function createArchive() {
     err = "";
+    doctor = [];
     const r = region.trim();
     if (!r) {
       err = "phone-region is required (e.g. TR, US)";
