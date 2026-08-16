@@ -477,15 +477,13 @@
     setup = false;
     await refreshPeople();
     await refreshEvents();
-    try {
-      doctor = await api.doctorIssues();
-    } catch {
-      doctor = [];
-    }
+    // Do not start doctorIssuesQuick here: badge stays empty until the Doctor
+    // tab. Integrity/GC onDone must keep the full list (do not clear doctor).
   }
 
   async function openPath(path: string) {
     err = "";
+    doctor = [];
     opening = true;
     try {
       await applyStatus(await api.open(path));
@@ -496,6 +494,7 @@
 
   async function createArchive() {
     err = "";
+    doctor = [];
     const r = region.trim();
     if (!r) {
       err = "phone-region is required (e.g. TR, US)";

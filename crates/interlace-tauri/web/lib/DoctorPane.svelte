@@ -18,6 +18,7 @@
   } = $props();
 
   let busy = $state(false);
+  let scanning = $state(true);
   let lastOk = $state("");
   let confirmOpen = $state(false);
   let confirmTitle = $state("");
@@ -31,10 +32,13 @@
   } | null = null;
 
   async function load() {
+    scanning = true;
     try {
       issues = await api.doctorIssues();
     } catch (e) {
       onError(e);
+    } finally {
+      scanning = false;
     }
   }
 
@@ -84,7 +88,9 @@
     archive lock — close it before running doctor in a terminal.
   </p>
 
-  {#if issues.length === 0}
+  {#if scanning}
+    <p class="text-sm text-muted-foreground">Scanning SQLite, FTS, and referenced CAS blobs…</p>
+  {:else if issues.length === 0}
     <EmptyState
       title="No doctor issues"
       body="SQLite, FTS, and referenced CAS blobs look healthy. Unreferenced files still need GC CAS if you want them gone."
@@ -110,7 +116,7 @@
     <Button
       variant="outline"
       size="sm"
-      disabled={busy}
+      disabled={busy || scanning}
       onclick={() =>
         ask(
           "Run integrity check?",
@@ -125,7 +131,7 @@
     <Button
       variant="outline"
       size="sm"
-      disabled={busy}
+      disabled={busy || scanning}
       onclick={() =>
         ask(
           "Rebuild search index?",
@@ -140,7 +146,7 @@
     <Button
       variant="outline"
       size="sm"
-      disabled={busy}
+      disabled={busy || scanning}
       onclick={() =>
         ask(
           "Garbage-collect unused CAS files?",
@@ -152,7 +158,7 @@
     >
       GC CAS
     </Button>
-    <Button variant="ghost" size="sm" disabled={busy} onclick={load}>Refresh</Button>
+    <Button variant="ghost" size="sm" disabled={busy || scanning} onclick={load}>Refresh</Button>
   </div>
 
   <section class="mt-8 max-w-xl space-y-2 text-sm">

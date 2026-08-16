@@ -102,3 +102,61 @@ fn doctor_missing_cas_blob_is_issue() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// #136: optional quick path is SQLite+FTS only; full path still walks CAS.
+#[test]
+fn doctor_issues_quick_skips_cas_walk() {
+    let root = tmp_root();
+    let arch = init_archive(&root).unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('gmail_mbox', 't', '/t.mbox')",
+            [],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO import_runs(source_id, status) VALUES (1, 'done')",
+            [],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id) VALUES ('gmail', 'email_thread', 'g1')",
+            [],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO messages(
+                conversation_id, source_id, import_run_id, sent_at, sent_at_precision,
+                kind, body_text, idempotency_key
+             ) VALUES (1, 1, 1, '2024-01-01T00:00:00Z', 'second', 'text', 'x', 'k')",
+            [],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO cas_blobs(hash, size) VALUES ('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1)",
+            [],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO attachments(message_id, cas_hash, kind, omitted, missing)
+             VALUES (1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'file', 0, 0)",
+            [],
+        )
+        .unwrap();
+    let quick = arch.doctor_issues_quick().unwrap();
+    assert!(
+        !quick.iter().any(|i| i.contains("CAS blob missing")),
+        "quick path is SQLite+FTS only and must not report a missing CAS file, got {quick:?}"
+    );
+    let full = arch.doctor_issues().unwrap();
+    assert!(
+        full.iter().any(|i| i.contains("CAS blob missing")),
+        "full path must still report a missing CAS blob, got {full:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

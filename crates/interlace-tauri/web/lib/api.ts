@@ -149,6 +149,7 @@ export const api = {
   open: (path: string) => invoke<Status>("open", { path }),
   status: () => invoke<Status>("status"),
   doctorIssues: () => invoke<string[]>("doctor_issues_cmd"),
+  doctorIssuesQuick: () => invoke<string[]>("doctor_issues_quick_cmd"),
   doctorRun: (args: { integrity: boolean; rebuildFts: boolean; gcCas: boolean }) =>
     invoke<string[]>("doctor_run_cmd", args),
   casDataUrl: (hash: string) => invoke<string>("cas_data_url", { hash }),
