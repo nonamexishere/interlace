@@ -90,6 +90,17 @@ body {
   vertical-align: middle;
 }
 
+.voice-seek {
+  height: 0.35rem;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.voice-seek:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 /* Align Platform / Kind labels in the grouped filter panel */
 .timeline-filters .filter-section-label {
   min-width: 4.25rem;
