@@ -1,12 +1,13 @@
 # Agent / session handoff
 
-**Date:** 2026-08-13. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
+**Date:** 2026-08-16. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
 
 How we work: [`docs/hacking/pipeline.md`](pipeline.md) — test-author → impl → reviewer.
-The parent chat sequences; agents do not spawn agents.
+The parent chat sequences those roles as **separate agents**. Children do not
+spawn children. Ask before commit / push / merge.
 
 ## Keep this file current
 
@@ -64,7 +65,7 @@ Workflow: one issue → one PR `Fixes #N` → merge when CI jobs **`check`** +
 App holds exclusive flock. Close `interlace-app` / `tauri:dev` before CLI
 `import` / `doctor --integrity` / wipe.
 
-## Snapshot (2026-08-13)
+## Snapshot (2026-08-16)
 
 Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`,
 `v0.1.1` tags). Workspace version is still **0.1.1**. App crate
@@ -75,20 +76,19 @@ Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`,
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: branch `feat/ui-search-jump-to-message` for **#124**
-(search hit → person timeline at message) after **#123** person pick. Re-check
-with `git log -1` / `gh pr list`.
+HEAD when this was rewritten: `84f11d4` **Merge pull request #188** (`Fixes #135`
+copy text / reveal CAS in Finder). Re-check with `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
 
 | Field | Value |
 | --- | --- |
-| messages | ~37k |
+| messages | ~38k |
 | identities | ~1.7k |
 | persons_live | ~2.2k |
 | review_open | 0 |
 | region / owner | `TR` / Mustafa |
-| last import | 2026-08-11 (done) |
+| last import | 2026-08-12 (done) |
 
 Treat counts as approximate; never paste real names or message text here.
 
@@ -132,7 +132,17 @@ Treat counts as approximate; never paste real names or message text here.
 | #122 | Search conversation-kind select (Any / DM / Group / Email thread) |
 | #123 | Search person pick by display name (not numeric id) |
 | #124 | Search hit jumps to that message on the person timeline |
+| #125 / PR #177 | Search attachment filter (has:media / omitted / missing) |
+| #126 / PR #178 | Search highlight tokens without innerHTML of the body |
 | #127 / PR #146 | Merge by picking a person (no raw ids) |
+| #128 / PR #179 | Review card shows both sides’ identifiers |
+| #129 / PR #180 | Window title follows the open person / view |
+| #130 / PR #181 | Native macOS menu (Open, Import, View, Quit; no updater) |
+| #131 / PR #182 | en+tr chrome locale pack from OS language |
+| #132 / PR #183 | Keyboard map ⌘F / Esc / ⌘1–5 (AltGr is not Ctrl) |
+| #133 / PR #185 | a11y: people listbox, timeline articles, reduced motion |
+| #134 / PR #186 | Drop local ZIP/mbox onto the window (reject URLs) |
+| #135 / PR #188 | Copy bubble text; reveal CAS blob in Finder (hash only) |
 | #147 / PR #148 | Exact folded Contacts+WA names → review, never auto-merge |
 | #149 / PR #150 | Review card: both sides’ samples / counts |
 | #151 / PR #152 | Accept can fold every same-name person (n-way pick) |
@@ -147,15 +157,16 @@ Epic **#108**. Do **not** start Phase 1.1 (#57–#69) or Phase 3/4 (#72–#82)
 while 2.1 is the product focus. Prefer one issue → one PR; thin UI chrome does
 not need the full three-role loop unless behavior is load-bearing.
 
-### Suggested next (hygiene polish first, then epic order)
+### Suggested next (milestone #6 leftover, then follow-ups)
 
 | # | Note |
 | --- | --- |
-| **#125**–**#126** | Search: attachment filter on `feat/search-attachment-filter` (#125), then safe highlight (#126); #124 jump-to-hit done |
-| **#128** | Review card shows both sides’ identifiers (not only names) |
-| **#129**–**#136** | Window title, macOS menu, en+tr chrome, keyboard map, a11y, drag-drop, copy/reveal, defer doctor CAS |
+| **#136** | Defer doctor CAS walk so large archives open fast (People first; full hash walk on Doctor). Next coding. |
+| **#170** | Voice-note seek bar (local only). Follow-up to #119; not on milestone #6. |
+| **#184** | Shorter human times + VoiceOver. Parked after #133; not on milestone #6. |
 
-Full board: issue **#108** and milestone [Phase 2.1 product UI](https://github.com/nonamexishere/interlace/milestone/6).
+Full board: issue **#108** and milestone [Phase 2.1 product UI](https://github.com/nonamexishere/interlace/milestone/6)
+(only **#136** + epic **#108** still open there).
 
 ### Open — hygiene / parked (not product coding)
 
@@ -169,7 +180,7 @@ Full board: issue **#108** and milestone [Phase 2.1 product UI](https://github.c
 
 ## Recommended next steps
 
-1. Next coding after **#125** merge: **#126** (safe highlight) — continue **#108** search board, then app chrome (#128–#136).
+1. Next coding: **#136** (defer doctor CAS scan on open). Then **#170** if still on 2.1. **#184** stays parked unless Mustafa unparks it.
 2. Optional hygiene PR when idle: rewrite **#52** “now” table; decide **#84**.
 3. Do **not** start 1.1 / P3 / P4. Do **not** cut `app-v*` without asking.
 
@@ -240,8 +251,9 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 ## New session prompt (paste)
 
 > Read `docs/hacking/handoff.md` and `docs/hacking/pipeline.md`. Sequence
-> test-author → impl → reviewer when load-bearing. Do not spawn agents from a
-> child. Product now is Phase 2.1 (#108): next coding after **#125** is **#126**
-> (safe highlight) then remaining board. Do not start 1.1 / P3 / P4. Do not dump chat bodies.
-> Ask before crates.io, `v*`, or `app-v*` tags. After merges, update this handoff
-> in the same session.
+> test-author → impl → reviewer as **separate agents** when load-bearing.
+> Do not spawn agents from a child. Ask before commit / push / merge.
+> Product now is Phase 2.1 (#108): next coding is **#136** (defer doctor CAS),
+> then **#170**. **#184** is parked. Do not start 1.1 / P3 / P4. Do not dump
+> chat bodies. Ask before crates.io, `v*`, or `app-v*` tags. After merges,
+> update this handoff in the same session.
