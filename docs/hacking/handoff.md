@@ -30,8 +30,9 @@ OSS local-first offline desktop archive. Rust workspace + Tauri 2 macOS app.
 SQLite+FTS5, CAS BLAKE3 (`cas/ab/cd/<hash>`). No server, no sync, no outbound
 HTTP client (cargo-deny bans `reqwest`/`hyper`/`tokio` on core+cli; Tauri may
 use `tokio` without `net`). Phase 1 = CLI; Phase 2 = Svelte 5 desktop UI
-(UI0–UI8 done). **Phase 2.1 is closed** (epic #108, milestone 6). No next
-product ticket until Mustafa picks 1.1 / 3 / 4 / `app-v*`.
+(UI0–UI8 done). **Phase 2.1 is closed** (epic #108, milestone 6). First
+unsigned app release is **`app-v0.1.1`**. No next product ticket until
+Mustafa picks 1.1 / 3 / 4.
 
 Normative spec: [`docs/design/DESIGN.md`](../design/DESIGN.md).
 Roadmap index: [`docs/hacking/roadmap.md`](roadmap.md) and issue **#52**.
@@ -70,16 +71,18 @@ App holds exclusive flock. Close `interlace-app` / `tauri:dev` before CLI
 
 Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`,
 `v0.1.1` tags). Workspace version is still **0.1.1**. App crate
-`interlace-tauri` is `publish = false`. **No `app-v*` tag yet** (unsigned
-`.app`/`.dmg` can be built locally; not cut as a GitHub Release).
+`interlace-tauri` is `publish = false`. **`app-v0.1.1` is tagged** (unsigned
+Apple Silicon `.app.zip` + `.dmg` on
+[GitHub Releases](https://github.com/nonamexishere/interlace/releases/tag/app-v0.1.1);
+ad-hoc, not notarized). Ask before another `app-v*` / `v*` / crates.io publish.
 
 `master` is **protected**: required checks `check` + `tauri`, strict,
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `8bc2825` **Merge pull request #194** (`Fixes #184`
-short people-list time). Epic **#108** and milestone 6 are **closed**.
-Re-check with `git log -1` / `gh pr list`.
+HEAD when this was rewritten: `39030f9` **Merge pull request #195** (`Fixes #52`
+`Fixes #84`) plus tag **`app-v0.1.1`**. Epic **#108**, milestone 6, and the
+Phase 1 CLI milestone are **closed**. Re-check with `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
 
@@ -162,21 +165,17 @@ No Phase 2.1 ticket. Do **not** start Phase 1.1 (#57–#69) or Phase 3/4
 (#72–#82) until Mustafa picks one. Prefer one issue → one PR; thin docs
 do not need the three-role loop.
 
-### Open — hygiene / parked (not product coding)
+### Open — parked (not product coding)
 
 | # | Note |
 | --- | --- |
-| **#52** | Roadmap index — living copy is [`roadmap.md`](roadmap.md) |
 | **#17** | Phase 1.1 umbrella — parked; not blocked; do not start children |
-| **#84** | Satellite mirror READMEs — [mirrors.md](mirrors.md) |
-| Phase 1 CLI milestone | Close when #84 is done |
 | Phase 1.1 / 3 / 4 | Parked. Do not start. |
 
 ## Recommended next steps
 
-1. After this hygiene PR: Mustafa picks **1.1**, **Phase 3**, **Phase 4**, or
-   **`app-v*`**. Do not invent a 2.2 epic.
-2. Do **not** start 1.1 / P3 / P4 unprompted. Do **not** cut `app-v*` without asking.
+1. Mustafa picks **1.1**, **Phase 3**, or **Phase 4**. Do not invent a 2.2 epic.
+2. Do **not** start 1.1 / P3 / P4 unprompted. Ask before another `app-v*` / `v*` / crates.io.
 
 ## Commands (copy-paste)
 
@@ -205,7 +204,7 @@ Folder of WA ZIPs: CLI is **one file per** `import whatsapp <FILE>`. The app
 Import picker accepts the folder (UI5 fix).
 
 Do **not** `gh pr merge` old PRs. Do **not** `cargo publish` / tag `v*` or
-`app-v*` without asking. `app-v0.1.1` is still untagged.
+another `app-v*` without asking. `app-v0.1.1` is the current unsigned app.
 
 ## Review tab
 
@@ -247,7 +246,8 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > Read `docs/hacking/handoff.md` and `docs/hacking/pipeline.md`. Sequence
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
-> Product track: Phase 2.1 is closed (#108, milestone 6). No next product
-> ticket until Mustafa picks 1.1 / P3 / P4 / `app-v*`. Do not start those
-> unprompted. Do not dump chat bodies. Ask before crates.io, `v*`, or
-> `app-v*` tags. After merges, update this handoff in the same session.
+> Product track: Phase 2.1 is closed (#108, milestone 6). App release
+> `app-v0.1.1` is on GitHub Releases. No next product ticket until Mustafa
+> picks 1.1 / P3 / P4. Do not start those unprompted. Do not dump chat
+> bodies. Ask before crates.io, `v*`, or another `app-v*` tag. After
+> merges, update this handoff in the same session.
