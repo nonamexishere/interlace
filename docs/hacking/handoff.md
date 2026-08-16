@@ -30,10 +30,11 @@ OSS local-first offline desktop archive. Rust workspace + Tauri 2 macOS app.
 SQLite+FTS5, CAS BLAKE3 (`cas/ab/cd/<hash>`). No server, no sync, no outbound
 HTTP client (cargo-deny bans `reqwest`/`hyper`/`tokio` on core+cli; Tauri may
 use `tokio` without `net`). Phase 1 = CLI; Phase 2 = Svelte 5 desktop UI
-(UI0–UI8 done). **Active product track: Phase 2.1** (chat-shaped archive UI).
+(UI0–UI8 done). **Phase 2.1 is closed** (epic #108, milestone 6). No next
+product ticket until Mustafa picks 1.1 / 3 / 4 / `app-v*`.
 
 Normative spec: [`docs/design/DESIGN.md`](../design/DESIGN.md).
-Roadmap index: issue **#52** (body is stale — rewrite when hygiene time allows).
+Roadmap index: [`docs/hacking/roadmap.md`](roadmap.md) and issue **#52**.
 Workflow: one issue → one PR `Fixes #N` → merge when CI jobs **`check`** +
 **`tauri`** are green. Small conventional commits.
 
@@ -76,8 +77,9 @@ Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`,
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `ca91e78` **Merge pull request #192** (`Fixes #170`
-voice-note seek bar). Re-check with `git log -1` / `gh pr list`.
+HEAD when this was rewritten: `8bc2825` **Merge pull request #194** (`Fixes #184`
+short people-list time). Epic **#108** and milestone 6 are **closed**.
+Re-check with `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
 
@@ -145,44 +147,36 @@ Treat counts as approximate; never paste real names or message text here.
 | #135 / PR #188 | Copy bubble text; reveal CAS blob in Finder (hash only) |
 | #136 / PR #190 | Defer doctor CAS walk until the Doctor tab |
 | #170 / PR #192 | Voice-note seek bar (local scrub) |
+| #184 / PR #194 | Short people-list time + VoiceOver (`11 Aug 14:32`) |
 | #147 / PR #148 | Exact folded Contacts+WA names → review, never auto-merge |
 | #149 / PR #150 | Review card: both sides’ samples / counts |
 | #151 / PR #152 | Accept can fold every same-name person (n-way pick) |
 | #143 / PR #144 | Takeout mbox split on `\nFrom ` (not blank-line-only) |
 | #154 / PR #155 | Reviewer must score scope vs the issue |
 
-Phase 2.1 milestone (#6): verify with `gh` (counts move as issues close).
+Phase 2.1 milestone (#6): **closed**.
 
-## Open — product now (Phase 2.1)
+## Open — product now
 
-Epic **#108**. Do **not** start Phase 1.1 (#57–#69) or Phase 3/4 (#72–#82)
-while 2.1 is the product focus. Prefer one issue → one PR; thin UI chrome does
-not need the full three-role loop unless behavior is load-bearing.
-
-### This PR — #184 (then close the epic)
-
-| # | Note |
-| --- | --- |
-| **#184** | This PR (`feat/ui-human-time`): short human times + VoiceOver. After merge, close epic **#108** and milestone 6. Next is not another product ticket. |
-
-Full board: issue **#108** and milestone [Phase 2.1 product UI](https://github.com/nonamexishere/interlace/milestone/6)
-(only epic **#108** still open there — every listed child ticket is closed).
+No Phase 2.1 ticket. Do **not** start Phase 1.1 (#57–#69) or Phase 3/4
+(#72–#82) until Mustafa picks one. Prefer one issue → one PR; thin docs
+do not need the three-role loop.
 
 ### Open — hygiene / parked (not product coding)
 
 | # | Note |
 | --- | --- |
-| **#52** | Roadmap “now” table still points at #109 — rewrite when convenient |
+| **#52** | Roadmap index — living copy is [`roadmap.md`](roadmap.md) |
 | **#17** | Phase 1.1 umbrella — parked; not blocked; do not start children |
-| **#84** | Satellite mirror READMEs — leftover docs on Phase 1 CLI milestone |
-| Phase 1 CLI milestone | Still open with 1 leftover (#84); close milestone when #84 is done or moved |
+| **#84** | Satellite mirror READMEs — [mirrors.md](mirrors.md) |
+| Phase 1 CLI milestone | Close when #84 is done |
 | Phase 1.1 / 3 / 4 | Parked. Do not start. |
 
 ## Recommended next steps
 
-1. This PR is **#184**. After it merges: close epic **#108** and milestone 6. Next is not another product ticket. Do **not** start 1.1 / P3 / P4 just because 2.1 is done.
-2. Optional hygiene PR when idle: rewrite **#52** “now” table; decide **#84**.
-3. Do **not** start 1.1 / P3 / P4. Do **not** cut `app-v*` without asking.
+1. After this hygiene PR: Mustafa picks **1.1**, **Phase 3**, **Phase 4**, or
+   **`app-v*`**. Do not invent a 2.2 epic.
+2. Do **not** start 1.1 / P3 / P4 unprompted. Do **not** cut `app-v*` without asking.
 
 ## Commands (copy-paste)
 
@@ -253,8 +247,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > Read `docs/hacking/handoff.md` and `docs/hacking/pipeline.md`. Sequence
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
-> Product now is Phase 2.1 (#108): **#184** is this PR (human times +
-> VoiceOver). After merge, close #108 and milestone 6. Next is not another
-> product ticket. Do not start 1.1 / P3 / P4. Do not dump
-> chat bodies. Ask before crates.io, `v*`, or `app-v*` tags. After merges,
-> update this handoff in the same session.
+> Product track: Phase 2.1 is closed (#108, milestone 6). No next product
+> ticket until Mustafa picks 1.1 / P3 / P4 / `app-v*`. Do not start those
+> unprompted. Do not dump chat bodies. Ask before crates.io, `v*`, or
+> `app-v*` tags. After merges, update this handoff in the same session.
