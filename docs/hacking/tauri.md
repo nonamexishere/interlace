@@ -36,7 +36,8 @@ npm run tauri:build
 python3 ../../pipeline/tools/gate_app_bundle.py
 ```
 
-Tags `app-v*` (not `v*`) upload those artifacts. See [release.md](release.md).
+Tags `app-v*` (not `v*`) upload those artifacts. First ship: **`app-v0.1.1`**.
+See [release.md](release.md).
 
 Binary name: `interlace-app`. Not in workspace `default-members`.
 Production CSP allows **only** Tauri IPC (`ipc:` / `ipc.localhost`), not the

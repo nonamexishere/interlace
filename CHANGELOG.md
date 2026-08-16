@@ -46,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **Allow absorbing self into this person**. Picker rows show last-activity
   preview. Confirm names come from the people list, not a lagging header.
   Names still never auto-merge.
+- First unsigned GitHub Release **`app-v0.1.1`**: `Interlace.app.zip` and
+  `Interlace_0.1.1_aarch64.dmg` (ad-hoc, not notarized). Not crates.io.
 
 ### Fixed
 
