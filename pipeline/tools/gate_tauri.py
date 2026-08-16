@@ -138,6 +138,12 @@
 #     background GC on open (gc_cas / GC thread not started from
 #     applyStatus/open). Docs: open is not blocked on hashing cas/; Doctor
 #     tab still finds missing blobs.
+#184: people-list last_activity_at is a short human time (e.g. 11 Aug 14:32 UTC)
+#     for display and VoiceOver / aria-label (name + short time), not raw
+#     2024-08-11T14:32:00Z. Keep ISO on archive / API JSON types. Do not
+#     t() message bodies. Not a date-picker locale pack. Do not put
+#     “yesterday” in App.svelte (#112 greps the file). Docs: docs/user/app.md
+#     — people list / VoiceOver use a short time, not the raw ISO.
 """
 
 from __future__ import annotations
@@ -12094,6 +12100,279 @@ def assert_defer_doctor_cas(crate: Path) -> None:
         )
 
 
+# #184 — people list / VoiceOver: short human time, not raw ISO last_activity_at.
+_HUMAN_TIME_HELPERS = (
+    "humanTime",
+    "shortTime",
+    "formatLastActivity",
+    "utcHumanTime",
+    "activityTime",
+    "lastActivityLabel",
+    "formatActivityAt",
+    "shortActivity",
+    "humanLastActivity",
+    "utcShortTime",
+    "formatUtcShort",
+    "shortHumanTime",
+    "formatHumanTime",
+    "humanActivity",
+    "utcActivity",
+    "formatUtcActivity",
+)
+_HUMAN_TIME_CALL = re.compile(
+    r"\b(?:" + "|".join(_HUMAN_TIME_HELPERS) + r")\s*\("
+)
+_MONTH_SHORT = re.compile(
+    r"("
+    r"[\"'](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\"']"
+    r"|month\s*:\s*[\"']short[\"']"
+    r")",
+    re.I,
+)
+_HM_PART = re.compile(
+    r"("
+    r"getUTCHours"
+    r"|getUTCMinutes"
+    r"|slice\s*\(\s*11\s*,\s*16\s*\)"
+    r"|slice\s*\(\s*t\s*\+\s*1\s*,\s*t\s*\+\s*6\s*\)"
+    r"|hour\s*:\s*[\"']2-digit[\"']"
+    r"|minute\s*:\s*[\"']2-digit[\"']"
+    r")",
+)
+_UTC_FMT = re.compile(
+    r"("
+    r"getUTC(?:Date|Month|Hours|Minutes|FullYear)"
+    r"|timeZone\s*:\s*[\"']UTC[\"']"
+    r"|split\s*\(\s*[\"']T[\"']\s*\)"
+    r"|indexOf\s*\(\s*[\"']T[\"']\s*\)"
+    r"|\bUTC\b"
+    r")",
+)
+_DATE_PICKER = re.compile(
+    r"("
+    r"\bDatePicker\b"
+    r"|date-picker"
+    r"|datepicker"
+    r"|flatpickr"
+    r"|litepicker"
+    r"|air-datepicker"
+    r"|type\s*=\s*[\"']date[\"']"
+    r"|type\s*=\s*[\"']datetime-local[\"']"
+    r")",
+    re.I,
+)
+_BODY_T_CALL = re.compile(
+    r"\bt\s*\(\s*(?:[\w.$]+\.)?(?:body_text|bodyText|preview|snippet|displayBody)\b"
+)
+
+
+def _svelte_interpolations(src: str) -> list[str]:
+    """Inner text of `{…}` markup interpolations (not {#if} / {:else} / {@const})."""
+    out: list[str] = []
+    i = 0
+    n = len(src)
+    while i < n:
+        j = src.find("{", i)
+        if j < 0:
+            break
+        nxt = src[j + 1 : j + 3]
+        if nxt[:1] in {"#", "/", ":", "@"}:
+            i = j + 1
+            continue
+        end = _match_closer(src, j)
+        if end < 0:
+            break
+        out.append(src[j + 1 : end])
+        i = end + 1
+    return out
+
+
+def _interp_dumps_iso_activity(expr: str) -> bool:
+    """True if last_activity_at is stringified (raw T…Z), not passed to a formatter."""
+    if not re.search(r"\blast_activity_at\b", expr):
+        return False
+    if re.search(r"[A-Za-z_]\w*\s*\([^)]*\blast_activity_at\b", expr):
+        return False
+    # Truthiness for a separator (`p.last_activity_at && p.preview ? " · " : ""`).
+    if re.search(r"last_activity_at\s*&&", expr) and not re.search(
+        r"last_activity_at\s*(?:\?\?|\|\|)", expr
+    ):
+        return False
+    return True
+
+
+def _attr_brace_values(src: str, attr: str) -> list[str]:
+    out: list[str] = []
+    for m in re.finditer(rf"{re.escape(attr)}\s*=\s*\{{", src, re.I):
+        start = m.end() - 1
+        end = _match_closer(src, start)
+        if end > start:
+            out.append(src[start + 1 : end])
+    return out
+
+
+def _short_time_formatter_ok(logic: str) -> bool:
+    """A helper (or inline) turns ISO into a short UTC time like `11 Aug 14:32`."""
+    for name in _HUMAN_TIME_HELPERS:
+        body = _ts_function_body(logic, name) or _function_body(logic, name)
+        if body and _MONTH_SHORT.search(body) and _HM_PART.search(body):
+            return True
+    if _MONTH_SHORT.search(logic) and _HM_PART.search(logic) and _UTC_FMT.search(logic):
+        return True
+    return False
+
+
+def _people_uses_short_time(people_each: str) -> bool:
+    if _HUMAN_TIME_CALL.search(people_each):
+        return True
+    for expr in _svelte_interpolations(people_each):
+        if re.search(r"[A-Za-z_]\w*\s*\([^)]*\blast_activity_at\b", expr):
+            return True
+    return False
+
+
+def assert_human_time_people(crate: Path) -> None:
+    """#184: people list / VoiceOver show a short time, not raw ISO last_activity_at.
+
+    Visible sidebar options and the name VoiceOver reads are name + a short
+    time (e.g. 11 Aug 14:32), not 2024-08-11T14:32:00Z. Archive / api.ts JSON
+    still carries ISO last_activity_at. Do not t() bodies. Not a date-picker
+    locale pack. Do not require “yesterday” in App.svelte (#112).
+    """
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#184: App.svelte required (people list last_activity_at display)")
+    app = app_path.read_text()
+    logic = _web_logic(crate)
+    chrome, people_each = _people_list_a11y_surfaces(crate)
+    if not people_each.strip():
+        markup = _strip_html_comments(_svelte_markup(app))
+        people_each = _people_each_block(markup)
+        chrome = markup
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+
+    if not _PEOPLE_EACH.search(app) and not _PEOPLE_EACH.search(chrome):
+        fail("#184: people sidebar must still {#each filtered …} as person options")
+    if not people_each.strip():
+        fail("#184: people list {#each filtered} body missing")
+
+    # 1) Still show last_activity_at — as a short time, not dropped.
+    if not re.search(r"\blast_activity_at\b", people_each):
+        fail(
+            "#184: people list must still show last_activity_at "
+            "(as a short time, not drop the activity timestamp)"
+        )
+
+    # 2) Visible option text is not the raw ISO T…Z string.
+    raw_dump = any(_interp_dumps_iso_activity(expr) for expr in _svelte_interpolations(people_each))
+    if raw_dump:
+        fail(
+            "#184: people list must not display raw ISO last_activity_at "
+            "(T…Z / 2024-08-11T14:32:00Z); use a short time (e.g. 11 Aug 14:32)"
+        )
+
+    # 3) A formatter exists (month + hour:minute; UTC / ISO prefix). Helper
+    #    may live in another web/ file. Do not require “yesterday” in App.svelte.
+    if not _short_time_formatter_ok(logic):
+        fail(
+            "#184: format last_activity_at as a short UTC time "
+            "(e.g. 11 Aug 14:32) — month + hour:minute, not YYYY-MM-DDTHH:MM:SSZ"
+        )
+    if not _people_uses_short_time(people_each):
+        fail(
+            "#184: people options must pass last_activity_at through a short-time "
+            "helper (e.g. humanTime(p.last_activity_at)), not interpolate the ISO"
+        )
+
+    # 4) VoiceOver: name + short time, not 2024-08-11T14:32:00Z.
+    if not re.search(r"\b(?:display_name|displayName|personLabel|personName)\b", people_each):
+        fail(
+            "#184: VoiceOver on a person must hear the name plus a short time "
+            "(keep display_name / personLabel on the option)"
+        )
+    labels = _attr_brace_values(people_each, "aria-label")
+    if labels:
+        for lab in labels:
+            has_name = bool(
+                re.search(r"display_name|displayName|personLabel|personName", lab)
+            )
+            wrapped = bool(
+                re.search(r"[A-Za-z_]\w*\s*\([^)]*\blast_activity_at\b", lab)
+                or _HUMAN_TIME_CALL.search(lab)
+            )
+            raw_in_label = bool(re.search(r"\blast_activity_at\b", lab)) and not wrapped
+            if not has_name:
+                fail(
+                    "#184: VoiceOver aria-label must include the person name "
+                    "plus a short time"
+                )
+            if raw_in_label:
+                fail(
+                    "#184: VoiceOver must not read raw ISO last_activity_at "
+                    "(2024-08-11T14:32:00Z) — aria-label is name + short time"
+                )
+            if not wrapped:
+                fail(
+                    "#184: VoiceOver aria-label must be the name plus a short time "
+                    "(not 2024-08-11T14:32:00Z)"
+                )
+
+    # 5) Archive / API JSON types still carry ISO last_activity_at.
+    api_path = crate / "web" / "lib" / "api.ts"
+    if not api_path.is_file():
+        fail("#184: web/lib/api.ts required (Person.last_activity_at stays ISO)")
+    api = api_path.read_text()
+    if not re.search(
+        r"export type Person\s*=\s*\{[^}]*\blast_activity_at\??\s*:\s*string",
+        api,
+        re.S,
+    ):
+        fail(
+            "#184: API Person JSON must still carry ISO last_activity_at "
+            "(do not strip the field from api.ts)"
+        )
+
+    # 6) Do not t() message bodies or previews.
+    helpers = _chrome_helper_names(logic)
+    body_blob = logic + "\n" + app
+    if _chrome_helper_on_body(body_blob, helpers) or _BODY_T_CALL.search(body_blob):
+        fail("#184: do not t() message bodies or previews (t(body_text) / t(preview))")
+
+    # 7) Not a date-picker locale pack.
+    if _DATE_PICKER.search(logic) or _DATE_PICKER.search(app):
+        fail("#184: not a date-picker locale pack")
+
+    # 8) Docs: people list / VoiceOver use a short time, not the raw ISO.
+    if not dtxt.strip():
+        fail("#184: docs/user/app.md required (people list / VoiceOver short time)")
+    if not re.search(
+        r"("
+        r"(?:people list|VoiceOver).{0,220}short(?:er)?(?: human)? time"
+        r"|short(?:er)?(?: human)? time.{0,220}(?:people list|VoiceOver)"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail(
+            "#184: docs/user/app.md must say people list / VoiceOver use a "
+            "short time, not the raw ISO"
+        )
+    if not re.search(
+        r"("
+        r"not (?:the |a )?raw ISO"
+        r"|not (?:the |a )?raw.{0,24}ISO"
+        r"|not .{0,40}2024-08-11T"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail(
+            "#184: docs/user/app.md must say people list / VoiceOver time is "
+            "not the raw ISO"
+        )
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -12209,6 +12488,7 @@ def main() -> None:
     assert_chrome_locale(crate)
     assert_keyboard_map(crate)
     assert_a11y_listbox_focus_motion(crate)
+    assert_human_time_people(crate)
     assert_drag_drop_import(crate)
     assert_copy_reveal_cas(crate)
     assert_defer_doctor_cas(crate)
