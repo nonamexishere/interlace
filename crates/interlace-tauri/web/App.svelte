@@ -1077,6 +1077,7 @@
       onChanged={async () => {
         await applyStatus(await api.status());
       }}
+      onGoImport={() => (view = "import")}
     />
   {:else if st && view === "import"}
     <ImportPane
@@ -1092,6 +1093,7 @@
       onDone={async () => {
         await applyStatus(await api.status());
       }}
+      onGoPeople={() => (view = "people")}
     />
   {:else if st}
     <div class="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
@@ -1170,11 +1172,18 @@
             <EmptyState
               title="No people yet"
               body="Import a WhatsApp ZIP or Takeout from the Import tab. Name-only chats become people after import."
+              actionLabel="Import"
+              onAction={() => (view = "import")}
             />
           </div>
         {:else if filtered.length === 0}
           <div class="mt-3 min-w-0">
-            <EmptyState title="No match" body="Clear the filter or try another spelling." />
+            <EmptyState
+              title="No match"
+              body="Clear the filter or try another spelling."
+              actionLabel="Clear filter"
+              onAction={() => (filter = "")}
+            />
           </div>
         {/if}
         <ul class="mt-3 min-w-0 space-y-1 text-xs">
@@ -1370,6 +1379,8 @@
             <EmptyState
               title="Select a person"
               body="Click a name on the left. Groups stay hidden until you tick include groups."
+              actionLabel="People"
+              onAction={() => document.getElementById("person-filter")?.focus()}
             />
           </div>
         {:else if filteredTimeline.length === 0}
@@ -1379,6 +1390,24 @@
               body={timeline.length === 0
                 ? "This person may only appear in groups. Tick include groups, or import more sources."
                 : "Nothing matches the current platform or kind filter. Try All, or another chip."}
+              actionLabel={timeline.length > 0
+                ? "Show all"
+                : includeGroups
+                  ? "Import"
+                  : "Include groups"}
+              onAction={() => {
+                if (timeline.length > 0) {
+                  platformFilter = "all";
+                  kindFilter = "all";
+                  return;
+                }
+                if (selectedId && !includeGroups) {
+                  includeGroups = true;
+                  selectPerson(selectedId);
+                  return;
+                }
+                view = "import";
+              }}
             />
           </div>
         {/if}
@@ -1540,6 +1569,8 @@
       <EmptyState
         title="No match"
         body="Try another spelling, or tick Allow absorbing self into this person."
+        actionLabel="Clear filter"
+        onAction={() => (mergeQuery = "")}
       />
     {:else}
       <ul class="max-h-64 space-y-0.5 overflow-y-auto">

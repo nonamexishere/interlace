@@ -4,6 +4,7 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import EmptyState from "./EmptyState.svelte";
 
   let {
     onError,
@@ -82,6 +83,16 @@
     Folder/file picker only — no URLs. WhatsApp: pick one .zip <em>or</em> a folder of zips.
     Takeout: pick the Takeout directory. Bodies are not dumped here.
   </p>
+  {#if !path && progress.status !== "running"}
+    <div class="mb-4 max-w-lg">
+      <EmptyState
+        title="No file selected"
+        body="Pick a WhatsApp ZIP, Takeout folder, mbox, or contacts file. Folder picker only — no URLs."
+        actionLabel="Pick file"
+        onAction={() => pick(false)}
+      />
+    </div>
+  {/if}
   <div class="max-w-lg space-y-3">
     <div class="space-y-1.5">
       <Label for="kind">Kind</Label>

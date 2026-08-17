@@ -9,7 +9,12 @@
   let {
     onError,
     onChanged,
-  }: { onError: (e: unknown) => void; onChanged: () => Promise<void> } = $props();
+    onGoImport,
+  }: {
+    onError: (e: unknown) => void;
+    onChanged: () => Promise<void>;
+    onGoImport: () => void;
+  } = $props();
 
   let rows = $state<ReviewRow[]>([]);
   let detail = $state<ReviewShow | null>(null);
@@ -154,6 +159,8 @@
     <EmptyState
       title="Nothing to review"
       body="Name-only WhatsApp matches show up here. They never auto-merge. Import Contacts if you expect a queue."
+      actionLabel="Import"
+      onAction={onGoImport}
     />
   {:else}
     <ul class="mb-4 space-y-1">
