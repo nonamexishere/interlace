@@ -274,7 +274,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > Do not spawn agents from a child. Ask before commit / push / merge.
 > Product track: Phase 2.2 UI/UX polish (#197). Read
 > `docs/design/UI-DESIGN.md`. Next coding is **#204** (toasts / recoverable
-> errors). Do not
-> start 1.1 / P3 / P4. Do not dump chat bodies. Ask before crates.io,
+> errors). Do not start 1.1 / P3 / P4. Do not dump chat bodies. Ask before
+> crates.io,
 > `v*`, or another `app-v*` tag. After merges, update this handoff
 > in the same session.
