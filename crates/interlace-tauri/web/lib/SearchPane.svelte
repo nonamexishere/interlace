@@ -5,6 +5,7 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { Skeleton } from "$lib/components/ui/skeleton/index.js";
   import EmptyState from "./EmptyState.svelte";
   import CasAttach from "./CasAttach.svelte";
   import { splitSnippet } from "./snippetHighlight";
@@ -374,7 +375,13 @@
   </form>
 
   {#if searching}
-    <p class="text-sm text-muted-foreground">Searching…</p>
+    <div class="space-y-2" aria-hidden="true">
+      <Skeleton class="h-4 w-[90%]" />
+      <Skeleton class="h-3 w-[64%]" />
+      <Skeleton class="h-4 w-[82%]" />
+      <Skeleton class="h-3 w-[50%]" />
+      <Skeleton class="h-4 w-[74%]" />
+    </div>
   {:else if !searched}
     <EmptyState
       title="Type a query"

@@ -14,6 +14,7 @@
   import { Label } from "$lib/components/ui/label/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
+  import { Skeleton } from "$lib/components/ui/skeleton/index.js";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
   import SearchPane from "$lib/SearchPane.svelte";
   import ReviewPane from "$lib/ReviewPane.svelte";
@@ -65,6 +66,7 @@
   let booting = $state(true);
   let opening = $state(false);
   let tlLoading = $state(false);
+  let peopleLoading = $state(true);
   let tlGen = 0;
   let doctor = $state<string[]>([]);
   let pinLatestObs: ResizeObserver | null = null;
@@ -469,7 +471,12 @@
   }
 
   async function refreshPeople() {
-    people = await api.people();
+    peopleLoading = true;
+    try {
+      people = await api.people();
+    } finally {
+      peopleLoading = false;
+    }
   }
 
   async function refreshEvents() {
@@ -1167,7 +1174,16 @@
             </li>
           {/each}
         </ul>
-        {#if people.length === 0}
+        {#if peopleLoading}
+          <div class="mt-3 min-w-0 space-y-2" aria-hidden="true">
+            <Skeleton class="h-4 w-[88%]" />
+            <Skeleton class="h-3 w-[64%]" />
+            <Skeleton class="h-4 w-[80%]" />
+            <Skeleton class="h-3 w-[52%]" />
+            <Skeleton class="h-4 w-[72%]" />
+            <Skeleton class="h-3 w-[58%]" />
+          </div>
+        {:else if people.length === 0}
           <div class="mt-3 min-w-0">
             <EmptyState
               title="No people yet"
@@ -1373,7 +1389,13 @@
           onscroll={onTimelineScroll}
         >
         {#if tlLoading}
-          <p class="pt-2 text-sm text-muted-foreground">Loading timeline…</p>
+          <div class="space-y-2 pt-2" aria-hidden="true">
+            <Skeleton class="h-4 w-[92%]" />
+            <Skeleton class="h-3 w-[68%]" />
+            <Skeleton class="h-4 w-[84%]" />
+            <Skeleton class="h-3 w-[56%]" />
+            <Skeleton class="h-4 w-[76%]" />
+          </div>
         {:else if !selectedId}
           <div class="py-6">
             <EmptyState
