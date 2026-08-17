@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Play from "@lucide/svelte/icons/play";
+  import Pause from "@lucide/svelte/icons/pause";
+  import X from "@lucide/svelte/icons/x";
   import { api } from "./api";
   import { t } from "./i18n";
 
@@ -321,9 +324,9 @@
               onclick={(e) => togglePlay(e, key)}
             >
               {#if playing[key]}
-                <span class="text-[10px] leading-none" aria-hidden="true">❚❚</span>
+                <Pause class="size-4" />
               {:else}
-                <span class="pl-0.5 text-xs leading-none" aria-hidden="true">▶</span>
+                <Play class="size-4" />
               {/if}
             </button>
             <input
@@ -380,7 +383,7 @@
   >
     <button
       type="button"
-      class="absolute top-3 right-3 z-[101] rounded-md bg-black/50 px-3 py-1.5 text-sm text-white hover:bg-black/70"
+      class="absolute top-3 right-3 z-[101] inline-flex items-center gap-1.5 rounded-md bg-black/50 px-3 py-1.5 text-sm text-white hover:bg-black/70"
       data-lightbox-close
       aria-label="Close photo"
       onclick={(e) => {
@@ -388,6 +391,7 @@
         closeLightbox();
       }}
     >
+      <X class="size-4" />
       Close
     </button>
     {#if imageItems().length > 1}
