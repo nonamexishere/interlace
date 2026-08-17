@@ -150,6 +150,11 @@
 #     web/**/*.svelte (token defs may stay in app.css). Bubbles stay
 #     distinct. No new brand palette, gradients, CDN theme, or stored-data
 #     rewrite. Docs: chrome colors from tokens / CSS variables, not raw hues.
+#199: typography — timeline + search bodies share one 14–15px size with
+#     line-height 1.5–1.6; people-row + bubble-caption meta share one
+#     12–13px muted-foreground size; headings stay restrained (no
+#     text-3xl+); --font-sans stays system UI; no remote font load.
+#     Do not t() bodies. Docs: 14–15px bodies, 12–13px meta, no remote font.
 """
 
 from __future__ import annotations
@@ -12631,6 +12636,430 @@ def assert_design_tokens(crate: Path) -> None:
         )
 
 
+# #199 — typography: 14–15px bodies, 12–13px meta, system font, no remote font.
+_TYPO_BODY_TW = re.compile(
+    r"(?<![\w-])(text-sm|text-base|text-\[(?:14|15)(?:\.\d+)?px\])(?![\w-])"
+)
+_TYPO_META_TW = re.compile(
+    r"(?<![\w-])(text-xs|text-\[(?:12|13)(?:\.\d+)?px\])(?![\w-])"
+)
+_TYPO_LEADING_NAMED = re.compile(
+    r"(?<![\w-])(?:leading-normal|leading-relaxed)(?![\w-])"
+)
+_TYPO_LEADING_ARB = re.compile(r"(?<![\w-])leading-\[([^\]]+)\]")
+_TYPO_LINE_HEIGHT = re.compile(r"line-height\s*:\s*([^;}]+)", re.I)
+_TYPO_FONT_SIZE = re.compile(r"font-size\s*:\s*([^;}]+)", re.I)
+_TYPO_GIANT = re.compile(
+    r"(?<![\w-])text-(?:3xl|4xl|5xl|6xl|7xl|8xl|9xl)(?![\w-])"
+)
+_TYPO_REMOTE_FONT = re.compile(
+    r"("
+    r"fonts\.googleapis"
+    r"|fonts\.gstatic"
+    r"|use\.typekit\.net"
+    r"|fonts\.adobe"
+    r"|@import\s+(?:url\s*\(\s*)?['\"]https?://"
+    r"|url\s*\(\s*['\"]?https?://[^)]*(?:font|\.woff2?|\.ttf|\.otf)"
+    r")",
+    re.I,
+)
+_TYPO_MUTED = re.compile(
+    r"("
+    r"text-muted-foreground"
+    r"|text-\[var\(--(?:color-)?muted-foreground\)\]"
+    r"|var\(--(?:color-)?muted-foreground\)"
+    r")"
+)
+_TYPO_FONT_SANS = re.compile(r"--font-sans\s*:\s*([^;]+);")
+_DOCS_TYPO_BODY = re.compile(
+    r"("
+    r"14\s*[–\-]\s*15\s*px"
+    r"|(?:message )?bod(?:y|ies).{0,80}\bsizes?\b"
+    r")",
+    re.I,
+)
+_DOCS_TYPO_META = re.compile(
+    r"("
+    r"12\s*[–\-]\s*13\s*px"
+    r"|\bmeta\b.{0,80}\bsizes?\b"
+    r")",
+    re.I,
+)
+_DOCS_TYPO_NO_REMOTE_FONT = re.compile(
+    r"("
+    r"no remote fonts?"
+    r"|not (?:a |an )?remote fonts?"
+    r"|system(?:-ui| UI)? fonts?"
+    r"|no Google Fonts"
+    r"|not.{0,48}(?:Google Fonts|fonts\.googleapis|CDN fonts?|remote fonts?)"
+    r")",
+    re.I,
+)
+
+
+def _typo_tag_class(attrs: str) -> str:
+    m = re.search(r"\bclass\s*=\s*\"([^\"]*)\"", attrs)
+    if m:
+        return m.group(1)
+    m = re.search(r"\bclass\s*=\s*'([^']*)'", attrs)
+    if m:
+        return m.group(1)
+    m = re.search(r"\bclass\s*=\s*\{([^}]*)\}", attrs)
+    if not m:
+        return ""
+    inner = m.group(1).strip()
+    if len(inner) >= 2 and inner[0] == inner[-1] and inner[0] in "'\"`":
+        return inner[1:-1]
+    return "{" + inner + "}"
+
+
+def _typo_tag_style(attrs: str) -> str:
+    m = re.search(r"\bstyle\s*=\s*\"([^\"]*)\"", attrs)
+    if m:
+        return m.group(1)
+    m = re.search(r"\bstyle\s*=\s*'([^']*)'", attrs)
+    return m.group(1) if m else ""
+
+
+def _typo_resolve_class(class_str: str, logic: str) -> str:
+    parts = [class_str]
+    for m in re.finditer(r"\{([A-Za-z_]\w*)\}", class_str):
+        name = m.group(1)
+        am = re.search(
+            rf"(?:const|let|var)\s+{re.escape(name)}\s*=\s*[\"']([^\"']+)[\"']",
+            logic,
+        )
+        if am:
+            parts.append(am.group(1))
+        am = re.search(
+            rf"(?:const|let|var)\s+{re.escape(name)}\s*=\s*`([^`]+)`",
+            logic,
+        )
+        if am:
+            parts.append(am.group(1))
+    return " ".join(parts)
+
+
+def _typo_classes(class_str: str) -> list[str]:
+    out: list[str] = []
+    for tok in class_str.split():
+        if tok and not tok.startswith("{") and not tok.startswith(":"):
+            out.append(tok)
+    return out
+
+
+def _typo_css_blocks(css: str, classname: str) -> list[str]:
+    return [
+        m.group(1)
+        for m in re.finditer(
+            rf"\.{re.escape(classname)}\b[^{{]*\{{([^}}]*)\}}",
+            css,
+        )
+    ]
+
+
+def _typo_unitless_lh(raw: str) -> float | None:
+    val = raw.strip().lower().rstrip(";")
+    if val.endswith("%"):
+        try:
+            return float(val[:-1]) / 100.0
+        except ValueError:
+            return None
+    if re.fullmatch(r"1\.\d+", val):
+        return float(val)
+    return None
+
+
+def _typo_lh_in_range(raw: str) -> bool:
+    n = _typo_unitless_lh(raw)
+    return n is not None and 1.5 <= n <= 1.625
+
+
+def _typo_px(raw: str) -> float | None:
+    val = raw.strip().lower()
+    m = re.fullmatch(r"([\d.]+)\s*px", val)
+    if m:
+        return float(m.group(1))
+    m = re.fullmatch(r"([\d.]+)\s*rem", val)
+    if m:
+        return float(m.group(1)) * 16.0
+    return None
+
+
+def _typo_size_token(class_str: str, css: str, kind: str) -> str | None:
+    rx = _TYPO_BODY_TW if kind == "body" else _TYPO_META_TW
+    m = rx.search(class_str)
+    if m:
+        return m.group(1)
+    lo, hi = (14.0, 15.0) if kind == "body" else (12.0, 13.0)
+    for cls in _typo_classes(class_str):
+        for block in _typo_css_blocks(css, cls):
+            fm = _TYPO_FONT_SIZE.search(block)
+            if not fm:
+                continue
+            px = _typo_px(fm.group(1).strip())
+            if px is not None and lo <= px <= hi:
+                return f".{cls}"
+    return None
+
+
+def _typo_theme_lh_ok(css: str, tw_token: str) -> bool:
+    key = {"text-sm": "sm", "text-base": "base", "text-xs": "xs"}.get(tw_token)
+    if not key:
+        return False
+    m = re.search(
+        rf"--text-{re.escape(key)}--line-height\s*:\s*([^;]+);",
+        css,
+    )
+    return bool(m) and _typo_lh_in_range(m.group(1))
+
+
+def _typo_leading_ok(class_str: str, style: str, css: str) -> bool:
+    if _TYPO_LEADING_NAMED.search(class_str):
+        return True
+    for m in _TYPO_LEADING_ARB.finditer(class_str):
+        if _typo_lh_in_range(m.group(1)):
+            return True
+    if style:
+        hm = _TYPO_LINE_HEIGHT.search(style)
+        if hm and _typo_lh_in_range(hm.group(1)):
+            return True
+    tw = _TYPO_BODY_TW.search(class_str)
+    if tw and _typo_theme_lh_ok(css, tw.group(1)):
+        return True
+    for cls in _typo_classes(class_str):
+        for block in _typo_css_blocks(css, cls):
+            hm = _TYPO_LINE_HEIGHT.search(block)
+            if hm and _typo_lh_in_range(hm.group(1)):
+                return True
+    return False
+
+
+def _typo_muted_ok(class_str: str, css: str) -> bool:
+    if _TYPO_MUTED.search(class_str):
+        return True
+    for cls in _typo_classes(class_str):
+        for block in _typo_css_blocks(css, cls):
+            if _TYPO_MUTED.search(block) or re.search(
+                r"color\s*:\s*var\(--(?:color-)?muted-foreground\)",
+                block,
+                re.I,
+            ):
+                return True
+    return False
+
+
+def _typo_prewrap_attrs(src: str, inner_rx: re.Pattern[str]) -> list[str]:
+    found: list[str] = []
+    for m in _PRE_WRAP.finditer(src):
+        if inner_rx.search(m.group(3)):
+            found.append(m.group(2))
+    return found
+
+
+def _typo_docs_blob() -> str:
+    user_docs = repo_root() / "docs" / "user" / "app.md"
+    hack_docs = repo_root() / "docs" / "hacking" / "tauri.md"
+    dtxt = ""
+    if user_docs.is_file():
+        dtxt += user_docs.read_text()
+    if hack_docs.is_file():
+        dtxt += "\n" + hack_docs.read_text()
+    return dtxt
+
+
+def assert_typography(crate: Path) -> None:
+    """#199: 14–15px bodies with line-height 1.5–1.6; 12–13px meta.
+
+    Timeline bodies and search snippets share one body size. People-row
+    time/preview and bubble captions share one meta size + muted-foreground.
+    Headings stay restrained (no text-3xl+). --font-sans stays system UI.
+    No remote font. Do not t() bodies. Docs: 14–15px bodies, 12–13px meta,
+    no remote font.
+    """
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#199: App.svelte required (timeline body / people-row typography)")
+    css_path = crate / "web" / "app.css"
+    if not css_path.is_file():
+        fail("#199: web/app.css required (--font-sans system UI stack)")
+    css = css_path.read_text()
+    logic = _web_logic(crate)
+    timeline = _timeline_block(crate)
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    if not search_path.is_file():
+        fail("#199: SearchPane.svelte required (search snippet typography)")
+    search = search_path.read_text()
+
+    # 1) Timeline + search bodies exist and share one 14–15px size.
+    tl_attrs = _typo_prewrap_attrs(
+        timeline,
+        re.compile(r"displayBody|body_text|bodyText"),
+    )
+    if not tl_attrs:
+        fail(
+            "#199: timeline message bodies must stay whitespace-pre-wrap "
+            "text nodes (14–15px body size)"
+        )
+    search_attrs = _typo_prewrap_attrs(
+        search,
+        re.compile(r"splitSnippet|\.snippet\b|\{body\}"),
+    )
+    if not search_attrs:
+        fail(
+            "#199: search snippets / expanded hits must stay "
+            "whitespace-pre-wrap text nodes (14–15px body size)"
+        )
+
+    body_tokens: list[str] = []
+    body_surfaces: list[tuple[str, str, str]] = []
+    for label, attrs in (
+        *[("timeline", a) for a in tl_attrs],
+        *[("search snippet / expanded hit", a) for a in search_attrs],
+    ):
+        class_str = _typo_resolve_class(_typo_tag_class(attrs), logic)
+        tok = _typo_size_token(class_str, css, "body")
+        if not tok:
+            fail(
+                "#199: timeline message bodies and search snippets must use "
+                "one body size in the 14–15px range (text-sm / text-base / "
+                "text-[14px] / text-[15px])"
+            )
+        body_tokens.append(tok)
+        body_surfaces.append((label, class_str, _typo_tag_style(attrs)))
+    if len(set(body_tokens)) != 1:
+        fail(
+            "#199: timeline bodies and search snippets must share one body "
+            "size class (14–15px: text-sm / text-base / text-[14px] / "
+            "text-[15px]). Found: " + ", ".join(sorted(set(body_tokens)))
+        )
+
+    # 2) Those bodies use line-height 1.5–1.6 (the gap on current master).
+    missing_lh = []
+    for label, class_str, style in body_surfaces:
+        if not _typo_leading_ok(class_str, style, css):
+            if label not in missing_lh:
+                missing_lh.append(label)
+    if missing_lh:
+        fail(
+            "#199: timeline + search snippet bodies must use line-height "
+            "1.5–1.6 (leading-normal / leading-relaxed / leading-[1.5] / "
+            "leading-[1.6] / CSS line-height: 1.5–1.6)"
+        )
+
+    # 3) People-row time/preview + bubble caption share one 12–13px meta.
+    _, people_each = _people_list_a11y_surfaces(crate)
+    if not people_each.strip():
+        markup = _strip_html_comments(_svelte_markup(app_path.read_text()))
+        people_each = _people_each_block(markup)
+    if not people_each.strip():
+        fail("#199: people list {#each filtered} required (time / preview meta)")
+    people_meta: list[str] = []
+    for m in re.finditer(r"<span\b([^>]*)>(.*?)</span>", people_each, re.S):
+        attrs, inner = m.group(1), m.group(2)
+        if re.search(r"last_activity_at|humanTime|\.preview\b", inner):
+            people_meta.append(attrs)
+    if not people_meta:
+        fail(
+            "#199: people-list rows must show time / preview as 12–13px meta "
+            "(text-xs / text-[12px] / text-[13px])"
+        )
+    caption_meta: list[str] = []
+    for m in re.finditer(
+        r"<([a-zA-Z][\w:-]*)\b([^>]*\bclass\s*=\s*[\"'][^\"']*\bcaption\b[^\"']*[\"'][^>]*)>",
+        timeline,
+    ):
+        caption_meta.append(m.group(2))
+    if not caption_meta:
+        fail(
+            "#199: bubble captions (time + platform chip) must keep a caption "
+            "element with 12–13px meta"
+        )
+
+    meta_tokens: list[str] = []
+    for attrs in (*people_meta, *caption_meta):
+        class_str = _typo_resolve_class(_typo_tag_class(attrs), logic)
+        tok = _typo_size_token(class_str, css, "meta")
+        if not tok:
+            fail(
+                "#199: people-list rows (time / preview) and bubble captions "
+                "must use one meta size in the 12–13px range (text-xs / "
+                "text-[12px] / text-[13px])"
+            )
+        if not _typo_muted_ok(class_str, css):
+            fail(
+                "#199: people-list rows (time / preview) and bubble captions "
+                "must use muted-foreground for meta"
+            )
+        meta_tokens.append(tok)
+    if len(set(meta_tokens)) != 1:
+        fail(
+            "#199: people-list rows and bubble captions must share one meta "
+            "size class (12–13px: text-xs / text-[12px] / text-[13px]). "
+            "Found: " + ", ".join(sorted(set(meta_tokens)))
+        )
+
+    # 4) Headings stay restrained — no display type in product Svelte.
+    svelte_files = _product_svelte(crate)
+    giant = _token_hits(crate, svelte_files, _TYPO_GIANT)
+    if giant:
+        fail(
+            "#199: headings stay restrained — no text-3xl / text-4xl / "
+            "text-5xl / text-6xl / text-7xl / text-8xl / text-9xl in product "
+            "Svelte (text-xl / text-2xl on setup is OK). Found:\n  "
+            + "\n  ".join(giant)
+        )
+
+    # 5) --font-sans stays system UI; no remote font load.
+    fm = _TYPO_FONT_SANS.search(css)
+    if not fm:
+        fail("#199: app.css must keep --font-sans as the system UI stack")
+    stack = fm.group(1)
+    if "ui-sans-serif" not in stack or "-apple-system" not in stack:
+        fail(
+            "#199: --font-sans must stay system UI "
+            "(ui-sans-serif and -apple-system still present)"
+        )
+    font_blob = css + "\n" + "\n".join(p.read_text() for p in svelte_files)
+    splash = crate / "index.html"
+    if splash.is_file():
+        font_blob += "\n" + splash.read_text()
+    if _TYPO_REMOTE_FONT.search(font_blob) or _THEME_CDN.search(font_blob):
+        fail(
+            "#199: no Google Fonts / CDN / remote @import of a font "
+            "(fonts.googleapis / fonts.gstatic / remote url())"
+        )
+
+    # 6) Not: t() of message bodies / previews.
+    helpers = _chrome_helper_names(logic)
+    body_blob = logic + "\n" + app_path.read_text() + "\n" + search
+    if _chrome_helper_on_body(body_blob, helpers) or _BODY_T_CALL.search(body_blob):
+        fail("#199: do not t() message bodies or previews (t(body_text) / t(preview))")
+
+    # 7) D24: 14–15px bodies, 12–13px meta, no remote font.
+    dtxt = _typo_docs_blob()
+    if not dtxt.strip():
+        fail(
+            "#199: docs/user/app.md (and/or docs/hacking/tauri.md) required "
+            "(14–15px bodies, 12–13px meta, no remote font)"
+        )
+    if not _DOCS_TYPO_BODY.search(dtxt):
+        fail(
+            "#199: docs/user/app.md (and/or docs/hacking/tauri.md) must mention "
+            "14–15px bodies (or body size)"
+        )
+    if not _DOCS_TYPO_META.search(dtxt):
+        fail(
+            "#199: docs/user/app.md (and/or docs/hacking/tauri.md) must mention "
+            "12–13px meta (or meta size)"
+        )
+    if not _DOCS_TYPO_NO_REMOTE_FONT.search(dtxt):
+        fail(
+            "#199: docs/user/app.md (and/or docs/hacking/tauri.md) must say "
+            "system font / no remote font"
+        )
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -12751,6 +13180,7 @@ def main() -> None:
     assert_copy_reveal_cas(crate)
     assert_defer_doctor_cas(crate)
     assert_design_tokens(crate)
+    assert_typography(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")

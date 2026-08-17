@@ -409,7 +409,7 @@
               .filter(Boolean)
               .join(" · ")}
           </div>
-          <p class="mt-1 whitespace-pre-wrap text-sm">
+          <p class="mt-1 whitespace-pre-wrap text-sm leading-normal">
             {#each splitSnippet(h.snippet || h.subject || "") as seg}
               {#if seg.kind === "mark"}
                 <mark class="search-mark">{seg.text}</mark>
@@ -421,7 +421,7 @@
         </button>
         <CasAttach items={h.attachments || []} {onError} />
         {#if expanded === h.message_id}
-          <p class="bg-muted px-2 py-2 text-sm whitespace-pre-wrap">{body}</p>
+          <p class="bg-muted px-2 py-2 text-sm leading-normal whitespace-pre-wrap">{body}</p>
         {/if}
       </li>
     {/each}

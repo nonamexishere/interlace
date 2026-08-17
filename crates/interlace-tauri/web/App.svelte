@@ -1433,14 +1433,14 @@
                         {/if}
                         {@const parts = splitQuotedBody(item.row.body_text || "")}
                         {#if parts.main || !parts.quoted}
-                          <p class="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">
+                          <p class="mt-1 whitespace-pre-wrap break-words text-sm leading-normal text-foreground">
                             {displayBody(parts.main)}
                           </p>
                         {/if}
                         {#if parts.quoted}
                           {#if quotedOpen[item.row.message_id]}
                             <p
-                              class="mt-1 whitespace-pre-wrap break-words text-sm text-muted-foreground"
+                              class="mt-1 whitespace-pre-wrap break-words text-sm leading-normal text-muted-foreground"
                             >
                               {displayBody(parts.quoted)}
                             </p>
@@ -1462,7 +1462,7 @@
                           {/if}
                         {/if}
                       {:else}
-                        <p class="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">
+                        <p class="mt-1 whitespace-pre-wrap break-words text-sm leading-normal text-foreground">
                           {displayBody(item.row.body_text || item.row.subject || "")}
                         </p>
                       {/if}
