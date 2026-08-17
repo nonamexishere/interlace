@@ -144,6 +144,12 @@
 #     t() message bodies. Not a date-picker locale pack. Do not put
 #     “yesterday” in App.svelte (#112 greps the file). Docs: docs/user/app.md
 #     — people list / VoiceOver use a short time, not the raw ISO.
+#198: product Svelte chrome uses existing design tokens (shadcn background /
+#     foreground / muted-foreground / border / destructive + --bubble-me /
+#     --bubble-them). No hex / amber-* / yellow-* / black/80 in
+#     web/**/*.svelte (token defs may stay in app.css). Bubbles stay
+#     distinct. No new brand palette, gradients, CDN theme, or stored-data
+#     rewrite. Docs: chrome colors from tokens / CSS variables, not raw hues.
 """
 
 from __future__ import annotations
@@ -12373,6 +12379,258 @@ def assert_human_time_people(crate: Path) -> None:
         )
 
 
+# #198 — design tokens: no raw hues in product Svelte; chrome uses shadcn + bubbles.
+_HUE_AMBER = re.compile(r"\bamber-\d+")
+_HUE_YELLOW = re.compile(r"\byellow-\d+")
+_HUE_BLACK80 = re.compile(r"\bblack/80\b")
+# Hex as a color: Tailwind arbitrary `bg-[#111]` or a CSS color property.
+# Do not treat `{#each}`, `#person-timeline`, `#{e.id}`, or issue `#198` as hex.
+_HUE_HEX_TW = re.compile(
+    r"(?:bg|text|border|ring|from|to|via|outline|fill|stroke|decoration|"
+    r"divide|accent|caret|shadow)-\[#[0-9A-Fa-f]{3,8}"
+)
+_HUE_HEX_CSS = re.compile(
+    r"(?:background(?:-color)?|color|border(?:-color)?|outline-color|"
+    r"fill|stroke|accent-color|caret-color|text-decoration-color)\s*:\s*"
+    r"#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})\b",
+    re.I,
+)
+_HEAVY_SHADOW = re.compile(r"(?<![\w-])shadow-(?:lg|xl|2xl)\b")
+_GRADIENT = re.compile(
+    r"("
+    r"(?<![\w-])bg-gradient-"
+    r"|(?<![\w-])(?:from|to|via)-(?:"
+    r"zinc|slate|gray|neutral|stone|red|orange|amber|yellow|lime|green|"
+    r"emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|"
+    r"black|white|transparent|current|inherit"
+    r")"
+    r")",
+)
+_THEME_CDN = re.compile(
+    r"("
+    r"fonts\.googleapis"
+    r"|fonts\.gstatic"
+    r"|cdn\."
+    r"|unpkg\.com"
+    r"|jsdelivr"
+    r"|@import\s+(?:url\s*\(\s*)?['\"]https?://"
+    r")",
+    re.I,
+)
+_NEW_BRAND_VAR = re.compile(r"--(?:color-)?brand\b|--palette-")
+_SQL_DDL = re.compile(r"""['\"][^'\"]*\b(?:ALTER|CREATE)\s+TABLE\b""", re.I)
+_DOCS_DESIGN_TOKENS = re.compile(
+    r"("
+    r"(?:design tokens?|CSS variables?).{0,260}(?:chrome|colou?rs?|hues?)"
+    r"|(?:chrome|colou?rs?|hues?).{0,260}(?:design tokens?|CSS variables?)"
+    r")",
+    re.I | re.S,
+)
+_DOCS_NOT_RAW_HUES = re.compile(
+    r"("
+    r"not raw (?:Tailwind )?hues?"
+    r"|not (?:a |the )?raw Tailwind hues?"
+    r"|not raw Tailwind"
+    r"|CSS variables?, not raw"
+    r"|design tokens?, not raw"
+    r")",
+    re.I,
+)
+_SHADCN_TOKEN_DEFS = (
+    "--color-background",
+    "--color-foreground",
+    "--color-muted-foreground",
+    "--color-border",
+    "--color-destructive",
+)
+_SHADCN_TOKEN_USES = (
+    "bg-background",
+    "text-foreground",
+    "text-muted-foreground",
+    "border-border",
+)
+
+
+def _product_svelte(crate: Path) -> list[Path]:
+    web = crate / "web"
+    return [
+        p
+        for p in sorted(web.rglob("*.svelte"))
+        if "node_modules" not in p.parts
+    ]
+
+
+def _hue_surface(text: str) -> str:
+    return _without_comments(_strip_html_comments(text))
+
+
+def _token_hits(crate: Path, files: list[Path], rx: re.Pattern[str]) -> list[str]:
+    hits: list[str] = []
+    for p in files:
+        found = sorted({m.group(0) for m in rx.finditer(_hue_surface(p.read_text()))})
+        if found:
+            hits.append(f"{p.relative_to(crate)}: {', '.join(found)}")
+    return hits
+
+
+def _hue_findings(text: str) -> list[str]:
+    """Banned raw hues (issue #198). Token defs may live in app.css only."""
+    surface = _hue_surface(text)
+    found: list[str] = []
+    amber = sorted(set(_HUE_AMBER.findall(surface)))
+    if amber:
+        found.append("amber-* (" + ", ".join(amber) + ")")
+    yellow = sorted(set(_HUE_YELLOW.findall(surface)))
+    if yellow:
+        found.append("yellow-* (" + ", ".join(yellow) + ")")
+    if _HUE_BLACK80.search(surface):
+        found.append("black/80")
+    hexes = _HUE_HEX_TW.findall(surface) + _HUE_HEX_CSS.findall(surface)
+    if hexes:
+        found.append("hex (" + ", ".join(sorted(set(hexes))) + ")")
+    return found
+
+
+def assert_design_tokens(crate: Path) -> None:
+    """#198: product Svelte chrome uses existing tokens, not raw hues.
+
+    No hex / amber-* / yellow-* / black/80 in web/**/*.svelte (defs may stay
+    in app.css). Map chrome onto existing shadcn names (background, foreground,
+    muted-foreground, border, destructive) plus --bubble-me / --bubble-them.
+    Bubbles stay distinct. No new brand palette, gradients, CDN theme, or
+    stored-data rewrite. Do not require --warning / --success (#219). Keep
+    <mark> highlight chrome (#126). Docs: tokens / CSS variables, not raw hues.
+    """
+    svelte_files = _product_svelte(crate)
+    if not svelte_files:
+        fail("#198: crates/interlace-tauri/web/**/*.svelte required (token chrome)")
+
+    # 1) Hard acceptance: no raw hues in product Svelte (first fail on master).
+    offenders: list[str] = []
+    for p in svelte_files:
+        hits = _hue_findings(p.read_text())
+        if hits:
+            offenders.append(f"{p.relative_to(crate)}: {'; '.join(hits)}")
+    if offenders:
+        fail(
+            "#198: product Svelte must not contain hex / amber-* / yellow-* / "
+            "black/80 (token definitions may live in app.css only). Found:\n  "
+            + "\n  ".join(offenders)
+        )
+
+    css_path = crate / "web" / "app.css"
+    if not css_path.is_file():
+        fail("#198: web/app.css required (shadcn + bubble token definitions)")
+    css = css_path.read_text()
+
+    # 2) Existing shadcn token names still defined in app.css.
+    missing_defs = [name for name in _SHADCN_TOKEN_DEFS if name not in css]
+    if missing_defs:
+        fail(
+            "#198: app.css must keep existing shadcn tokens "
+            f"({', '.join(missing_defs)} missing) — do not invent a new brand palette"
+        )
+
+    # 3) Bubbles stay distinct via existing --bubble-me / --bubble-them
+    #    (or --color-bubble-*). Do not soften #111.
+    me = _css_var(css, _BUBBLE_ME_VARS)
+    them = _css_var(css, _BUBBLE_THEM_VARS)
+    if not me or not them:
+        fail(
+            "#198: keep distinct bubble tokens --bubble-me / --bubble-them "
+            "(or --color-bubble-*) in app.css"
+        )
+    if me == them:
+        fail("#198: --bubble-me and --bubble-them must stay distinct colors")
+
+    svelte_blob = "\n".join(p.read_text() for p in svelte_files)
+
+    # 4) Product Svelte uses token / variable classes, not raw hues.
+    missing_uses = [tok for tok in _SHADCN_TOKEN_USES if tok not in svelte_blob]
+    if missing_uses:
+        fail(
+            "#198: product Svelte must use existing token/variable classes "
+            f"({', '.join(missing_uses)} missing) rather than raw hues"
+        )
+
+    # 5) Targeted shadow language (not a full Tailwind linter; p-1 leftovers OK).
+    shadow_hits = _token_hits(crate, svelte_files, _HEAVY_SHADOW)
+    if shadow_hits:
+        fail(
+            "#198: product Svelte shadows must be shadow-sm / shadow-md only "
+            "(no shadow-lg / shadow-xl / shadow-2xl). Found:\n  "
+            + "\n  ".join(shadow_hits)
+        )
+
+    # 6) Not: gradients / new brand palette / CDN theme.
+    gradient_hits = _token_hits(crate, svelte_files, _GRADIENT)
+    if gradient_hits:
+        fail(
+            "#198: not in scope — no gradients (bg-gradient-* / from-* / to-* "
+            "hero) in product Svelte. Found:\n  " + "\n  ".join(gradient_hits)
+        )
+    if _NEW_BRAND_VAR.search(css) or _NEW_BRAND_VAR.search(svelte_blob):
+        fail(
+            "#198: not in scope — no new brand palette "
+            "(keep existing shadcn + bubble vars; do not add --brand)"
+        )
+    cdn_blob = svelte_blob + "\n" + css
+    splash = crate / "index.html"
+    if splash.is_file():
+        cdn_blob += "\n" + splash.read_text()
+    if _THEME_CDN.search(cdn_blob):
+        fail(
+            "#198: not in scope — no CDN theme "
+            "(fonts.googleapis / cdn. / remote @import of a theme)"
+        )
+
+    # 7) Not: changing stored data (no SQLite migration / timestamp rewrite).
+    rust_blob = ""
+    src_dir = crate / "src"
+    if src_dir.is_dir():
+        rust_blob = "\n".join(p.read_text() for p in sorted(src_dir.rglob("*.rs")))
+    api_path = crate / "web" / "lib" / "api.ts"
+    api = api_path.read_text() if api_path.is_file() else ""
+    if _SQL_DDL.search(rust_blob) or _SQL_DDL.search(svelte_blob) or _SQL_DDL.search(api):
+        fail(
+            "#198: not in scope — no SQLite migration / stored-data change "
+            "(do not ALTER/CREATE TABLE from Tauri chrome)"
+        )
+    if api and not re.search(
+        r"export type Person\s*=\s*\{[^}]*\blast_activity_at\??\s*:\s*string",
+        api,
+        re.S,
+    ):
+        fail(
+            "#198: not in scope — do not rewrite last_activity_at / message "
+            "timestamps (Person.last_activity_at stays ISO string on the API)"
+        )
+
+    # 8) D24: chrome colors come from design tokens / CSS variables, not raw hues.
+    user_docs = repo_root() / "docs" / "user" / "app.md"
+    hack_docs = repo_root() / "docs" / "hacking" / "tauri.md"
+    dtxt = ""
+    if user_docs.is_file():
+        dtxt += user_docs.read_text()
+    if hack_docs.is_file():
+        dtxt += "\n" + hack_docs.read_text()
+    if not dtxt.strip():
+        fail(
+            "#198: docs/user/app.md (and/or docs/hacking/tauri.md) required "
+            "(chrome colors from design tokens / CSS variables)"
+        )
+    if not _DOCS_DESIGN_TOKENS.search(dtxt):
+        fail(
+            "#198: docs/user/app.md (and/or docs/hacking/tauri.md) must say "
+            "chrome colors come from design tokens / CSS variables"
+        )
+    if not _DOCS_NOT_RAW_HUES.search(dtxt):
+        fail(
+            "#198: docs/user/app.md (and/or docs/hacking/tauri.md) must say "
+            "chrome colors are not raw Tailwind hues"
+        )
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -12492,6 +12750,7 @@ def main() -> None:
     assert_drag_drop_import(crate)
     assert_copy_reveal_cas(crate)
     assert_defer_doctor_cas(crate)
+    assert_design_tokens(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
