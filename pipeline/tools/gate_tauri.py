@@ -160,6 +160,14 @@
 #     no emoji-as-icon on those surfaces, no CDN icon kit / second
 #     icon package. Nav icons optional (keep text labels). Docs: Lucide
 #     chrome icons, not emoji glyphs.
+#201: own Tooltip, Separator, Badge, Card under web/lib/components/ui/
+#     (at least one .svelte + index.ts each). Platform chip
+#     (data-platform-chip / platform-chip) is the Badge primitive.
+#     At least one banner (data-cloud-warning) or dialog footer uses
+#     Card or Separator. No second npm UI kit; bits-ui stays a local
+#     dep (not CDN). No network avatars; Command is #215; Toast/sonner
+#     is #204. Docs: owned Badge/Card (or owned shadcn primitives) for
+#     chips/banners, not one-off chrome.
 """
 
 from __future__ import annotations
@@ -13468,6 +13476,287 @@ def assert_lucide_icons(crate: Path) -> None:
         )
 
 
+# #201 — owned Tooltip, Separator, Badge, Card (no one-off chrome).
+_OWNED_PRIMITIVES_201 = ("tooltip", "separator", "badge", "card")
+_SECOND_UI_KIT = re.compile(
+    r"[\"']("
+    r"@radix-ui(?:/[^\"']*)?"
+    r"|shadcn(?:-svelte)?"
+    r"|@shadcn(?:/[^\"']*)?"
+    r"|@skeletonlabs(?:/[^\"']*)?"
+    r"|daisyui"
+    r"|flowbite(?:-[a-z]+)?"
+    r"|@ark-ui(?:/[^\"']*)?"
+    r"|melt-ui"
+    r")[\"']",
+    re.I,
+)
+_CMD_PALETTE_PKG = re.compile(r"[\"'](?:cmdk|svelte-command(?:-palette)?)[\"']", re.I)
+_TOAST_SONNER_PKG = re.compile(r"[\"'](?:sonner|svelte-sonner)[\"']", re.I)
+_BITS_KIT_CDN = re.compile(
+    r"("
+    r"(?:unpkg(?:\.com)?|jsdelivr(?:\.net)?|esm\.sh|cdn\.)[^\"'\s)]*bits-ui"
+    r"|bits-ui[^\"'\s)]*(?:unpkg|jsdelivr|esm\.sh)"
+    r"|https?://[^\"'\s)]*(?:unpkg|jsdelivr|esm\.sh|cdn\.)[^\"'\s)]*"
+    r"(?:bits-ui|@radix-ui|shadcn|daisyui|flowbite|melt-ui|skeletonlabs|ark-ui)"
+    r")",
+    re.I,
+)
+_NETWORK_AVATAR_IMG = re.compile(
+    r"<img\b[^>]{0,400}\bsrc\s*=\s*[\"']https?://",
+    re.I | re.S,
+)
+_DOCS_OWNED_CHIPS_BANNERS = re.compile(
+    r"("
+    r"(?:platform[- ]?chips?|banners?).{0,200}"
+    r"(?:owned.{0,60})?(?:badge|card|shadcn[- ]?(?:svelte )?primitives?)"
+    r"|(?:owned.{0,60})?(?:badge|card|shadcn[- ]?(?:svelte )?primitives?).{0,200}"
+    r"(?:platform[- ]?chips?|banners?)"
+    r")",
+    re.I | re.S,
+)
+_DOCS_NOT_ONE_OFF_CHROME = re.compile(
+    r"("
+    r"not one-off(?: chrome)?"
+    r"|not.{0,48}one-off chrome"
+    r"|rather than one-off"
+    r"|instead of one-off"
+    r"|not hand-?rolled chrome"
+    r")",
+    re.I,
+)
+_DIALOG_FOOTER_BLOCK = re.compile(
+    r"<Dialog\.Footer\b[^>]*>[\s\S]*?</Dialog\.Footer>",
+    re.I,
+)
+
+
+def _owned_import_path_rx(name: str) -> str:
+    return (
+        r"[\"'](?:\$lib/|(?:\.\.?/)*)(?:lib/)?"
+        rf"components/ui/{re.escape(name)}"
+        r"(?:/[^\"']*)?[\"']"
+    )
+
+
+def _owned_imported_names(src: str, name: str) -> list[str]:
+    """Local identifiers imported from `$lib/components/ui/{name}` (or relative)."""
+    path = _owned_import_path_rx(name)
+    out: list[str] = []
+    for m in re.finditer(rf"import\s+\{{([^}}]+)\}}\s+from\s+{path}", src):
+        for part in m.group(1).split(","):
+            part = part.strip()
+            if not part:
+                continue
+            bits = re.split(r"\s+as\s+", part)
+            local = bits[-1].strip()
+            if local:
+                out.append(local)
+    for m in re.finditer(rf"import\s+\*\s+as\s+(\w+)\s+from\s+{path}", src):
+        out.append(m.group(1))
+    for m in re.finditer(rf"import\s+(\w+)\s+from\s+{path}", src):
+        out.append(m.group(1))
+    return out
+
+
+def _owned_tag_match(tag: str, names: list[str]) -> bool:
+    tag_l = tag.lower()
+    for n in names:
+        nl = n.lower()
+        if tag_l == nl or tag_l.startswith(nl + "."):
+            return True
+    return False
+
+
+def _owned_used_in(block: str, names: list[str]) -> bool:
+    for n in names:
+        if re.search(rf"<{re.escape(n)}(?:\.\w+)?\b", block):
+            return True
+    return False
+
+
+def _hook_tag_name(src: str, hook: str) -> str:
+    m = re.search(
+        rf"<([A-Za-z][\w:.-]*)\b[^>]*\b{re.escape(hook)}\b",
+        src,
+        re.S,
+    )
+    return m.group(1) if m else ""
+
+
+def _chip_hook_files(crate: Path) -> list[tuple[Path, str]]:
+    found: list[tuple[Path, str]] = []
+    for p in _product_svelte(crate):
+        text = p.read_text()
+        if re.search(r"\bdata-platform-chip\b|\bplatform-chip\b", text):
+            found.append((p, text))
+    return found
+
+
+def _web_chrome_blob(crate: Path) -> str:
+    parts: list[str] = []
+    for p in _web_ts_sources(crate):
+        parts.append(p.read_text())
+    for extra in (
+        crate / "web" / "app.css",
+        crate / "index.html",
+        crate / "web" / "index.html",
+    ):
+        if extra.is_file():
+            parts.append(extra.read_text())
+    return "\n".join(parts)
+
+
+def assert_owned_primitives(crate: Path) -> None:
+    """#201: own Tooltip, Separator, Badge, Card — no one-off chrome.
+
+    Four primitive dirs under web/lib/components/ui/ (svelte + index.ts).
+    Platform chip is Badge. A banner or dialog footer uses Card/Separator.
+    bits-ui stays the local kit (no second library, no CDN). Not: network
+    avatars, Command (#215), Toast (#204). Docs: owned Badge/Card for
+    chips/banners, not one-off chrome.
+    """
+    ui = crate / "web" / "lib" / "components" / "ui"
+    if not ui.is_dir():
+        fail("#201: web/lib/components/ui/ required for owned primitives")
+
+    # 1) Owned tooltip / separator / badge / card files exist.
+    missing: list[str] = []
+    for name in _OWNED_PRIMITIVES_201:
+        d = ui / name
+        if not d.is_dir():
+            missing.append(f"{name}/")
+            continue
+        if not any(d.glob("*.svelte")):
+            missing.append(f"{name}/*.svelte")
+        if not (d / "index.ts").is_file():
+            missing.append(f"{name}/index.ts")
+    if missing:
+        fail(
+            "#201: missing owned primitives under web/lib/components/ui/ "
+            "(tooltip, separator, badge, card — each needs at least one "
+            ".svelte and index.ts). Missing: " + ", ".join(missing)
+        )
+
+    # 2) Platform chip is the Badge primitive (keep existing hooks).
+    chip_files = _chip_hook_files(crate)
+    if not chip_files:
+        fail(
+            "#201: keep data-platform-chip / platform-chip on the platform "
+            "chip (implemented with the Badge primitive)"
+        )
+    badge_ok = False
+    for _p, text in chip_files:
+        names = _owned_imported_names(text, "badge")
+        if not names:
+            continue
+        tag = _hook_tag_name(text, "data-platform-chip") or _hook_tag_name(
+            text, "platform-chip"
+        )
+        if tag and _owned_tag_match(tag, names):
+            badge_ok = True
+            break
+    if not badge_ok:
+        fail(
+            "#201: platform chip (data-platform-chip / platform-chip) must "
+            "be the Badge primitive (import from $lib/components/ui/badge "
+            "or relative components/ui/badge) — not a hand-rolled span"
+        )
+
+    # 3) At least one banner or dialog footer uses Card or Separator.
+    chrome_ok = False
+    for p in _product_svelte(crate):
+        text = p.read_text()
+        names = _owned_imported_names(text, "card") + _owned_imported_names(
+            text, "separator"
+        )
+        if not names:
+            continue
+        if "data-cloud-warning" in text:
+            block = _lucide_attr_block(text, "data-cloud-warning") or ""
+            tag = _hook_tag_name(text, "data-cloud-warning")
+            if _owned_tag_match(tag, names) or _owned_used_in(block, names):
+                chrome_ok = True
+                break
+        for footer in _DIALOG_FOOTER_BLOCK.findall(text):
+            if _owned_used_in(footer, names):
+                chrome_ok = True
+                break
+        if chrome_ok:
+            break
+        footer_hook = _lucide_attr_block(text, "data-dialog-footer")
+        if footer_hook and _owned_used_in(footer_hook, names):
+            chrome_ok = True
+            break
+    if not chrome_ok:
+        fail(
+            "#201: at least one banner (data-cloud-warning) or dialog footer "
+            "must use owned Card or Separator from "
+            "$lib/components/ui/{card,separator}"
+        )
+
+    # 4) No second component library; bits-ui stays a local dep.
+    pkg_path = crate / "package.json"
+    if not pkg_path.is_file():
+        fail("#201: crates/interlace-tauri/package.json required (bits-ui local)")
+    pkg = pkg_path.read_text()
+    if '"bits-ui"' not in pkg:
+        fail(
+            "#201: package.json must keep bits-ui as a local dependency "
+            "(do not load bits-ui from a CDN)"
+        )
+    if _SECOND_UI_KIT.search(pkg):
+        fail(
+            "#201: package.json must not add a second component library "
+            "(@radix-ui / shadcn / @skeletonlabs / daisyui / flowbite / "
+            "@ark-ui / melt-ui) — extend owned primitives; bits-ui stays"
+        )
+
+    # 5) No bits-ui / component kit from CDN.
+    if _BITS_KIT_CDN.search(_web_chrome_blob(crate)):
+        fail(
+            "#201: no bits-ui / component kit from CDN "
+            "(unpkg / jsdelivr / cdn. / esm.sh)"
+        )
+
+    # 6) Not: network avatars, Command palette (#215), Toast (#204).
+    svelte_blob = "\n".join(p.read_text() for p in _product_svelte(crate))
+    if _NETWORK_AVATAR_IMG.search(svelte_blob):
+        fail(
+            "#201: not in scope — no network avatar <img src=\"http…\"> "
+            "on people / chrome"
+        )
+    if _CMD_PALETTE_PKG.search(pkg):
+        fail(
+            "#201: not in scope — Command palette is #215 "
+            "(do not add cmdk / svelte-command)"
+        )
+    if _TOAST_SONNER_PKG.search(pkg):
+        fail(
+            "#201: not in scope — Toast / sonner is #204 "
+            "(do not add sonner / svelte-sonner)"
+        )
+
+    # 7) D24: owned Badge/Card (or owned shadcn primitives) for chips/banners.
+    dtxt = _typo_docs_blob()
+    if not dtxt.strip():
+        fail(
+            "#201: docs/user/app.md (and/or docs/hacking/tauri.md) required "
+            "(owned Badge/Card for chips/banners, not one-off chrome)"
+        )
+    if not _DOCS_OWNED_CHIPS_BANNERS.search(dtxt):
+        fail(
+            "#201: docs/user/app.md (and/or docs/hacking/tauri.md) must say "
+            "platform chips / banners use owned Badge / Card "
+            "(or owned shadcn primitives)"
+        )
+    if not _DOCS_NOT_ONE_OFF_CHROME.search(dtxt):
+        fail(
+            "#201: docs/user/app.md (and/or docs/hacking/tauri.md) must say "
+            "chips / banners are owned primitives, not one-off chrome"
+        )
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -13590,6 +13879,7 @@ def main() -> None:
     assert_design_tokens(crate)
     assert_typography(crate)
     assert_lucide_icons(crate)
+    assert_owned_primitives(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")

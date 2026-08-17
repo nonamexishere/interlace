@@ -6,7 +6,8 @@ Unpublished crate `crates/interlace-tauri` (`publish = false`).
 ## Run
 
 Frontend is **Svelte 5 + Vite** (`web/`). Owned shadcn-svelte (New York / zinc)
-primitives live in `web/lib/components/ui/` (button, input, dialog, scroll).
+primitives live in `web/lib/components/ui/` (button, input, dialog, scroll,
+tooltip, separator, badge, card).
 Merge/unlink/undo use `ConfirmDialog`, not `window.confirm`. No CDN.
 
 Dev (HMR):

@@ -6,11 +6,14 @@
   import { api, type Identity, type LinkEvent, type Person, type PersonConversation, type Status, type TimelineRow } from "./lib/api";
   import { mergeTargets } from "./lib/utils";
   import { humanTime } from "./lib/formatTime";
+  import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
+  import { Card } from "$lib/components/ui/card/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { Separator } from "$lib/components/ui/separator/index.js";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
   import SearchPane from "$lib/SearchPane.svelte";
   import ReviewPane from "$lib/ReviewPane.svelte";
@@ -1011,8 +1014,8 @@
   {/if}
 
   {#if st && cloudWarning}
-    <div
-      class="border-b border-border bg-muted px-4 py-2 text-sm text-muted-foreground"
+    <Card
+      class="rounded-none border-x-0 border-t-0 bg-muted px-4 py-2 text-sm text-muted-foreground shadow-none"
       data-cloud-warning
     >
       <p class="font-medium">This archive looks like it sits on iCloud, Dropbox, or Google Drive.</p>
@@ -1020,7 +1023,7 @@
         The folder is the backup unit. Not encrypted at rest — FileVault is your encryption. Move the
         live folder off cloud sync; see <code class="text-xs">docs/user/backup.md</code>.
       </p>
-    </div>
+    </Card>
   {/if}
 
   {#if booting || opening}
@@ -1290,6 +1293,9 @@
                 </div>
               </div>
             {/if}
+            {#if availablePlatforms.length > 0 && availableKinds.length > 0}
+              <Separator />
+            {/if}
             {#if availableKinds.length > 0}
               <div
                 data-kind-filter
@@ -1416,10 +1422,11 @@
                     >
                       <p class="caption flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         <time>{utcTime(item.row.sent_at)}</time>
-                        <span
-                          class="platform-chip badge rounded-full border border-border/80 bg-background/60 px-1.5 py-px text-[0.65rem] font-medium leading-none text-muted-foreground"
+                        <Badge
+                          variant="outline"
+                          class="platform-chip rounded-full border-border/80 bg-background/60 px-1.5 py-px text-[0.65rem] font-medium leading-none text-muted-foreground"
                           data-platform-chip
-                          >{platformLabel(item.row.platform)}</span
+                          >{platformLabel(item.row.platform)}</Badge
                         >
                         {#if isMailRow(item.row) && item.row.from_me}
                           <span class="text-xs text-muted-foreground">You</span>
