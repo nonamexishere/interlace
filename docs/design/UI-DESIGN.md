@@ -10,6 +10,9 @@ Interlace is a local-first personal archive. The UI must feel like a serious, lo
 Primary references:  
 Linear (density + precision) · Obsidian (calm + focus) · Apple Notes / Mail (native desktop reading) · Beeper / clean chat clients (message hierarchy)
 
+Visual quality reference: GitButler and NeoHtop.  
+Prefer the density, calmness and polish of these apps over generic web aesthetics.
+
 ---
 
 ## 1. Principles
