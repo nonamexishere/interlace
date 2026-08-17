@@ -168,6 +168,13 @@
 #     dep (not CDN). No network avatars; Command is #215; Toast/sonner
 #     is #204. Docs: owned Badge/Card (or owned shadcn primitives) for
 #     chips/banners, not one-off chrome.
+#202: EmptyState optional primary action via owned Button; every major
+#     empty view has a next action — People (none / no filter match),
+#     Search (no query / no hits), Review empty, Timeline no messages,
+#     Import idle, Doctor healthy. Keep data-empty. No SVG mascot /
+#     illustration / bg-gradient. Docs: empty views have a next action,
+#     no mascot. Not: skeletons (#203), toasts (#204), t() of imported
+#     bodies, command palette (#215), timeline stutter (#224).
 """
 
 from __future__ import annotations
@@ -13757,6 +13764,330 @@ def assert_owned_primitives(crate: Path) -> None:
         )
 
 
+# #202 — EmptyState next action on every major empty view (no mascot).
+# Titles stay English-grepable (#131). Action may be a label + handler,
+# onclick, snippet, or Button/button child. Import idle may use data-empty
+# instead of <EmptyState> if that hook still carries a next action.
+_EMPTY_TITLES_202 = (
+    ("App.svelte", "No people yet", "People: no people yet"),
+    ("App.svelte", "No match", "People: no filter match"),
+    ("SearchPane.svelte", "Type a query", "Search: no query"),
+    ("SearchPane.svelte", "No hits", "Search: no hits"),
+    ("ReviewPane.svelte", "Nothing to review", "Review: nothing to review"),
+    ("App.svelte", "No messages in this view", "Timeline: no messages"),
+    ("DoctorPane.svelte", "No doctor issues", "Doctor healthy"),
+)
+# IN.md: Select a person still needs a next action if that EmptyState stays.
+_EMPTY_TITLES_202_OPTIONAL_IF_ABSENT = (
+    ("App.svelte", "Select a person", "Timeline: select a person"),
+)
+_EMPTY_NEXT_ACTION = re.compile(
+    r"("
+    r"\baction(?:Label|Text|Click|Handler)?\s*="
+    r"|\bprimaryAction\s*="
+    r"|\bnextAction\s*="
+    r"|\bcta(?:Label)?\s*="
+    r"|\bonAction\s*="
+    r"|\bonaction\s*="
+    r"|\bonclick\s*="
+    r"|\bon:click\s*="
+    r"|\{#snippet\s+(?:action|children|cta)\b"
+    r"|\{@render\s+(?:action|children|cta)\b"
+    r"|<(?:Button|button)\b"
+    r"|Pick file"
+    r"|Clear filter"
+    r")",
+    re.I,
+)
+_EMPTY_OPTIONAL_ACTION = re.compile(
+    r"("
+    r"\baction(?:Label|Text|Click|Handler)?\s*\??\s*:"
+    r"|\bprimaryAction\s*\??\s*:"
+    r"|\bnextAction\s*\??\s*:"
+    r"|\bcta(?:Label)?\s*\??\s*:"
+    r"|\bonAction\s*\??\s*:"
+    r"|\bonclick\s*\??\s*:"
+    r"|children\s*\??\s*:"
+    r"|\{#if\s+[^}]{0,120}(?:action|onclick|onAction|cta|children)\b"
+    r"|\{@render\s+(?:action|children|cta)\b"
+    r"|\{#snippet\s+(?:action|children|cta)\b"
+    r")",
+    re.I,
+)
+_EMPTY_GRADIENT = re.compile(r"\bbg-gradient(?:-|to-|\b)", re.I)
+_SKELETON_PKG_202 = re.compile(
+    r"[\"'](?:svelte-skeleton|skeleton-svelte|@skeletonlabs(?:/[^\"']*)?)[\"']",
+    re.I,
+)
+_DOCS_EMPTY_NEXT_ACTION = re.compile(
+    r"("
+    r"empty(?:[- ]states?| views?)?.{0,120}(?:next action|helpful action)"
+    r"|(?:next action|helpful action).{0,120}empty(?:[- ]states?| views?)?"
+    r"|empty(?:[- ]states?| views?)?.{0,80}(?:import|clear filter|pick file)"
+    r")",
+    re.I | re.S,
+)
+_DOCS_EMPTY_NO_MASCOT = re.compile(
+    r"("
+    r"(?:empty(?:[- ]states?| views?)?).{0,80}(?:no |not |without ).{0,40}mascot"
+    r"|no mascot.{0,80}empty"
+    r"|not.{0,40}(?:a )?mascot"
+    r")",
+    re.I | re.S,
+)
+
+
+def _svelte_open_tag_at(src: str, start: int) -> str:
+    """Open tag starting at src[start]=='<', aware of quotes and {…}."""
+    n = len(src)
+    j = start + 1
+    q = None
+    brace = 0
+    while j < n:
+        c = src[j]
+        if q:
+            if c == q:
+                q = None
+        elif c in "'\"":
+            q = c
+        elif c == "{":
+            brace += 1
+        elif c == "}":
+            if brace:
+                brace -= 1
+        elif c == ">" and brace == 0:
+            return src[start : j + 1]
+        j += 1
+    return src[start : start + 480]
+
+
+def _empty_state_local_names(src: str) -> list[str]:
+    names = ["EmptyState"]
+    for m in re.finditer(
+        r"import\s+(\w+)\s+from\s+[\"'][^\"']*EmptyState\.svelte[\"']",
+        src,
+    ):
+        names.append(m.group(1))
+    return list(dict.fromkeys(names))
+
+
+def _empty_state_blocks(src: str) -> list[str]:
+    """Each <EmptyState …> usage (local import alias OK), incl. children."""
+    out: list[str] = []
+    for name in _empty_state_local_names(src):
+        for m in re.finditer(rf"<{re.escape(name)}\b", src):
+            open_tag = _svelte_open_tag_at(src, m.start())
+            if open_tag.rstrip().endswith("/>"):
+                out.append(open_tag)
+                continue
+            close = re.search(
+                rf"</{re.escape(name)}\s*>",
+                src[m.start() + len(open_tag) :],
+                re.I,
+            )
+            if not close:
+                out.append(open_tag)
+            else:
+                out.append(src[m.start() : m.start() + len(open_tag) + close.end()])
+    return out
+
+
+def _empty_block_title(block: str) -> str:
+    m = re.search(r"\btitle\s*=\s*[\"']([^\"']+)[\"']", block)
+    if m:
+        return m.group(1)
+    m = re.search(r"\btitle\s*=\s*\{[\"']([^\"']+)[\"']\}", block)
+    if m:
+        return m.group(1)
+    return ""
+
+
+def _empty_usage_has_action(block: str) -> bool:
+    return bool(_EMPTY_NEXT_ACTION.search(block))
+
+
+def _empty_file(crate: Path, name: str) -> Path:
+    if name == "App.svelte":
+        return crate / "web" / "App.svelte"
+    return crate / "web" / "lib" / name
+
+
+def assert_empty_next_action(crate: Path) -> None:
+    """#202: EmptyState next action on every major empty view, no mascot.
+
+    Optional primary action uses owned Button. People / Search / Review /
+    Timeline / Import idle / Doctor healthy wire a next action. Keep
+    data-empty. No illustration / bg-gradient. Merge-picker EmptyState
+    also needs an action if present. Not: skeletons (#203), toasts (#204),
+    t() of imported bodies, command palette (#215). Docs: empty views
+    have a next action, no mascot.
+    """
+    empty_path = crate / "web" / "lib" / "EmptyState.svelte"
+    if not empty_path.is_file():
+        fail("#202: EmptyState.svelte required (data-empty + optional Button action)")
+    empty = empty_path.read_text()
+
+    # 1) Keep data-empty / title / body (gates grep data-empty).
+    if "data-empty" not in empty:
+        fail("#202: EmptyState must keep data-empty")
+    if not re.search(r"\{title\}", empty) or not re.search(r"\{body\}", empty):
+        fail("#202: EmptyState must keep title / body text")
+
+    # 2) Optional primary action rendered with owned Button.
+    button_names = _owned_imported_names(empty, "button")
+    if not button_names:
+        fail(
+            "#202: EmptyState must render an optional primary action with "
+            "owned Button (import from $lib/components/ui/button or "
+            "relative components/ui/button)"
+        )
+    empty_markup = _svelte_markup(empty)
+    if not _owned_used_in(empty_markup, button_names) and not _owned_used_in(
+        empty, button_names
+    ):
+        fail(
+            "#202: EmptyState must render the optional primary action with "
+            "owned Button (import from $lib/components/ui/button or "
+            "relative components/ui/button)"
+        )
+    if not _EMPTY_OPTIONAL_ACTION.search(empty):
+        fail(
+            "#202: EmptyState primary action must be optional "
+            "(label + handler, onclick, or snippet — not a required mascot CTA)"
+        )
+
+    # 3) No SVG mascot / illustration / gradient card on EmptyState.
+    if _EMPTY_GRADIENT.search(empty):
+        fail("#202: EmptyState must not use a gradient card (no bg-gradient)")
+    if _EMPTY_MASCOT.search(_lucide_surface(empty)):
+        fail(
+            "#202: EmptyState must not use a mascot / illustration / <svg> "
+            "scene / <img> (20px Lucide + next action; no marketing card)"
+        )
+
+    # 4) Listed views keep their empty copy and wire a next action.
+    en_chrome = _chrome_en_text(crate)
+    required_files = {fname for fname, _title, _why in _EMPTY_TITLES_202}
+    file_text: dict[str, str] = {}
+    for fname in required_files | {"ImportPane.svelte"} | {
+        f for f, _t, _w in _EMPTY_TITLES_202_OPTIONAL_IF_ABSENT
+    }:
+        path = _empty_file(crate, fname)
+        if not path.is_file():
+            fail(f"#202: {fname} required (empty view with a next action)")
+        file_text[fname] = path.read_text()
+
+    for fname, title, why in _EMPTY_TITLES_202:
+        blob = file_text[fname] + "\n" + en_chrome
+        if title not in blob:
+            fail(f"#202: keep {title!r} empty copy ({why})")
+        all_blocks = _empty_state_blocks(file_text[fname])
+        titled = [b for b in all_blocks if title in b]
+        if not titled:
+            # Title may live in the en pack; the file still needs EmptyState.
+            if not all_blocks:
+                fail(
+                    f"#202: {why} must use EmptyState with a next action "
+                    f"(keep {title!r}; keep data-empty grep-able)"
+                )
+            titled = all_blocks
+        missing = [b for b in titled if not _empty_usage_has_action(b)]
+        if missing:
+            shown = _empty_block_title(missing[0]) or title
+            fail(
+                f"#202: {why} EmptyState ({shown!r}) must include a next action "
+                "(action label / onclick / Button child)"
+            )
+
+    for fname, title, why in _EMPTY_TITLES_202_OPTIONAL_IF_ABSENT:
+        titled = [b for b in _empty_state_blocks(file_text[fname]) if title in b]
+        if not titled:
+            continue
+        missing = [b for b in titled if not _empty_usage_has_action(b)]
+        if missing:
+            fail(
+                f"#202: {why} EmptyState ({title!r}) must include a next action "
+                "(action label / onclick / Button child)"
+            )
+
+    # Every remaining EmptyState usage (merge-picker No match, …) needs an action.
+    for p in _product_svelte(crate):
+        if p.name == "EmptyState.svelte":
+            continue
+        text = p.read_text()
+        for block in _empty_state_blocks(text):
+            if _empty_usage_has_action(block):
+                continue
+            shown = _empty_block_title(block) or p.name
+            fail(
+                f"#202: EmptyState {shown!r} in {p.relative_to(crate)} must "
+                "include a next action (action label / onclick / Button child)"
+            )
+
+    # 5) Import idle must gain EmptyState or data-empty with a next action.
+    imp = file_text["ImportPane.svelte"]
+    if "EmptyState" not in imp and "data-empty" not in imp:
+        fail(
+            "#202: Import idle must use EmptyState (or data-empty) with a "
+            "next action (Pick file)"
+        )
+    import_ok = False
+    for block in _empty_state_blocks(imp):
+        if _empty_usage_has_action(block):
+            import_ok = True
+            break
+    if not import_ok and "data-empty" in imp:
+        hook = _lucide_attr_block(imp, "data-empty") or imp
+        if _empty_usage_has_action(hook):
+            import_ok = True
+    if not import_ok:
+        fail(
+            "#202: Import idle EmptyState (or data-empty) must include a "
+            "next action (Pick file)"
+        )
+
+    # 6) Not: skeletons (#203), toasts (#204), command palette (#215), t(bodies).
+    pkg_path = crate / "package.json"
+    pkg = pkg_path.read_text() if pkg_path.is_file() else ""
+    if _SKELETON_PKG_202.search(pkg):
+        fail("#202: not in scope — loading skeletons are #203")
+    for p in _product_svelte(crate):
+        stem = p.stem.lower()
+        if stem.startswith("skeleton") or stem in {"skeleton", "skeletons"}:
+            fail(
+                "#202: not in scope — loading skeleton components are #203 "
+                f"(found {p.relative_to(crate)})"
+            )
+    if _TOAST_SONNER_PKG.search(pkg):
+        fail("#202: not in scope — toasts / sonner are #204")
+    if _CMD_PALETTE_PKG.search(pkg):
+        fail("#202: not in scope — command palette is #215")
+    svelte_blob = "\n".join(p.read_text() for p in _product_svelte(crate))
+    if _BODY_T_CALL.search(svelte_blob):
+        fail(
+            "#202: not in scope — do not t() imported bodies "
+            "(body_text / preview / snippet)"
+        )
+
+    # 7) D24: empty views have a next action, no mascot.
+    dtxt = _typo_docs_blob()
+    if not dtxt.strip():
+        fail(
+            "#202: docs/user/app.md (and/or docs/hacking/tauri.md) required "
+            "(empty views have a next action, no mascot)"
+        )
+    if not _DOCS_EMPTY_NEXT_ACTION.search(dtxt):
+        fail(
+            "#202: docs/user/app.md (and/or docs/hacking/tauri.md) must say "
+            "empty views have a next action (Import / clear filter / Pick file)"
+        )
+    if not _DOCS_EMPTY_NO_MASCOT.search(dtxt):
+        fail(
+            "#202: docs/user/app.md (and/or docs/hacking/tauri.md) must say "
+            "empty views have no mascot"
+        )
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -13880,6 +14211,7 @@ def main() -> None:
     assert_typography(crate)
     assert_lucide_icons(crate)
     assert_owned_primitives(crate)
+    assert_empty_next_action(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
