@@ -83,7 +83,7 @@
     Folder/file picker only — no URLs. WhatsApp: pick one .zip <em>or</em> a folder of zips.
     Takeout: pick the Takeout directory. Bodies are not dumped here.
   </p>
-  {#if progress.status === "idle"}
+  {#if !path && progress.status !== "running"}
     <div class="mb-4 max-w-lg">
       <EmptyState
         title="No file selected"

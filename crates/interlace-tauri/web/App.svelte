@@ -1390,10 +1390,23 @@
               body={timeline.length === 0
                 ? "This person may only appear in groups. Tick include groups, or import more sources."
                 : "Nothing matches the current platform or kind filter. Try All, or another chip."}
-              actionLabel="Show all"
+              actionLabel={timeline.length > 0
+                ? "Show all"
+                : includeGroups
+                  ? "Import"
+                  : "Include groups"}
               onAction={() => {
-                platformFilter = "all";
-                kindFilter = "all";
+                if (timeline.length > 0) {
+                  platformFilter = "all";
+                  kindFilter = "all";
+                  return;
+                }
+                if (selectedId && !includeGroups) {
+                  includeGroups = true;
+                  selectPerson(selectedId);
+                  return;
+                }
+                view = "import";
               }}
             />
           </div>
