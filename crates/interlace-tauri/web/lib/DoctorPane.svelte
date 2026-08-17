@@ -11,10 +11,12 @@
     issues = $bindable<string[]>([]),
     onError,
     onDone,
+    onGoPeople,
   }: {
     issues?: string[];
     onError: (e: unknown) => void;
     onDone: () => Promise<void>;
+    onGoPeople: () => void;
   } = $props();
 
   let busy = $state(false);
@@ -94,6 +96,8 @@
     <EmptyState
       title="No doctor issues"
       body="SQLite, FTS, and referenced CAS blobs look healthy. Unreferenced files still need GC CAS if you want them gone."
+      actionLabel="People"
+      onAction={onGoPeople}
     />
   {:else}
     <div

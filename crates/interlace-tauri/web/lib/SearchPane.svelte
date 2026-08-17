@@ -379,11 +379,15 @@
     <EmptyState
       title="Type a query"
       body="Same full-text search as the CLI. Group chats stay hidden until you tick include groups."
+      actionLabel="Focus search"
+      onAction={() => document.getElementById("q")?.focus()}
     />
   {:else if empty}
     <EmptyState
       title="No hits"
       body="Try another token, widen the date range, or enable include groups if the match is only in a group."
+      actionLabel="Focus search"
+      onAction={() => document.getElementById("q")?.focus()}
     />
   {/if}
 

@@ -179,8 +179,9 @@ CAS with a confirm dialog — same as the CLI, no extra window).
 Drop a local ZIP or mbox onto the window (any tab) to start import — no URLs.
 
 Empty lists, loading, lock conflicts, and doctor findings are shown as copy
-in the window (not only in the terminal). Chrome icons (play/pause, lightbox
-close, empty states) are Lucide, not emoji glyphs.
+in the window (not only in the terminal). Empty views have a next action
+(Import / clear filter / Pick file) and no mascot. Chrome icons (play/pause,
+lightbox close, empty states) are Lucide, not emoji glyphs.
 Platform chips and banners use owned Badge and Card primitives, not one-off chrome.
 
 Photos and voice notes stored in the archive `cas/` folder open in the
