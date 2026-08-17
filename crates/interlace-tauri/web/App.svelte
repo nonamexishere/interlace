@@ -66,6 +66,7 @@
   let booting = $state(true);
   let opening = $state(false);
   let tlLoading = $state(false);
+  let tlAppending = $state(false);
   let peopleLoading = $state(true);
   let tlGen = 0;
   let doctor = $state<string[]>([]);
@@ -631,6 +632,7 @@
       selectedConversationId = null;
     }
     const gen = ++tlGen;
+    tlAppending = append;
     tlLoading = true;
     stopPinLatest();
     try {
@@ -688,7 +690,10 @@
     } catch (e) {
       if (gen === tlGen) showErr(e);
     } finally {
-      if (gen === tlGen) tlLoading = false;
+      if (gen === tlGen) {
+        tlLoading = false;
+        tlAppending = false;
+      }
     }
   }
 
@@ -710,6 +715,7 @@
     selectedId = personId;
     selectedConversationId = null;
     const gen = ++tlGen;
+    tlAppending = false;
     tlLoading = true;
     stopPinLatest();
     try {
@@ -1107,6 +1113,7 @@
       <div
         class="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto border-r border-border p-4"
         data-people-sidebar
+        aria-busy={peopleLoading}
       >
         <p class="break-all text-xs text-muted-foreground">{st.path}</p>
         <dl class="mt-3 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-sm">
@@ -1150,7 +1157,7 @@
           <Label for="person-filter">Filter people</Label>
           <Input id="person-filter" type="search" bind:value={filter} placeholder="name" class="min-w-0" />
         </div>
-        <ul class="mt-2 min-w-0 space-y-0.5" role="listbox" aria-label="People">
+        <ul class="mt-2 min-w-0 space-y-0.5" role="listbox" aria-label="People" aria-busy={peopleLoading}>
           {#each filtered as p}
             <li class="min-w-0" role="presentation">
               <button
@@ -1386,9 +1393,11 @@
         <ScrollArea
           id="person-timeline"
           class="min-h-0 min-w-0 flex-1 px-4 pb-8"
+          aria-busy={tlLoading}
           onscroll={onTimelineScroll}
         >
         {#if tlLoading}
+          {#if !tlAppending}
           <div class="space-y-2 pt-2" aria-hidden="true">
             <Skeleton class="h-4 w-[92%]" />
             <Skeleton class="h-3 w-[68%]" />
@@ -1396,6 +1405,7 @@
             <Skeleton class="h-3 w-[56%]" />
             <Skeleton class="h-4 w-[76%]" />
           </div>
+          {/if}
         {:else if !selectedId}
           <div class="py-6">
             <EmptyState
