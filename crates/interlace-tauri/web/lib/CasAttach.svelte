@@ -367,7 +367,7 @@
 {#if lightboxOpen && lightboxSrc()}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="photo-lightbox fixed inset-0 z-[100] flex items-center justify-center bg-black/80"
+    class="photo-lightbox fixed inset-0 z-[100] flex items-center justify-center"
     data-photo-lightbox
     role="dialog"
     aria-modal="true"

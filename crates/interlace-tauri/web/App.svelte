@@ -1012,7 +1012,7 @@
 
   {#if st && cloudWarning}
     <div
-      class="border-b border-amber-700/40 bg-amber-950/15 px-4 py-2 text-sm text-amber-900 dark:text-amber-200"
+      class="border-b border-border bg-muted px-4 py-2 text-sm text-muted-foreground"
       data-cloud-warning
     >
       <p class="font-medium">This archive looks like it sits on iCloud, Dropbox, or Google Drive.</p>
@@ -1117,14 +1117,14 @@
             : "no imports yet"}
         </p>
         {#if st.warnings?.length}
-          <ul class="mt-2 min-w-0 list-disc pl-4 text-sm text-amber-700 dark:text-amber-400">
+          <ul class="mt-2 min-w-0 list-disc pl-4 text-sm text-muted-foreground">
             {#each st.warnings as w}
               <li class="break-words">{w}</li>
             {/each}
           </ul>
         {/if}
         {#if doctor.length}
-          <div class="mt-2 min-w-0 rounded-md border border-amber-700/40 bg-amber-950/20 p-2 text-sm text-amber-800 dark:text-amber-300">
+          <div class="mt-2 min-w-0 rounded-md border border-destructive/40 bg-muted p-2 text-sm text-destructive">
             <p class="font-medium">Doctor found {doctor.length} issue{doctor.length === 1 ? "" : "s"}</p>
             <ul class="mt-1 min-w-0 list-disc pl-4">
               {#each doctor as d}

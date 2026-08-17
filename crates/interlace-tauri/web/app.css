@@ -120,6 +120,23 @@ body {
   background-color: var(--bubble-them);
 }
 
+.search-mark {
+  border-radius: 0.125rem;
+  padding-inline: 0.125rem;
+  background-color: hsl(54 96% 77%);
+  color: var(--color-foreground);
+}
+
+@media (prefers-color-scheme: dark) {
+  .search-mark {
+    background-color: hsl(45 93% 32% / 0.6);
+  }
+}
+
+.photo-lightbox {
+  background-color: hsl(0 0% 0% / 0.8);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
