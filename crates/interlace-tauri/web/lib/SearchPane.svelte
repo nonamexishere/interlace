@@ -412,7 +412,7 @@
           <p class="mt-1 whitespace-pre-wrap text-sm">
             {#each splitSnippet(h.snippet || h.subject || "") as seg}
               {#if seg.kind === "mark"}
-                <mark class="rounded-sm bg-yellow-200 px-0.5 text-foreground dark:bg-yellow-700/60">{seg.text}</mark>
+                <mark class="search-mark">{seg.text}</mark>
               {:else}
                 {seg.text}
               {/if}

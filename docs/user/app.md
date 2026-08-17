@@ -3,6 +3,7 @@
 Phase 2 desktop window. **Offline.** No account. No sync. No updater.
 Visual language: [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md)
 (Phase 2.2, epic [#197](https://github.com/nonamexishere/interlace/issues/197)).
+Chrome colors come from design tokens / CSS variables, not raw Tailwind hues.
 
 The archive is still a folder you own (same `~/Interlace` as the CLI). This
 app does not phone home and contains no HTTP **client**. A Tauri build may

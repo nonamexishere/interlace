@@ -97,7 +97,7 @@
     />
   {:else}
     <div
-      class="rounded-md border border-amber-700/40 bg-amber-950/20 p-3 text-sm text-amber-800 dark:text-amber-300"
+      class="rounded-md border border-destructive/40 bg-muted p-3 text-sm text-destructive"
     >
       <p class="font-medium">Doctor found issues</p>
       <ul class="mt-1 list-disc pl-4">
