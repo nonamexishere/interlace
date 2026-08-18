@@ -67,8 +67,7 @@ Support (`last-archive.bookmark`, next to `config.toml`). Quit and reopen:
 that folder opens again — no picker. The CLI-only `last_archive_path` string
 is **not** enough under the sandbox. If you first used the CLI, then open
 Interlace.app, macOS blocks the folder and the window shows the setup form
-with: “macOS blocked that folder. Use Open existing… once so Interlace can
-remember it.” Pick the folder once in the app. The bookmark is local only
+with: “macOS blocked that folder. Use Open existing… once so Interlace can remember it.” Pick the folder once in the app. The bookmark is local only
 (not iCloud, not synced). `tauri:dev` still works from the path pointer if
 bookmark create fails outside the sandbox.
 
@@ -195,6 +194,9 @@ progress track you can scrub; audio is loaded only from local CAS bytes
 Nothing is fetched from the network. Exports that omitted media show a
 placeholder. Right-click a timeline bubble to **Copy text** to the clipboard.
 Right-click a stored attachment to **Reveal in Finder** (local CAS file).
+Copy and Reveal failures toast (chrome copy only — “Could not copy”).
+Sandbox-denied, archive lock, and not-an-archive stay in-page on the
+setup form / err banner.
 There is no Share sheet or AirDrop.
 
 If the archive path looks like iCloud Drive, Dropbox, or Google Drive, a

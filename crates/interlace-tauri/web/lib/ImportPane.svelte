@@ -8,8 +8,13 @@
 
   let {
     onError,
+    onToast,
     onDone,
-  }: { onError: (e: unknown) => void; onDone: () => Promise<void> } = $props();
+  }: {
+    onError: (e: unknown) => void;
+    onToast?: (message: string) => void;
+    onDone: () => Promise<void>;
+  } = $props();
 
   let kind = $state("auto");
   let locale = $state("");
@@ -28,7 +33,7 @@
 
   async function start() {
     if (!path) {
-      onError(new Error("pick a file or folder first"));
+      onToast?.("pick a file or folder first");
       return;
     }
     try {
