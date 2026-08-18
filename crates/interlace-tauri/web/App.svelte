@@ -1482,7 +1482,6 @@
           id="person-timeline"
           class="min-h-0 min-w-0 flex-1 px-4 pb-8"
           aria-busy={tlLoading}
-          data-empty
           onscroll={onTimelineScroll}
         >
         {@render timelinePaneState()}

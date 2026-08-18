@@ -1318,6 +1318,26 @@ def _person_detail_markup(app: str) -> str:
     return markup
 
 
+def _svelte_snippet_body(src: str, name: str) -> str:
+    """Body of `{#snippet name …}…{/snippet}` (no nested snippet support)."""
+    head = re.search(rf"\{{#snippet\s+{re.escape(name)}\b[^}}]*\}}", src)
+    if not head:
+        return ""
+    end = src.find("{/snippet}", head.end())
+    if end < 0:
+        return src[head.end() :]
+    return src[head.end() : end]
+
+
+def _person_detail_with_renders(app: str) -> str:
+    """Person-column markup plus any `{@render snippet()}` bodies it invokes."""
+    detail = _person_detail_markup(app)
+    extra: list[str] = []
+    for m in re.finditer(r"\{@render\s+([A-Za-z_]\w*)\s*\(", detail):
+        extra.append(_svelte_snippet_body(app, m.group(1)))
+    return detail + ("\n" + "\n".join(extra) if extra else "")
+
+
 def _conversation_switcher_blocks(crate: Path) -> list[str]:
     """Conversation list/select chrome — not the people sidebar, not chat bubbles."""
     found: list[str] = []
@@ -3904,7 +3924,12 @@ def assert_timeline_kind_filter(crate: Path) -> None:
             "on the filtered list — not only when the unfiltered timeline is empty"
         )
     # Empty copy should be reachable in the person timeline pane (static presence).
-    if not re.search(r"EmptyState|data-empty", detail if detail.strip() else app, re.I):
+    # `{@render timelinePaneState()}` hosts EmptyState in a snippet above this
+    # window; expand renders so we do not require a fake data-empty on the list.
+    pane_empty = _person_detail_with_renders(app)
+    if not re.search(
+        r"EmptyState|data-empty", pane_empty if pane_empty.strip() else app, re.I
+    ):
         fail("#116: person timeline must keep an EmptyState path for the empty filter case")
 
     # 5b) Load older must not show under the empty filtered view.

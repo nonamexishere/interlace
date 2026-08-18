@@ -73,6 +73,7 @@
         gcCas: pending.gcCas,
       });
       lastOk = pending.ok;
+      scanError = "";
       await onDone();
     } catch (e) {
       onError(e);
