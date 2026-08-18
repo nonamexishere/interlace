@@ -24,6 +24,7 @@
   let busy = $state(false);
   let scanning = $state(true);
   let scanError = $state("");
+  let scanGen = 0;
   let lastOk = $state("");
   let confirmOpen = $state(false);
   let confirmTitle = $state("");
@@ -37,14 +38,19 @@
   } | null = null;
 
   async function load() {
+    const gen = ++scanGen;
     scanning = true;
     scanError = "";
     try {
-      issues = await api.doctorIssues();
+      const next = await api.doctorIssues();
+      if (gen !== scanGen) return;
+      issues = next;
     } catch (e) {
-      scanError = friendly(e instanceof Error ? e.message : String(e ?? ""));
+      if (gen === scanGen) {
+        scanError = friendly(e instanceof Error ? e.message : String(e ?? ""));
+      }
     } finally {
-      scanning = false;
+      if (gen === scanGen) scanning = false;
     }
   }
 

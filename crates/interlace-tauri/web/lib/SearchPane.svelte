@@ -50,6 +50,7 @@
   let searched = $state(false);
   let searching = $state(false);
   let searchError = $state("");
+  let searchGen = 0;
 
   function personLabel(p: Person) {
     return p.is_self ? `${p.display_name} (self)` : p.display_name;
@@ -140,6 +141,7 @@
   }
 
   async function run() {
+    const gen = ++searchGen;
     empty = false;
     searched = true;
     searching = true;
@@ -148,7 +150,7 @@
     body = "";
     hitIndex = 0;
     try {
-      hits = await api.search({
+      const next = await api.search({
         q: q.trim(),
         personId: personId != null ? personId : null,
         from: from.trim() || null,
@@ -159,13 +161,17 @@
         includeGroups,
         limit: 50,
       });
+      if (gen !== searchGen) return;
+      hits = next;
       empty = hits.length === 0;
       hitIndex = 0;
     } catch (e) {
-      searchError = friendly(e instanceof Error ? e.message : String(e ?? ""));
-      hits = [];
+      if (gen === searchGen) {
+        searchError = friendly(e instanceof Error ? e.message : String(e ?? ""));
+        hits = [];
+      }
     } finally {
-      searching = false;
+      if (gen === searchGen) searching = false;
     }
   }
 
