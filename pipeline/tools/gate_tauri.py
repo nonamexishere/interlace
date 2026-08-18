@@ -15254,6 +15254,10 @@ _PANE_CATCH_NOISE = frozenset(
         "tlViewportHeight",
         "tlGen",
         "gen",
+        "searchGen",
+        "scanGen",
+        "runGen",
+        "loadGen",
         "scanning",
         "searching",
         "busy",
@@ -16053,10 +16057,10 @@ def assert_partial_pane_errors(crate: Path) -> None:
     # Search-jump miss (#124) stays showErr — not this issue (IN.md).
     jump = _ident_body(app, "openPersonAtMessage")
     if jump and "showErr" not in jump:
-        # SPEC_GAP: only the miss path must keep showErr; do not require
-        # openPersonAtMessage IPC fail to change. Presence of showErr in
-        # that function is enough to keep #124.
-        pass
+        fail(
+            "#205: openPersonAtMessage must still contain showErr "
+            "(#124 miss path)"
+        )
 
     # 7) No CDN / HTTP client / updater / network.server / sonner.
     #    Do not weaken #201/#202 package bans.
@@ -16091,6 +16095,307 @@ def assert_partial_pane_errors(crate: Path) -> None:
             "a failed timeline / search / doctor scan shows Error + Retry "
             "on that pane and the rest of the shell stays"
         )
+
+
+_PANE_RESULT_WRITES = frozenset(
+    {
+        "searchError",
+        "hits",
+        "searching",
+        "empty",
+        "scanError",
+        "scanning",
+        "issues",
+    }
+)
+
+
+def _first_substr_pos(body: str, needles: tuple[str, ...]) -> int:
+    found = [body.find(n) for n in needles]
+    found = [i for i in found if i >= 0]
+    return min(found) if found else -1
+
+
+def _eq_stmt_rhs(body: str, eq_idx: int) -> str:
+    """RHS of `ident = …` starting at the `=`."""
+    if eq_idx < 0 or eq_idx >= len(body) or body[eq_idx] != "=":
+        return ""
+    i = eq_idx + 1
+    if i < len(body) and body[i] == "=":
+        return ""
+    n = len(body)
+    depth = 0
+    j = i
+    while j < n:
+        nxt = _js_next(body, j)
+        if nxt != j:
+            j = nxt
+            continue
+        c = body[j]
+        if c in "({[":
+            depth += 1
+        elif c in ")}]":
+            if depth == 0:
+                break
+            depth -= 1
+        elif c in ";," and depth == 0:
+            break
+        elif c == "\n" and depth == 0:
+            break
+        j += 1
+    return body[i:j]
+
+
+def _early_busy_ipc_status(body: str, busy: str, ipc_needles: tuple[str, ...]) -> str:
+    """Whether `if (busy) return` actually prevents a second IPC.
+
+    ok: return is before the IPC, busy is set true after that if and
+    before the IPC, no await between the if and the set.
+    incomplete: an `if (busy)` exists before the IPC but does not prove
+    a second call cannot start.
+    absent: no such if before the IPC.
+    """
+    ipc_at = _first_substr_pos(body, ipc_needles)
+    if ipc_at < 0:
+        return "absent"
+    prefix = body[:ipc_at]
+    m = re.search(
+        rf"if\s*\(\s*{re.escape(busy)}(?:\s*===?\s*true)?\s*\)",
+        prefix,
+    )
+    if not m:
+        return "absent"
+    i = m.end()
+    n = len(body)
+    while i < n and body[i] in " \t\n\r":
+        i += 1
+    if i < n and body[i] == "{":
+        close = _match_closer(body, i)
+        if close < 0 or close > ipc_at:
+            return "incomplete"
+        block = body[i + 1 : close]
+        if not re.search(r"\breturn\b", block):
+            return "incomplete"
+        if any(needle in block for needle in ipc_needles):
+            return "incomplete"
+        if_end = close + 1
+    elif body.startswith("return", i):
+        if_end = i + len("return")
+    else:
+        return "incomplete"
+    after_if = body[if_end:ipc_at]
+    set_m = re.search(rf"\b{re.escape(busy)}\s*=\s*true\b", after_if)
+    if not set_m:
+        return "incomplete"
+    if re.search(r"\bawait\b", after_if[: set_m.start()]):
+        return "incomplete"
+    return "ok"
+
+
+def _gen_increment_before_ipc(body: str, ipc_at: int) -> tuple[str, str] | None:
+    """`(local, counter)` for `const gen = ++searchGen` before the first IPC."""
+    if ipc_at < 0:
+        return None
+    prefix = body[:ipc_at]
+    for m in re.finditer(
+        r"(?:const|let|var)\s+(\w+)\s*=\s*(?:\+\+\s*(\w+)|(\w+)\s*\+\+)",
+        prefix,
+    ):
+        local = m.group(1)
+        counter = m.group(2) or m.group(3)
+        if local in _PANE_RESULT_WRITES or counter in _PANE_RESULT_WRITES:
+            continue
+        if local.lower() != "gen" and not re.search(r"gen", counter, re.I):
+            continue
+        return local, counter
+    return None
+
+
+def _if_gen_eq_contains(body: str, pos: int, local: str, counter: str) -> bool:
+    """True if `pos` sits in `if (local === counter) { … }` or its then-stmt."""
+    pat = re.compile(
+        rf"if\s*\(\s*(?:{re.escape(local)}\s*===?\s*{re.escape(counter)}"
+        rf"|{re.escape(counter)}\s*===?\s*{re.escape(local)})\s*\)"
+    )
+    for m in pat.finditer(body[:pos]):
+        i = m.end()
+        while i < len(body) and body[i] in " \t\n\r":
+            i += 1
+        if i < len(body) and body[i] == "{":
+            close = _match_closer(body, i)
+            if close >= pos > i:
+                return True
+        elif i == pos:
+            return True
+    return False
+
+
+def _same_block_gen_ne_return(body: str, pos: int, local: str, counter: str) -> bool:
+    """True if the same block already did `if (local !== counter) return`."""
+    enclosing = 0
+    i = 0
+    while i < pos:
+        nxt = _js_next(body, i)
+        if nxt != i:
+            i = nxt
+            continue
+        if body[i] == "{":
+            close = _match_closer(body, i)
+            if close < 0:
+                break
+            if close >= pos:
+                enclosing = i
+                i += 1
+            else:
+                i = close + 1
+            continue
+        i += 1
+    region = body[enclosing:pos]
+    return bool(
+        re.search(
+            rf"if\s*\(\s*(?:{re.escape(local)}\s*!==?\s*{re.escape(counter)}"
+            rf"|{re.escape(counter)}\s*!==?\s*{re.escape(local)})\s*\)"
+            r"\s*(?:\{\s*)?return\b",
+            region,
+        )
+    )
+
+
+def _assignment_gen_guarded(body: str, pos: int, local: str, counter: str) -> bool:
+    return _if_gen_eq_contains(body, pos, local, counter) or _same_block_gen_ne_return(
+        body, pos, local, counter
+    )
+
+
+def _unguarded_post_ipc_writes(
+    body: str,
+    local: str,
+    counter: str,
+    writes: tuple[str, ...],
+    ipc_needles: tuple[str, ...],
+) -> list[str]:
+    """Write idents assigned after / as the IPC without a current-gen guard."""
+    ipc_at = _first_substr_pos(body, ipc_needles)
+    if ipc_at < 0:
+        return list(writes)
+    bad: list[str] = []
+    for ident in writes:
+        for m in re.finditer(rf"\b{re.escape(ident)}\s*=(?!=)", body):
+            pos = m.start()
+            eq = body.find("=", pos)
+            rhs = _eq_stmt_rhs(body, eq)
+            is_post = pos >= ipc_at or bool(re.search(r"\bawait\b", rhs)) or any(
+                n in rhs for n in ipc_needles
+            )
+            if not is_post:
+                continue
+            if not _assignment_gen_guarded(body, pos, local, counter):
+                bad.append(ident)
+                break
+    return bad
+
+
+def assert_partial_retry_generation(crate: Path) -> None:
+    """#205 follow-up: Search run() / Doctor load() must drop stale responses.
+
+    Timeline already sequences personShow / personTimeline with tlGen so a
+    stale catch cannot write tlError after a newer success. run() and
+    load() must do the same (searchGen / scanGen or equivalent): increment
+    at start; catch / success / finally writes to searchError / hits /
+    searching / empty and scanError / scanning / issues only apply when
+    that gen is current. An early `if (searching) return` /
+    `if (scanning) return` is enough only when it actually prevents a
+    second IPC (busy set true after the return and before the IPC, no
+    await in between). Do not change selectPerson / tlGen. Doctor Retry
+    stays load / doctorIssues (existing #205). #124 showErr on
+    openPersonAtMessage stays in assert_partial_pane_errors.
+    """
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    doctor_path = crate / "web" / "lib" / "DoctorPane.svelte"
+    if not search_path.is_file():
+        fail(
+            "#205: SearchPane.svelte required "
+            "(run() must ignore stale search responses)"
+        )
+    if not doctor_path.is_file():
+        fail(
+            "#205: DoctorPane.svelte required "
+            "(load() must ignore stale doctorIssues responses)"
+        )
+
+    search = search_path.read_text()
+    doctor = doctor_path.read_text()
+    run_body = _without_comments(_ident_body(search, "run"))
+    load_body = _without_comments(_ident_body(doctor, "load"))
+    if not run_body:
+        fail("#205: SearchPane run() required (must ignore stale api.search)")
+    if not load_body:
+        fail("#205: DoctorPane load() required (must ignore stale doctorIssues)")
+
+    search_ipc = ("api.search",)
+    doctor_ipc = ("doctorIssues",)
+    search_writes = ("searchError", "hits", "searching", "empty")
+    doctor_writes = ("scanError", "scanning", "issues")
+
+    search_early = _early_busy_ipc_status(run_body, "searching", search_ipc)
+    if search_early != "ok":
+        search_tok = _gen_increment_before_ipc(
+            run_body, _first_substr_pos(run_body, search_ipc)
+        )
+        if search_tok:
+            bad = _unguarded_post_ipc_writes(
+                run_body, search_tok[0], search_tok[1], search_writes, search_ipc
+            )
+            if bad:
+                fail(
+                    "#205: SearchPane run() must not apply a stale catch — "
+                    "write searchError / hits / searching only when the "
+                    "run() generation is still current"
+                )
+        elif search_early == "incomplete":
+            fail(
+                "#205: SearchPane run() if (searching) return does not "
+                "prevent a second api.search (set searching = true after "
+                "the return and before the IPC, with no await in between "
+                "— or use a gen token like tlGen)"
+            )
+        else:
+            fail(
+                "#205: SearchPane run() must increment a generation token "
+                "(like App tlGen) and only write searchError / hits / "
+                "searching when that gen is current (a second overlapping "
+                "run() must not let a stale catch win)"
+            )
+
+    doctor_early = _early_busy_ipc_status(load_body, "scanning", doctor_ipc)
+    if doctor_early != "ok":
+        doctor_tok = _gen_increment_before_ipc(
+            load_body, _first_substr_pos(load_body, doctor_ipc)
+        )
+        if doctor_tok:
+            bad = _unguarded_post_ipc_writes(
+                load_body, doctor_tok[0], doctor_tok[1], doctor_writes, doctor_ipc
+            )
+            if bad:
+                fail(
+                    "#205: DoctorPane load() must not apply a stale catch — "
+                    "write scanError / scanning / issues only when the "
+                    "load() generation is still current"
+                )
+        elif doctor_early == "incomplete":
+            fail(
+                "#205: DoctorPane load() if (scanning) return does not "
+                "prevent a second doctorIssues (set scanning = true after "
+                "the return and before the IPC, with no await in between "
+                "— or use a gen token like tlGen)"
+            )
+        else:
+            fail(
+                "#205: DoctorPane load() must increment a generation token "
+                "(like App tlGen / scanGen) and only write scanError / "
+                "scanning / issues when that gen is current (overlapping "
+                "Retry / Refresh must not apply a stale catch)"
+            )
 
 
 def main() -> None:
@@ -16222,6 +16527,7 @@ def main() -> None:
     assert_inflight_audible_status(crate)
     assert_recoverable_toasts(crate)
     assert_partial_pane_errors(crate)
+    assert_partial_retry_generation(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
