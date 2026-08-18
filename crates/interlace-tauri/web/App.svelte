@@ -1525,7 +1525,7 @@
                 {#each group.rows as item}
                   <div class="flex min-w-0" data-tl-index={item.index}>
                     <article
-                      class="min-w-0 max-w-[94%] cursor-pointer rounded-2xl px-3 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring {item.index ===
+                      class="flex min-w-0 max-w-[94%] cursor-pointer flex-col gap-2 rounded-2xl px-3 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring {item.index ===
                       tlIndex
                         ? 'ring-2 ring-ring'
                         : ''}"
@@ -1540,7 +1540,10 @@
                       oncontextmenu={(e) => openCopyMenu(e, item.row)}
                     >
                       {#if !isGroupedFollower(item.index)}
-                      <p class="caption flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                      <p
+                        class="caption flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
+                        data-bubble-meta
+                      >
                         <time>{utcTime(item.row.sent_at)}</time>
                         <Badge
                           variant="outline"
@@ -1553,15 +1556,16 @@
                         {/if}
                       </p>
                       {/if}
+                      <div data-bubble-body>
                       {#if isMailRow(item.row)}
                         {#if (item.row.subject ?? "").trim()}
-                          <p class="mail-subject mt-1 text-sm font-medium text-foreground">
+                          <p class="mail-subject text-sm font-medium text-foreground">
                             {item.row.subject}
                           </p>
                         {/if}
                         {@const parts = splitQuotedBody(item.row.body_text || "")}
                         {#if parts.main || !parts.quoted}
-                          <p class="mt-1 whitespace-pre-wrap break-words text-sm leading-normal text-foreground">
+                          <p class="whitespace-pre-wrap break-words text-sm leading-normal text-foreground">
                             {displayBody(parts.main)}
                           </p>
                         {/if}
@@ -1590,11 +1594,14 @@
                           {/if}
                         {/if}
                       {:else}
-                        <p class="mt-1 whitespace-pre-wrap break-words text-sm leading-normal text-foreground">
+                        <p class="whitespace-pre-wrap break-words text-sm leading-normal text-foreground">
                           {displayBody(item.row.body_text || item.row.subject || "")}
                         </p>
                       {/if}
-                      <CasAttach items={item.row.attachments || []} {showToast} />
+                      </div>
+                      <div data-bubble-attach>
+                        <CasAttach items={item.row.attachments || []} {showToast} />
+                      </div>
                     </article>
                   </div>
                 {/each}
