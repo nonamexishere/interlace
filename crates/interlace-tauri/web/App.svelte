@@ -361,6 +361,21 @@
       ),
   );
 
+  /** Consecutive filtered rows: same side, conversation, and UTC day. */
+  function isGroupedFollower(i: number): boolean {
+    if (i <= 0) return false;
+    const pos = filteredTimeline.findIndex((item) => item.index === i);
+    if (pos >= 0) i = pos;
+    const cur = filteredTimeline[i];
+    const prev = filteredTimeline[i - 1];
+    if (!cur || !prev) return false;
+    return (
+      cur.row.from_me === prev.row.from_me &&
+      cur.row.conversation_id === prev.row.conversation_id &&
+      utcDay(cur.row.sent_at) === utcDay(prev.row.sent_at)
+    );
+  }
+
   /** Original `timeline` indices currently shown (j/k and highlight use these). */
   const visibleTlIndices = $derived(filteredTimeline.map((item) => item.index));
 
@@ -1518,11 +1533,13 @@
                       class:bubble-them={!item.row.from_me}
                       class:ml-auto={item.row.from_me}
                       data-from-me={item.row.from_me}
+                      data-grouped={isGroupedFollower(item.index) || undefined}
                       tabindex="0"
                       aria-label={`${utcTime(item.row.sent_at)} ${displayBody(item.row.body_text || item.row.subject || "").slice(0, 80)}`}
                       onclick={() => (tlIndex = item.index)}
                       oncontextmenu={(e) => openCopyMenu(e, item.row)}
                     >
+                      {#if !isGroupedFollower(item.index)}
                       <p class="caption flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         <time>{utcTime(item.row.sent_at)}</time>
                         <Badge
@@ -1535,6 +1552,7 @@
                           <span class="text-xs text-muted-foreground">You</span>
                         {/if}
                       </p>
+                      {/if}
                       {#if isMailRow(item.row)}
                         {#if (item.row.subject ?? "").trim()}
                           <p class="mail-subject mt-1 text-sm font-medium text-foreground">

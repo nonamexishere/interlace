@@ -118,7 +118,8 @@ shows a small text **platform chip** (not a brand logo). **Identity chrome**
 the top of the conversation. The person timeline is a **chat**, not a log:
 messages you sent sit on the right, the other person on the left. Each
 bubble caption is **hour:minute** (UTC) plus the platform chip — not the
-calendar date again. Opening a person shows the **latest messages** (the loading line
+calendar date again. Consecutive same-side, same-conversation, same-UTC-day
+bubbles share one caption; followers are quieter. Opening a person shows the **latest messages** (the loading line
 clears first, then the list waits for wrap and the pane is pinned
 to the bottom while heights settle, so the newest bubble is fully
 visible above the text-only footer even on a narrow pane or a long
