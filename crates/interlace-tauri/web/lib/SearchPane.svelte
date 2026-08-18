@@ -15,10 +15,12 @@
     onError,
     onToast,
     onJumpToMessage,
+    friendly,
   }: {
     people: Person[];
     onError: (e: unknown) => void;
     onToast?: (message: string) => void;
+    friendly: (raw: string) => string;
     onJumpToMessage: (args: {
       personId: number;
       messageId: number;
@@ -160,7 +162,8 @@
       empty = hits.length === 0;
       hitIndex = 0;
     } catch (e) {
-      searchError = e instanceof Error ? e.message : String(e ?? "");
+      searchError = friendly(e instanceof Error ? e.message : String(e ?? ""));
+      hits = [];
     } finally {
       searching = false;
     }

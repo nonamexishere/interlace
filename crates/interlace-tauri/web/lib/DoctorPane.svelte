@@ -12,11 +12,13 @@
     onError,
     onDone,
     onGoPeople,
+    friendly,
   }: {
     issues?: string[];
     onError: (e: unknown) => void;
     onDone: () => Promise<void>;
     onGoPeople: () => void;
+    friendly: (raw: string) => string;
   } = $props();
 
   let busy = $state(false);
@@ -40,7 +42,7 @@
     try {
       issues = await api.doctorIssues();
     } catch (e) {
-      scanError = e instanceof Error ? e.message : String(e ?? "");
+      scanError = friendly(e instanceof Error ? e.message : String(e ?? ""));
     } finally {
       scanning = false;
     }

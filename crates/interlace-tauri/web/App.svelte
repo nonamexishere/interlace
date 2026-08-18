@@ -1169,7 +1169,7 @@
       </p>
     </main>
   {:else if st && view === "search"}
-    <SearchPane {people} onError={showErr} onToast={showToast} onJumpToMessage={jumpToMessage} />
+    <SearchPane {people} {friendly} onError={showErr} onToast={showToast} onJumpToMessage={jumpToMessage} />
   {:else if st && view === "review"}
     <ReviewPane
       onError={showErr}
@@ -1189,6 +1189,7 @@
   {:else if st && view === "doctor"}
     <DoctorPane
       bind:issues={doctor}
+      {friendly}
       onError={showErr}
       onDone={async () => {
         await applyStatus(await api.status());
@@ -1481,10 +1482,10 @@
           id="person-timeline"
           class="min-h-0 min-w-0 flex-1 px-4 pb-8"
           aria-busy={tlLoading}
+          data-empty
           onscroll={onTimelineScroll}
         >
         {@render timelinePaneState()}
-        <!-- EmptyState path for filtered-empty (#116); chrome lives in timelinePaneState -->
         {#if timeline.length && oldestCursor && filteredTimeline.length > 0}
           <Button
             variant="outline"
