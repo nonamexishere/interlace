@@ -21,6 +21,7 @@
 
   let busy = $state(false);
   let scanning = $state(true);
+  let scanError = $state("");
   let lastOk = $state("");
   let confirmOpen = $state(false);
   let confirmTitle = $state("");
@@ -35,10 +36,11 @@
 
   async function load() {
     scanning = true;
+    scanError = "";
     try {
       issues = await api.doctorIssues();
     } catch (e) {
-      onError(e);
+      scanError = e instanceof Error ? e.message : String(e ?? "");
     } finally {
       scanning = false;
     }
@@ -92,6 +94,15 @@
 
   {#if scanning}
     <p class="text-sm text-muted-foreground">Scanning SQLite, FTS, and referenced CAS blobs…</p>
+  {:else if scanError}
+    <div
+      class="rounded-md border border-destructive/40 bg-muted/40 px-4 py-6 text-sm"
+      data-partial
+    >
+      <p class="font-medium text-destructive">Error</p>
+      <p class="mt-1 text-muted-foreground">{scanError}</p>
+      <Button size="sm" class="mt-3" onclick={load}>Retry</Button>
+    </div>
   {:else if issues.length === 0}
     <EmptyState
       title="No doctor issues"

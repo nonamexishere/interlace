@@ -47,6 +47,7 @@
   let empty = $state(false);
   let searched = $state(false);
   let searching = $state(false);
+  let searchError = $state("");
 
   function personLabel(p: Person) {
     return p.is_self ? `${p.display_name} (self)` : p.display_name;
@@ -140,6 +141,7 @@
     empty = false;
     searched = true;
     searching = true;
+    searchError = "";
     expanded = null;
     body = "";
     hitIndex = 0;
@@ -158,7 +160,7 @@
       empty = hits.length === 0;
       hitIndex = 0;
     } catch (e) {
-      onError(e);
+      searchError = e instanceof Error ? e.message : String(e ?? "");
     } finally {
       searching = false;
     }
@@ -391,6 +393,15 @@
       actionLabel="Focus search"
       onAction={() => document.getElementById("q")?.focus()}
     />
+  {:else if searchError}
+    <div
+      class="rounded-md border border-destructive/40 bg-muted/40 px-4 py-6 text-sm"
+      data-partial
+    >
+      <p class="font-medium text-destructive">Error</p>
+      <p class="mt-1 text-muted-foreground">{searchError}</p>
+      <Button size="sm" class="mt-3" onclick={run}>Retry</Button>
+    </div>
   {:else if empty}
     <EmptyState
       title="No hits"

@@ -181,6 +181,7 @@ Empty lists, loading, lock conflicts, and doctor findings are shown as copy
 in the window (not only in the terminal). Empty views have a next action
 (Import / clear filter / Pick file) and no mascot. People, timeline, and search
 show a quiet muted skeleton while loading. Load older does not add the skeleton chrome; people and timeline loading is announced (busy/status). The boot spinner stays.
+A failed timeline, search, or doctor scan shows Error + Retry on that pane; the rest of the shell stays.
 Reduced-motion is static bars, no shimmer. Chrome icons (play/pause,
 lightbox close, empty states) are Lucide, not emoji glyphs.
 Platform chips and banners use owned Badge and Card primitives, not one-off chrome.
