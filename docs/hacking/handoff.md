@@ -81,8 +81,8 @@ ad-hoc, not notarized). Ask before another `app-v*` / `v*` / crates.io publish.
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `fefc4fd` **Merge pull request #235** (#203
-loading skeletons). Tag **`app-v0.1.1`** is still the unsigned app. Epic
+HEAD when this was rewritten: `d615c88` **Merge pull request #237** (#204
+recoverable toasts). Tag **`app-v0.1.1`** is still the unsigned app. Epic
 **#108**, milestone 6, and the Phase 1 CLI milestone are **closed**. Product
 track is **#197** / milestone 7. Re-check with `git log -1` / `gh pr list`.
 
@@ -171,6 +171,7 @@ Phase 2.1 milestone (#6): **closed**.
 | #201 / PR #231 | Owned Tooltip, Separator, Badge, Card primitives |
 | #202 / PR #233 | EmptyState next action on every major view |
 | #203 / PR #235 | Loading skeletons for people, timeline, and search |
+| #204 / PR #237 | Recoverable errors + owned toast (copy / Reveal); blocking stay in-page |
 
 ## Open — product now (Phase 2.2)
 
@@ -183,8 +184,8 @@ load-bearing (a11y, titlebar, search).
 
 | # | Note |
 | --- | --- |
-| **#204** | Recoverable errors + sonner toast. Next coding. |
-| **#205**–**#222** | Partial states, timeline/search, chrome, a11y, appearance — see #197 |
+| **#205** | Partial states — one pane can fail without blanking the shell. Next coding. |
+| **#206**–**#222** | Timeline grouping / search / chrome / a11y / appearance — see #197 |
 | **#224** | Dogfood: person timeline scroll stutters on two-sided DMs (#120 fixed-height virtualizer). Not the design-system line. |
 
 Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github.com/nonamexishere/interlace/milestone/7).
@@ -198,9 +199,9 @@ Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github
 
 ## Recommended next steps
 
-1. Next coding: **#204** (recoverable errors + sonner toast). **#224** is
-   the open dogfood scroll bug if Mustafa picks it over the design-system
-   line. Do not start 1.1 / P3 / P4.
+1. Next coding: **#205** (partial pane failure). **#224** is the open
+   dogfood scroll bug if Mustafa picks it over the design-system line.
+   Do not start 1.1 / P3 / P4.
 2. Do **not** start 1.1 / P3 / P4 unprompted. Ask before another `app-v*` / `v*` / crates.io.
 
 ## Commands (copy-paste)
@@ -273,8 +274,8 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
 > Product track: Phase 2.2 UI/UX polish (#197). Read
-> `docs/design/UI-DESIGN.md`. Next coding is **#204** (toasts / recoverable
-> errors). Do not start 1.1 / P3 / P4. Do not dump chat bodies. Ask before
+> `docs/design/UI-DESIGN.md`. Next coding is **#205** (partial pane
+> failure). Do not start 1.1 / P3 / P4. Do not dump chat bodies. Ask before
 > crates.io,
 > `v*`, or another `app-v*` tag. After merges, update this handoff
 > in the same session.
