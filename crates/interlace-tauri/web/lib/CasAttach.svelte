@@ -17,10 +17,10 @@
 
   let {
     items,
-    onError,
+    showToast,
   }: {
     items: Attachment[];
-    onError?: (e: unknown) => void;
+    showToast?: (message: string) => void;
   } = $props();
 
   function isImage(a: Attachment) {
@@ -150,8 +150,8 @@
     revealMenu = null;
     try {
       await api.revealCas(hash);
-    } catch (e) {
-      onError?.(e);
+    } catch {
+      if (showToast) showToast("Could not reveal");
     }
   }
 

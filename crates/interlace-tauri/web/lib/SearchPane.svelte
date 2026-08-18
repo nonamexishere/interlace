@@ -13,10 +13,12 @@
   let {
     people,
     onError,
+    onToast,
     onJumpToMessage,
   }: {
     people: Person[];
     onError: (e: unknown) => void;
+    onToast?: (message: string) => void;
     onJumpToMessage: (args: {
       personId: number;
       messageId: number;
@@ -430,7 +432,7 @@
             {/each}
           </p>
         </button>
-        <CasAttach items={h.attachments || []} {onError} />
+        <CasAttach items={h.attachments || []} showToast={onToast} />
         {#if expanded === h.message_id}
           <p class="bg-muted px-2 py-2 text-sm leading-normal whitespace-pre-wrap">{body}</p>
         {/if}

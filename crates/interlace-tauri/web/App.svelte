@@ -15,6 +15,7 @@
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
   import { Skeleton } from "$lib/components/ui/skeleton/index.js";
+  import { Toast } from "$lib/components/ui/toast/index.js";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
   import SearchPane from "$lib/SearchPane.svelte";
   import ReviewPane from "$lib/ReviewPane.svelte";
@@ -113,7 +114,7 @@
   const SANDBOX_DENIED =
     "macOS blocked that folder. Use Open existing\u2026 once so Interlace can remember it.";
 
-  function friendly(raw: string): string {
+  function friendly(raw: string) {
     if (raw === SANDBOX_DENIED || raw.includes(SANDBOX_DENIED)) {
       return SANDBOX_DENIED;
     }
@@ -136,6 +137,17 @@
     err = friendly(e instanceof Error ? e.message : String(e ?? ""));
   }
 
+  let toastSeq = 0;
+  let toasts = $state<{ id: number; message: string }[]>([]);
+
+  function showToast(message: string) {
+    const id = ++toastSeq;
+    toasts = [...toasts, { id, message }];
+    window.setTimeout(() => {
+      toasts = toasts.filter((item) => item.id !== id);
+    }, 2500);
+  }
+
   /** Tauri file-drop paths only — reject http(s) and other URL schemes. */
   function isDroppedUrl(path: string): boolean {
     const s = path.trim();
@@ -147,7 +159,7 @@
     const local = paths.find((p) => p && p.trim() && !isDroppedUrl(p));
     if (!local) {
       if (paths.some((p) => (p ?? "").trim())) {
-        showErr(new Error("Drop a local ZIP or mbox — URLs are not imported."));
+        showToast("Drop a local ZIP or mbox — URLs are not imported.");
       }
       return;
     }
@@ -168,11 +180,11 @@
     return s.replace(/<attached:\s*[^>]+>/gi, "").trim();
   }
 
-  let copyMenu = $state<{ x: number; y: number; body_text: string } | null>(null);
+  let copyMenu = $state<{ x: number; y: number; text: string } | null>(null);
 
   function openCopyMenu(e: MouseEvent, row: TimelineRow) {
     e.preventDefault();
-    copyMenu = { x: e.clientX, y: e.clientY, body_text: row.body_text || row.subject || "" };
+    copyMenu = { x: e.clientX, y: e.clientY, text: row.body_text || row.subject || "" };
   }
 
   function closeCopyMenu() {
@@ -181,12 +193,12 @@
 
   async function copyText() {
     if (!copyMenu) return;
-    const text = displayBody(copyMenu.body_text);
+    const text = displayBody(copyMenu.text);
     copyMenu = null;
     try {
       await navigator.clipboard.writeText(text);
-    } catch (e) {
-      showErr(e);
+    } catch {
+      showToast("Could not copy");
     }
   }
 
@@ -1083,7 +1095,7 @@
       </p>
     </main>
   {:else if st && view === "search"}
-    <SearchPane {people} onError={showErr} onJumpToMessage={jumpToMessage} />
+    <SearchPane {people} onError={showErr} onToast={showToast} onJumpToMessage={jumpToMessage} />
   {:else if st && view === "review"}
     <ReviewPane
       onError={showErr}
@@ -1095,6 +1107,7 @@
   {:else if st && view === "import"}
     <ImportPane
       onError={showErr}
+      onToast={showToast}
       onDone={async () => {
         await applyStatus(await api.status());
       }}
@@ -1534,7 +1547,7 @@
                           {displayBody(item.row.body_text || item.row.subject || "")}
                         </p>
                       {/if}
-                      <CasAttach items={item.row.attachments || []} onError={showErr} />
+                      <CasAttach items={item.row.attachments || []} {showToast} />
                     </article>
                   </div>
                 {/each}
@@ -1631,6 +1644,16 @@
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
+
+{#if toasts.length}
+  <div class="pointer-events-none fixed bottom-4 right-4 z-[90] flex flex-col items-end gap-2">
+    {#each toasts as item (item.id)}
+      <div class="pointer-events-auto">
+        <Toast message={item.message} />
+      </div>
+    {/each}
+  </div>
+{/if}
 
 <ConfirmDialog
   bind:open={confirmOpen}
