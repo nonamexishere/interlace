@@ -14803,7 +14803,7 @@ _SANDBOX_137 = re.compile(
     r"(?:\u2026|\.\.\.|…)\s*once so Interlace can remember it\."
 )
 _TOAST_BODY_INTERP = re.compile(
-    r"\{body_text\}|copyMenu\.body_text|\{copyMenu\.body_text\}"
+    r"\{body_text\}|copyMenu\.body_text|\{copyMenu\.body_text\}|\{copyMenu\.text\}"
 )
 _TOAST_CDN = re.compile(
     r"("
@@ -14941,7 +14941,7 @@ def _toast_source_blob(crate: Path) -> str:
 
 
 def _cas_onerror_resolved(crate: Path) -> str:
-    """Bodies bound to CasAttach onError (App showErr today)."""
+    """Bodies bound to CasAttach onError if a future tag still binds it."""
     chunks: list[str] = []
     app_path = crate / "web" / "App.svelte"
     app = app_path.read_text() if app_path.is_file() else ""
@@ -15013,7 +15013,7 @@ def _toast_args_include_body(blob: str) -> bool:
         blob,
     ):
         arg = _call_arg(blob, m.end() - 1)
-        if re.search(r"body_text|copyMenu\.body_text|displayBody\s*\(", arg):
+        if re.search(r"body_text|copyMenu\.body_text|copyMenu\.text\b|displayBody\s*\(", arg):
             return True
     return False
 
@@ -15070,7 +15070,7 @@ def assert_recoverable_toasts(crate: Path) -> None:
     ):
         fail(
             "#204: toast markup / helper must not interpolate body_text "
-            "(no {body_text} / copyMenu.body_text — chrome copy only)"
+            "(no {body_text} / copyMenu.body_text / copyMenu.text — chrome copy only)"
         )
 
     # 4) Sandbox #137 sentence, lock, and not-an-archive stay in-page.
