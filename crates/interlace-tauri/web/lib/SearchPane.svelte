@@ -15,10 +15,12 @@
     onError,
     onToast,
     onJumpToMessage,
+    friendly,
   }: {
     people: Person[];
     onError: (e: unknown) => void;
     onToast?: (message: string) => void;
+    friendly: (raw: string) => string;
     onJumpToMessage: (args: {
       personId: number;
       messageId: number;
@@ -47,6 +49,8 @@
   let empty = $state(false);
   let searched = $state(false);
   let searching = $state(false);
+  let searchError = $state("");
+  let searchGen = 0;
 
   function personLabel(p: Person) {
     return p.is_self ? `${p.display_name} (self)` : p.display_name;
@@ -137,14 +141,16 @@
   }
 
   async function run() {
+    const gen = ++searchGen;
     empty = false;
     searched = true;
     searching = true;
+    searchError = "";
     expanded = null;
     body = "";
     hitIndex = 0;
     try {
-      hits = await api.search({
+      const next = await api.search({
         q: q.trim(),
         personId: personId != null ? personId : null,
         from: from.trim() || null,
@@ -155,12 +161,17 @@
         includeGroups,
         limit: 50,
       });
+      if (gen !== searchGen) return;
+      hits = next;
       empty = hits.length === 0;
       hitIndex = 0;
     } catch (e) {
-      onError(e);
+      if (gen === searchGen) {
+        searchError = friendly(e instanceof Error ? e.message : String(e ?? ""));
+        hits = [];
+      }
     } finally {
-      searching = false;
+      if (gen === searchGen) searching = false;
     }
   }
 
@@ -391,6 +402,15 @@
       actionLabel="Focus search"
       onAction={() => document.getElementById("q")?.focus()}
     />
+  {:else if searchError}
+    <div
+      class="rounded-md border border-destructive/40 bg-muted/40 px-4 py-6 text-sm"
+      data-partial
+    >
+      <p class="font-medium text-destructive">Error</p>
+      <p class="mt-1 text-muted-foreground">{searchError}</p>
+      <Button size="sm" class="mt-3" onclick={run}>Retry</Button>
+    </div>
   {:else if empty}
     <EmptyState
       title="No hits"

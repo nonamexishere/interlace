@@ -12,15 +12,19 @@
     onError,
     onDone,
     onGoPeople,
+    friendly,
   }: {
     issues?: string[];
     onError: (e: unknown) => void;
     onDone: () => Promise<void>;
     onGoPeople: () => void;
+    friendly: (raw: string) => string;
   } = $props();
 
   let busy = $state(false);
   let scanning = $state(true);
+  let scanError = $state("");
+  let scanGen = 0;
   let lastOk = $state("");
   let confirmOpen = $state(false);
   let confirmTitle = $state("");
@@ -34,13 +38,19 @@
   } | null = null;
 
   async function load() {
+    const gen = ++scanGen;
     scanning = true;
+    scanError = "";
     try {
-      issues = await api.doctorIssues();
+      const next = await api.doctorIssues();
+      if (gen !== scanGen) return;
+      issues = next;
     } catch (e) {
-      onError(e);
+      if (gen === scanGen) {
+        scanError = friendly(e instanceof Error ? e.message : String(e ?? ""));
+      }
     } finally {
-      scanning = false;
+      if (gen === scanGen) scanning = false;
     }
   }
 
@@ -69,6 +79,7 @@
         gcCas: pending.gcCas,
       });
       lastOk = pending.ok;
+      scanError = "";
       await onDone();
     } catch (e) {
       onError(e);
@@ -92,6 +103,15 @@
 
   {#if scanning}
     <p class="text-sm text-muted-foreground">Scanning SQLite, FTS, and referenced CAS blobs…</p>
+  {:else if scanError}
+    <div
+      class="rounded-md border border-destructive/40 bg-muted/40 px-4 py-6 text-sm"
+      data-partial
+    >
+      <p class="font-medium text-destructive">Error</p>
+      <p class="mt-1 text-muted-foreground">{scanError}</p>
+      <Button size="sm" class="mt-3" onclick={load}>Retry</Button>
+    </div>
   {:else if issues.length === 0}
     <EmptyState
       title="No doctor issues"
