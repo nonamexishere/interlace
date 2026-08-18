@@ -200,6 +200,15 @@
 #     OK. No CDN / HTTP client / updater / network.server / sonner.
 #     Keep #202/#203/#204/#137/#156/#113/#120. Docs: failed pane shows
 #     Error + Retry; the rest of the shell stays.
+#206: group consecutive person-timeline bubbles — same from_me + same
+#     conversation_id + same UTC day is one caption (time+chip) then quieter
+#     followers (data-grouped, or skip .caption / data-platform-chip). Key off
+#     the filtered list (previous index), not only the previous windowed row.
+#     Day headings stay; each message stays its own row (data-tl-index / j/k).
+#     Bodies stay text nodes; CasAttach stays on followers. No network avatars.
+#     Do not soften #111/#112/#113/#115/#120/#205. Docs: consecutive same-side
+#     / same-conversation / same-UTC-day bubbles share one caption (keep the
+#     existing hour:minute + chip sentence).
 """
 
 from __future__ import annotations
@@ -16398,6 +16407,380 @@ def assert_partial_retry_generation(crate: Path) -> None:
             )
 
 
+# #206 — group consecutive same-side / same-conversation / same-UTC-day bubbles.
+# Static: followers omit the run caption; grouping keys off filteredTimeline[i-1].
+_GROUPING_COND = re.compile(
+    r"("
+    r"\bgrouped\b"
+    r"|\bisGrouped(?:Follower|Row)?"
+    r"|\brunStart\b|\bisRunStart\b"
+    r"|\bfirstOfRun\b|\bisFirst(?:InRun|OfRun)\b"
+    r"|\bshowCaption\b|\bhideCaption\b|\bcaptionVisible\b"
+    r"|\bisFollower\b"
+    r"|\bsameRun\b|\binSameRun\b|\bisSameRun\b|\bsameCaptionRun\b"
+    r"|\bgroupStart\b|\bisGroupStart\b|\bfirstInGroup\b"
+    r"|\brunHead\b|\bisRunHead\b"
+    r")",
+    re.I,
+)
+_CAPTION_MARK = re.compile(
+    r"("
+    r"class\s*=\s*[\"'][^\"']*\bcaption\b"
+    r"|data-platform-chip"
+    r"|<time\b"
+    r")",
+    re.I,
+)
+_CAPTION_OMIT_ATTR = re.compile(
+    r"("
+    r"class:hidden\s*=\s*\{[^}]{0,80}"
+    r"(?:grouped|isFollower|isGrouped|!?\s*(?:runStart|showCaption|firstOfRun))"
+    r"|hidden\s*=\s*\{[^}]{0,80}"
+    r"(?:grouped|isFollower|isGrouped|!?\s*(?:runStart|showCaption|firstOfRun))"
+    r"|class:opacity-0\s*=\s*\{[^}]{0,80}(?:grouped|isFollower|isGrouped)"
+    r")",
+    re.I,
+)
+_HOVER_ONLY_TIME = re.compile(
+    r"("
+    r"hover:opacity"
+    r"|focus(?:-visible)?:opacity"
+    r"|hover:visible"
+    r"|focus(?:-visible)?:visible"
+    r"|group-hover:"
+    r"|group-focus:"
+    r")",
+    re.I,
+)
+_FILTERED_PREV = re.compile(
+    r"filteredTimeline\s*(?:"
+    r"\[[^\]]{0,80}-\s*1\s*\]"
+    r"|\.at\s*\(\s*[^)]{0,60}-\s*1\s*\)"
+    r")",
+    re.I,
+)
+_PREV_INDEX = re.compile(
+    r"("
+    r"\[[^\]]{0,60}-\s*1\s*\]"
+    r"|\.at\s*\(\s*[^)]{0,40}-\s*1\s*\)"
+    r"|\bprev(?:ious)?(?:Row|Item|Msg|Filtered)?\b"
+    r")",
+    re.I,
+)
+_GROUP_DAY_KEY = re.compile(r"\butcDay\b|\butc_day\b|\bdayKey\b|\bisoDay\b")
+_NET_AVATAR = re.compile(
+    r"("
+    r"<img\b[^>]{0,400}src\s*=\s*[\"']https?://"
+    r"|src\s*=\s*\{[^}]{0,160}https?://"
+    r"|slack[-_]?avatar"
+    r"|gravatar"
+    r"|cdn\.slack"
+    r"|face[-_]?pile"
+    r")",
+    re.I | re.S,
+)
+_GROUP_HELPER_NAMES = (
+    "sameCaptionRun",
+    "isGroupedFollower",
+    "isRunFollower",
+    "sameRun",
+    "inSameRun",
+    "isSameRun",
+    "isCaptionGrouped",
+    "groupedWithPrev",
+    "isFollower",
+    "isGrouped",
+    "runStart",
+    "isRunStart",
+    "firstOfRun",
+    "showCaption",
+    "sameSenderRun",
+)
+
+
+def _grouping_if_at(markup: str, pos: int) -> bool:
+    for kind, cond, _extra in _template_stack(markup, pos):
+        if kind in {"if", "if-else"} and _GROUPING_COND.search(cond):
+            return True
+    return False
+
+
+def _tag_at(markup: str, pos: int) -> str:
+    start = markup.rfind("<", 0, pos + 1)
+    if start < 0:
+        return ""
+    end = markup.find(">", start)
+    if end < 0:
+        return ""
+    return markup[start : end + 1]
+
+
+def _caption_el_omitted(markup: str, pos: int) -> bool:
+    tag = _tag_at(markup, pos)
+    if tag and _CAPTION_OMIT_ATTR.search(tag):
+        return True
+    # Chip / <time> may sit inside <p class="caption" hidden={grouped}>.
+    start = markup.rfind("<", 0, pos + 1)
+    if start <= 0:
+        return False
+    parent = _tag_at(markup, start - 1)
+    return bool(parent and _CAPTION_OMIT_ATTR.search(parent))
+
+
+def _hover_only_time(markup: str, pos: int) -> bool:
+    tag = _tag_at(markup, pos)
+    if tag and _HOVER_ONLY_TIME.search(tag):
+        return True
+    start = markup.rfind("<", 0, pos + 1)
+    if start <= 0:
+        return False
+    parent = _tag_at(markup, start - 1)
+    return bool(parent and _HOVER_ONLY_TIME.search(parent))
+
+
+def _followers_omit_caption(markup: str) -> bool:
+    """True when run-start can show time+chip and followers can skip that caption."""
+    has_gated_caption = False
+    for m in _CAPTION_MARK.finditer(markup):
+        token = m.group(0)
+        gated = _grouping_if_at(markup, m.start()) or _caption_el_omitted(markup, m.start())
+        if gated:
+            has_gated_caption = True
+            continue
+        is_time = token.lower().startswith("<time")
+        if is_time and _hover_only_time(markup, m.start()):
+            continue
+        # Ungated .caption / chip / always-visible <time> — every bubble still
+        # paints the run caption.
+        return False
+    return has_gated_caption or bool(re.search(r"\bdata-grouped\b", markup, re.I))
+
+
+def _grouping_logic_src(cleaned: str) -> str:
+    parts: list[str] = []
+    for name in _GROUP_HELPER_NAMES:
+        body = _function_body(cleaned, name)
+        if body:
+            parts.append(body)
+        derived = _derived_body(cleaned, name)
+        if derived:
+            parts.append(derived)
+    w = _derived_body(cleaned, "windowedDayGroups")
+    if w and re.search(r"from_me|grouped|conversation_id", w):
+        parts.append(w)
+    return "\n".join(parts)
+
+
+def _has_three_key_run(src: str) -> bool:
+    """from_me + conversation_id + UTC day compared against a previous row."""
+    for m in re.finditer(r"conversation_id", src):
+        win = src[max(0, m.start() - 500) : m.end() + 500]
+        if not re.search(r"\bfrom_me\b", win):
+            continue
+        if not _GROUP_DAY_KEY.search(win):
+            continue
+        if not _PREV_INDEX.search(win):
+            continue
+        return True
+    return False
+
+
+def _grouping_uses_filtered_prev(cleaned: str) -> bool:
+    if _FILTERED_PREV.search(cleaned):
+        return True
+    for m in re.finditer(r"filteredTimeline\s*\.\s*map\s*\(", cleaned):
+        open_p = m.end() - 1
+        close = _match_closer(cleaned, open_p)
+        blob = cleaned[open_p : close] if close >= 0 else cleaned[m.end() : m.end() + 800]
+        if _PREV_INDEX.search(blob):
+            return True
+    for name in _GROUP_HELPER_NAMES:
+        body = _function_body(cleaned, name)
+        if not body:
+            continue
+        if not _PREV_INDEX.search(body):
+            continue
+        if re.search(rf"{re.escape(name)}\s*\(\s*filteredTimeline", cleaned):
+            return True
+        if re.search(r"filteredTimeline", body):
+            return True
+    return False
+
+
+def _docs_206_ok(dtxt: str) -> bool:
+    """Consecutive same-side / same-conversation / same-UTC-day share one caption."""
+    if not re.search(r"hour:minute", dtxt, re.I):
+        return False
+    if not re.search(r"platform chip", dtxt, re.I):
+        return False
+    for m in re.finditer(r"consecutive", dtxt, re.I):
+        win = dtxt[max(0, m.start() - 80) : m.end() + 240]
+        if not re.search(r"same[- ]side|same[- ]sender|from[_ ]me", win, re.I):
+            continue
+        if not re.search(r"same[- ]conversation", win, re.I):
+            continue
+        if not re.search(r"same[- ]UTC[- ]day|same UTC day", win, re.I):
+            continue
+        if not re.search(r"share one|one caption|quieter", win, re.I):
+            continue
+        return True
+    return False
+
+
+def _casattach_stripped_from_followers(markup: str) -> bool:
+    """True if CasAttach only mounts on the run-start branch."""
+    hits = list(re.finditer(r"<CasAttach\b", markup))
+    if not hits:
+        return True
+    ungated = [m for m in hits if not _grouping_if_at(markup, m.start())]
+    if ungated:
+        return False
+    kinds = set()
+    for m in hits:
+        for kind, cond, _extra in _template_stack(markup, m.start()):
+            if kind in {"if", "if-else"} and _GROUPING_COND.search(cond):
+                kinds.add(kind)
+    return not ({"if", "if-else"} <= kinds)
+
+
+def assert_timeline_grouped_runs(crate: Path) -> None:
+    """#206: consecutive same from_me + conversation + UTC day share one caption.
+
+    Acceptance: a 5-message run shows one caption then four quieter bubbles.
+    Grouping keys off the filtered list (previous index), not only the previous
+    windowed row. Day headings stay. Each message stays its own row (j/k).
+    Bodies stay text nodes. CasAttach stays on followers. No network avatars.
+    Do not soften #111/#112/#113/#115/#120/#205.
+    """
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#206: App.svelte required (person-timeline caption grouping)")
+    app = app_path.read_text()
+    logic = _web_logic(crate)
+    cleaned = _without_comments(app + "\n" + logic)
+    block = _timeline_block(crate)
+    markup = _svelte_markup(app)
+    pt = markup.find("person-timeline")
+    timeline_markup = markup[pt:] if pt >= 0 else markup
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+
+    # 1) Followers omit the run caption (or time on hover/focus only).
+    #    Grep hook: data-grouped, or {#if} / hidden that skips .caption / chip.
+    if not _followers_omit_caption(timeline_markup) and not _followers_omit_caption(block):
+        fail(
+            "#206: consecutive filtered rows with the same from_me, same "
+            "conversation_id, and same UTC day must form a run — run-start "
+            "keeps the caption (time + platform chip); followers omit it "
+            "(data-grouped, or {#if} that skips .caption / data-platform-chip). "
+            "Do not paint a caption on every bubble"
+        )
+
+    # 2) Grouping must key off the filtered list, not only the windowed row.
+    if not _grouping_uses_filtered_prev(cleaned):
+        fail(
+            "#206: grouping must key off the filtered list "
+            "(filteredTimeline[i-1] / previous filtered index), not only the "
+            "previous windowed row — otherwise scrolling mid-run would re-show "
+            "captions"
+        )
+
+    # 3) Break the run when from_me, conversation_id, or UTC day changes.
+    group_src = _grouping_logic_src(cleaned)
+    if not _has_three_key_run(group_src) and not _has_three_key_run(cleaned):
+        fail(
+            "#206: grouping key is from_me + conversation_id + UTC day "
+            "(break the run when any of those change). Do not group across "
+            "different conversation_id or a different UTC day"
+        )
+    identity_src = group_src or cleaned
+    for m in re.finditer(r"sender_identity_id", identity_src):
+        win = identity_src[max(0, m.start() - 280) : m.end() + 280]
+        if _GROUPING_COND.search(win) or re.search(r"\bfrom_me\b", win):
+            fail(
+                "#206: grouping key is from_me + conversation_id + UTC day — "
+                "do not invent sender_identity_id (that is #207)"
+            )
+
+    # 4) Each message stays its own row; j/k still walks every data-tl-index.
+    if not re.search(r"data-tl-index", block):
+        fail(
+            "#206: each message stays its own row (data-tl-index); "
+            "do not collapse a run into one DOM node"
+        )
+    if not re.search(r"<article\b", block, re.I):
+        fail(
+            "#206: each message stays its own article row; "
+            "do not collapse five messages into one DOM node"
+        )
+    if not _JK_KEY.search(cleaned):
+        fail(
+            "#206: do not soften #120 — j/k must still walk every "
+            "data-tl-index row"
+        )
+
+    # 5) Day headings stay (#112). Run-start still has caption/time/platform (#111/#115).
+    if not _DAY_HEADING.search(block):
+        fail(
+            "#206: do not soften #112 — day headings (day-heading) stay when "
+            "the UTC day changes"
+        )
+    if "caption" not in block.lower() and "<time" not in block.lower():
+        fail(
+            "#206: do not soften #111 — run-start keeps the caption / <time>"
+        )
+    if (
+        "row.platform" not in block
+        and "platformLabel" not in block
+        and "data-platform-chip" not in block
+    ):
+        fail(
+            "#206: do not soften #111/#115 — run-start keeps the platform chip"
+        )
+    if not re.search(r"ESTIMATED_ROW_HEIGHT\s*=\s*88", cleaned):
+        fail(
+            "#206: do not soften #120/#224 — keep ESTIMATED_ROW_HEIGHT = 88"
+        )
+    if not re.search(r"\bOVERSCAN\s*=\s*15\b", cleaned):
+        fail("#206: do not soften #120/#224 — keep OVERSCAN = 15")
+    if "data-partial" not in app and "data-partial" not in logic:
+        fail("#206: do not soften #205 — pane Error+Retry (data-partial) stays")
+
+    # 6) Bodies stay text nodes; CasAttach stays on followers.
+    if not _PRE_WRAP.search(block):
+        fail("#206: bodies stay whitespace-pre-wrap text nodes")
+    if _HTML_BODY.search(block) or _HTML_BODY.search(timeline_markup):
+        fail("#206: bodies stay text nodes — no {@html}")
+    if "displayBody" not in block and "body_text" not in block:
+        fail("#206: bodies stay text nodes (displayBody / body_text)")
+    if _casattach_stripped_from_followers(timeline_markup):
+        fail(
+            "#206: do not strip attachments / CasAttach from follower bubbles"
+        )
+
+    # 7) No network avatars / Slack-style face pile.
+    if _NET_AVATAR.search(timeline_markup) or _NET_AVATAR.search(block):
+        fail(
+            "#206: no network avatars (no http(s) <img> / slack avatar / "
+            "CDN face pile)"
+        )
+
+    # 8) D24: consecutive same-side / same-conversation / same-UTC-day share one caption.
+    if not dtxt.strip():
+        fail(
+            "#206: docs/user/app.md required — consecutive same-side / "
+            "same-conversation / same-UTC-day bubbles share one caption "
+            "(keep the existing hour:minute + platform chip sentence)"
+        )
+    if not _docs_206_ok(dtxt):
+        fail(
+            "#206: docs/user/app.md must say consecutive same-side / "
+            "same-conversation / same-UTC-day bubbles share one caption "
+            "(keep the existing hour:minute + platform chip sentence for "
+            "the run-start)"
+        )
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -16528,6 +16911,7 @@ def main() -> None:
     assert_recoverable_toasts(crate)
     assert_partial_pane_errors(crate)
     assert_partial_retry_generation(crate)
+    assert_timeline_grouped_runs(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
