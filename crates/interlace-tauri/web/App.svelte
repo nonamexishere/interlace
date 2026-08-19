@@ -1599,9 +1599,7 @@
                         </p>
                       {/if}
                       </div>
-                      <div data-bubble-attach>
-                        <CasAttach items={item.row.attachments || []} {showToast} />
-                      </div>
+                      <CasAttach data-bubble-attach flush={true} items={item.row.attachments || []} {showToast} />
                     </article>
                   </div>
                 {/each}
