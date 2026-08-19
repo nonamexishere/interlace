@@ -18,9 +18,11 @@
   let {
     items,
     showToast,
+    flush = false,
   }: {
     items: Attachment[];
     showToast?: (message: string) => void;
+    flush?: boolean;
   } = $props();
 
   function isImage(a: Attachment) {
@@ -244,7 +246,7 @@
 </script>
 
 {#if items?.length}
-  <ul class="mt-2 space-y-2">
+  <ul class={flush ? "space-y-2" : "mt-2 space-y-2"}>
     {#each items as a}
       <li
         oncontextmenu={(e) => {
