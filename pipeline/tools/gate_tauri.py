@@ -214,10 +214,13 @@
 #     wrapping CasAttach). WA (isMailRow false) and Gmail (isMailRow true) share
 #     that source order; CasAttach must not sit above the body wrapper. 4/8
 #     spacing on the stack (flex-col + gap-2/gap-3 and/or p-2/p-3; no mt-[7px]
-#     / p-[5px]). Followers may omit data-bubble-meta (#206). Do not soften
-#     #111/#117/#206/#120/#205. Not: HTML mail, reactions, new platforms,
-#     sender_identity_id. Docs: every bubble stacks identity/time, then
-#     body/subject, then attachments (WA and Gmail the same).
+#     / p-[5px]). Do not keep an always-on empty attach flex sibling (hook on
+#     CasAttach, or {#if attachments.length}); do not stack article gap-2/3
+#     plus CasAttach ul.mt-2 (SearchPane may keep mt-2). Followers may omit
+#     data-bubble-meta (#206). Do not soften #111/#117/#206/#120/#205. Not:
+#     HTML mail, reactions, new platforms, sender_identity_id. Docs: every
+#     bubble stacks identity/time, then body/subject, then attachments
+#     (WA and Gmail the same).
 """
 
 from __future__ import annotations
@@ -16819,6 +16822,37 @@ _NEW_PLATFORM_ON_BUBBLE = re.compile(
 _SENDER_NAME_ON_BUBBLE = re.compile(
     r"\{[^{}]{0,80}(?:sender_identity_id|senderName|sender_name|senderDisplayName)[^{}]{0,40}\}"
 )
+_CAS_ITEMS_LEN_COND = re.compile(r"items\s*\??\s*\.\s*length|(?=.*\bitems\b)(?=.*\blength\b).*")
+_UL_MT2_STATIC = re.compile(r"""class\s*=\s*["'][^"']*\bmt-2\b""")
+_UL_MT2_LIT = re.compile(r"class\s*=\s*\{\s*[`'\"][^`'\"]*\bmt-2\b")
+_MT2_TOKEN = re.compile(r"(?<![\w-])mt-2\b")
+_NOMARGIN_PROP = re.compile(
+    r"\b(?:flush|noMargin|nomargin|compact|tight|dense|bare|plain|noMt|unspaced)\b"
+)
+_BUBBLE_HTML_TOKEN = re.compile(
+    r"<!--.*?-->"
+    r"|</([A-Za-z][\w:.-]*)\s*>"
+    r"|<([A-Za-z][\w:.-]*)\b([^>]*?)>",
+    re.S,
+)
+_BUBBLE_VOID = frozenset(
+    {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+    }
+)
 
 
 def _timeline_articles(markup: str) -> list[str]:
@@ -16995,6 +17029,132 @@ def _path_has_body_then_attach(blob: str) -> bool:
         if _BUBBLE_ATTACH not in _casattach_open(blob):
             return False
     return True
+
+
+def _tag_name(tag: str) -> str:
+    m = re.match(r"</?([A-Za-z][\w:.-]*)", tag)
+    return m.group(1) if m else ""
+
+
+def _cond_is_attach_len(cond: str) -> bool:
+    """{#if} that mounts only when attachments.length is truthy."""
+    if re.search(r"attachments\s*\??\s*\.\s*length", cond):
+        return True
+    return bool(re.search(r"\battachments\b", cond) and re.search(r"\blength\b", cond))
+
+
+def _attach_len_gated(markup: str, pos: int) -> bool:
+    for kind, cond, _extra in _template_stack(markup, pos):
+        if kind == "if" and _cond_is_attach_len(cond):
+            return True
+    return False
+
+
+def _html_open_stack(markup: str, pos: int) -> list[tuple[int, str, str]]:
+    """(start, name, attrs) for unclosed HTML/component tags at pos."""
+    stack: list[tuple[int, str, str]] = []
+    for m in _BUBBLE_HTML_TOKEN.finditer(markup):
+        if m.start() >= pos:
+            break
+        raw = m.group(0)
+        if raw.startswith("<!--"):
+            continue
+        if m.group(1):
+            name = m.group(1)
+            for i in range(len(stack) - 1, -1, -1):
+                if stack[i][1].lower() == name.lower():
+                    del stack[i:]
+                    break
+            continue
+        name = m.group(2) or ""
+        attrs = m.group(3) or ""
+        self_close = raw.rstrip().endswith("/>") or name.lower() in _BUBBLE_VOID
+        if self_close:
+            continue
+        stack.append((m.start(), name, attrs))
+    return stack
+
+
+def _empty_attach_wrapper_name(article: str) -> str | None:
+    """Tag name of an always-on attach flex sibling, if any."""
+    for m in re.finditer(re.escape(_BUBBLE_ATTACH), article):
+        host = _tag_at(article, m.start())
+        name = _tag_name(host)
+        if name.lower() == "casattach":
+            continue
+        if name.lower() in {"div", "span"} and not _attach_len_gated(article, m.start()):
+            return name
+    cas = _casattach_pos(article)
+    if cas < 0:
+        return None
+    for start, name, attrs in reversed(_html_open_stack(article, cas)):
+        if name.lower() == "article":
+            break
+        if _BUBBLE_BODY in attrs or _BUBBLE_META in attrs:
+            break
+        if name.lower() in {"div", "span"}:
+            if not _attach_len_gated(article, start):
+                return name
+            break
+    return None
+
+
+def _cas_items_ul_open(cas: str) -> str:
+    markup = _svelte_markup(cas)
+    for m in re.finditer(r"\{#if\s+([^}]+)\}", markup):
+        if _CAS_ITEMS_LEN_COND.search(m.group(1)):
+            um = re.search(r"<ul\b[^>]*>", markup[m.end() : m.end() + 600])
+            if um:
+                return um.group(0)
+    um = re.search(r"<ul\b[^>]*>", markup)
+    return um.group(0) if um else ""
+
+
+def _ul_mt2_unconditional(ul_open: str) -> bool:
+    if _UL_MT2_STATIC.search(ul_open):
+        return True
+    if _UL_MT2_LIT.search(ul_open) and not re.search(r"\?|&&|\|\|", ul_open):
+        return True
+    return False
+
+
+def _cas_default_class_has_mt2(cas: str) -> bool:
+    return bool(
+        re.search(
+            r"""(?:class(?:Name)?\s*:\s*\w+\s*=\s*|class(?:Name)?\s*=\s*)["'][^"']*\bmt-2\b""",
+            cas,
+        )
+    )
+
+
+def _timeline_cas_drops_mt2(cas: str, article: str, ul_open: str) -> bool:
+    """True when the timeline CasAttach instance does not apply ul.mt-2."""
+    if _ul_mt2_unconditional(ul_open):
+        return False
+    cas_open = _casattach_open(article)
+    if not _MT2_TOKEN.search(ul_open) and not _cas_default_class_has_mt2(cas):
+        return True
+    if re.search(r"\b(?:class|className|ulClass|listClass)\b", ul_open + cas):
+        cm = re.search(r"""\bclass\s*=\s*["']([^"']*)["']""", cas_open)
+        if cm is not None and not _MT2_TOKEN.search(cm.group(1)):
+            return True
+        dyn = re.search(r"\bclass\s*=\s*\{([^}]+)\}", cas_open)
+        if dyn and not _MT2_TOKEN.search(dyn.group(1)):
+            return True
+    for prop in _NOMARGIN_PROP.findall(cas):
+        if not re.search(rf"\b{re.escape(prop)}\b", ul_open + cas_open):
+            continue
+        if re.search(
+            rf"\b{re.escape(prop)}(?:\s*(?:/|>)|\s*=\s*\{{\s*true\s*\}})",
+            cas_open,
+        ):
+            return True
+    return False
+
+
+def _article_has_col_gap23(article: str) -> bool:
+    text = "\n".join(_stack_class_blobs(article))
+    return bool(_STACK_FLEX_COL.search(text) and _STACK_GAP_48.search(text))
 
 
 def assert_timeline_bubble_hierarchy(crate: Path) -> None:
@@ -17222,6 +17382,62 @@ def assert_timeline_bubble_hierarchy(crate: Path) -> None:
         )
 
 
+def assert_timeline_attach_slot(crate: Path) -> None:
+    """#207 follow-up: no empty attach flex sibling; no gap-2 + ul.mt-2.
+
+    Person-timeline must not keep an always-on empty attach wrapper. Hook
+    on <CasAttach> (empty component is not a flex item) or wrap it in
+    {#if item.row.attachments?.length}. Timeline body-to-attach spacing
+    is only the article gap-2/gap-3 — CasAttach ul.mt-2 must not stack
+    on the timeline call. SearchPane may keep mt-2. Do not soften the
+    #207 stack-order hooks or #111/#117/#206/#120/#205.
+    """
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#207: App.svelte required (person-timeline attach slot)")
+    cas_path = crate / "web" / "lib" / "CasAttach.svelte"
+    if not cas_path.is_file():
+        fail("#207: CasAttach.svelte required (timeline attach slot / gap)")
+    app = app_path.read_text()
+    cas = cas_path.read_text()
+    markup = _svelte_markup(app)
+    pt = markup.find("person-timeline")
+    timeline_markup = markup[pt:] if pt >= 0 else markup
+    block = _timeline_block(crate)
+    articles = _timeline_articles(timeline_markup) or _timeline_articles(block)
+    if not articles:
+        fail("#207: person-timeline must render each message as an <article>")
+
+    empty_name: str | None = None
+    double_gap = False
+    ul_open = _cas_items_ul_open(cas)
+    for article in articles:
+        if empty_name is None:
+            empty_name = _empty_attach_wrapper_name(article)
+        if _article_has_col_gap23(article) and not _timeline_cas_drops_mt2(
+            cas, article, ul_open
+        ):
+            double_gap = True
+
+    problems: list[str] = []
+    if empty_name:
+        problems.append(
+            "person-timeline must not keep an always-on empty attach flex "
+            f"sibling — data-bubble-attach is on a wrapper <{empty_name}> "
+            "that is not gated by attachments length and is not <CasAttach> "
+            "itself (put the hook on <CasAttach>, or wrap it in "
+            "{#if item.row.attachments?.length})"
+        )
+    if double_gap:
+        problems.append(
+            "timeline body-to-attach must not stack article gap-2/gap-3 "
+            "plus CasAttach inner mt-2 (drop ul.mt-2 on the timeline "
+            "CasAttach via a no-margin prop/class; SearchPane may keep mt-2)"
+        )
+    if problems:
+        fail("#207: " + "; ".join(problems))
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -17354,6 +17570,7 @@ def main() -> None:
     assert_partial_retry_generation(crate)
     assert_timeline_grouped_runs(crate)
     assert_timeline_bubble_hierarchy(crate)
+    assert_timeline_attach_slot(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")
