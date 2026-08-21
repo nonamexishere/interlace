@@ -81,8 +81,8 @@ ad-hoc, not notarized). Ask before another `app-v*` / `v*` / crates.io publish.
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `757bdb1` **Merge pull request #244** (#224
-timeline measure / page mount). Tag **`app-v0.1.1`** is still the unsigned app. Epic
+HEAD when this was rewritten: `7f3310c` **Merge pull request #245** (#208
+chrome search). Tag **`app-v0.1.1`** is still the unsigned app. Epic
 **#108**, milestone 6, and the Phase 1 CLI milestone are **closed**. Product
 track is **#197** / milestone 7. Re-check with `git log -1` / `gh pr list`.
 
@@ -176,6 +176,7 @@ Phase 2.1 milestone (#6): **closed**.
 | #206 / PR #241 | Consecutive same-sender, same-conversation, same-UTC-day bubbles share one caption |
 | #207 / PR #243 | Timeline hierarchy — identity/time, then body/subject, then attachments |
 | #224 / PR #244 | Person timeline: ≤250 filtered rows mount fully; longer lists still window. Measure does not write scrollTop |
+| #208 / PR #245 | Always-available chrome search field; ⌘F from every view including People focuses `#q` |
 
 ## Open — product now (Phase 2.2)
 
@@ -188,8 +189,8 @@ load-bearing (a11y, titlebar, search).
 
 | # | Note |
 | --- | --- |
-| **#208** | Always-available search field (not only the Search tab). Next coding. PR **#245** is open. |
-| **#209**–**#222** | Search / chrome / a11y / appearance — see #197 |
+| **#209** | Search filters as secondary chrome + optional date range. Next coding. |
+| **#210**–**#222** | Search / chrome / a11y / appearance — see #197 |
 
 Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github.com/nonamexishere/interlace/milestone/7).
 
@@ -202,8 +203,8 @@ Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github
 
 ## Recommended next steps
 
-1. Next coding: **#208** (always-available search field). PR #245 is
-   already open. Do not start 1.1 / P3 / P4.
+1. Next coding: **#209** (search filters as secondary chrome + date
+   range). Do not start 1.1 / P3 / P4.
 2. Do **not** start 1.1 / P3 / P4 unprompted. Ask before another `app-v*` / `v*` / crates.io.
 
 ## Commands (copy-paste)
@@ -276,8 +277,8 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
 > Product track: Phase 2.2 UI/UX polish (#197). Read
-> `docs/design/UI-DESIGN.md`. Next coding is **#208** (always-available
-> search field; PR #245). Do not start 1.1 / P3 / P4. Do not dump chat bodies. Ask before
+> `docs/design/UI-DESIGN.md`. Next coding is **#209** (search filters
+> secondary + date range). Do not start 1.1 / P3 / P4. Do not dump chat bodies. Ask before
 > crates.io,
 > `v*`, or another `app-v*` tag. After merges, update this handoff
 > in the same session.

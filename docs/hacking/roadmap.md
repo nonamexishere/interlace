@@ -11,7 +11,7 @@ open. Phase 2.1 is **done**. Phase 2.2 is **now**.
 
 | What | Notes |
 | --- | --- |
-| Phase 2.2 | Epic [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7). Normative [`UI-DESIGN.md`](../design/UI-DESIGN.md). Next coding **#208**. #198–#207 and #224 landed (PRs #225–#244). |
+| Phase 2.2 | Epic [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7). Normative [`UI-DESIGN.md`](../design/UI-DESIGN.md). Next coding **#209**. #198–#208 and #224 landed (PRs #225–#245). |
 | Desktop app | **`app-v0.1.1` shipped** ([release](https://github.com/nonamexishere/interlace/releases/tag/app-v0.1.1)). Ask before another `app-v*`. |
 | crates.io | Published **0.1.1**. Do not `cargo publish` / `v*` without asking. |
 
