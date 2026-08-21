@@ -472,6 +472,17 @@
     return sum;
   }
 
+  /** Prefix sum of `map[row.index] ?? 88` for filtered positions k < pos. */
+  function prefixFromMap(map: Record<number, number>, filteredPos: number): number {
+    const rows = filteredTimeline;
+    const n = Math.max(0, Math.min(filteredPos, rows.length));
+    let sum = 0;
+    for (let k = 0; k < n; k++) {
+      sum += map[rows[k].index] ?? ESTIMATED_ROW_HEIGHT;
+    }
+    return sum;
+  }
+
   function onTimelineScroll(e: Event) {
     const el = e.currentTarget as HTMLElement | null;
     if (!el) return;
@@ -627,30 +638,28 @@
     const pending = pendingMeasures;
     pendingMeasures = {};
     const next: Record<number, number> = { ...rowHeights };
-    let changed = false;
     const deltas: { orig: number; prev: number; h: number }[] = [];
     for (const key of Object.keys(pending)) {
       const orig = Number(key);
       const h = pending[orig];
       if (!(h > 0) || !Number.isFinite(h)) continue;
-      const prev = rowHeights[orig];
+      // First-time old height is 88; a first measure of 88 is not a change.
+      const prev = rowHeights[orig] ?? ESTIMATED_ROW_HEIGHT;
       if (prev === h) continue;
       next[orig] = h;
-      changed = true;
-      // First-time above-viewport uses the 88 fallback as the old height.
-      deltas.push({ orig, prev: prev ?? ESTIMATED_ROW_HEIGHT, h });
+      deltas.push({ orig, prev, h });
     }
-    if (changed) rowHeights = next;
-    // Compensate above-viewport height changes even while the wheel is live.
-    // Skip during open-person pin so a measure does not slam #113 to latest.
-    if (!deltas.length || pinLatestObs || !sc) return;
+    // Adj from old prefixes before rowHeights write — DOM rects are stale this frame.
+    const listScroll = Math.max(0, (sc?.scrollTop ?? tlScrollTop) - tlChromeHeight);
     let adj = 0;
     for (const { orig, prev, h } of deltas) {
-      const el = sc.querySelector(`[data-tl-index="${orig}"]`);
-      if (!(el instanceof HTMLElement)) continue;
-      if (rowOffsetInPane(sc, el) < sc.scrollTop) adj += h - prev;
+      const pos = filteredTimeline.findIndex((item) => item.index === orig);
+      if (pos < 0) continue;
+      const oldTop = prefixFromMap(rowHeights, pos);
+      if (oldTop < listScroll) adj += h - prev;
     }
-    if (adj !== 0) writeScrollTop(sc, sc.scrollTop + adj);
+    if (deltas.length) rowHeights = next;
+    if (adj !== 0 && sc && !pinLatestObs) writeScrollTop(sc, sc.scrollTop + adj);
   }
 
   /** Per-row action: observe this node; never keyed on windowedTlKeys. */
