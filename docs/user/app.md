@@ -145,7 +145,10 @@ shows display names, not ids. Names never auto-merge. Unlink stays on each
 identity row.
 Merge/unlink/undo do not rewrite `messages.sender_identity_id`.
 
-Tabs: **Search** (same FTS as CLI). **Person** is
+Tabs: **Search** (same FTS as CLI). The query is the first control; filters
+are secondary (person, platform, kind, attachment, optional date range,
+include groups). The date range is optional (empty = any). Invalid dates do
+not search. **Person** is
 a name-facing combobox over the same people list as the sidebar: type to filter
 by display name (case-insensitive substring; self gets a “(self)” label), Enter
 or click to pick — the archive stores `person_id` under the hood for the search

@@ -38,6 +38,11 @@ Display text always comes from `messages.body_text`, never from the folded
 | `--conversation` | `conversation_id` |
 | `--limit` | default 50, max 200 |
 
+In the desktop Search pane the query is the primary control. Filters are
+secondary (person, platform, kind, attachment, date range, include groups)
+under a Filters disclosure. The date range is optional (empty = any).
+Invalid dates do not search.
+
 ### Attachment presence
 
 Closed filter (UI select or CLI `--attachment`), not free-text FTS tokens and

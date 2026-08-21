@@ -18,6 +18,11 @@ export const en = {
   nothingToReview: "Nothing to review",
   typeAQuery: "Type a query",
   noHits: "No hits",
+  searchFilters: "Filters",
+  searchFrom: "From",
+  searchTo: "To",
+  searchDateInvalid:
+    "Check the date range. From and to must be valid dates, and from cannot be after to.",
   openingLastArchive: "Opening last archive",
   backupUnit: "The folder is the backup unit.",
   notEncryptedAtRest: "Not encrypted at rest. FileVault is your encryption.",
