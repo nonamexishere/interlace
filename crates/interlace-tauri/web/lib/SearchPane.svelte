@@ -9,6 +9,7 @@
   import EmptyState from "./EmptyState.svelte";
   import CasAttach from "./CasAttach.svelte";
   import { splitSnippet } from "./snippetHighlight";
+  import { t } from "./i18n";
 
   let {
     people,
@@ -149,6 +150,20 @@
     expanded = null;
     body = "";
     hitIndex = 0;
+    const fromRaw = from.trim();
+    const toRaw = to.trim();
+    const fromDate = fromRaw ? Date.parse(fromRaw) : Number.NaN;
+    const toDate = toRaw ? Date.parse(toRaw) : Number.NaN;
+    if (
+      (fromRaw && Number.isNaN(fromDate)) ||
+      (toRaw && Number.isNaN(toDate)) ||
+      (fromRaw && toRaw && fromDate > toDate)
+    ) {
+      searchError = t("searchDateInvalid");
+      searching = false;
+      hits = [];
+      return;
+    }
     try {
       const next = await api.search({
         q: q.trim(),
@@ -213,7 +228,14 @@
 
   function onHitsKey(e: KeyboardEvent) {
     const t = e.target as HTMLElement | null;
-    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) {
+    if (
+      t &&
+      (t.tagName === "INPUT" ||
+        t.tagName === "TEXTAREA" ||
+        t.tagName === "SELECT" ||
+        t.tagName === "SUMMARY" ||
+        t.closest("[data-search-filters]"))
+    ) {
       return;
     }
     if (!hits.length || searching) return;
@@ -266,124 +288,134 @@
 <ScrollArea class="p-4">
   <h1 class="mb-3 text-xl font-semibold tracking-tight">Search</h1>
   <form
-    class="mb-4 grid gap-3 sm:grid-cols-2"
+    class="mb-4 space-y-3"
     onsubmit={(e) => {
       e.preventDefault();
       run();
     }}
   >
-    <div class="space-y-1.5 sm:col-span-2">
+    <div class="space-y-1.5">
       <Label for="q">Query</Label>
       <Input id="q" bind:value={q} placeholder="FTS — same as CLI search" />
     </div>
-    <div class="space-y-1.5" data-person-picker>
-      <Label for="sp">Person</Label>
-      <div class="relative">
-        <Input
-          id="sp"
-          bind:value={personFilter}
-          placeholder="Messages with…"
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={personListOpen}
-          aria-controls="person-options"
-          autocomplete="off"
-          class={personId != null ? "pr-14" : undefined}
-          oninput={onPersonFilterInput}
-          onfocus={onPersonFocus}
-          onblur={onPersonBlur}
-          onkeydown={onPersonKeydown}
-        />
-        {#if personId != null}
-          <button
-            type="button"
-            class="absolute top-1/2 right-2 -translate-y-1/2 text-xs text-muted-foreground underline"
-            onclick={clearPerson}
+    <details
+      data-search-filters
+      class="rounded-md border border-border bg-muted/40 px-3 py-2"
+    >
+      <summary class="cursor-pointer text-xs font-medium text-muted-foreground">
+        {t("searchFilters")}
+      </summary>
+      <div class="mt-3 grid gap-3 sm:grid-cols-2">
+        <div class="space-y-1.5" data-person-picker>
+          <Label for="sp">Person</Label>
+          <div class="relative">
+            <Input
+              id="sp"
+              bind:value={personFilter}
+              placeholder="Messages with…"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={personListOpen}
+              aria-controls="person-options"
+              autocomplete="off"
+              class={personId != null ? "pr-14" : undefined}
+              oninput={onPersonFilterInput}
+              onfocus={onPersonFocus}
+              onblur={onPersonBlur}
+              onkeydown={onPersonKeydown}
+            />
+            {#if personId != null}
+              <button
+                type="button"
+                class="absolute top-1/2 right-2 -translate-y-1/2 text-xs text-muted-foreground underline"
+                onclick={clearPerson}
+              >
+                Clear
+              </button>
+            {/if}
+            {#if personListOpen && personFilter.trim() && filteredPeople.length > 0 && personId == null}
+              <ul
+                id="person-options"
+                role="listbox"
+                class="person-options absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border border-border bg-background py-1 shadow-md"
+                onmousedown={(e) => e.preventDefault()}
+              >
+                {#each filteredPeople as p, i}
+                  <li>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={i === personHighlight}
+                      class="w-full px-3 py-1.5 text-left text-sm hover:bg-accent {i === personHighlight
+                        ? 'bg-accent'
+                        : ''}"
+                      onclick={() => pickPerson(p)}
+                    >
+                      {p.display_name}{#if p.is_self}
+                        {" "}(self){/if}
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
+          {#if personId != null}
+            <p class="text-xs text-muted-foreground">Messages with {personFilter}</p>
+          {/if}
+        </div>
+        <div class="space-y-1.5">
+          <Label for="plat">Platform</Label>
+          <select
+            id="plat"
+            bind:value={platform}
+            class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
           >
-            Clear
-          </button>
-        {/if}
-        {#if personListOpen && personFilter.trim() && filteredPeople.length > 0 && personId == null}
-          <ul
-            id="person-options"
-            role="listbox"
-            class="person-options absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border border-border bg-background py-1 shadow-md"
-            onmousedown={(e) => e.preventDefault()}
+            <option value="">Any</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="gmail">Gmail</option>
+            <option value="contacts">Contacts</option>
+          </select>
+        </div>
+        <div class="space-y-1.5">
+          <Label for="skind">Kind</Label>
+          <select
+            id="skind"
+            bind:value={conversationKind}
+            class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
           >
-            {#each filteredPeople as p, i}
-              <li>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={i === personHighlight}
-                  class="w-full px-3 py-1.5 text-left text-sm hover:bg-accent {i === personHighlight
-                    ? 'bg-accent'
-                    : ''}"
-                  onclick={() => pickPerson(p)}
-                >
-                  {p.display_name}{#if p.is_self}
-                    {" "}(self){/if}
-                </button>
-              </li>
-            {/each}
-          </ul>
-        {/if}
+            <option value="">Any</option>
+            <option value="dm">DM</option>
+            <option value="group">Group</option>
+            <option value="email_thread">Email thread</option>
+          </select>
+        </div>
+        <div class="space-y-1.5">
+          <Label for="satt">Attachment</Label>
+          <select
+            id="satt"
+            bind:value={attachmentFilter}
+            class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="">Any</option>
+            <option value="has_file">Has file</option>
+            <option value="omitted">Omitted</option>
+            <option value="missing">Missing</option>
+          </select>
+        </div>
+        <div class="space-y-1.5">
+          <Label for="from">{t("searchFrom")}</Label>
+          <Input id="from" type={"date"} bind:value={from} />
+        </div>
+        <div class="space-y-1.5">
+          <Label for="to">{t("searchTo")}</Label>
+          <Input id="to" type={"date"} bind:value={to} />
+        </div>
+        <label class="flex items-center gap-2 text-sm sm:col-span-2">
+          <input type="checkbox" bind:checked={includeGroups} />
+          include groups
+        </label>
       </div>
-      {#if personId != null}
-        <p class="text-xs text-muted-foreground">Messages with {personFilter}</p>
-      {/if}
-    </div>
-    <div class="space-y-1.5">
-      <Label for="plat">Platform</Label>
-      <select
-        id="plat"
-        bind:value={platform}
-        class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-      >
-        <option value="">Any</option>
-        <option value="whatsapp">WhatsApp</option>
-        <option value="gmail">Gmail</option>
-        <option value="contacts">Contacts</option>
-      </select>
-    </div>
-    <div class="space-y-1.5">
-      <Label for="skind">Kind</Label>
-      <select
-        id="skind"
-        bind:value={conversationKind}
-        class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-      >
-        <option value="">Any</option>
-        <option value="dm">DM</option>
-        <option value="group">Group</option>
-        <option value="email_thread">Email thread</option>
-      </select>
-    </div>
-    <div class="space-y-1.5">
-      <Label for="satt">Attachment</Label>
-      <select
-        id="satt"
-        bind:value={attachmentFilter}
-        class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-      >
-        <option value="">Any</option>
-        <option value="has_file">Has file</option>
-        <option value="omitted">Omitted</option>
-        <option value="missing">Missing</option>
-      </select>
-    </div>
-    <div class="space-y-1.5">
-      <Label for="from">From (ISO date)</Label>
-      <Input id="from" bind:value={from} placeholder="2024-01-01" />
-    </div>
-    <div class="space-y-1.5">
-      <Label for="to">To (ISO date)</Label>
-      <Input id="to" bind:value={to} placeholder="2026-12-31" />
-    </div>
-    <label class="flex items-center gap-2 text-sm sm:col-span-2">
-      <input type="checkbox" bind:checked={includeGroups} />
-      include groups
-    </label>
+    </details>
     <Button type="submit" disabled={searching}>{searching ? "Searching…" : "Search"}</Button>
   </form>
 

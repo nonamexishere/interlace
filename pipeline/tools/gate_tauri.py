@@ -229,7 +229,13 @@
 #     people filter. No Spotlight, no multi-archive, no remote search, no
 #     second FTS. Not #209 filters / #210 hit density / #211 titlebar /
 #     #215 palette.
-#224: person timeline measure-and-cache variable row heights (constant 88
+#209: SearchPane filters are secondary (`data-search-filters`); `#q` is first /
+#     primary. Optional local type="date" from/to (empty = any). Invalid dates
+#     (unparseable or from > to) show a calm error and do not call api.search.
+#     Closed selects stay. No CDN/npm datepicker, no Gmail labels, no invented
+#     platforms. Docs: filters secondary + optional date range; invalid dates
+#     do not search.
+#224: person timeline measure-and-cache variable row heights (constant 88)
 #     fallback). Lists ≤250 mount fully; longer lists still window. Spacers /
 #     visibleRange / ensureTlIndexVisible use prefix sums, not index * 88.
 #     Keep the #120 window helpers. Not: 10M in one view, lazy-decode every
@@ -7856,6 +7862,420 @@ def assert_search_safe_highlight(crate: Path) -> None:
     if not re.search(r"attachmentFilter|attachment_filter", cleaned):
         fail(
             "#126: keep the search attachment filter (#125) when adding safe highlight"
+        )
+
+
+# #209 — search filters are secondary chrome; optional local date range.
+_SEARCH_FILTERS_HOOK = "data-search-filters"
+_SEARCH_Q_ID = re.compile(
+    r"""\bid\s*=\s*(?:["']q["']|\{\s*["']q["']\s*\})""",
+    re.I,
+)
+_SEARCH_GRID_EQUAL = re.compile(
+    r"\b(?:sm:)?grid-cols-(?:2|3|4)\b",
+    re.I,
+)
+_SEARCH_DATE_TYPE = re.compile(
+    r"""type\s*=\s*(?:["']date["']|\{\s*["']date["']\s*\})""",
+    re.I,
+)
+_SEARCH_DATE_INPUT = re.compile(
+    r"<(?:Input|input)\b[^>]*>",
+    re.I | re.S,
+)
+_SEARCH_FROM_EMPTY_ANY = re.compile(
+    r"\bfrom\s*:\s*(?:"
+    r"from(?:\.trim\(\s*\))?\s*\|\|\s*(?:null|undefined)"
+    r"|from(?:\.trim\(\s*\))?\s*\?\?\s*(?:null|undefined)"
+    r"|from(?:\.trim\(\s*\))?\s*\?\s*from[^,}]{0,60}:\s*(?:null|undefined)"
+    r"|!\s*from(?:\.trim\(\s*\))?\s*\?\s*(?:null|undefined)"
+    r")",
+    re.I,
+)
+_SEARCH_TO_EMPTY_ANY = re.compile(
+    r"\bto\s*:\s*(?:"
+    r"to(?:\.trim\(\s*\))?\s*\|\|\s*(?:null|undefined)"
+    r"|to(?:\.trim\(\s*\))?\s*\?\?\s*(?:null|undefined)"
+    r"|to(?:\.trim\(\s*\))?\s*\?\s*to[^,}]{0,60}:\s*(?:null|undefined)"
+    r"|!\s*to(?:\.trim\(\s*\))?\s*\?\s*(?:null|undefined)"
+    r")",
+    re.I,
+)
+_SEARCH_DATE_CMP = re.compile(
+    r"("
+    r"\bfrom(?:Date|Day|Ms|Val|Iso)?\b[^;\n]{0,80}>\s*(?:to(?:Date|Day|Ms|Val|Iso)?)\b"
+    r"|\bto(?:Date|Day|Ms|Val|Iso)?\b[^;\n]{0,80}<\s*(?:from(?:Date|Day|Ms|Val|Iso)?)\b"
+    r")",
+    re.I,
+)
+_SEARCH_DATE_PARSE = re.compile(
+    r"("
+    r"Date\.parse"
+    r"|new\s+Date\s*\("
+    r"|Number\.isNaN"
+    r"|\bisNaN\s*\("
+    r"|Invalid Date"
+    r"|\\d\{4\}-\\d\{2\}-\\d\{2\}"
+    r"|YYYY-MM-DD"
+    r"|invalid(?:Date|Range|_date|_range)"
+    r"|parse(?:Date|Day|Iso)"
+    r"|unparseable"
+    r")",
+    re.I,
+)
+_SEARCH_DATE_ERROR_SET = re.compile(
+    r"\bsearchError\s*=\s*(?![\s]*[\"']{2})",
+)
+_SEARCH_GMAIL_LABEL = re.compile(
+    r"("
+    r"gmail[-_ ]?label"
+    r"|labelIds"
+    r"|label[-_ ]?filter"
+    r"|data-gmail-label"
+    r")",
+    re.I,
+)
+_SEARCH_DATEPICKER_PKG = re.compile(
+    r"("
+    r"\bdatepicker\b"
+    r"|flatpickr"
+    r"|litepicker"
+    r"|pikaday"
+    r"|air-datepicker"
+    r"|react-datepicker"
+    r"|svelte-datepicker"
+    r"|vanillajs-datepicker"
+    r"|daterangepicker"
+    r"|@duetds/date-picker"
+    r"|js-datepicker"
+    r")",
+    re.I,
+)
+_SEARCH_CDN = re.compile(
+    r"("
+    r"cdn\.jsdelivr"
+    r"|unpkg\.com"
+    r"|cdnjs"
+    r"|cdn\."
+    r"|https?://[^\"'\s]+datepicker"
+    r")",
+    re.I,
+)
+_DOCS_FILTERS_SECONDARY = re.compile(
+    r"("
+    r"filters?\s+are\s+secondary"
+    r"|secondary\s+(?:chrome\s+)?filters?"
+    r"|filters?\s+\([^)]{0,60}\)\s+as\s+secondary"
+    r"|secondary\s+controls?"
+    r")",
+    re.I,
+)
+_DOCS_DATE_RANGE_OPTIONAL = re.compile(
+    r"("
+    r"optional\s+date\s+range"
+    r"|date\s+range\s+is\s+optional"
+    r"|optional\s+(?:local\s+)?(?:from\s*/\s*to|from/to)"
+    r"|empty\s*=\s*any"
+    r")",
+    re.I,
+)
+_DOCS_INVALID_DATES = re.compile(
+    r"("
+    r"invalid\s+dates?\s+(?:do\s+not|don't|does\s+not|doesn't)\s+search"
+    r"|invalid\s+dates?\s+(?:do\s+not|don't|does\s+not|doesn't)\s+(?:fetch|call)"
+    r"|invalid\s+(?:date|from/to|from\s*/\s*to)[^\n.]{0,80}"
+    r"(?:do\s+not|don't|does\s+not|doesn't|no)\s+"
+    r"(?:search|fetch|invoke|api\.search)"
+    r")",
+    re.I,
+)
+_SEARCH_FILTER_TOKENS = (
+    ("person", re.compile(r"data-person-picker|\bid\s*=\s*[\"']sp[\"']|personFilter", re.I)),
+    ("platform", re.compile(r"\bid\s*=\s*[\"']plat[\"']|bind:value=\{platform\}", re.I)),
+    ("kind", re.compile(r"\bid\s*=\s*[\"']skind[\"']|bind:value=\{conversationKind\}", re.I)),
+    (
+        "attachment",
+        re.compile(r"\bid\s*=\s*[\"']satt[\"']|bind:value=\{attachmentFilter\}", re.I),
+    ),
+    ("from", re.compile(r"\bid\s*=\s*[\"']from[\"']|bind:value=\{from\}", re.I)),
+    ("to", re.compile(r"\bid\s*=\s*[\"']to[\"']|bind:value=\{to\}", re.I)),
+    (
+        "include-groups",
+        re.compile(r"includeGroups|include groups|include-groups", re.I),
+    ),
+)
+
+
+def _search_run_surface(src: str) -> tuple[str, str]:
+    """run() body and the prefix before the first api.search call."""
+    body = _ts_fn_body(src, "run") or _function_body(src, "run")
+    if not body:
+        return "", ""
+    expanded = _expand_fn_calls(src, body)
+    idx = body.find("api.search")
+    if idx < 0:
+        return expanded, _expand_fn_calls(src, body)
+    return expanded, _expand_fn_calls(src, body[:idx])
+
+
+def _date_input_bound(markup: str, ident: str) -> bool:
+    """True if a type=date Input/input is bound to ident (from / to)."""
+    for tag in _SEARCH_DATE_INPUT.findall(markup):
+        if not _SEARCH_DATE_TYPE.search(tag):
+            continue
+        if re.search(
+            rf"bind:value={{\s*{re.escape(ident)}\s*}}|\bid\s*=\s*[\"']{re.escape(ident)}[\"']",
+            tag,
+            re.I,
+        ):
+            return True
+    # type and bind may be split across multiline attributes already in the tag.
+    return bool(
+        re.search(
+            rf"<(?:Input|input)\b[^>]{{0,500}}type\s*=\s*(?:[\"']date[\"']|{{\s*[\"']date[\"']\s*}})[^>]{{0,300}}"
+            rf"(?:bind:value={{\s*{re.escape(ident)}\s*}}|\bid\s*=\s*[\"']{re.escape(ident)}[\"'])"
+            rf"|<(?:Input|input)\b[^>]{{0,500}}(?:bind:value={{\s*{re.escape(ident)}\s*}}|\bid\s*=\s*[\"']{re.escape(ident)}[\"'])"
+            rf"[^>]{{0,300}}type\s*=\s*(?:[\"']date[\"']|{{\s*[\"']date[\"']\s*}})",
+            markup,
+            re.I | re.S,
+        )
+    )
+
+
+def assert_search_filters_secondary(crate: Path) -> None:
+    """#209: filters are secondary chrome; optional local date range.
+
+    `#q` is the first / primary control. Person / platform / kind /
+    attachment / dates / include-groups live under `data-search-filters`
+    (muted one-row strip or <details> disclosure) — not equal-weight grid
+    siblings of `#q`. Platform / kind / attachment stay closed <select>s.
+    Date range is two local type="date" inputs (empty = any). run() must
+    not call api.search when from/to is unparseable or from > to; calm
+    error via data-partial or existing searchError chrome. No CDN/npm
+    datepicker, no Gmail labels, no invented platforms. Docs: filters
+    secondary + optional date range; invalid dates do not search.
+    Keep #121–#126 / #205 / #208.
+    """
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    if not search_path.is_file():
+        fail("#209: SearchPane.svelte required (filters + date range live there)")
+    src = search_path.read_text()
+    cleaned = _without_comments(src)
+    markup = _svelte_markup(src)
+    surface = markup if markup.strip() else src
+    app_path = crate / "web" / "App.svelte"
+    app = app_path.read_text() if app_path.is_file() else ""
+    pkg_path = crate / "package.json"
+    pkg = pkg_path.read_text() if pkg_path.is_file() else ""
+    docs_search = repo_root() / "docs" / "user" / "search.md"
+    docs_app = repo_root() / "docs" / "user" / "app.md"
+    dtxt = ""
+    if docs_search.is_file():
+        dtxt += docs_search.read_text() + "\n"
+    if docs_app.is_file():
+        dtxt += docs_app.read_text()
+
+    # 1) #q is the first / primary search control.
+    q_m = _SEARCH_Q_ID.search(surface)
+    if not q_m:
+        fail("#209: SearchPane must keep id=\"q\" as the first / primary query control")
+
+    # 2) Filters must be demoted — not equal-weight grid siblings of #q.
+    #    Documented hook: data-search-filters (muted strip or <details>).
+    hook_blocks = _hook_element_blocks(surface, _SEARCH_FILTERS_HOOK)
+    hook_blob = "\n".join(hook_blocks)
+    q_in_hook = bool(hook_blocks) and any(_SEARCH_Q_ID.search(b) for b in hook_blocks)
+    missing: list[str] = []
+    for name, rx in _SEARCH_FILTER_TOKENS:
+        if hook_blob and rx.search(hook_blob):
+            continue
+        if not hook_blob:
+            missing.append(name)
+        elif not rx.search(hook_blob):
+            missing.append(name)
+    hook_pos = surface.find(_SEARCH_FILTERS_HOOK)
+    q_before_hook = hook_pos < 0 or q_m.start() < hook_pos
+
+    form_shares_grid = False
+    for form in _tag_inner(surface, "form"):
+        open_end = form.find(">")
+        form_tag = form[: open_end + 1] if open_end >= 0 else form[:200]
+        if not _SEARCH_Q_ID.search(form):
+            continue
+        if _SEARCH_GRID_EQUAL.search(form_tag) and (
+            not hook_blocks or q_in_hook or missing
+        ):
+            form_shares_grid = True
+            break
+
+    if (
+        not hook_blocks
+        or q_in_hook
+        or not q_before_hook
+        or missing
+        or form_shares_grid
+    ):
+        fail(
+            "#209: SearchPane filters still share the same equal-weight grid as #q "
+            "(form is grid / sm:grid-cols-2). Query #q must be the first / primary "
+            "control (full width, above filters). Person / platform / kind / "
+            "attachment / dates / include-groups live under data-search-filters "
+            "(muted one-row strip or <details> disclosure) — not equal-weight "
+            "siblings of #q"
+        )
+
+    # 3) Hook is visually secondary (disclosure or muted / one-row strip).
+    is_disclosure = bool(re.search(r"<details\b|<summary\b|disclosure", hook_blob, re.I))
+    is_muted = bool(
+        re.search(r"muted-foreground|text-muted|\bopacity-|text-xs", hook_blob, re.I)
+    )
+    is_row = bool(re.search(r"\bflex\b", hook_blob, re.I))
+    if not (is_disclosure or is_muted or is_row):
+        fail(
+            "#209: data-search-filters must be a muted one-row strip or a "
+            "<details> disclosure — not another equal-weight grid next to #q"
+        )
+
+    # 4) Platform / kind / attachment stay closed <select>s (Any + existing tokens).
+    if not re.search(
+        r"<select\b[^>]{0,400}(?:\bbind:value=\{platform\}|\bid\s*=\s*[\"']plat[\"'])",
+        surface,
+        re.I,
+    ):
+        fail(
+            "#209: keep the search platform closed <select> (#121) — "
+            "Any + existing tokens only; do not invent platforms"
+        )
+    if not re.search(
+        r"<select\b[^>]{0,400}(?:\bbind:value=\{conversationKind\}|\bid\s*=\s*[\"']skind[\"'])",
+        surface,
+        re.I,
+    ):
+        fail(
+            "#209: keep the search kind closed <select> (#122) — "
+            "Any + dm / group / email_thread"
+        )
+    if not re.search(
+        r"<select\b[^>]{0,400}(?:\bbind:value=\{attachmentFilter\}|\bid\s*=\s*[\"']satt[\"'])",
+        surface,
+        re.I,
+    ):
+        fail(
+            "#209: keep the search attachment closed <select> (#125) — "
+            "Any + has_file / omitted / missing"
+        )
+    opt_values = _search_platform_option_values(hook_blob or surface)
+    for v in opt_values:
+        low = (v or "").strip().lower()
+        if low in _INVENTED_SEARCH_PLATFORM_TOKENS:
+            fail(
+                f"#209: do not invent search platform option {v!r} "
+                "(no twitter/slack/…; keep core tokens only)"
+            )
+
+    # 5) Date range: two local type="date" inputs. Empty = any.
+    if not _date_input_bound(surface, "from") or not _date_input_bound(surface, "to"):
+        fail(
+            "#209: date range must be two local <input type=\"date\"> "
+            "(or Input type=\"date\") bound to from / to. Empty = any. "
+            "No ISO text boxes"
+        )
+
+    api_m = _SEARCH_API_PLATFORM_ARG.search(cleaned)
+    api_args = api_m.group(1) if api_m else cleaned
+    if not re.search(r"\bfrom\s*:", api_args) or not re.search(r"\bto\s*:", api_args):
+        fail(
+            "#209: SearchPane run() must still wire from / to into api.search "
+            "(empty = any / null)"
+        )
+    if not _SEARCH_FROM_EMPTY_ANY.search(api_args) or not _SEARCH_TO_EMPTY_ANY.search(
+        api_args
+    ):
+        fail(
+            "#209: empty from / to must mean any (null/empty to api.search) — "
+            "do not send a blank string as a date bound"
+        )
+
+    # 6) Invalid dates (unparseable or from > to) must not call api.search.
+    run_all, run_before = _search_run_surface(cleaned)
+    if not run_all:
+        fail("#209: SearchPane run() required (submit / Retry path)")
+    if "api.search" not in run_all:
+        fail("#209: SearchPane run() must remain the api.search caller")
+    has_cmp = bool(_SEARCH_DATE_CMP.search(run_before) or _SEARCH_DATE_CMP.search(run_all))
+    has_parse = bool(
+        _SEARCH_DATE_PARSE.search(run_before) or _SEARCH_DATE_PARSE.search(run_all)
+    )
+    has_early = bool(re.search(r"\breturn\b", run_before))
+    has_guarded = bool(
+        re.search(
+            r"(?:if\s*\([^)]{0,160}(?:valid|ok|invalid|date|from|to)[^)]{0,160}\)"
+            r"[\s\S]{0,240}api\.search"
+            r"|else\s*\{[\s\S]{0,240}api\.search)",
+            run_all,
+            re.I,
+        )
+    )
+    has_err = bool(_SEARCH_DATE_ERROR_SET.search(run_before))
+    if not has_parse or not has_cmp or not (has_early or has_guarded) or not has_err:
+        fail(
+            "#209: run() must not call api.search when from/to is invalid "
+            "(unparseable or from > to). Show a calm in-pane error "
+            "(data-partial or existing searchError chrome) and return / skip "
+            "the fetch"
+        )
+    if not re.search(r"\bdata-partial\b|\bsearchError\b", surface):
+        fail(
+            "#209: invalid dates need a calm in-pane error "
+            "(data-partial or existing searchError chrome) — not only showErr"
+        )
+
+    # 7) No CDN / npm / remote datepicker.
+    pane_deps = src + "\n" + pkg
+    if _SEARCH_CDN.search(src) or _SEARCH_DATEPICKER_PKG.search(pane_deps):
+        fail(
+            "#209: no CDN / npm / remote datepicker in SearchPane "
+            "(use native type=\"date\" only)"
+        )
+
+    # 8) No Gmail label filter / invented platforms (already scanned options).
+    if _SEARCH_GMAIL_LABEL.search(cleaned) or _SEARCH_GMAIL_LABEL.search(surface):
+        fail("#209: not in scope — no Gmail label filter")
+
+    # 9) Docs: filters secondary + optional date range; invalid dates do not search.
+    if not _DOCS_FILTERS_SECONDARY.search(dtxt):
+        fail(
+            "#209: docs/user/search.md and/or docs/user/app.md must say "
+            "search filters are secondary"
+        )
+    if not _DOCS_DATE_RANGE_OPTIONAL.search(dtxt):
+        fail(
+            "#209: docs/user/search.md and/or docs/user/app.md must say "
+            "the date range is optional (empty = any)"
+        )
+    if not _DOCS_INVALID_DATES.search(dtxt):
+        fail(
+            "#209: docs/user/search.md and/or docs/user/app.md must say "
+            "invalid dates do not search"
+        )
+
+    # 10) Do not soften #121–#126 / #205 / #208.
+    if not re.search(r"\{#each\s+hits\b", surface) and not re.search(
+        r"\{#each\s+hits\b", src
+    ):
+        fail("#209: keep search hits list (#124 jump chrome)")
+    if not re.search(r"<mark\b", surface, re.I):
+        fail("#209: keep search snippet <mark> highlight (#126)")
+    if not re.search(r"data-person-picker|personFilter|personId", cleaned):
+        fail("#209: keep the search person picker (#123)")
+    if not re.search(r"\bdata-partial\b", surface):
+        fail("#209: keep search data-partial Error+Retry (#205)")
+    if not re.search(r"\bdata-chrome-search\b", app):
+        fail("#209: keep chrome search field data-chrome-search (#208)")
+    if re.search(r"\bapi\.search\s*\(", app):
+        fail(
+            "#209: App.svelte must not call api.search — SearchPane run() stays "
+            "the only caller (#208)"
         )
 
 
@@ -18218,6 +18638,7 @@ def main() -> None:
     assert_search_jump_to_message(crate)
     assert_search_attachment_filter(crate)
     assert_search_safe_highlight(crate)
+    assert_search_filters_secondary(crate)
     assert_review_identifiers(crate)
     assert_window_title(crate)
     assert_macos_menu(crate)

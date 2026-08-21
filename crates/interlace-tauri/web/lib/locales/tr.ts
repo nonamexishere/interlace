@@ -20,6 +20,11 @@ export const tr: ChromePack = {
   nothingToReview: "İncelenecek bir şey yok",
   typeAQuery: "Bir sorgu yazın",
   noHits: "Sonuç yok",
+  searchFilters: "Filtreler",
+  searchFrom: "Başlangıç",
+  searchTo: "Bitiş",
+  searchDateInvalid:
+    "Tarih aralığını kontrol edin. Başlangıç ve bitiş geçerli olmalı; başlangıç bitişten sonra olamaz.",
   openingLastArchive: "Son arşiv açılıyor",
   backupUnit: "Yedek birimi klasördür.",
   notEncryptedAtRest: "Diskte şifreli değil. Şifrelemeniz FileVault.",
