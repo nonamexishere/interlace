@@ -16,6 +16,7 @@
     onToast,
     onJumpToMessage,
     friendly,
+    q = $bindable(""),
   }: {
     people: Person[];
     onError: (e: unknown) => void;
@@ -27,9 +28,8 @@
       conversationKind?: string | null;
       sentAt?: string | null;
     }) => void | Promise<void>;
+    q?: string;
   } = $props();
-
-  let q = $state("");
   /** Stored person_id for api.search; null when cleared / no pick. */
   let personId = $state<number | null>(null);
   let personFilter = $state("");

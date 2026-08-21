@@ -64,6 +64,7 @@
   let confirmDesc = $state("");
   let confirmRun = $state<(() => Promise<void>) | null>(null);
   let view = $state<"people" | "search" | "review" | "import" | "doctor">("people");
+  let searchQ = $state("");
   let booting = $state(true);
   let opening = $state(false);
   let tlLoading = $state(false);
@@ -1137,6 +1138,27 @@
     });
   }
 
+  async function whenSearchPaneReady(): Promise<HTMLInputElement | null> {
+    view = "search";
+    for (let i = 0; i < 40; i++) {
+      await tick();
+      if (booting || opening) continue;
+      const qEl = document.getElementById("q");
+      if (qEl instanceof HTMLInputElement) return qEl;
+    }
+    const qEl = document.getElementById("q");
+    return qEl instanceof HTMLInputElement ? qEl : null;
+  }
+
+  function submitChromeSearch(e: Event) {
+    e.preventDefault();
+    void whenSearchPaneReady().then((qEl) => {
+      if (!qEl) return;
+      qEl.focus();
+      qEl.form?.requestSubmit();
+    });
+  }
+
   function onKey(e: KeyboardEvent) {
     const t = e.target as HTMLElement | null;
     const digit = e.key >= "1" && e.key <= "5" ? e.key : /^Digit[1-5]$/.test(e.code) ? e.code.slice(5) : "";
@@ -1151,12 +1173,7 @@
     }
     if (mod && (e.key === "f" || e.key === "F")) {
       e.preventDefault();
-      if (view === "people") {
-        document.getElementById("person-filter")?.focus();
-      } else {
-        view = "search";
-        void tick().then(() => document.getElementById("q")?.focus());
-      }
+      void whenSearchPaneReady().then((qEl) => qEl?.focus());
       return;
     }
     if (mod && digit !== "") {
@@ -1336,7 +1353,7 @@
     <span class="text-muted-foreground">offline · no account · no HTTP client</span>
   </header>
   {#if !setup && st}
-    <nav class="flex flex-wrap gap-1 border-b border-border px-3 py-1 text-sm">
+    <nav class="flex flex-wrap items-center gap-1 border-b border-border px-3 py-1 text-sm">
       <Button size="sm" variant={view === "people" ? "default" : "ghost"} onclick={() => (view = "people")}
         >{t("people")}</Button
       >
@@ -1352,6 +1369,21 @@
       <Button size="sm" variant={view === "doctor" ? "default" : "ghost"} onclick={() => (view = "doctor")}
         >{t("doctor")}{#if doctor.length} ({doctor.length}){/if}</Button
       >
+      <form
+        class="ml-auto min-w-[10rem] max-w-[16rem] flex-1"
+        data-chrome-search
+        onsubmit={submitChromeSearch}
+      >
+        <Input
+          type="search"
+          bind:value={searchQ}
+          placeholder={t("searchPlaceholder")}
+          aria-label={t("search")}
+          autocomplete="off"
+          class="h-8"
+          disabled={booting || opening}
+        />
+      </form>
     </nav>
   {/if}
 
@@ -1416,7 +1448,14 @@
       </p>
     </main>
   {:else if st && view === "search"}
-    <SearchPane {people} {friendly} onError={showErr} onToast={showToast} onJumpToMessage={jumpToMessage} />
+    <SearchPane
+      bind:q={searchQ}
+      {people}
+      {friendly}
+      onError={showErr}
+      onToast={showToast}
+      onJumpToMessage={jumpToMessage}
+    />
   {:else if st && view === "review"}
     <ReviewPane
       onError={showErr}

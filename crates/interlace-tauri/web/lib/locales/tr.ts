@@ -9,6 +9,7 @@ export const tr: ChromePack = {
   doctor: "Doktor",
   people: "Kişiler",
   search: "Ara",
+  searchPlaceholder: "Mesajlarda ara",
   review: "İnceleme",
   import: "İçe aktar",
   accept: "Kabul",
