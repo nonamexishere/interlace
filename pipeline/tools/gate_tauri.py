@@ -106,11 +106,12 @@
 #     tr pack has “Arşiv aç” / “Doktor”; App setup/nav uses the chrome helper
 #     (not only hardcoded English). Never t(body_text)/snippet. English remains
 #     the default so existing doctor / empty / backup English gates still pass.
-#132: keyboard map — ⌘F/ctrl+F focus people filter on People else Search `#q`;
-#     `/` still focuses `#person-filter` on People; Esc blurs inputs and from
-#     other views sets view=people; ⌘/ctrl 1–5 People/Search/Review/Import/Doctor;
-#     keep timeline + search-hit j/k; do not steal letters from inputs;
-#     no vim mode / keybindings.json. Document in docs/user/app.md.
+#132: keyboard map — ⌘F/ctrl+F from every view (including People) switches to
+#     Search and focuses `#q`; `/` still focuses `#person-filter` on People;
+#     Esc blurs inputs and from other views sets view=people; ⌘/ctrl 1–5
+#     People/Search/Review/Import/Doctor; keep timeline + search-hit j/k;
+#     do not steal letters from inputs; no vim mode / keybindings.json.
+#     Document in docs/user/app.md. (#208 changed the Find-on-People rule.)
 #133: people list is listbox/option (or list + aria-activedescendant) with
 #     aria-selected; timeline rows are article/label (not raw person id);
 #     focus-visible rings on people options + timeline rows; honor
@@ -221,6 +222,13 @@
 #     HTML mail, reactions, new platforms, sender_identity_id. Docs: every
 #     bubble stacks identity/time, then body/subject, then attachments
 #     (WA and Gmail the same).
+#208: always-available chrome search field (`data-chrome-search` in App nav /
+#     header, not only the Search tab). Routes to Search + `#q` (canonical);
+#     SearchPane `run()` stays the only `api.search` caller. ⌘F from People
+#     also lands on `#q` (rewrites the #132 Find-on-People branch). `/` still
+#     people filter. No Spotlight, no multi-archive, no remote search, no
+#     second FTS. Not #209 filters / #210 hit density / #211 titlebar /
+#     #215 palette / #224 virtualizer.
 """
 
 from __future__ import annotations
@@ -9622,7 +9630,8 @@ def assert_chrome_locale(crate: Path) -> None:
         fail("#131: RTL layout is out of scope")
 
 
-# #132 — keyboard map (⌘F search, Esc back, ⌘1–5 tabs). No vim mode.
+# #132 — keyboard map (⌘F Search #q from every view, Esc back, ⌘1–5 tabs).
+# #208 rewrites Find-on-People: ⌘F no longer focuses #person-filter (`/` still does).
 _KEY_F = re.compile(
     r"("
     r"(?:e\.)?key\s*===?\s*[\"']f[\"']"
@@ -9921,10 +9930,12 @@ def _digit_view_map_ok(surface: str) -> bool:
 
 
 def assert_keyboard_map(crate: Path) -> None:
-    """#132: ⌘F search, Esc back to People, ⌘1–5 tabs; keep j/k; no vim mode.
+    """#132: ⌘F Search #q from every view, Esc back to People, ⌘1–5 tabs.
 
-    Keyboard-only can open Ada, search, return. Static: App key handler must
-    accept metaKey or ctrlKey. Do not steal letters from INPUT/TEXTAREA/SELECT.
+    Find (⌘F / ctrl+F) switches to Search and focuses #q — including from
+    People (#208). `/` still focuses #person-filter. Keyboard-only can open
+    Ada, search, return. Static: App key handler must accept metaKey or
+    ctrlKey. Do not steal letters from INPUT/TEXTAREA/SELECT.
     """
     app_path = crate / "web" / "App.svelte"
     if not app_path.is_file():
@@ -9950,8 +9961,9 @@ def assert_keyboard_map(crate: Path) -> None:
     if prefix_x == prefix:
         prefix_x = _expand_fn_calls(app, prefix) if prefix.strip() else body
 
-    # 1) ⌘F / ctrl+F: People → #person-filter; else Search + #q. preventDefault.
+    # 1) ⌘F / ctrl+F from every view including People → Search + #q.
     #    Must run off People (not after `if (view !== "people") return`).
+    #    Do not send Find to #person-filter — that stays `/` only (#208).
     f_surface = _windows_around(prefix_x, _KEY_F)
     if not f_surface.strip():
         f_surface = _windows_around(body, _KEY_F)
@@ -9962,7 +9974,7 @@ def assert_keyboard_map(crate: Path) -> None:
             )
         fail(
             "#132: App key handler must treat metaKey/ctrlKey + f/F as Find "
-            "(focus #person-filter on People, else switch to Search and focus #q)"
+            "(from every view including People, switch to Search and focus #q)"
         )
     if not _has_mod_combo(f_surface) and not _has_mod_combo(prefix_x):
         fail(
@@ -9971,30 +9983,21 @@ def assert_keyboard_map(crate: Path) -> None:
         )
     if not _MOD_EITHER.search(f_surface) and not _MOD_EITHER.search(prefix_x):
         fail("#132: f/F Find must be a metaKey/ctrlKey combo, not a bare letter")
-    people_focus = bool(_FOCUS_PERSON_FILTER.search(f_surface))
+    if _FOCUS_PERSON_FILTER.search(f_surface):
+        fail(
+            "#132: ⌘F / ctrl+F from People must switch to Search and focus #q "
+            "(do not send Find to #person-filter — `/` still focuses the people filter)"
+        )
     q_focus = bool(_FOCUS_SEARCH_Q.search(f_surface) or _FOCUS_SEARCH_Q.search(prefix_x))
-    if not people_focus:
-        fail(
-            "#132: ⌘F / ctrl+F on People must focus the people filter "
-            "(getElementById(\"person-filter\") / #person-filter)"
-        )
-    if not re.search(
-        r"view\s*===?\s*[\"']people[\"']|view\s*!==?\s*[\"']people[\"']",
-        f_surface,
-    ):
-        fail(
-            "#132: ⌘F / ctrl+F must branch on People vs other views "
-            "(people filter vs Search #q) — do not reuse the `/` handler as Find"
-        )
     if not q_focus:
         fail(
-            "#132: ⌘F / ctrl+F off People must focus the Search query "
-            "(getElementById(\"q\") / #q)"
+            "#132: ⌘F / ctrl+F from every view including People must focus "
+            "the Search query (getElementById(\"q\") / #q)"
         )
     if not _VIEW_SEARCH_ASSIGN.search(f_surface) and not _VIEW_SEARCH_ASSIGN.search(prefix_x):
         fail(
-            "#132: ⌘F / ctrl+F off People must switch to Search "
-            "(view = \"search\") then focus #q"
+            "#132: ⌘F / ctrl+F from every view including People must switch "
+            "to Search (view = \"search\") then focus #q"
         )
     if not _PREVENT_DEFAULT.search(f_surface) and not _PREVENT_DEFAULT.search(prefix_x):
         fail(
@@ -10161,7 +10164,36 @@ def assert_keyboard_map(crate: Path) -> None:
     ):
         fail(
             "#132: docs/user/app.md must document ⌘F / Ctrl+F "
-            "(focus search, or the people filter on People)"
+            "(from every view including People, switch to Search and focus #q)"
+        )
+    if re.search(
+        r"("
+        r"⌘\s*F.{0,100}people filter"
+        r"|⌘\s*F.{0,80}#person-filter"
+        r"|focuses that people filter on People"
+        r"|(?:⌘\s*F|Ctrl\+F|Ctrl-F).{0,60}on People.{0,40}filter"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail(
+            "#132: docs/user/app.md must say ⌘F / Ctrl+F from every view "
+            "including People switches to Search and focuses #q "
+            "(not the people filter — `/` still focuses #person-filter)"
+        )
+    if not re.search(
+        r"("
+        r"(?:⌘\s*F|Ctrl\+F|Ctrl-F).{0,160}(?:every view|including People|from People)"
+        r".{0,80}(?:#q|Search)"
+        r"|(?:every view|including People).{0,80}(?:⌘\s*F|Ctrl\+F|Ctrl-F)"
+        r".{0,80}(?:#q|Search)"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail(
+            "#132: docs/user/app.md must say ⌘F / Ctrl+F from every view "
+            "including People focuses Search #q"
         )
     if not re.search(
         r"("
@@ -17438,6 +17470,297 @@ def assert_timeline_attach_slot(crate: Path) -> None:
         fail("#207: " + "; ".join(problems))
 
 
+# #208 — always-available chrome search field (not only the Search tab).
+_CHROME_SEARCH_HOOK = re.compile(r"\bdata-chrome-search\b", re.I)
+_API_SEARCH_CALL = re.compile(r"\bapi\.search\s*\(")
+_INVOKE_SEARCH_CMD = re.compile(
+    r"invoke\s*(?:<[^>]*>)?\s*\(\s*[\"']search(?:_cmd)?[\"']",
+    re.I,
+)
+_CHROME_TO_Q = re.compile(
+    r"("
+    r"getElementById\s*\(\s*[\"']q[\"']"
+    r"|querySelector\s*\(\s*[\"']#q[\"']"
+    r"|bind:value=\{[^}]*\bq\b[^}]*\}"
+    r"|\bq\s*=\s*"
+    r")"
+)
+_CHROME_FIELD_EL = re.compile(r"<Input\b|<input\b|<form\b", re.I)
+_SPOTLIGHT_WORD = re.compile(r"\bspotlight\b", re.I)
+_MULTI_ARCHIVE_WORD = re.compile(r"\bmulti[- ]archive\b", re.I)
+_REMOTE_SEARCH_WORD = re.compile(
+    r"("
+    r"\bremote\s+search\b"
+    r"|search\s+(?:the\s+)?(?:web|cloud|network)\b"
+    r"|https?://[^\s\"']+/search"
+    r")",
+    re.I,
+)
+_NEGATED_SCOPE = re.compile(
+    r"\b(?:not|no|never|out of scope|isn't|is not|don't|do not)\b",
+    re.I,
+)
+
+
+def _tag_inner(markup: str, tag: str) -> list[str]:
+    """Inner HTML of each <tag>…</tag> (first close; chrome strips are shallow)."""
+    out: list[str] = []
+    for m in re.finditer(rf"<{re.escape(tag)}\b[^>]*>", markup, re.I):
+        start = m.start()
+        end = markup.find(f"</{tag}>", m.end())
+        if end < 0:
+            end = min(len(markup), m.end() + 2400)
+        else:
+            end = end + len(f"</{tag}>")
+        out.append(markup[start:end])
+    return out
+
+
+def _claim_without_negation(blob: str, rx: re.Pattern[str]) -> bool:
+    for m in rx.finditer(blob):
+        window = blob[max(0, m.start() - 48) : m.end() + 48]
+        if _NEGATED_SCOPE.search(window):
+            continue
+        return True
+    return False
+
+
+def _chrome_search_handler_surface(app: str, chrome_chunk: str) -> str:
+    """Markup around the hook plus named submit/focus/key handlers."""
+    parts = [chrome_chunk]
+    names = re.findall(
+        r"(?:on:submit|onsubmit|on:focus|onfocus|on:keydown|onkeydown|"
+        r"on:input|oninput|on:change|onchange|on:click|onclick|on:blur|onblur)"
+        r"\s*=\s*\{[^}]{0,160}?\b([A-Za-z_][\w]*)\s*\(",
+        chrome_chunk,
+    )
+    names += re.findall(
+        r"(?:on:submit|onsubmit|on:focus|onfocus|on:keydown|onkeydown|"
+        r"on:input|oninput|on:change|onchange|on:click|onclick)"
+        r"\s*=\s*\{([A-Za-z_][\w]*)\}",
+        chrome_chunk,
+    )
+    for extra in (
+        "onChromeSearch",
+        "chromeSearch",
+        "submitChromeSearch",
+        "focusChromeSearch",
+        "openChromeSearch",
+        "goSearch",
+        "routeChromeSearch",
+    ):
+        names.append(extra)
+    seen: set[str] = set()
+    for name in names:
+        if name in seen:
+            continue
+        seen.add(name)
+        inner = _ts_fn_body(app, name) or _function_body(app, name)
+        if inner:
+            parts.append(_expand_fn_calls(app, inner))
+    return "\n".join(parts)
+
+
+def assert_chrome_search_field(crate: Path) -> None:
+    """#208: always-available chrome search field; #q stays canonical.
+
+    data-chrome-search lives in App.svelte chrome (nav/header), not only
+    SearchPane. Using it routes to Search and focuses / copies into #q.
+    SearchPane run() remains the only api.search caller. No Spotlight,
+    no multi-archive, no remote search, no second FTS.
+    Not #209 filters, #210 hit density, #211 titlebar, #215 palette,
+    #224 virtualizer.
+    """
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#208: App.svelte required (chrome search field lives in nav/header)")
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    if not search_path.is_file():
+        fail("#208: SearchPane.svelte required (#q stays the canonical query)")
+    app = app_path.read_text()
+    search = search_path.read_text()
+    markup = _svelte_markup(app)
+    app_clean = _without_comments(app)
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+
+    # 1) Chrome hook in App.svelte nav/header — not only SearchPane.
+    if not _CHROME_SEARCH_HOOK.search(app):
+        if _CHROME_SEARCH_HOOK.search(search):
+            fail(
+                "#208: data-chrome-search must be in App.svelte chrome "
+                "(nav/header), not only inside SearchPane"
+            )
+        fail(
+            "#208: App.svelte chrome (nav/header) must include a search field "
+            "/ wrapper with data-chrome-search (visible when the archive is "
+            "open, not only on the Search tab)"
+        )
+    if not _CHROME_SEARCH_HOOK.search(markup):
+        fail(
+            "#208: data-chrome-search must be in App.svelte chrome markup "
+            "(nav/header), not only a script string"
+        )
+
+    chrome_chunks = [
+        chunk
+        for tag in ("nav", "header")
+        for chunk in _tag_inner(markup, tag)
+        if _CHROME_SEARCH_HOOK.search(chunk)
+    ]
+    if not chrome_chunks:
+        fail(
+            "#208: data-chrome-search must sit in App.svelte <nav> or <header> "
+            "chrome, not only inside a pane"
+        )
+    chrome_chunk = chrome_chunks[0]
+    hook = _CHROME_SEARCH_HOOK.search(markup)
+    if hook:
+        for kind, cond, _extra in _template_stack(markup, hook.start()):
+            if kind in {"if", "if-else"} and re.search(
+                r"view\s*===?\s*[\"']search[\"']", cond
+            ):
+                fail(
+                    "#208: chrome search (data-chrome-search) must be available "
+                    "whenever the archive is open, not only when view === \"search\""
+                )
+            if (
+                kind == "if"
+                and re.search(r"\bsetup\b", cond)
+                and not re.search(r"!\s*setup", cond)
+            ):
+                fail(
+                    "#208: chrome search must be visible when the archive is "
+                    "open (st && !setup), not only on the setup screen"
+                )
+
+    # 2) #q stays the canonical field in SearchPane (do not steal the id).
+    if not re.search(r"id=[\"']q[\"']", search):
+        fail("#208: SearchPane must keep id=\"q\" as the canonical query field")
+    if re.search(r"id=[\"']q[\"']", markup):
+        fail(
+            "#208: #q stays the canonical field in SearchPane — do not give "
+            "the chrome field id=\"q\""
+        )
+
+    # 3) Chrome field is an input / form (or wraps one).
+    around = markup[
+        max(0, (hook.start() if hook else 0) - 220) : (hook.end() if hook else 0) + 700
+    ]
+    if not _CHROME_FIELD_EL.search(chrome_chunk) and not _CHROME_FIELD_EL.search(around):
+        fail(
+            "#208: data-chrome-search must be a search field or wrap one "
+            "(Input / input / form) in App chrome"
+        )
+
+    # 4) Chrome path routes to Search and focuses / copies into #q.
+    chrome_surface = _chrome_search_handler_surface(app, chrome_chunk + "\n" + around)
+    if not _VIEW_SEARCH_ASSIGN.search(chrome_surface):
+        fail(
+            "#208: chrome search field must route to Search "
+            "(view = \"search\") and then focus #q (or copy into #q)"
+        )
+    if not _CHROME_TO_Q.search(chrome_surface) and not _FOCUS_SEARCH_Q.search(
+        chrome_surface
+    ):
+        fail(
+            "#208: chrome search field must focus #q or copy the typed text "
+            "into #q (SearchPane query stays canonical)"
+        )
+
+    # 5) SearchPane run() remains the only api.search caller.
+    run_body = _ts_fn_body(search, "run") or _function_body(search, "run")
+    if not run_body or not _API_SEARCH_CALL.search(run_body):
+        fail(
+            "#208: SearchPane run() must remain the only api.search caller "
+            "(do not add a second FTS path)"
+        )
+    if _API_SEARCH_CALL.search(app_clean):
+        fail(
+            "#208: App.svelte must not call api.search — SearchPane run() is "
+            "the only search IPC"
+        )
+    if _INVOKE_SEARCH_CMD.search(app_clean):
+        fail(
+            "#208: App.svelte must not invoke search / search_cmd — SearchPane "
+            "run() remains the only api.search caller"
+        )
+    for p in _product_svelte(crate):
+        if p.name == "SearchPane.svelte":
+            continue
+        other = _without_comments(p.read_text())
+        if _API_SEARCH_CALL.search(other):
+            fail(
+                f"#208: {p.relative_to(crate)} must not call api.search — "
+                "SearchPane run() is the only caller"
+            )
+        if _INVOKE_SEARCH_CMD.search(other):
+            fail(
+                f"#208: {p.relative_to(crate)} must not invoke search — "
+                "SearchPane run() remains the only api.search caller"
+            )
+
+    # 6) D24: chrome always available; ⌘F from every view including People → #q;
+    #    `/` still people filter.
+    if not dtxt.strip():
+        fail(
+            "#208: docs/user/app.md required — chrome search is always available"
+        )
+    if not re.search(
+        r"("
+        r"chrome.{0,48}search.{0,48}(?:always|every|nav|header)"
+        r"|search.{0,48}(?:always available|in (?:the )?chrome|in (?:the )?nav)"
+        r"|always[- ]available.{0,24}search"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail("#208: docs/user/app.md must say chrome search is always available")
+    if not re.search(
+        r"("
+        r"(?:⌘\s*F|Ctrl\+F|Ctrl-F).{0,160}"
+        r"(?:every view|including People|from People).{0,80}(?:#q|Search)"
+        r"|(?:every view|including People).{0,80}(?:⌘\s*F|Ctrl\+F|Ctrl-F)"
+        r".{0,80}(?:#q|Search)"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail(
+            "#208: docs/user/app.md must say ⌘F from every view including "
+            "People focuses #q"
+        )
+    if not re.search(
+        r"("
+        r"`/`"
+        r"|slash"
+        r")"
+        r".{0,120}"
+        r"("
+        r"people filter"
+        r"|#person-filter"
+        r"|person-filter"
+        r"|filters? (?:the )?(?:loaded )?people"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail(
+            "#208: docs/user/app.md must keep `/` focusing the people filter"
+        )
+
+    # 7) Not: Spotlight, multi-archive, remote search / rewritten FTS.
+    #    Do not require #209 filters, #210 hit density, #211 titlebar,
+    #    #215 palette, or #224 virtualizer.
+    web_claim = "\n".join(p.read_text() for p in _web_sources(crate)) + "\n" + dtxt
+    if _claim_without_negation(web_claim, _SPOTLIGHT_WORD):
+        fail("#208: not in scope — no Spotlight / OS-wide search")
+    if _claim_without_negation(web_claim, _MULTI_ARCHIVE_WORD):
+        fail("#208: not in scope — no multi-archive search")
+    if _claim_without_negation(web_claim, _REMOTE_SEARCH_WORD):
+        fail("#208: not in scope — no remote search")
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -17552,6 +17875,7 @@ def main() -> None:
     assert_macos_menu(crate)
     assert_chrome_locale(crate)
     assert_keyboard_map(crate)
+    assert_chrome_search_field(crate)
     assert_a11y_listbox_focus_motion(crate)
     assert_human_time_people(crate)
     assert_drag_drop_import(crate)
