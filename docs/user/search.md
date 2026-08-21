@@ -26,6 +26,8 @@ SQLite FTS5 `MATCH` with a thin expander in front:
 
 Display text always comes from `messages.body_text`, never from the folded
 `search_text` column. Snippets use FTS `snippet(…, '«', '»', '…', 12)`.
+Search hits show a short time + person or conversation title, then a
+highlighted snippet — not a raw ISO dump.
 
 ## Filters
 

@@ -9,6 +9,7 @@
   import EmptyState from "./EmptyState.svelte";
   import CasAttach from "./CasAttach.svelte";
   import { splitSnippet } from "./snippetHighlight";
+  import { humanTime } from "./formatTime";
   import { t } from "./i18n";
 
   let {
@@ -470,7 +471,7 @@
           }}
         >
           <div class="text-xs text-muted-foreground">
-            {[h.sent_at || "no date", h.platform, h.conversation_kind, h.person_name || "", h.conversation_title || ""]
+            {[humanTime(h.sent_at), h.person_name || h.conversation_title || ""]
               .filter(Boolean)
               .join(" · ")}
           </div>
