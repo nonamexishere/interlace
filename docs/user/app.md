@@ -126,8 +126,7 @@ visible above the text-only footer even on a narrow pane or a long
 UTC day). Older rows sit above; newest at
 the bottom. **Load older**
 is at the top of the list and prepends earlier pages without jumping
-the viewport. Large threads **virtualize**: only the rows in (and near)
-the viewport are in the DOM, so a long DM stays scrollable. A **day heading** (`15/03/2024` UTC, day/month/year) is
+the viewport. Large threads **virtualize**: only the rows in (and near) the viewport are in the DOM, so a long DM stays scrollable. The person timeline virtualizes with **measured row heights** so two-sided DMs scroll without jumping. A **day heading** (`15/03/2024` UTC, day/month/year) is
 inserted when the UTC calendar day of `sent_at` changes and **sticks**
 to the top of the message list until the next day replaces it. Days are
 UTC (not the host timezone). A row with no `sent_at` gets no heading. Bodies stay visible plain-text

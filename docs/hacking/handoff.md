@@ -1,6 +1,6 @@
 # Agent / session handoff
 
-**Date:** 2026-08-19. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
+**Date:** 2026-08-21. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -81,8 +81,8 @@ ad-hoc, not notarized). Ask before another `app-v*` / `v*` / crates.io publish.
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `039efe5` **Merge pull request #241** (#206
-grouped same-sender captions). Tag **`app-v0.1.1`** is still the unsigned app. Epic
+HEAD when this was rewritten: `757bdb1` **Merge pull request #244** (#224
+timeline measure / page mount). Tag **`app-v0.1.1`** is still the unsigned app. Epic
 **#108**, milestone 6, and the Phase 1 CLI milestone are **closed**. Product
 track is **#197** / milestone 7. Re-check with `git log -1` / `gh pr list`.
 
@@ -174,6 +174,8 @@ Phase 2.1 milestone (#6): **closed**.
 | #204 / PR #237 | Recoverable errors + owned toast (copy / Reveal); blocking stay in-page |
 | #205 / PR #239 | Partial states — one pane can fail without blanking the shell |
 | #206 / PR #241 | Consecutive same-sender, same-conversation, same-UTC-day bubbles share one caption |
+| #207 / PR #243 | Timeline hierarchy — identity/time, then body/subject, then attachments |
+| #224 / PR #244 | Person timeline: ≤250 filtered rows mount fully; longer lists still window. Measure does not write scrollTop |
 
 ## Open — product now (Phase 2.2)
 
@@ -186,9 +188,8 @@ load-bearing (a11y, titlebar, search).
 
 | # | Note |
 | --- | --- |
-| **#207** | Timeline hierarchy — sender, time, body, then attachments. Next coding. |
-| **#208**–**#222** | Search / chrome / a11y / appearance — see #197 |
-| **#224** | Dogfood: person timeline scroll stutters on two-sided DMs (#120 fixed-height virtualizer). Not the design-system line. |
+| **#208** | Always-available search field (not only the Search tab). Next coding. PR **#245** is open. |
+| **#209**–**#222** | Search / chrome / a11y / appearance — see #197 |
 
 Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github.com/nonamexishere/interlace/milestone/7).
 
@@ -201,9 +202,8 @@ Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github
 
 ## Recommended next steps
 
-1. Next coding: **#207** (timeline hierarchy: sender → time → body →
-   attachments). **#224** is the open dogfood scroll bug if Mustafa picks
-   it over the design-system line. Do not start 1.1 / P3 / P4.
+1. Next coding: **#208** (always-available search field). PR #245 is
+   already open. Do not start 1.1 / P3 / P4.
 2. Do **not** start 1.1 / P3 / P4 unprompted. Ask before another `app-v*` / `v*` / crates.io.
 
 ## Commands (copy-paste)
@@ -276,8 +276,8 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
 > Product track: Phase 2.2 UI/UX polish (#197). Read
-> `docs/design/UI-DESIGN.md`. Next coding is **#207** (timeline hierarchy).
-> Do not start 1.1 / P3 / P4. Do not dump chat bodies. Ask before
+> `docs/design/UI-DESIGN.md`. Next coding is **#208** (always-available
+> search field; PR #245). Do not start 1.1 / P3 / P4. Do not dump chat bodies. Ask before
 > crates.io,
 > `v*`, or another `app-v*` tag. After merges, update this handoff
 > in the same session.
