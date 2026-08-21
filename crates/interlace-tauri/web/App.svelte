@@ -64,6 +64,8 @@
   let confirmDesc = $state("");
   let confirmRun = $state<(() => Promise<void>) | null>(null);
   let view = $state<"people" | "search" | "review" | "import" | "doctor">("people");
+  /** Shared with SearchPane `#q` — chrome field copies here; run() stays in SearchPane. */
+  let searchQ = $state("");
   let booting = $state(true);
   let opening = $state(false);
   let tlLoading = $state(false);
@@ -907,6 +909,17 @@
     });
   }
 
+  /** Nav chrome field → Search tab, copy into `#q`, focus, then SearchPane run(). */
+  function submitChromeSearch(e: Event) {
+    e.preventDefault();
+    view = "search";
+    void tick().then(() => {
+      const qEl = document.getElementById("q") as HTMLInputElement | null;
+      qEl?.focus();
+      qEl?.form?.requestSubmit();
+    });
+  }
+
   function onKey(e: KeyboardEvent) {
     const t = e.target as HTMLElement | null;
     const digit = e.key >= "1" && e.key <= "5" ? e.key : /^Digit[1-5]$/.test(e.code) ? e.code.slice(5) : "";
@@ -921,12 +934,8 @@
     }
     if (mod && (e.key === "f" || e.key === "F")) {
       e.preventDefault();
-      if (view === "people") {
-        document.getElementById("person-filter")?.focus();
-      } else {
-        view = "search";
-        void tick().then(() => document.getElementById("q")?.focus());
-      }
+      view = "search";
+      void tick().then(() => document.getElementById("q")?.focus());
       return;
     }
     if (mod && digit !== "") {
@@ -1104,7 +1113,7 @@
     <span class="text-muted-foreground">offline · no account · no HTTP client</span>
   </header>
   {#if !setup && st}
-    <nav class="flex flex-wrap gap-1 border-b border-border px-3 py-1 text-sm">
+    <nav class="flex flex-wrap items-center gap-1 border-b border-border px-3 py-1 text-sm">
       <Button size="sm" variant={view === "people" ? "default" : "ghost"} onclick={() => (view = "people")}
         >{t("people")}</Button
       >
@@ -1120,6 +1129,20 @@
       <Button size="sm" variant={view === "doctor" ? "default" : "ghost"} onclick={() => (view = "doctor")}
         >{t("doctor")}{#if doctor.length} ({doctor.length}){/if}</Button
       >
+      <form
+        class="ml-auto min-w-[10rem] max-w-[16rem] flex-1"
+        data-chrome-search
+        onsubmit={submitChromeSearch}
+      >
+        <Input
+          type="search"
+          bind:value={searchQ}
+          placeholder={t("searchPlaceholder")}
+          aria-label={t("search")}
+          autocomplete="off"
+          class="h-8"
+        />
+      </form>
     </nav>
   {/if}
 
@@ -1184,7 +1207,14 @@
       </p>
     </main>
   {:else if st && view === "search"}
-    <SearchPane {people} {friendly} onError={showErr} onToast={showToast} onJumpToMessage={jumpToMessage} />
+    <SearchPane
+      bind:q={searchQ}
+      {people}
+      {friendly}
+      onError={showErr}
+      onToast={showToast}
+      onJumpToMessage={jumpToMessage}
+    />
   {:else if st && view === "review"}
     <ReviewPane
       onError={showErr}
