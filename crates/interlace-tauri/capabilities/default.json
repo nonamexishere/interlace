@@ -2,5 +2,9 @@
   "identifier": "default",
   "description": "UI1 archive session. No http, no shell, no remote paths.",
   "windows": ["main"],
-  "permissions": ["core:default", "core:window:allow-set-title"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-title",
+    "core:window:allow-start-dragging"
+  ]
 }

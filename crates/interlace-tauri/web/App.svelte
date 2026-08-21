@@ -1348,8 +1348,10 @@
 {/snippet}
 
 <div class="flex h-full flex-col bg-background text-foreground">
-  <header class="flex items-center justify-between border-b border-border px-4 py-2 text-sm">
-    <strong>Interlace</strong>
+  <header
+    class="flex items-center justify-end border-b border-border py-2 pl-20 pr-4 text-sm"
+    data-tauri-drag-region
+  >
     <span class="text-muted-foreground">offline · no account · no HTTP client</span>
   </header>
   {#if !setup && st}
