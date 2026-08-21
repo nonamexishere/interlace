@@ -637,11 +637,13 @@
       if (prev === h) continue;
       next[orig] = h;
       changed = true;
-      // First-time measure must not write scrollTop.
-      if (prev !== undefined) deltas.push({ orig, prev, h });
+      // First-time above-viewport uses the 88 fallback as the old height.
+      deltas.push({ orig, prev: prev ?? ESTIMATED_ROW_HEIGHT, h });
     }
     if (changed) rowHeights = next;
-    if (!deltas.length || userScrolling || pinLatestObs || !sc) return;
+    // Compensate above-viewport height changes even while the wheel is live.
+    // Skip during open-person pin so a measure does not slam #113 to latest.
+    if (!deltas.length || pinLatestObs || !sc) return;
     let adj = 0;
     for (const { orig, prev, h } of deltas) {
       const el = sc.querySelector(`[data-tl-index="${orig}"]`);
