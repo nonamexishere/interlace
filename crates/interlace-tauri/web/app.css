@@ -147,3 +147,12 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+.timeline-spacer-top,
+.timeline-spacer-bottom {
+  overflow-anchor: none;
+}
+
+#person-timeline {
+  overflow-anchor: auto;
+}
