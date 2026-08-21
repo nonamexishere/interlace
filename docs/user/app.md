@@ -162,7 +162,7 @@ of highlighting an unrelated row. Group hits turn **include groups** on when
 needed so the row can appear. A hit with no `person_id` stays on Search and
 expands the body as before. Snippet hits highlight matched tokens with a yellow
 `<mark>` (split on core FTS markers) — never by injecting the body as HTML, so
-markup such as `<script>` in a message stays plain text. Platform is a closed **select** — **Any** (default, empty value),
+markup such as `<script>` in a message stays plain text. Search hits show a short time + person or conversation title, then a highlighted snippet — not a raw ISO dump. Platform is a closed **select** — **Any** (default, empty value),
 **WhatsApp**, **Gmail**, and **Contacts** — not a free-text box; values are the
 core tokens (`whatsapp` / `gmail` / `contacts`). Empty means any platform.
 **Kind** is another closed select — **Any** (default), **DM**, **Group**,
