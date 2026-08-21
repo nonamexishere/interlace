@@ -64,7 +64,6 @@
   let confirmDesc = $state("");
   let confirmRun = $state<(() => Promise<void>) | null>(null);
   let view = $state<"people" | "search" | "review" | "import" | "doctor">("people");
-  /** Shared with SearchPane `#q` — chrome field copies here; run() stays in SearchPane. */
   let searchQ = $state("");
   let booting = $state(true);
   let opening = $state(false);
@@ -909,14 +908,24 @@
     });
   }
 
-  /** Nav chrome field → Search tab, copy into `#q`, focus, then SearchPane run(). */
+  async function whenSearchPaneReady(): Promise<HTMLInputElement | null> {
+    view = "search";
+    for (let i = 0; i < 40; i++) {
+      await tick();
+      if (booting || opening) continue;
+      const qEl = document.getElementById("q");
+      if (qEl instanceof HTMLInputElement) return qEl;
+    }
+    const qEl = document.getElementById("q");
+    return qEl instanceof HTMLInputElement ? qEl : null;
+  }
+
   function submitChromeSearch(e: Event) {
     e.preventDefault();
-    view = "search";
-    void tick().then(() => {
-      const qEl = document.getElementById("q") as HTMLInputElement | null;
-      qEl?.focus();
-      qEl?.form?.requestSubmit();
+    void whenSearchPaneReady().then((qEl) => {
+      if (!qEl) return;
+      qEl.focus();
+      qEl.form?.requestSubmit();
     });
   }
 
@@ -934,8 +943,7 @@
     }
     if (mod && (e.key === "f" || e.key === "F")) {
       e.preventDefault();
-      view = "search";
-      void tick().then(() => document.getElementById("q")?.focus());
+      void whenSearchPaneReady().then((qEl) => qEl?.focus());
       return;
     }
     if (mod && digit !== "") {
@@ -1141,6 +1149,7 @@
           aria-label={t("search")}
           autocomplete="off"
           class="h-8"
+          disabled={booting || opening}
         />
       </form>
     </nav>
