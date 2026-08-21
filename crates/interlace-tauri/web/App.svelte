@@ -584,60 +584,104 @@
     }
   }
 
-  function applyRowMeasure(orig: number, h: number) {
-    if (!(h > 0) || !Number.isFinite(h)) return;
-    const prev = rowHeights[orig];
-    if (prev === h) return;
-    const first = prev === undefined;
-    rowHeights[orig] = h;
-    if (first) return;
-    if (userScrolling || pinLatestObs) return;
-    const sc = document.getElementById("person-timeline");
-    if (!sc) return;
-    const el = sc.querySelector(`[data-tl-index="${orig}"]`);
-    if (!(el instanceof HTMLElement)) return;
-    const top = rowOffsetInPane(sc, el);
-    if (top < sc.scrollTop) {
-      writeScrollTop(sc, sc.scrollTop + (h - prev));
+  /** Queued measures; flushed once per frame as `rowHeights = next`. */
+  let pendingMeasures: Record<number, number> = {};
+  let pendingChrome = false;
+  let measureRaf = 0;
+
+  function scheduleMeasureFlush() {
+    if (measureRaf) return;
+    measureRaf = requestAnimationFrame(flushRowMeasures);
+  }
+
+  function clearPendingMeasures() {
+    pendingMeasures = {};
+    if (measureRaf) {
+      cancelAnimationFrame(measureRaf);
+      measureRaf = 0;
     }
   }
 
-  const windowedTlKeys = $derived(
-    windowedDayGroups.flatMap((g) => g.rows.map((r) => r.index)).join(","),
-  );
+  function scheduleChromeMeasure() {
+    pendingChrome = true;
+    scheduleMeasureFlush();
+  }
+
+  function applyRowMeasure(orig: number, h: number) {
+    if (!(h > 0) || !Number.isFinite(h)) return;
+    if ((pendingMeasures[orig] ?? rowHeights[orig]) === h) return;
+    pendingMeasures[orig] = h;
+    scheduleMeasureFlush();
+  }
+
+  function flushRowMeasures() {
+    measureRaf = 0;
+    const sc = document.getElementById("person-timeline");
+    if (pendingChrome) {
+      pendingChrome = false;
+      if (sc) {
+        const chrome = measureTimelineChrome(sc);
+        if (chrome !== tlChromeHeight) tlChromeHeight = chrome;
+      }
+    }
+    const pending = pendingMeasures;
+    pendingMeasures = {};
+    const next: Record<number, number> = { ...rowHeights };
+    let changed = false;
+    const deltas: { orig: number; prev: number; h: number }[] = [];
+    for (const key of Object.keys(pending)) {
+      const orig = Number(key);
+      const h = pending[orig];
+      if (!(h > 0) || !Number.isFinite(h)) continue;
+      const prev = rowHeights[orig];
+      if (prev === h) continue;
+      next[orig] = h;
+      changed = true;
+      // First-time measure must not write scrollTop.
+      if (prev !== undefined) deltas.push({ orig, prev, h });
+    }
+    if (changed) rowHeights = next;
+    if (!deltas.length || userScrolling || pinLatestObs || !sc) return;
+    let adj = 0;
+    for (const { orig, prev, h } of deltas) {
+      const el = sc.querySelector(`[data-tl-index="${orig}"]`);
+      if (!(el instanceof HTMLElement)) continue;
+      if (rowOffsetInPane(sc, el) < sc.scrollTop) adj += h - prev;
+    }
+    if (adj !== 0) writeScrollTop(sc, sc.scrollTop + adj);
+  }
+
+  /** Per-row action: observe this node; never keyed on windowedTlKeys. */
+  function measureTlRow(node: HTMLElement, orig: number) {
+    const read = () => {
+      const raw = node.getAttribute("data-tl-index");
+      const idx = raw != null ? Number(raw) : orig;
+      if (!Number.isFinite(idx)) return;
+      const h = Math.round(node.getBoundingClientRect().height);
+      applyRowMeasure(idx, h);
+      scheduleChromeMeasure();
+    };
+    const obs = new ResizeObserver(read);
+    obs.observe(node);
+    read();
+    return {
+      update(nextOrig: number) {
+        orig = nextOrig;
+        read();
+      },
+      destroy() {
+        obs.disconnect();
+      },
+    };
+  }
 
   $effect(() => {
-    void windowedTlKeys;
     void view;
     void selectedId;
+    void timeline.length;
+    void filteredTimeline.length;
     if (view !== "people") return;
-    const sc = document.getElementById("person-timeline");
-    if (!sc) return;
-    tlChromeHeight = measureTimelineChrome(sc);
-    const obs = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const el = entry.target as HTMLElement;
-        const raw = el.getAttribute("data-tl-index");
-        if (raw == null) continue;
-        const orig = Number(raw);
-        if (!Number.isFinite(orig)) continue;
-        const h = Math.round(el.getBoundingClientRect().height);
-        applyRowMeasure(orig, h);
-      }
-      tlChromeHeight = measureTimelineChrome(sc);
-    });
-    const nodes = sc.querySelectorAll("[data-tl-index]");
-    for (const node of nodes) {
-      const el = node as HTMLElement;
-      obs.observe(el);
-      const raw = el.getAttribute("data-tl-index");
-      if (raw == null) continue;
-      const orig = Number(raw);
-      if (!Number.isFinite(orig)) continue;
-      const h = Math.round(el.getBoundingClientRect().height);
-      applyRowMeasure(orig, h);
-    }
-    return () => obs.disconnect();
+    scheduleChromeMeasure();
   });
 
   function ask(title: string, description: string, run: () => Promise<void>) {
@@ -730,12 +774,34 @@
     writeScrollTop(sc, sc.scrollHeight);
   }
 
+  /** After open-person layout: viewport from the pane; pin; believe the element if they disagree. */
+  function syncOpenPersonScroll(sc: HTMLElement) {
+    tlViewportHeight = sc.clientHeight || tlViewportHeight;
+    const keep = tlScrollTop;
+    pinTimelineLatest(sc);
+    if (sc.scrollTop + sc.clientHeight < sc.scrollHeight - 4) {
+      pinTimelineLatest(sc);
+    }
+    if (sc.scrollTop <= 4 && keep > (sc.clientHeight || 0)) {
+      // Pin missed (layout not ready): keep the end-window so spacerTop stays huge
+      // only until watchPinLatest lands — do not collapse to scrollTop 0.
+      tlScrollTop = keep;
+      return;
+    }
+    if (sc.scrollTop !== tlScrollTop) tlScrollTop = sc.scrollTop;
+  }
+
   function watchPinLatest(sc: HTMLElement) {
     stopPinLatest();
-    pinTimelineLatest(sc);
+    syncOpenPersonScroll(sc);
     const ol = sc.querySelector("ol");
     pinLatestObs = new ResizeObserver(() => {
+      tlViewportHeight = sc.clientHeight || tlViewportHeight;
+      const keep = tlScrollTop;
       writeScrollTop(sc, sc.scrollHeight);
+      if (sc.scrollTop <= 4 && keep > (sc.clientHeight || 0)) {
+        tlScrollTop = keep;
+      }
     });
     pinLatestObs.observe(sc);
     if (ol) pinLatestObs.observe(ol);
@@ -834,8 +900,10 @@
         for (const [k, v] of Object.entries(rowHeights)) {
           next[Number(k) + n] = v;
         }
+        clearPendingMeasures();
         rowHeights = next;
       } else {
+        clearPendingMeasures();
         rowHeights = {};
       }
       timeline = append ? chrono.concat(timeline) : chrono;
@@ -849,6 +917,8 @@
         }
       } else {
         // Window from the end before first paint so open-person does not flash the top.
+        const sc0 = document.getElementById("person-timeline");
+        if (sc0) tlViewportHeight = sc0.clientHeight || tlViewportHeight;
         const estTotal = Math.max(offsetOf(filteredTimeline.length), ESTIMATED_ROW_HEIGHT);
         tlScrollTop = estTotal;
         // Loading line still in the pane makes one rAF land short after wrap.
@@ -857,14 +927,21 @@
         if (gen !== tlGen) return;
         const sc = document.getElementById("person-timeline");
         if (sc) {
+          tlViewportHeight = sc.clientHeight || tlViewportHeight;
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
               if (gen !== tlGen) return;
+              tlViewportHeight = sc.clientHeight || tlViewportHeight;
+              const keep = tlScrollTop;
               programmaticScroll = true;
               sc.scrollTop = sc.scrollHeight;
               tlScrollTop = sc.scrollTop;
-              tlViewportHeight = sc.clientHeight || tlViewportHeight;
               programmaticScroll = false;
+              if (sc.scrollTop <= 4 && keep > (sc.clientHeight || 0)) {
+                tlScrollTop = keep;
+              } else if (sc.scrollTop !== tlScrollTop) {
+                tlScrollTop = sc.scrollTop;
+              }
               watchPinLatest(sc);
             });
           });
@@ -944,6 +1021,7 @@
       if (gen !== tlGen) return;
 
       timeline = loaded;
+      clearPendingMeasures();
       rowHeights = {};
       const idx = loaded.findIndex((r) => r.message_id === messageId);
       if (idx < 0) {
@@ -1687,7 +1765,7 @@
               {/if}
               <div>
                 {#each group.rows as item}
-                  <div class="flex min-w-0 pb-2" data-tl-index={item.index}>
+                  <div class="flex min-w-0 pb-2" data-tl-index={item.index} use:measureTlRow={item.index}>
                     <article
                       class="flex min-w-0 max-w-[94%] cursor-pointer flex-col gap-2 rounded-2xl px-3 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring {item.index ===
                       tlIndex
