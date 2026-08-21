@@ -409,6 +409,8 @@
   /** Unmeasured slots use constant ESTIMATED_ROW_HEIGHT (88). */
   const ESTIMATED_ROW_HEIGHT = 88;
   const OVERSCAN = 15;
+  /** One import page is 80 rows. Do not virtualize that — spacers hitch. */
+  const VIRTUALIZE_AFTER = 250;
   let tlScrollTop = $state(0);
   let tlViewportHeight = $state(480);
   /** Load-older + window-start day heading — not in rowHeights. */
@@ -472,17 +474,6 @@
     return sum;
   }
 
-  /** Prefix sum of `map[row.index] ?? 88` for filtered positions k < pos. */
-  function prefixFromMap(map: Record<number, number>, filteredPos: number): number {
-    const rows = filteredTimeline;
-    const n = Math.max(0, Math.min(filteredPos, rows.length));
-    let sum = 0;
-    for (let k = 0; k < n; k++) {
-      sum += map[rows[k].index] ?? ESTIMATED_ROW_HEIGHT;
-    }
-    return sum;
-  }
-
   function onTimelineScroll(e: Event) {
     const el = e.currentTarget as HTMLElement | null;
     if (!el) return;
@@ -513,8 +504,10 @@
   const visibleRange = $derived.by(() => {
     const total = filteredTimeline.length;
     if (total === 0) return { startIndex: 0, endIndex: 0 };
+    // A single page (80) must mount fully. Virtualizing it is the hitch.
+    if (total <= VIRTUALIZE_AFTER) return { startIndex: 0, endIndex: total };
     const vh = Math.max(tlViewportHeight, 200);
-    const scrollTop = Math.max(0, tlScrollTop - tlChromeHeight);
+    const scrollTop = Math.max(0, tlScrollTop);
     let startIndex = 0;
     let acc = 0;
     while (startIndex < total) {
@@ -638,28 +631,17 @@
     const pending = pendingMeasures;
     pendingMeasures = {};
     const next: Record<number, number> = { ...rowHeights };
-    const deltas: { orig: number; prev: number; h: number }[] = [];
+    let changed = false;
     for (const key of Object.keys(pending)) {
       const orig = Number(key);
       const h = pending[orig];
       if (!(h > 0) || !Number.isFinite(h)) continue;
-      // First-time old height is 88; a first measure of 88 is not a change.
-      const prev = rowHeights[orig] ?? ESTIMATED_ROW_HEIGHT;
-      if (prev === h) continue;
+      if (rowHeights[orig] === h) continue;
       next[orig] = h;
-      deltas.push({ orig, prev, h });
+      changed = true;
     }
-    // Adj from old prefixes before rowHeights write — DOM rects are stale this frame.
-    const listScroll = Math.max(0, (sc?.scrollTop ?? tlScrollTop) - tlChromeHeight);
-    let adj = 0;
-    for (const { orig, prev, h } of deltas) {
-      const pos = filteredTimeline.findIndex((item) => item.index === orig);
-      if (pos < 0) continue;
-      const oldTop = prefixFromMap(rowHeights, pos);
-      if (oldTop < listScroll) adj += h - prev;
-    }
-    if (deltas.length) rowHeights = next;
-    if (adj !== 0 && sc && !pinLatestObs) writeScrollTop(sc, sc.scrollTop + adj);
+    // Cache only. Never write scrollTop from measure — that fights the wheel.
+    if (changed) rowHeights = next;
   }
 
   /** Per-row action: observe this node; never keyed on windowedTlKeys. */
