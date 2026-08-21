@@ -79,6 +79,8 @@ The native **window title** (Cmd-tab) follows the open view or person — e.g.
 `Ada — Interlace`, `Search — Interlace`; setup / People with no selection stays
 bare `Interlace`. Message text never appears in the title.
 
+The window uses an overlay titlebar: you can drag the top bar; native close/minimize/zoom stay clickable. There is no second Interlace wordmark — Cmd-tab still follows the view (`Ada — Interlace`, `Search — Interlace`).
+
 The native macOS **menu bar** has **File → Open archive** (same folder picker as
 **Open existing…**) and **File → Import**; **View** switches People, Search,
 Review, and Doctor. About states the app is offline and not encrypted at rest
