@@ -32,6 +32,8 @@ export const en = {
     "Same checks as interlace doctor. This window already holds the archive lock — close it before running doctor in a terminal.",
   copyText: "Copy text",
   revealInFinder: "Reveal in Finder",
+  collapseSidebar: "Collapse people sidebar",
+  expandSidebar: "Expand people sidebar",
 } as const;
 
 export type ChromeKey = keyof typeof en;
