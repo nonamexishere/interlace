@@ -228,7 +228,14 @@
 
   function onHitsKey(e: KeyboardEvent) {
     const t = e.target as HTMLElement | null;
-    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) {
+    if (
+      t &&
+      (t.tagName === "INPUT" ||
+        t.tagName === "TEXTAREA" ||
+        t.tagName === "SELECT" ||
+        t.tagName === "SUMMARY" ||
+        t.closest("[data-search-filters]"))
+    ) {
       return;
     }
     if (!hits.length || searching) return;
