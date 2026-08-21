@@ -407,19 +407,61 @@
   });
 
   /**
-   * #120: window the person timeline — only visible + overscan rows in the DOM.
-   * Fixed estimate is enough for scrollability; dogfood measures 10k.
+   * #120/#224: window the person timeline — only visible + overscan rows.
+   * Unmeasured slots stay ESTIMATED_ROW_HEIGHT (constant 88), never a live average.
    */
   const ESTIMATED_ROW_HEIGHT = 88;
   const OVERSCAN = 15;
   let tlScrollTop = $state(0);
   let tlViewportHeight = $state(480);
+  /** Measured heights keyed by original timeline index (`item.index` / data-tl-index). */
+  let rowHeights = $state<Record<number, number>>({});
+  let userScrolling = false;
+  let userScrollUntil: ReturnType<typeof setTimeout> | null = null;
+
+  function markUserScrolling() {
+    userScrolling = true;
+    if (userScrollUntil != null) clearTimeout(userScrollUntil);
+    userScrollUntil = setTimeout(() => {
+      userScrolling = false;
+      userScrollUntil = null;
+    }, 150);
+  }
+
+  function heightOf(orig: number): number {
+    return rowHeights[orig] ?? ESTIMATED_ROW_HEIGHT;
+  }
+
+  function offsetOf(filteredPos: number): number {
+    const rows = filteredTimeline;
+    const n = Math.max(0, Math.min(filteredPos, rows.length));
+    let sum = 0;
+    for (let k = 0; k < n; k++) {
+      sum += heightOf(rows[k].index);
+    }
+    return sum;
+  }
 
   function onTimelineScroll(e: Event) {
     const el = e.currentTarget as HTMLElement | null;
     if (!el) return;
     tlScrollTop = el.scrollTop;
     tlViewportHeight = el.clientHeight || tlViewportHeight;
+    if (pinLatestObs) {
+      // Pin slams to the end; a real user scroll leaves the bottom.
+      if (el.scrollTop + el.clientHeight < el.scrollHeight - 4) {
+        stopPinLatest();
+        markUserScrolling();
+      }
+      return;
+    }
+    markUserScrolling();
+    stopPinLatest();
+  }
+
+  function onTimelineWheel() {
+    stopPinLatest();
+    markUserScrolling();
   }
 
   /** Visible filtered-row index range (inclusive start, exclusive end) + overscan. */
@@ -427,17 +469,27 @@
     const total = filteredTimeline.length;
     if (total === 0) return { startIndex: 0, endIndex: 0 };
     const vh = Math.max(tlViewportHeight, 200);
-    const windowRows = Math.ceil(vh / ESTIMATED_ROW_HEIGHT) + OVERSCAN * 2;
-    let startIndex = Math.max(
-      0,
-      Math.floor(tlScrollTop / ESTIMATED_ROW_HEIGHT) - OVERSCAN,
-    );
-    let endIndex = Math.min(
-      total,
-      Math.ceil((tlScrollTop + vh) / ESTIMATED_ROW_HEIGHT) + OVERSCAN,
-    );
+    const scrollTop = Math.max(0, tlScrollTop);
+    let startIndex = 0;
+    let acc = 0;
+    while (startIndex < total) {
+      const h = heightOf(filteredTimeline[startIndex].index);
+      if (acc + h > scrollTop) break;
+      acc += h;
+      startIndex += 1;
+    }
+    let endIndex = startIndex;
+    let endAcc = acc;
+    const viewBottom = scrollTop + vh;
+    while (endIndex < total && endAcc < viewBottom) {
+      endAcc += heightOf(filteredTimeline[endIndex].index);
+      endIndex += 1;
+    }
+    startIndex = Math.max(0, startIndex - OVERSCAN);
+    endIndex = Math.min(total, endIndex + OVERSCAN);
     // Filter shrink or oversize scrollTop: keep a window on the real list.
     if (startIndex >= total) {
+      const windowRows = Math.ceil(vh / ESTIMATED_ROW_HEIGHT) + OVERSCAN * 2;
       startIndex = Math.max(0, total - windowRows);
       endIndex = total;
     } else if (endIndex <= startIndex) {
@@ -446,9 +498,9 @@
     return { startIndex, endIndex };
   });
 
-  const spacerTop = $derived(visibleRange.startIndex * ESTIMATED_ROW_HEIGHT);
+  const spacerTop = $derived(offsetOf(visibleRange.startIndex));
   const spacerBottom = $derived(
-    Math.max(0, (filteredTimeline.length - visibleRange.endIndex) * ESTIMATED_ROW_HEIGHT),
+    Math.max(0, offsetOf(filteredTimeline.length) - offsetOf(visibleRange.endIndex)),
   );
 
   /** Day groups for the overscan window only (headings for visible days). */
@@ -479,8 +531,9 @@
     if (pos < 0) return;
     const sc = document.getElementById("person-timeline");
     if (!sc) return;
-    const rowTop = pos * ESTIMATED_ROW_HEIGHT;
-    const rowBottom = rowTop + ESTIMATED_ROW_HEIGHT;
+    const rowTop = offsetOf(pos);
+    const rowH = heightOf(filteredTimeline[pos]?.index ?? index);
+    const rowBottom = rowTop + rowH;
     const viewTop = sc.scrollTop;
     const viewBottom = viewTop + sc.clientHeight;
     if (rowTop < viewTop) {
@@ -491,6 +544,60 @@
     tlScrollTop = sc.scrollTop;
     tlViewportHeight = sc.clientHeight || tlViewportHeight;
   }
+
+  function applyRowMeasure(orig: number, h: number) {
+    if (!(h > 0) || !Number.isFinite(h)) return;
+    const prev = rowHeights[orig];
+    if (prev === h) return;
+    const first = prev === undefined;
+    rowHeights[orig] = h;
+    // First-time measure must not write scrollTop (overscan mount would yank).
+    if (first) return;
+    if (userScrolling || pinLatestObs) return;
+    const sc = document.getElementById("person-timeline");
+    if (!sc) return;
+    const pos = visibleTlIndices.indexOf(orig);
+    if (pos < 0) return;
+    const top = offsetOf(pos);
+    if (top < sc.scrollTop) {
+      sc.scrollTop += h - prev;
+      tlScrollTop = sc.scrollTop;
+    }
+  }
+
+  /** Orig indices currently in the virtual window — remount measure without tracking heights. */
+  const windowedTlKeys = $derived(
+    windowedDayGroups.flatMap((g) => g.rows.map((r) => r.index)).join(","),
+  );
+
+  $effect(() => {
+    void windowedTlKeys;
+    const sc = document.getElementById("person-timeline");
+    if (!sc) return;
+    const obs = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const el = entry.target as HTMLElement;
+        const raw = el.getAttribute("data-tl-index");
+        if (raw == null) continue;
+        const orig = Number(raw);
+        if (!Number.isFinite(orig)) continue;
+        const h = Math.round(el.getBoundingClientRect().height);
+        applyRowMeasure(orig, h);
+      }
+    });
+    const nodes = sc.querySelectorAll("[data-tl-index]");
+    for (const node of nodes) {
+      const el = node as HTMLElement;
+      obs.observe(el);
+      const raw = el.getAttribute("data-tl-index");
+      if (raw == null) continue;
+      const orig = Number(raw);
+      if (!Number.isFinite(orig)) continue;
+      const h = Math.round(el.getBoundingClientRect().height);
+      applyRowMeasure(orig, h);
+    }
+    return () => obs.disconnect();
+  });
 
   function ask(title: string, description: string, run: () => Promise<void>) {
     confirmTitle = title;
@@ -684,6 +791,16 @@
       const pane = document.getElementById("person-timeline");
       const prevHeight = pane?.scrollHeight ?? 0;
       const chrono = page.toReversed();
+      if (append) {
+        const n = chrono.length;
+        const next: Record<number, number> = {};
+        for (const [k, v] of Object.entries(rowHeights)) {
+          next[Number(k) + n] = v;
+        }
+        rowHeights = next;
+      } else {
+        rowHeights = {};
+      }
       timeline = append ? chrono.concat(timeline) : chrono;
       tlIndex = append ? tlIndex + chrono.length : Math.max(0, chrono.length - 1);
       if (append) {
@@ -697,7 +814,7 @@
         }
       } else {
         // Window from the end before first paint so open-person does not flash the top.
-        const estTotal = Math.max(chrono.length, 1) * ESTIMATED_ROW_HEIGHT;
+        const estTotal = Math.max(offsetOf(filteredTimeline.length), ESTIMATED_ROW_HEIGHT);
         tlScrollTop = estTotal;
         // Loading line still in the pane makes one rAF land short after wrap.
         tlLoading = false;
@@ -790,6 +907,7 @@
       if (gen !== tlGen) return;
 
       timeline = loaded;
+      rowHeights = {};
       const idx = loaded.findIndex((r) => r.message_id === messageId);
       if (idx < 0) {
         tlIndex = -1;
@@ -801,7 +919,11 @@
       tlIndex = idx;
 
       // Estimate scroll so the virtual window covers the target on first paint.
-      const estTop = Math.max(0, tlIndex * ESTIMATED_ROW_HEIGHT - ESTIMATED_ROW_HEIGHT * 2);
+      const hitPos = visibleTlIndices.indexOf(tlIndex);
+      const estTop = Math.max(
+        0,
+        offsetOf(hitPos >= 0 ? hitPos : tlIndex) - ESTIMATED_ROW_HEIGHT * 2,
+      );
       tlScrollTop = estTop;
       tlLoading = false;
       await tick();
@@ -1498,6 +1620,7 @@
           class="min-h-0 min-w-0 flex-1 px-4 pb-8"
           aria-busy={tlLoading}
           onscroll={onTimelineScroll}
+          onwheel={onTimelineWheel}
         >
         {@render timelinePaneState()}
         {#if timeline.length && oldestCursor && filteredTimeline.length > 0}
