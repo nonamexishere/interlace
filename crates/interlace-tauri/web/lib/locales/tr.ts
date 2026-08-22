@@ -36,4 +36,7 @@ export const tr: ChromePack = {
   revealInFinder: "Finder'da göster",
   collapseSidebar: "Kişi kenar çubuğunu daralt",
   expandSidebar: "Kişi kenar çubuğunu genişlet",
+  inspector: "İnceleyici",
+  identities: "Kimlikler",
+  lastActivity: "Son etkinlik",
 };

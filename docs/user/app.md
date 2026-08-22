@@ -115,9 +115,10 @@ person; **All** is the default and switching people resets it. A **kind filter**
 (All | DMs | Email threads | Groups) ANDs with the platform filter on
 `conversation_kind`; groups still need **include groups** to load at all.
 Switching people resets both filters. Each bubble
-shows a small text **platform chip** (not a brand logo). **Identity chrome**
-(Merge, include groups, unlink) is hidden until you click the person name at
-the top of the conversation. The person timeline is a **chat**, not a log:
+shows a small text **platform chip** (not a brand logo). An **optional right inspector**
+(off by default) opens when you click the person name at the top of the
+conversation: identities and last activity, with Merge, include groups, and
+unlink there. It is not a second timeline. The person timeline is a **chat**, not a log:
 messages you sent sit on the right, the other person on the left. Each
 bubble caption is **hour:minute** (UTC) plus the platform chip — not the
 calendar date again. Consecutive same-side, same-conversation, same-UTC-day

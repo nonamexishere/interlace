@@ -34,6 +34,9 @@ export const en = {
   revealInFinder: "Reveal in Finder",
   collapseSidebar: "Collapse people sidebar",
   expandSidebar: "Expand people sidebar",
+  inspector: "Inspector",
+  identities: "Identities",
+  lastActivity: "Last activity",
 } as const;
 
 export type ChromeKey = keyof typeof en;
