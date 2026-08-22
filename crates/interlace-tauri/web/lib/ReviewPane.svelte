@@ -154,7 +154,7 @@
 
   function requestUndo() {
     const ev = lastUndoable;
-    if (!ev || undoing) return;
+    if (!ev || resolving || undoing) return;
     const id = ev.id;
     ask("Undo last link?", "Reverses the last identity graph change. Messages stay put.", async () => {
       await runUndo(id);
@@ -247,7 +247,7 @@
         variant="outline"
         size="sm"
         data-review-undo
-        disabled={undoing}
+        disabled={undoing || resolving}
         onclick={requestUndo}
       >
         {undoing ? "Undoing…" : "Undo last link"}
@@ -319,4 +319,5 @@
   onconfirm={async () => {
     if (confirmRun) await confirmRun();
   }}
+  onerror={onError}
 />

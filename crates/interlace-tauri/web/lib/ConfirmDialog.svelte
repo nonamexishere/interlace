@@ -8,12 +8,14 @@
     description,
     confirmLabel = "Confirm",
     onconfirm,
+    onerror,
   }: {
     open?: boolean;
     title: string;
     description: string;
     confirmLabel?: string;
     onconfirm: () => void | Promise<void>;
+    onerror?: (e: unknown) => void;
   } = $props();
 
   let busy = $state(false);
@@ -29,6 +31,8 @@
     open = false;
     try {
       await onconfirm();
+    } catch (e) {
+      onerror?.(e);
     } finally {
       busy = false;
     }

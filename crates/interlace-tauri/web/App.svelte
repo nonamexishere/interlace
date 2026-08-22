@@ -2150,6 +2150,7 @@
   onconfirm={async () => {
     if (confirmRun) await confirmRun();
   }}
+  onerror={showErr}
 />
 
 {#if commandOpen}
