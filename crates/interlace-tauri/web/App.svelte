@@ -1242,6 +1242,29 @@
       document.getElementById("person-filter")?.focus();
       return;
     }
+    const inPeopleList =
+      (t?.closest?.("[role='listbox']") || t?.getAttribute?.("role") === "option") &&
+      t?.id !== "person-filter" &&
+      t?.tagName !== "INPUT";
+    if (inPeopleList && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      const ids = filtered.map((p) => p.id);
+      if (!ids.length) return;
+      const cur = selectedId != null ? ids.indexOf(selectedId) : -1;
+      const next =
+        e.key === "ArrowDown"
+          ? Math.min(ids.length - 1, Math.max(0, cur) + (cur < 0 ? 0 : 1))
+          : Math.max(0, cur < 0 ? 0 : cur - 1);
+      void selectPerson(ids[next]);
+      void tick().then(() => {
+        const box = document.querySelector("[role='listbox'][aria-label='People']");
+        const opt = box?.querySelector(
+          "[role='option'][aria-selected='true']",
+        ) as HTMLElement | null;
+        opt?.focus();
+      });
+      return;
+    }
     // Walk only rows currently shown (platform / kind filters may hide some).
     const visible = visibleTlIndices;
     if (!visible.length) return;
@@ -1250,14 +1273,14 @@
       tlIndex = nearestVisibleTlIndex(tlIndex, visible);
       pos = visible.indexOf(tlIndex);
     }
-    if (e.key === "j" || e.key === "ArrowDown") {
+    if (e.key === "j" || (!inPeopleList && e.key === "ArrowDown")) {
       if (pos >= 0 && pos < visible.length - 1) {
         tlIndex = visible[pos + 1];
         ensureTlIndexVisible(tlIndex);
       }
       e.preventDefault();
     }
-    if (e.key === "k" || e.key === "ArrowUp") {
+    if (e.key === "k" || (!inPeopleList && e.key === "ArrowUp")) {
       if (pos > 0) {
         tlIndex = visible[pos - 1];
         ensureTlIndexVisible(tlIndex);
@@ -1600,12 +1623,13 @@
           <Input id="person-filter" type="search" bind:value={filter} placeholder="name" class="min-w-0" />
         </div>
         <ul class="mt-2 min-w-0 space-y-0.5" role="listbox" aria-label="People" aria-busy={peopleLoading}>
-          {#each filtered as p}
+          {#each filtered as p, i}
             <li class="min-w-0" role="presentation">
               <button
                 type="button"
                 role="option"
                 aria-selected={selectedId === p.id}
+                tabindex={selectedId === p.id || (selectedId == null && i === 0) ? 0 : -1}
                 title={p.display_name}
                 aria-label={`${p.display_name}${p.is_self ? " (self)" : ""}${p.last_activity_at ? ` ${humanTime(p.last_activity_at)}` : ""}`}
                 class="w-full min-w-0 max-w-full rounded-md text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {sidebarCollapsed
@@ -1668,13 +1692,13 @@
           {#each events as e}
             <li class="flex min-w-0 items-center justify-between gap-2">
               <span class="min-w-0 truncate">#{e.id} {e.op}</span>
-              <Button variant="outline" size="sm" class="shrink-0" onclick={() => doUndo(e.id, e.op)}>
+              <Button variant="outline" size="sm" class="shrink-0" tabindex="-1" onclick={() => doUndo(e.id, e.op)}>
                 undo
               </Button>
             </li>
           {/each}
         </ul>
-        <Button variant="outline" size="sm" class="mt-4 max-w-full" onclick={openPicker}>
+        <Button variant="outline" size="sm" class="mt-4 max-w-full" tabindex="-1" onclick={openPicker}>
           Open other archive…
         </Button>
         {/if}
