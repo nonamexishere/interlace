@@ -122,7 +122,22 @@
       <Button variant="outline" onclick={() => pick(false)}>Pick file…</Button>
       <Button variant="outline" onclick={() => pick(true)}>Pick folder…</Button>
       <Button onclick={start} disabled={progress.status === "running"}>Start import</Button>
+      {#if progress.status === "running"}
+        <Button
+          variant="outline"
+          disabled
+          data-import-cancel
+          aria-describedby="import-cancel-why"
+        >
+          Cancel
+        </Button>
+      {/if}
     </div>
+    {#if progress.status === "running"}
+      <p id="import-cancel-why" class="text-sm text-muted-foreground">
+        This import cannot be stopped once started.
+      </p>
+    {/if}
     <div
       class={progress.status === "done"
         ? "space-y-3 rounded-md border border-success bg-success/15 p-3 text-sm text-success"
