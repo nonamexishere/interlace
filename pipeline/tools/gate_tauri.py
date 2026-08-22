@@ -329,6 +329,10 @@
 #     (not events[0] blindly); ConfirmDialog go() sets open = false
 #     before await onconfirm() (or never awaits); Review undo does not
 #     await onChanged() (People refresh must not block confirm).
+#     Follow-up (in-flight Accept/Reject): disable Accept/Reject while
+#     resolving/undoing (not only !canAccept()); accept/reject/ask no-op
+#     on that flag; Accept/Reject callbacks try/catch onError (as runUndo).
+#     Optional: ConfirmDialog refuses open = true while busy.
 #224: person timeline measure-and-cache variable row heights (constant 88)
 #     fallback). Lists ≤250 mount fully; longer lists still window. Spacers /
 #     visibleRange / ensureTlIndexVisible use prefix sums, not index * 88.
@@ -24187,6 +24191,34 @@ _REVIEW_UNDO_USE = re.compile(r"(?:\bapi\s*\.\s*)?\bundo\s*\(")
 _REVIEW_AWAIT_ONCONFIRM = re.compile(r"await\s+onconfirm\s*\(")
 _REVIEW_OPEN_FALSE = re.compile(r"\bopen\s*=\s*false\b")
 _REVIEW_AWAIT_CHANGED = re.compile(r"await\s+onChanged\s*\(")
+_REVIEW_INFLIGHT_TOKEN = re.compile(
+    r"\b(?:resolving|undoing|busy|accepting|rejecting|"
+    r"inFlight|inflight|isBusy|working|pending|acting)\b"
+)
+_REVIEW_BOOL_STATE = re.compile(
+    r"\b(?:let|const|var)\s+(\w+)\s*=\s*\$state\(\s*(?:false|true)\s*\)"
+)
+_REVIEW_ONERROR_SKIP = frozenset(
+    {
+        "reload",
+        "onChanged",
+        "ask",
+        "canAccept",
+        "api",
+        "requestUndo",
+        "runUndo",
+        "void",
+        "if",
+        "await",
+        "Promise",
+        "Set",
+        "Array",
+        "Boolean",
+        "Number",
+        "String",
+    }
+)
+_REVIEW_INFLIGHT_SKIP_FLAGS = frozenset({"confirmOpen", "loading", "selected"})
 _REVIEW_DOCS_UNDO = re.compile(r"\bundo(?:able)?\b|\breversible\b", re.I)
 _REVIEW_DOCS_NO_RAW = re.compile(
     r"("
@@ -24234,12 +24266,245 @@ def _review_undo_action_blob(src: str) -> str:
     return "\n".join(parts)
 
 
+def _review_attr_expr(tag: str, name: str) -> str:
+    """Value inside attr={...} on an opening tag."""
+    m = re.search(rf"\b{re.escape(name)}\s*=\s*\{{", tag)
+    if not m:
+        return ""
+    open_i = m.end() - 1
+    close = _match_closer(tag, open_i)
+    if close < 0:
+        return ""
+    return tag[open_i + 1 : close]
+
+
+def _review_top_args(src: str, open_paren: int) -> list[str]:
+    close = _match_closer(src, open_paren)
+    if close < 0:
+        return []
+    args = src[open_paren + 1 : close]
+    parts: list[str] = []
+    start = 0
+    depth = 0
+    i = 0
+    n = len(args)
+    while i < n:
+        nxt = _js_next(args, i)
+        if nxt != i:
+            i = nxt
+            continue
+        c = args[i]
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        elif c == "," and depth == 0:
+            parts.append(args[start:i])
+            start = i + 1
+        i += 1
+    parts.append(args[start:])
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _review_expr_fn_body(src: str, expr: str) -> str:
+    """Body of an inline arrow/function expr, or a named helper it calls."""
+    expr = expr.strip().rstrip(";")
+    m = re.search(
+        r"(?:async\s*)?(?:function\s*)?\([^)]*\)\s*(?::\s*[^{=]+)?=>\s*\{",
+        expr,
+    )
+    if not m:
+        m = re.search(r"(?:async\s+)?function\s*\([^)]*\)\s*\{", expr)
+    if m:
+        brace = expr.find("{", m.end() - 1)
+        if brace >= 0:
+            close = _match_closer(expr, brace)
+            if close > brace:
+                return expr[brace + 1 : close]
+    ident = re.fullmatch(r"([A-Za-z_]\w*)", expr)
+    if ident:
+        return _ts_fn_body(src, ident.group(1)) or _function_body(
+            src, ident.group(1)
+        )
+    call = re.fullmatch(
+        r"(?:async\s*)?\([^)]*\)\s*(?::\s*[^=]+)?=>\s*([A-Za-z_]\w*)\s*\(.*\)",
+        expr,
+        re.S,
+    )
+    if call:
+        return _ts_fn_body(src, call.group(1)) or _function_body(
+            src, call.group(1)
+        )
+    return expr
+
+
+def _review_if_return_conds(body: str) -> list[str]:
+    """Conditions of `if (...) return` / `if (...) { return }`."""
+    out: list[str] = []
+    for m in re.finditer(r"\bif\s*\(", body):
+        open_p = m.end() - 1
+        close_p = _match_closer(body, open_p)
+        if close_p < 0:
+            continue
+        cond = body[open_p + 1 : close_p]
+        rest = body[close_p + 1 :].lstrip()
+        if rest.startswith("return"):
+            out.append(cond)
+            continue
+        if rest.startswith("{"):
+            open_b = body.find("{", close_p)
+            if open_b < 0:
+                continue
+            close_b = _match_closer(body, open_b)
+            if close_b > open_b and re.search(
+                r"\breturn\b", body[open_b + 1 : close_b]
+            ):
+                out.append(cond)
+    return out
+
+
+def _review_derived_body(src: str, name: str) -> str:
+    m = re.search(
+        rf"\b(?:let|const|var)\s+{re.escape(name)}\s*=\s*"
+        rf"\$derived(?:\.by)?\s*\(",
+        src,
+    )
+    if not m:
+        return ""
+    close = _match_closer(src, m.end() - 1)
+    if close < 0:
+        return ""
+    return src[m.end() : close]
+
+
+def _review_mentions_inflight(src: str, expr: str, tokens: set[str]) -> bool:
+    if not expr or not tokens:
+        return False
+    blob = expr + "\n" + _expand_fn_calls(src, expr, depth=2)
+    for name in re.findall(r"\b([A-Za-z_]\w*)\b", expr):
+        derived = _review_derived_body(src, name)
+        if derived:
+            blob += "\n" + derived
+    return any(re.search(rf"\b{re.escape(t)}\b", blob) for t in tokens)
+
+
+def _review_fn_body(src: str, name: str) -> str:
+    return _ts_fn_body(src, name) or _function_body(src, name)
+
+
+def _review_inflight_tokens(src: str) -> set[str]:
+    """resolving/undoing/similar, plus $state flags set true on accept/reject."""
+    tokens = set(_REVIEW_INFLIGHT_TOKEN.findall(src))
+    action: list[str] = []
+    for name in ("accept", "reject", "ask"):
+        body = _review_fn_body(src, name)
+        if body:
+            action.append(body)
+            for callee in re.findall(r"\b([A-Za-z_]\w*)\s*\(", body):
+                if callee in _REVIEW_ONERROR_SKIP:
+                    continue
+                inner = _review_fn_body(src, callee)
+                if inner:
+                    action.append(inner)
+    blob = "\n".join(action)
+    for name in _REVIEW_BOOL_STATE.findall(src):
+        if name in _REVIEW_INFLIGHT_SKIP_FLAGS:
+            continue
+        if re.search(rf"\b{re.escape(name)}\s*=\s*true\b", blob):
+            tokens.add(name)
+    return tokens
+
+
+def _review_ask_callback_bodies(src: str, fn_body: str) -> list[str]:
+    """Last arg to ask(...) and confirmRun = ... inside fn_body (+ one helper)."""
+    blobs = [fn_body]
+    for callee in re.findall(r"\b([A-Za-z_]\w*)\s*\(", fn_body):
+        if callee in _REVIEW_ONERROR_SKIP | {"confirmRun"}:
+            continue
+        inner = _review_fn_body(src, callee)
+        if inner:
+            blobs.append(inner)
+    cbs: list[str] = []
+    for blob in blobs:
+        for m in re.finditer(r"\bask\s*\(", blob):
+            args = _review_top_args(blob, m.end() - 1)
+            if args:
+                body = _review_expr_fn_body(src, args[-1])
+                if body:
+                    cbs.append(body)
+        for m in re.finditer(r"\bconfirmRun\s*=", blob):
+            rest = blob[m.end() :]
+            body = _review_expr_fn_body(src, rest)
+            if body:
+                cbs.append(body)
+    return cbs
+
+
+def _review_has_try_onerror(src: str, blob: str, depth: int = 1) -> bool:
+    if re.search(r"\btry\s*\{", blob) and re.search(
+        r"\bcatch\b", blob
+    ) and re.search(r"\bonError\s*\(", blob):
+        return True
+    if depth <= 0:
+        return False
+    for name in re.findall(r"\b([A-Za-z_]\w*)\s*\(", blob):
+        if name in _REVIEW_ONERROR_SKIP:
+            continue
+        inner = _review_fn_body(src, name)
+        if inner and _review_has_try_onerror(src, inner, depth - 1):
+            return True
+    return False
+
+
+def _review_onconfirm_blob(src: str) -> str:
+    m = re.search(r"\bonconfirm\s*=\s*\{", src)
+    if not m:
+        return ""
+    open_i = m.end() - 1
+    close = _match_closer(src, open_i)
+    if close < 0:
+        return ""
+    return src[open_i + 1 : close]
+
+
+def _confirm_refuses_open_while_busy(src: str) -> bool:
+    """True if open=true is ignored / forced false while busy."""
+    for m in re.finditer(r"\bif\s*\(", src):
+        close = _match_closer(src, m.end() - 1)
+        if close < 0:
+            continue
+        cond = src[m.end() : close]
+        if not re.search(r"\bbusy\b", cond):
+            continue
+        rest = src[close + 1 :].lstrip()
+        then = rest
+        if rest.startswith("{"):
+            open_b = src.find("{", close)
+            close_b = _match_closer(src, open_b) if open_b >= 0 else -1
+            then = src[open_b + 1 : close_b] if close_b > open_b else rest
+        if re.search(r"\breturn\b", then) or _REVIEW_OPEN_FALSE.search(then):
+            return True
+    for m in re.finditer(r"\$effect(?:\.pre)?\s*\(", src):
+        close = _match_closer(src, m.end() - 1)
+        if close < 0:
+            continue
+        body = src[m.end() : close]
+        if re.search(r"\bbusy\b", body) and (
+            _REVIEW_OPEN_FALSE.search(body) or re.search(r"\bopen\b", body)
+        ):
+            return True
+    return False
+
+
 def assert_review_chrome(crate: Path) -> None:
     """#221: ReviewPane Card chrome — safe, reversible, still no raw ids.
 
     Follow-up (undo freeze): skip split_person / undo_of; ConfirmDialog
     sets open = false before await onconfirm(); undo does not await
     onChanged().
+    Follow-up (in-flight Accept/Reject): disable Accept/Reject while
+    resolving/undoing; accept/reject/ask return early on that flag;
+    callbacks call onError.
     """
     review_path = crate / "web" / "lib" / "ReviewPane.svelte"
     if not review_path.is_file():
@@ -24353,6 +24618,54 @@ def assert_review_chrome(crate: Path) -> None:
         fail(
             "#221: ReviewPane must not await onChanged() after undo "
             "(People refresh must not block the confirm callback)"
+        )
+
+    # 6c) Follow-up (in-flight Accept/Reject): disable + no-op + onError.
+    tokens = _review_inflight_tokens(cleaned)
+    for label in ("Accept", "Reject"):
+        tag = _review_action_tag(surface, label)
+        expr = _review_attr_expr(tag, "disabled") if tag else ""
+        if not _review_mentions_inflight(cleaned, expr, tokens):
+            fail(
+                f"#221: {label} button must be disabled while "
+                "resolving/undoing (not only !canAccept())"
+            )
+    for name in ("accept", "reject", "ask"):
+        body = _review_fn_body(cleaned, name)
+        if not body:
+            fail(f"#221: ReviewPane {name}() required")
+        conds = _review_if_return_conds(body)
+        cond_blob = "\n".join(
+            _expand_fn_calls(cleaned, c, depth=2) for c in conds
+        )
+        if not _review_mentions_inflight(cleaned, cond_blob, tokens):
+            fail(
+                f"#221: {name}() must return early when resolving/undoing "
+                "(or a similar in-flight flag) is set"
+            )
+    onconfirm = _review_onconfirm_blob(cleaned)
+    wrapped = _review_has_try_onerror(cleaned, onconfirm) if onconfirm else False
+    if not wrapped:
+        for name in ("accept", "reject"):
+            body = _review_fn_body(cleaned, name)
+            cbs = _review_ask_callback_bodies(cleaned, body) if body else []
+            if not cbs or not any(
+                _review_has_try_onerror(cleaned, cb) for cb in cbs
+            ):
+                fail(
+                    "#221: Accept/Reject callbacks must try/catch and "
+                    "call onError (same as runUndo)"
+                )
+    cancel_tag = _review_action_tag(
+        _svelte_markup(confirm_path.read_text()) or confirm_src, "Cancel"
+    )
+    cancel_disabled = _review_attr_expr(cancel_tag, "disabled") if cancel_tag else ""
+    if re.search(r"\bbusy\b", cancel_disabled) and not (
+        _confirm_refuses_open_while_busy(confirm_src)
+    ):
+        fail(
+            "#221: ConfirmDialog must refuse open = true while busy "
+            "(or leave Cancel enabled so a resurrected overlay is dismissable)"
         )
 
     # 7) No name_score threshold UI; sample loop stays panel.samples.
