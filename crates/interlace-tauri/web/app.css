@@ -5,7 +5,7 @@
   --color-background: hsl(0 0% 100%);
   --color-foreground: hsl(240 10% 3.9%);
   --color-muted: hsl(240 4.8% 95.9%);
-  --color-muted-foreground: hsl(240 3.8% 46.1%);
+  --color-muted-foreground: hsl(240 5.9% 36%);
   --color-border: hsl(240 5.9% 90%);
   --color-input: hsl(240 5.9% 90%);
   --color-primary: hsl(240 5.9% 10%);
@@ -24,8 +24,10 @@
 }
 
 :root {
+  color-scheme: light dark;
   --bubble-me: hsl(214 76% 90%);
   --bubble-them: hsl(240 4.8% 93%);
+  --search-mark: hsl(54 96% 77%);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -48,6 +50,7 @@
     --color-card-foreground: hsl(0 0% 98%);
     --bubble-me: hsl(214 35% 24%);
     --bubble-them: hsl(240 3.7% 18%);
+    --search-mark: hsl(45 93% 32% / 0.6);
   }
 }
 
@@ -123,14 +126,8 @@ body {
 .search-mark {
   border-radius: 0.125rem;
   padding-inline: 0.125rem;
-  background-color: hsl(54 96% 77%);
+  background-color: var(--search-mark);
   color: var(--color-foreground);
-}
-
-@media (prefers-color-scheme: dark) {
-  .search-mark {
-    background-color: hsl(45 93% 32% / 0.6);
-  }
 }
 
 .photo-lightbox {
