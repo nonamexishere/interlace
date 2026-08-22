@@ -265,7 +265,7 @@
         {:else if isImage(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
           <button
             type="button"
-            class="block cursor-pointer border-0 bg-transparent p-0 text-left"
+            class="block cursor-pointer border-0 bg-transparent p-0 text-left focus-visible:ring-2 focus-visible:ring-ring"
             onclick={(e) => {
               e.stopPropagation();
               openLightbox(a);
@@ -320,7 +320,7 @@
             ></audio>
             <button
               type="button"
-              class="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+              class="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={playing[key] ? "Pause voice note" : "Play voice note"}
               data-voice-play
               onclick={(e) => togglePlay(e, key)}
@@ -333,13 +333,14 @@
             </button>
             <input
               type="range"
-              class="voice-seek min-w-12 flex-1"
+              class="voice-seek min-w-12 flex-1 focus-visible:ring-2 focus-visible:ring-ring"
               min="0"
               max={Number.isFinite(dur) && dur > 0 ? dur : 0}
               step="any"
               value={currentTimes[key] ?? 0}
               disabled={!(Number.isFinite(dur) && dur > 0)}
               aria-label="Seek voice note"
+              aria-valuenow={currentTimes[key] ?? 0}
               data-voice-seek
               oninput={(e) => seekVoice(e, key)}
               onchange={(e) => seekVoice(e, key)}
@@ -385,7 +386,7 @@
   >
     <button
       type="button"
-      class="absolute top-3 right-3 z-[101] inline-flex items-center gap-1.5 rounded-md bg-black/50 px-3 py-1.5 text-sm text-white hover:bg-black/70"
+      class="absolute top-3 right-3 z-[101] inline-flex items-center gap-1.5 rounded-md bg-black/50 px-3 py-1.5 text-sm text-white hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-ring"
       data-lightbox-close
       aria-label="Close photo"
       onclick={(e) => {
@@ -399,7 +400,7 @@
     {#if imageItems().length > 1}
       <button
         type="button"
-        class="absolute left-3 z-[101] rounded-md bg-black/50 px-3 py-2 text-white hover:bg-black/70"
+        class="absolute left-3 z-[101] rounded-md bg-black/50 px-3 py-2 text-white hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-ring"
         data-lightbox-prev
         aria-label="Previous image"
         onclick={(e) => {
@@ -411,7 +412,7 @@
       </button>
       <button
         type="button"
-        class="absolute right-3 z-[101] rounded-md bg-black/50 px-3 py-2 text-white hover:bg-black/70"
+        class="absolute right-3 z-[101] rounded-md bg-black/50 px-3 py-2 text-white hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-ring"
         data-lightbox-next
         aria-label="Next image"
         onclick={(e) => {
@@ -443,7 +444,7 @@
   >
     <button
       type="button"
-      class="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted"
+      class="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
       role="menuitem"
       onclick={revealInFinder}>{t("revealInFinder")}</button
     >

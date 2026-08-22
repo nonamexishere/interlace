@@ -12,7 +12,7 @@
 
 <CommandPrimitive.Item
   class={cn(
-    "relative flex cursor-default items-center rounded-md px-2 py-1.5 text-sm outline-none select-none data-selected:bg-accent data-selected:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50",
+    "relative flex cursor-default items-center rounded-md px-2 py-1.5 text-sm outline-none select-none focus-visible:ring-2 focus-visible:ring-ring data-selected:bg-accent data-selected:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50",
     className,
   )}
   {...rest}

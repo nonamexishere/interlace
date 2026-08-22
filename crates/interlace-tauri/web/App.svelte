@@ -1746,7 +1746,7 @@
           <h1 class="text-xl font-semibold tracking-tight">
             <button
               type="button"
-              class="text-left"
+              class="text-left focus-visible:ring-2 focus-visible:ring-ring"
               onclick={() => (
                 (showPersonChrome = !showPersonChrome),
                 showPersonChrome && focusPersonInspector()
@@ -1759,7 +1759,7 @@
             {#if selectedId && conversations.length > 1}
               <details data-conversation-switcher class="relative z-20 min-w-0 max-w-[16rem]">
                 <summary
-                  class="cursor-pointer truncate rounded-md border border-border px-2 py-1 text-sm"
+                  class="cursor-pointer truncate rounded-md border border-border px-2 py-1 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {#if selectedConversationId === null}
                     All
@@ -1773,7 +1773,7 @@
                   <li>
                     <button
                       type="button"
-                      class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent {selectedConversationId ===
+                      class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {selectedConversationId ===
                       null
                         ? 'bg-accent'
                         : ''}"
@@ -1786,7 +1786,7 @@
                     <li>
                       <button
                         type="button"
-                        class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent {selectedConversationId ===
+                        class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {selectedConversationId ===
                         conv.id
                           ? 'bg-accent'
                           : ''}"
@@ -1822,7 +1822,7 @@
                 <div class="flex min-w-0 flex-wrap items-center gap-1.5">
                   <button
                     type="button"
-                    class="filter-chip rounded-full border px-2.5 py-0.5 text-xs transition-colors {platformFilter ===
+                    class="filter-chip rounded-full border px-2.5 py-0.5 text-xs transition-colors focus-visible:ring-2 focus-visible:ring-ring {platformFilter ===
                     'all'
                       ? 'filter-chip-active border-border bg-background font-medium text-foreground shadow-sm'
                       : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'}"
@@ -1833,7 +1833,7 @@
                   {#each availablePlatforms as p}
                     <button
                       type="button"
-                      class="filter-chip rounded-full border px-2.5 py-0.5 text-xs transition-colors {platformFilter ===
+                      class="filter-chip rounded-full border px-2.5 py-0.5 text-xs transition-colors focus-visible:ring-2 focus-visible:ring-ring {platformFilter ===
                       p
                         ? 'filter-chip-active border-border bg-background font-medium text-foreground shadow-sm'
                         : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'}"
@@ -1861,7 +1861,7 @@
                 <div class="flex min-w-0 flex-wrap items-center gap-1.5">
                   <button
                     type="button"
-                    class="filter-chip rounded-full border px-2.5 py-0.5 text-xs transition-colors {kindFilter ===
+                    class="filter-chip rounded-full border px-2.5 py-0.5 text-xs transition-colors focus-visible:ring-2 focus-visible:ring-ring {kindFilter ===
                     'all'
                       ? 'filter-chip-active border-border bg-background font-medium text-foreground shadow-sm'
                       : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'}"
@@ -1872,7 +1872,7 @@
                   {#each availableKinds as k}
                     <button
                       type="button"
-                      class="filter-chip rounded-full border px-2.5 py-0.5 text-xs transition-colors {kindFilter ===
+                      class="filter-chip rounded-full border px-2.5 py-0.5 text-xs transition-colors focus-visible:ring-2 focus-visible:ring-ring {kindFilter ===
                       k
                         ? 'filter-chip-active border-border bg-background font-medium text-foreground shadow-sm'
                         : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'}"
@@ -1975,7 +1975,7 @@
                             </p>
                             <button
                               type="button"
-                              class="mt-1 text-xs text-muted-foreground underline"
+                              class="mt-1 text-xs text-muted-foreground underline focus-visible:ring-2 focus-visible:ring-ring"
                               data-show-quoted
                               onclick={(e) => toggleQuoted(item.row.message_id, e)}
                               >Hide quoted</button
@@ -1983,7 +1983,7 @@
                           {:else}
                             <button
                               type="button"
-                              class="mt-1 text-xs text-muted-foreground underline"
+                              class="mt-1 text-xs text-muted-foreground underline focus-visible:ring-2 focus-visible:ring-ring"
                               data-show-quoted
                               onclick={(e) => toggleQuoted(item.row.message_id, e)}
                               >Show quoted</button
@@ -2029,6 +2029,7 @@
                 <label class="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
+                    class="focus-visible:ring-2 focus-visible:ring-ring"
                     bind:checked={includeGroups}
                     onchange={() => selectedId && selectPerson(selectedId)}
                   />
@@ -2069,7 +2070,7 @@
   >
     <button
       type="button"
-      class="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted"
+      class="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
       role="menuitem"
       onclick={copyText}>{t("copyText")}</button
     >
@@ -2094,7 +2095,7 @@
       />
     </div>
     <label class="flex items-center gap-2 text-sm">
-      <input type="checkbox" bind:checked={allowSelf} />
+      <input type="checkbox" class="focus-visible:ring-2 focus-visible:ring-ring" bind:checked={allowSelf} />
       Allow absorbing self into this person
     </label>
     {#if mergeList.length === 0}
@@ -2110,7 +2111,7 @@
           <li>
             <button
               type="button"
-              class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent {p.is_self
+              class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {p.is_self
                 ? 'font-semibold'
                 : ''}"
               onclick={() => pickMergeTarget(p)}
