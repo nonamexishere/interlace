@@ -313,6 +313,12 @@
 #     use warning (not muted-only / text-destructive). Import done is
 #     quiet (muted or success; no celebration). Docs: warning token +
 #     quiet import done. Keep #217 / #218.
+#220: import progress cancelable + calm done — Cancel (`data-import-cancel`)
+#     while running, disabled with honest no-stop copy (core has no stop;
+#     no fake import_cancel / thread kill). Status running stays; done
+#     stays quiet (`data-import-done`, no Dialog/confetti). No path
+#     console.log/toast. Docs: progress visible + disabled cancel +
+#     quiet done. Keep #219 / #218.
 #224: person timeline measure-and-cache variable row heights (constant 88)
 #     fallback). Lists ≤250 mount fully; longer lists still window. Spacers /
 #     visibleRange / ensureTlIndexVisible use prefix sums, not index * 88.
@@ -23389,15 +23395,6 @@ _STATUS_CELEBRATION = re.compile(
     r")",
     re.I,
 )
-_STATUS_CANCEL_IMPORT = re.compile(
-    r"("
-    r"Cancel import"
-    r"|importCancel"
-    r"|cancelImport"
-    r"|data-import-cancel"
-    r")",
-    re.I,
-)
 _STATUS_SVELTE_TRANSITION = re.compile(r"\b(?:transition|in|out)\s*:\s*([A-Za-z_]\w*)")
 _STATUS_DOCS_WARNING = re.compile(
     r"("
@@ -23771,14 +23768,8 @@ def assert_status_tokens(crate: Path) -> None:
             "(muted or success)"
         )
 
-    # 9) No Cancel-import UI (#220), no review-queue chrome rewrite (#221),
+    # 9) No review-queue chrome rewrite (#221),
     #    no new Svelte transition durations (#222).
-    if (
-        _STATUS_CANCEL_IMPORT.search(import_src)
-        or _STATUS_CANCEL_IMPORT.search(svelte_blob)
-        or re.search(r">\s*Cancel\s*<", import_src)
-    ):
-        fail("#219: not in scope — no Cancel-import UI (#220)")
     review_path = crate / "web" / "lib" / "ReviewPane.svelte"
     review = review_path.read_text() if review_path.is_file() else ""
     if (
@@ -23860,6 +23851,291 @@ def assert_status_tokens(crate: Path) -> None:
         svelte_blob
     ):
         fail("#219: keep #218 — no Theme / Appearance menu / data-theme")
+
+
+# #220 — import progress: disabled Cancel + calm done (no fake backend).
+_IMPORT_HONEST_COPY = re.compile(
+    r"("
+    r"cannot stop"
+    r"|cannot be stopped"
+    r"|no stop"
+    r"|cannot be cancelled"
+    r"|cannot be canceled"
+    r"|not implemented"
+    r")",
+    re.I,
+)
+_IMPORT_FAKE_CMD = re.compile(r"\b(?:import_cancel|cancelImport|importCancel)\b")
+_IMPORT_THREAD_KILL = re.compile(
+    r"("
+    r"thread::[^\n]{0,60}\b(?:kill|terminate)\b"
+    r"|JoinHandle::[^\n]{0,60}\babort\b"
+    r"|\b(?:JoinHandle|join_handle|import_handle)\b[^\n]{0,80}\.abort\s*\("
+    r"|\bpthread_kill\b"
+    r")"
+)
+_IMPORT_STATUS_RUNNING = re.compile(
+    r"Status[\s\S]{0,160}(?:progress\.status|\brunning\b)",
+    re.I,
+)
+_IMPORT_CONSOLE_PATH = re.compile(
+    r"console\.log\s*\((?:[^)]|\n){0,240}(?:\bpath\b|progress\.path|\bprogress\b)",
+    re.I,
+)
+_IMPORT_TOAST_PATH = re.compile(
+    r"(?:onToast|toast)\s*\??\s*\((?:[^)]|\n){0,240}(?:\bpath\b|progress\.path)",
+    re.I,
+)
+_IMPORT_PARALLEL = re.compile(
+    r"("
+    r"parallel[\s_-]*import"
+    r"|import[\s_-]*in[\s_-]*parallel"
+    r"|concurrent[\s_-]*import"
+    r"|data-parallel-import"
+    r")",
+    re.I,
+)
+_IMPORT_GC_BTN = re.compile(
+    r"("
+    r">\s*(?:GC(?:\s+CAS)?|gc_cas|Run GC)\s*<"
+    r"|\bgcCas\b"
+    r"|\bgc_cas\b"
+    r"|background\s+GC"
+    r")",
+    re.I,
+)
+_IMPORT_DOCS_PROGRESS = re.compile(
+    r"("
+    r"progress.{0,40}visible"
+    r"|visible.{0,40}progress"
+    r"|progress in-window"
+    r"|import progress"
+    r")",
+    re.I | re.S,
+)
+_IMPORT_DOCS_NO_STOP = re.compile(
+    r"("
+    r"cannot stop"
+    r"|cannot be stopped"
+    r"|no stop"
+    r"|cannot be cancelled"
+    r"|cannot be canceled"
+    r"|disabled cancel"
+    r"|cancel.{0,80}disabled"
+    r"|disabled.{0,80}cancel"
+    r")",
+    re.I | re.S,
+)
+_IMPORT_DOCS_QUIET = re.compile(
+    r"("
+    r"quiet done"
+    r"|import done.{0,100}(?:quiet|muted|success)"
+    r"|(?:quiet|muted|success).{0,80}import done"
+    r")",
+    re.I | re.S,
+)
+_IMPORT_DISABLED = re.compile(
+    r"("
+    r"(?<![\w-])disabled(?:=\{[^}]*\}|=[\"'][^\"']*[\"'])?(?=[\s/>])"
+    r"|aria-disabled\s*=\s*(?:\{true\}|[\"']true[\"'])"
+    r")"
+)
+_IMPORT_DIALOG = re.compile(r"^<(?:Dialog|AlertDialog)\b")
+_IMPORT_DESCRIBEDBY = re.compile(
+    r"aria-describedby\s*=\s*(?:[\"']([^\"']+)[\"']|\{\s*[\"']([^\"']+)[\"']\s*\})",
+    re.I,
+)
+
+
+def _import_describedby_blob(src: str, tag: str) -> str:
+    """Text of the element referenced by aria-describedby on the cancel control."""
+    m = _IMPORT_DESCRIBEDBY.search(tag)
+    if not m:
+        return ""
+    ident = m.group(1) or m.group(2)
+    if not ident:
+        return ""
+    found = re.search(
+        rf"""\bid\s*=\s*(?:["']{re.escape(ident)}["']"""
+        rf"""|\{{\s*["']{re.escape(ident)}["']\s*\}})""",
+        src,
+    )
+    if not found:
+        return ""
+    start = src.rfind("<", 0, found.start() + 1)
+    if start < 0:
+        start = found.start()
+    return src[start : found.end() + 360]
+
+
+def _import_honest_blob(src: str, tag: str) -> str:
+    """Cancel tag + nearby window + described-by target (honest no-stop copy)."""
+    return "\n".join(
+        (
+            tag,
+            _status_hook_blob(src, "data-import-cancel"),
+            _import_describedby_blob(src, tag),
+        )
+    )
+
+
+def assert_import_progress(crate: Path) -> None:
+    """#220: import progress — disabled Cancel + calm done (no fake backend)."""
+    import_path = crate / "web" / "lib" / "ImportPane.svelte"
+    import_src = import_path.read_text() if import_path.is_file() else ""
+
+    # 1) data-import-cancel exists in ImportPane.svelte
+    if "data-import-cancel" not in import_src:
+        fail(
+            "#220: data-import-cancel required in ImportPane.svelte "
+            "(disabled Cancel while running)"
+        )
+
+    # 2) That control is disabled (native disabled or aria-disabled="true").
+    cancel_tag = _contrast_surface_tag(import_src, "data-import-cancel")
+    if not cancel_tag or not _IMPORT_DISABLED.search(cancel_tag):
+        fail(
+            "#220: data-import-cancel must be disabled "
+            '(native disabled or aria-disabled="true")'
+        )
+
+    # 3) Honest copy nearby / described-by: cannot stop / no stop /
+    #    cannot be cancelled / not implemented (one of these).
+    honest = _import_honest_blob(import_src, cancel_tag)
+    if not _IMPORT_HONEST_COPY.search(honest):
+        fail(
+            "#220: data-import-cancel needs honest copy nearby / described-by "
+            "(cannot stop / no stop / cannot be cancelled / not implemented)"
+        )
+
+    rust_path = crate / "src" / "main.rs"
+    rust = rust_path.read_text() if rust_path.is_file() else ""
+    api_path = crate / "web" / "lib" / "api.ts"
+    api = api_path.read_text() if api_path.is_file() else ""
+    rust_surf = _without_comments(rust)
+    api_surf = _without_comments(api)
+
+    # 4) No import_cancel / cancelImport / importCancel command
+    #    in src/main.rs or web/lib/api.ts (do not fake a backend).
+    fake: list[str] = []
+    if _IMPORT_FAKE_CMD.search(rust_surf):
+        fake.append("src/main.rs")
+    if _IMPORT_FAKE_CMD.search(api_surf):
+        fake.append("web/lib/api.ts")
+    if fake:
+        fail(
+            "#220: no import_cancel / cancelImport / importCancel command "
+            "(do not fake a backend). Found in: " + ", ".join(fake)
+        )
+
+    # 5) No thread:: kill / JoinHandle:: abort as “cancel”.
+    if _IMPORT_THREAD_KILL.search(rust_surf):
+        fail(
+            "#220: no thread:: kill / JoinHandle:: abort as cancel "
+            "(core has no stop; do not kill the import thread)"
+        )
+
+    # 6) Status running still rendered in the import pane.
+    if not _IMPORT_STATUS_RUNNING.search(import_src):
+        fail("#220: Status running must still be rendered in the import pane")
+
+    # 7) data-import-done still present; no Dialog wrapping done;
+    #    no bg-gradient / confetti / celebration on done.
+    if "data-import-done" not in import_src:
+        fail(
+            "#220: keep data-import-done "
+            "(quiet counts; no Dialog / bg-gradient / confetti)"
+        )
+    done_tag = _contrast_surface_tag(import_src, "data-import-done")
+    done_at = import_src.find("data-import-done")
+    wrap_tags = ([done_tag] if done_tag else []) + _ancestor_tags(
+        import_src, done_at, limit=10
+    )
+    if any(_IMPORT_DIALOG.search(t) for t in wrap_tags):
+        fail("#220: data-import-done must not be wrapped in a Dialog")
+    done_blob = _status_hook_blob(import_src, "data-import-done")
+    if (
+        _STATUS_GRADIENT.search(done_blob)
+        or _STATUS_CONFETTI.search(done_blob)
+        or _STATUS_CELEBRATION.search(_hue_surface(done_blob))
+    ):
+        fail(
+            "#220: data-import-done must not use bg-gradient / confetti / "
+            "celebration"
+        )
+
+    # 8) No console.log of path; no toast of the import path.
+    import_surf = _hue_surface(import_src)
+    if _IMPORT_CONSOLE_PATH.search(import_surf):
+        fail("#220: do not console.log the import path")
+    if _IMPORT_TOAST_PATH.search(import_surf):
+        fail("#220: do not toast the import path")
+
+    # 9) No parallel-import UI, no fetch( / HTTP import,
+    #    no background GC button on Import.
+    if _IMPORT_PARALLEL.search(import_surf):
+        fail("#220: no parallel-import UI")
+    if _APPEARANCE_FETCH.search(import_surf):
+        fail("#220: no fetch( / HTTP import")
+    if _IMPORT_GC_BTN.search(import_surf):
+        fail("#220: no background GC button on Import")
+
+    # 10) docs/user/app.md: progress visible + cannot stop / disabled cancel
+    #     + quiet done.
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+    if not dtxt.strip():
+        fail(
+            "#220: docs/user/app.md required — progress visible + "
+            "cannot stop / disabled cancel + quiet done"
+        )
+    if not _IMPORT_DOCS_PROGRESS.search(dtxt):
+        fail("#220: docs/user/app.md must say import progress is visible")
+    if not _IMPORT_DOCS_NO_STOP.search(dtxt):
+        fail(
+            "#220: docs/user/app.md must say Cancel is disabled / "
+            "the import cannot be stopped"
+        )
+    if not _IMPORT_DOCS_QUIET.search(dtxt):
+        fail("#220: docs/user/app.md must say import done stays quiet")
+
+    # 11) Do not soften #q, sidebar, overlay titlebar, inspector, CSP,
+    #     #219 tokens / data-import-done, #218 overlay / no Theme.
+    svelte_files = _product_svelte(crate)
+    svelte_blob = "\n".join(p.read_text() for p in svelte_files)
+    app_path = crate / "web" / "App.svelte"
+    app = app_path.read_text() if app_path.is_file() else ""
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    search = search_path.read_text() if search_path.is_file() else ""
+    conf = (crate / "tauri.conf.json").read_text()
+    css_path = crate / "web" / "app.css"
+    css = css_path.read_text() if css_path.is_file() else ""
+    light_blob = _contrast_light_blob(css)
+    dark_blob = _contrast_dark_blob(css)
+    if not re.search(r"""\bid\s*=\s*(?:["']q["']|\{\s*["']q["']\s*\})""", search):
+        fail('#220: keep id="q" as the canonical query field (#208)')
+    if not re.search(r"\bdata-people-sidebar\b", app):
+        fail("#220: keep data-people-sidebar (#159 / #212)")
+    if not re.search(r"titleBarStyle", conf) and not re.search(
+        r"\bdata-tauri-drag-region\b", app
+    ):
+        fail("#220: keep the overlay titlebar (#211)")
+    if not re.search(r"\bdata-person-inspector\b", app):
+        fail("#220: keep data-person-inspector (#213)")
+    if CSP not in conf:
+        fail("#220: do not soften tauri CSP")
+    if not _css_var(light_blob, _STATUS_WARNING_NAMES) or not _css_var(
+        dark_blob, _STATUS_WARNING_NAMES
+    ):
+        fail("#220: keep #219 --warning / --color-warning in light and dark")
+    if "data-import-done" not in svelte_blob:
+        fail("#220: keep #219 data-import-done")
+    if not _css_var(css, _APPEARANCE_SCRIM_NAMES):
+        fail("#220: keep #218 --overlay / --scrim / --lightbox-scrim")
+    if _APPEARANCE_THEME_UI.search(svelte_blob) or _APPEARANCE_MENU_LABEL.search(
+        svelte_blob
+    ):
+        fail("#220: keep #218 — no Theme / Appearance menu / data-theme")
 
 
 def main() -> None:
@@ -23992,6 +24268,7 @@ def main() -> None:
     assert_contrast_tokens(crate)
     assert_appearance_os(crate)
     assert_status_tokens(crate)
+    assert_import_progress(crate)
     assert_a11y_listbox_focus_motion(crate)
     assert_human_time_people(crate)
     assert_drag_drop_import(crate)
