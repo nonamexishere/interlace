@@ -319,6 +319,16 @@
 #     stays quiet (`data-import-done`, no Dialog/confetti). No path
 #     console.log/toast. Docs: progress visible + disabled cancel +
 #     quiet done. Keep #219 / #218.
+#221: review queue chrome — owned Card + Separator (`data-review-card`);
+#     Accept/Reject stay explicit and not destructive; no raw review /
+#     person ids in queue or confirm copy; Undo on the Review pane
+#     (`linkEvents` / `undo`, `data-review-undo`). Identifiers + sample
+#     text nodes stay (#128). Docs: Review + undo / no raw person ids.
+#     Keep #219 / #220 / #218. Not: name_score UI, extra body dump, #222 motion.
+#     Follow-up (undo freeze): Review undo skips split_person / undo_of
+#     (not events[0] blindly); ConfirmDialog go() sets open = false
+#     before await onconfirm() (or never awaits); Review undo does not
+#     await onChanged() (People refresh must not block confirm).
 #224: person timeline measure-and-cache variable row heights (constant 88)
 #     fallback). Lists ≤250 mount fully; longer lists still window. Spacers /
 #     visibleRange / ensureTlIndexVisible use prefix sums, not index * 88.
@@ -24138,6 +24148,300 @@ def assert_import_progress(crate: Path) -> None:
         fail("#220: keep #218 — no Theme / Appearance menu / data-theme")
 
 
+# #221 — review queue chrome: Card/Separator, no raw ids, undo on the pane.
+_REVIEW_CARD_IMPORT = re.compile(
+    r"import\s+(?:\{[^}]*\bCard\b[^}]*\}|\bCard\b)\s+from\s+"
+    r"[\"']\$lib/components/ui/card(?:/[^\"']*)?[\"']",
+    re.S,
+)
+_REVIEW_SEP_IMPORT = re.compile(
+    r"import\s+(?:\{[^}]*\bSeparator\b[^}]*\}|\bSeparator\b)\s+from\s+"
+    r"[\"']\$lib/components/ui/separator(?:/[^\"']*)?[\"']",
+    re.S,
+)
+_REVIEW_ACCEPT = re.compile(r">\s*Accept\s*<")
+_REVIEW_REJECT = re.compile(r">\s*Reject\s*<")
+_REVIEW_RAW_VISIBLE = re.compile(
+    r"("
+    r"#\{\s*r\.id\s*\}"
+    r"|person\s+\$\{"
+    r"|person\s+\$\{\s*r\.right_person_id"
+    r"|Accept review \$\{id\}"
+    r")"
+)
+_REVIEW_NAME_SCORE_UI = re.compile(
+    r"("
+    r"name_score\s*[<>]=?"
+    r"|nameScoreThreshold"
+    r"|raise.*name_score"
+    r"|lower.*name_score"
+    r")",
+    re.I,
+)
+_REVIEW_SAMPLE_EACH = re.compile(r"\{#each\s+panel\.samples\b")
+_REVIEW_SECOND_BODY = re.compile(
+    r"\{#each\s+(?!panel\.samples\b)[^}]*\b(?:samples|bodies|body_lines|body_text)\b"
+)
+_REVIEW_LINK_EVENTS = re.compile(r"\blinkEvents\b")
+_REVIEW_UNDO_USE = re.compile(r"(?:\bapi\s*\.\s*)?\bundo\s*\(")
+_REVIEW_AWAIT_ONCONFIRM = re.compile(r"await\s+onconfirm\s*\(")
+_REVIEW_OPEN_FALSE = re.compile(r"\bopen\s*=\s*false\b")
+_REVIEW_AWAIT_CHANGED = re.compile(r"await\s+onChanged\s*\(")
+_REVIEW_DOCS_UNDO = re.compile(r"\bundo(?:able)?\b|\breversible\b", re.I)
+_REVIEW_DOCS_NO_RAW = re.compile(
+    r"("
+    r"no raw person id"
+    r"|not raw person id"
+    r"|without raw person"
+    r"|raw person ids?"
+    r")",
+    re.I,
+)
+_REVIEW_DOCS_IDENTS = re.compile(r"\bidentifiers?\b", re.I)
+
+
+def _review_action_tag(markup: str, label: str) -> str:
+    """Opening <Button>/<button> that wraps >Label<."""
+    m = re.search(rf">\s*{re.escape(label)}\s*<", markup)
+    if not m:
+        return ""
+    for tag in _ancestor_tags(markup, m.start(), limit=8):
+        if re.match(r"<(?:Button|button)\b", tag):
+            return tag
+    return ""
+
+
+def _review_docs_blob(dtxt: str) -> str:
+    """Copy window starting at the Review heading / mention (not Merge/unlink/undo)."""
+    m = re.search(r"\*\*Review\*\*.{0,1200}", dtxt, re.S | re.I)
+    if m:
+        return m.group(0)
+    m = re.search(r"\bReview\b.{0,1200}", dtxt, re.S)
+    return m.group(0) if m else ""
+
+
+def _review_undo_action_blob(src: str) -> str:
+    """Undo action script: named helpers + callees + api.undo windows."""
+    parts: list[str] = []
+    for name in ("runUndo", "requestUndo", "undoLast", "undoLink", "doUndo"):
+        body = _ts_fn_body(src, name) or _function_body(src, name)
+        if body:
+            parts.append(_expand_fn_calls(src, body, depth=2))
+    for m in _REVIEW_UNDO_USE.finditer(src):
+        start = max(0, m.start() - 400)
+        end = min(len(src), m.end() + 500)
+        parts.append(src[start:end])
+    return "\n".join(parts)
+
+
+def assert_review_chrome(crate: Path) -> None:
+    """#221: ReviewPane Card chrome — safe, reversible, still no raw ids.
+
+    Follow-up (undo freeze): skip split_person / undo_of; ConfirmDialog
+    sets open = false before await onconfirm(); undo does not await
+    onChanged().
+    """
+    review_path = crate / "web" / "lib" / "ReviewPane.svelte"
+    if not review_path.is_file():
+        fail("#221: ReviewPane.svelte required (review queue chrome lives there)")
+    src = review_path.read_text()
+    cleaned = _without_comments(src)
+    markup = _svelte_markup(src)
+    surface = markup if markup.strip() else src
+    visible = _hue_surface(src)
+
+    # 1) Owned Card + Separator imports.
+    if not _REVIEW_CARD_IMPORT.search(src) or not _REVIEW_SEP_IMPORT.search(src):
+        fail(
+            "#221: ReviewPane.svelte must import Card from "
+            "$lib/components/ui/card and Separator from "
+            "$lib/components/ui/separator"
+        )
+
+    # 2) data-review-card on the open-card root.
+    if "data-review-card" not in src:
+        fail("#221: data-review-card required on the open review card")
+
+    # 3) Explicit Accept / Reject; neither button tag is destructive.
+    if not _REVIEW_ACCEPT.search(surface):
+        fail("#221: keep Accept on the review card (explicit >Accept<)")
+    if not _REVIEW_REJECT.search(surface):
+        fail("#221: keep Reject on the review card (explicit >Reject<)")
+    for label in ("Accept", "Reject"):
+        tag = _review_action_tag(surface, label)
+        if tag and re.search(r"\bdestructive\b", tag, re.I):
+            fail(
+                f"#221: {label} button must not use destructive "
+                "(Reject is suppress; Accept is a link you can undo)"
+            )
+
+    # 4) No raw review / person id visible-string patterns.
+    raw = _REVIEW_RAW_VISIBLE.search(visible)
+    if raw:
+        fail(
+            "#221: queue/detail markup must not show #{r.id} / "
+            "person ${ / person ${r.right_person_id / Accept review ${id} "
+            f"(found {raw.group(0)!r})"
+        )
+
+    # 5) Identifiers + sample text nodes stay (#128).
+    if not (
+        re.search(r"\bidentifierLabel\b", cleaned + "\n" + surface)
+        or re.search(r"\bvalue_normalized\b", surface + "\n" + cleaned)
+    ):
+        fail(
+            "#221: keep identifierLabel or value_normalized on the review card"
+        )
+    if re.search(r"\{@html\b", surface):
+        fail("#221: ReviewPane samples must stay text nodes — no {@html")
+    if not re.search(
+        r"("
+        r"\{[^}]{0,40}body_text[^}]{0,40}\}"
+        r"|whitespace-pre-wrap[^>]{0,80}body_text"
+        r"|body_text[^;\n]{0,40}\}"
+        r")",
+        surface,
+        re.I,
+    ):
+        fail("#221: sample bodies must remain text bindings of body_text")
+
+    # 6) Undo on the Review pane (link events), not only the People sidebar.
+    if not _REVIEW_LINK_EVENTS.search(cleaned):
+        fail("#221: ReviewPane must call linkEvents (undo lives on the pane)")
+    if not _REVIEW_UNDO_USE.search(cleaned):
+        fail("#221: ReviewPane must call undo (api.undo after Accept)")
+    if "data-review-undo" not in src:
+        fail("#221: data-review-undo required on the Review pane Undo control")
+    if re.search(r"events\s*\[\s*0\s*\]", cleaned) and not re.search(
+        r"split_person|undo_of|lastUndoable", cleaned
+    ):
+        fail(
+            "#221: do not undo events[0] blindly — skip split_person / "
+            "already-undone / system import links"
+        )
+    if "split_person" not in cleaned or "undo_of" not in cleaned:
+        fail(
+            "#221: Review undo must skip split_person and already-undone "
+            "events (undo_of)"
+        )
+
+    # 6b) Follow-up (undo freeze): ConfirmDialog closes before onconfirm;
+    #     Review undo must not await onChanged() (People person_list).
+    confirm_path = crate / "web" / "lib" / "ConfirmDialog.svelte"
+    if not confirm_path.is_file():
+        fail(
+            "#221: ConfirmDialog.svelte required "
+            "(go() must close before await onconfirm())"
+        )
+    confirm_src = _without_comments(confirm_path.read_text())
+    go_body = _ts_fn_body(confirm_src, "go") or _function_body(confirm_src, "go")
+    if not go_body:
+        fail(
+            "#221: ConfirmDialog.svelte go() required "
+            "(set open = false before await onconfirm())"
+        )
+    await_onconfirm = _REVIEW_AWAIT_ONCONFIRM.search(go_body)
+    if await_onconfirm:
+        close_open = _REVIEW_OPEN_FALSE.search(go_body)
+        if not close_open or close_open.start() > await_onconfirm.start():
+            fail(
+                "#221: ConfirmDialog go() must set open = false before "
+                "await onconfirm() (or not await onconfirm)"
+            )
+    undo_blob = _review_undo_action_blob(cleaned)
+    if _REVIEW_AWAIT_CHANGED.search(undo_blob):
+        fail(
+            "#221: ReviewPane must not await onChanged() after undo "
+            "(People refresh must not block the confirm callback)"
+        )
+
+    # 7) No name_score threshold UI; sample loop stays panel.samples.
+    if _REVIEW_NAME_SCORE_UI.search(cleaned):
+        fail(
+            "#221: do not invent name_score raise/lower UI "
+            "(threshold policy is not this issue)"
+        )
+    if not _REVIEW_SAMPLE_EACH.search(surface):
+        fail(
+            "#221: sample loop must stay {#each panel.samples "
+            "(do not add a second body dump)"
+        )
+    if _REVIEW_SECOND_BODY.search(surface):
+        fail(
+            "#221: do not add a second body dump — keep the existing "
+            "panel.samples loop"
+        )
+
+    # 8) docs/user/app.md: Review + undo / reversible / no raw person id
+    #    (or identifiers + undo).
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+    review_docs = _review_docs_blob(dtxt)
+    if not dtxt.strip() or not review_docs:
+        fail(
+            "#221: docs/user/app.md required — Review + undo / reversible / "
+            "no raw person id (or identifiers + undo)"
+        )
+    has_undo = bool(_REVIEW_DOCS_UNDO.search(review_docs))
+    has_no_raw = bool(_REVIEW_DOCS_NO_RAW.search(review_docs))
+    has_idents = bool(_REVIEW_DOCS_IDENTS.search(review_docs))
+    if not (has_undo and (has_no_raw or has_idents)):
+        fail(
+            "#221: docs/user/app.md must say Review + undo / reversible / "
+            "no raw person id (or identifiers + undo)"
+        )
+
+    # 9) Do not soften #q, sidebar, overlay, inspector, CSP,
+    #    #219 tokens, #220 data-import-cancel, #218 no Theme.
+    svelte_files = _product_svelte(crate)
+    svelte_blob = "\n".join(p.read_text() for p in svelte_files)
+    app_path = crate / "web" / "App.svelte"
+    app = app_path.read_text() if app_path.is_file() else ""
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    search = search_path.read_text() if search_path.is_file() else ""
+    conf = (crate / "tauri.conf.json").read_text()
+    css_path = crate / "web" / "app.css"
+    css = css_path.read_text() if css_path.is_file() else ""
+    light_blob = _contrast_light_blob(css)
+    dark_blob = _contrast_dark_blob(css)
+    if not re.search(r"""\bid\s*=\s*(?:["']q["']|\{\s*["']q["']\s*\})""", search):
+        fail('#221: keep id="q" as the canonical query field (#208)')
+    if not re.search(r"\bdata-people-sidebar\b", app):
+        fail("#221: keep data-people-sidebar (#159 / #212)")
+    if not re.search(r"titleBarStyle", conf) and not re.search(
+        r"\bdata-tauri-drag-region\b", app
+    ):
+        fail("#221: keep the overlay titlebar (#211)")
+    if not re.search(r"\bdata-person-inspector\b", app):
+        fail("#221: keep data-person-inspector (#213)")
+    if CSP not in conf:
+        fail("#221: do not soften tauri CSP")
+    if not _css_var(light_blob, _STATUS_WARNING_NAMES) or not _css_var(
+        dark_blob, _STATUS_WARNING_NAMES
+    ):
+        fail("#221: keep #219 --warning / --color-warning in light and dark")
+    if "data-import-cancel" not in svelte_blob:
+        fail("#221: keep #220 data-import-cancel")
+    if not _css_var(css, _APPEARANCE_SCRIM_NAMES):
+        fail("#221: keep #218 --overlay / --scrim / --lightbox-scrim")
+    if _APPEARANCE_THEME_UI.search(svelte_blob) or _APPEARANCE_MENU_LABEL.search(
+        svelte_blob
+    ):
+        fail("#221: keep #218 — no Theme / Appearance menu / data-theme")
+
+    # 10) No new Svelte transition: / svelte/transition in ReviewPane (#222).
+    trans_hits: list[str] = []
+    for m in _STATUS_SVELTE_TRANSITION.finditer(src):
+        trans_hits.append(m.group(0))
+    if "svelte/transition" in src:
+        trans_hits.append("svelte/transition")
+    if trans_hits:
+        fail(
+            "#221: no new Svelte transition: / svelte/transition in "
+            "ReviewPane (#222). Found: " + ", ".join(trans_hits)
+        )
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -24269,6 +24573,7 @@ def main() -> None:
     assert_appearance_os(crate)
     assert_status_tokens(crate)
     assert_import_progress(crate)
+    assert_review_chrome(crate)
     assert_a11y_listbox_focus_motion(crate)
     assert_human_time_people(crate)
     assert_drag_drop_import(crate)
