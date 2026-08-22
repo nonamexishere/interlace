@@ -17,6 +17,7 @@
   import { Skeleton } from "$lib/components/ui/skeleton/index.js";
   import { Toast } from "$lib/components/ui/toast/index.js";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
+  import CommandPalette from "$lib/CommandPalette.svelte";
   import SearchPane from "$lib/SearchPane.svelte";
   import ReviewPane from "$lib/ReviewPane.svelte";
   import ImportPane from "$lib/ImportPane.svelte";
@@ -67,6 +68,7 @@
   let confirmDesc = $state("");
   let confirmRun = $state<(() => Promise<void>) | null>(null);
   let view = $state<"people" | "search" | "review" | "import" | "doctor">("people");
+  let commandOpen = $state(false);
   let searchQ = $state("");
   let booting = $state(true);
   let opening = $state(false);
@@ -1198,6 +1200,21 @@
     });
   }
 
+  function runCommandView(next: "people" | "search" | "review" | "import" | "doctor") {
+    commandOpen = false;
+    if (next === "search") {
+      void whenSearchPaneReady().then((qEl) => qEl?.focus());
+      return;
+    }
+    view = next;
+  }
+
+  function runCommandPerson(p: Person) {
+    view = "people";
+    void selectPerson(p.id);
+    commandOpen = false;
+  }
+
   function onKey(e: KeyboardEvent) {
     const t = e.target as HTMLElement | null;
     const digit = e.key >= "1" && e.key <= "5" ? e.key : /^Digit[1-5]$/.test(e.code) ? e.code.slice(5) : "";
@@ -1205,12 +1222,23 @@
     const mod = e.metaKey || (e.ctrlKey && !e.altKey);
     const slashKey =
       e.key === "\\" || e.code === "Backslash" || e.code === "IntlBackslash";
+    if (commandOpen && e.key === "Escape") {
+      e.preventDefault();
+      commandOpen = false;
+      return;
+    }
+    if (commandOpen && t?.closest?.("[data-command-palette]")) return;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) {
-      // ⌘F / ⌘\ / ⌘1–5 still apply from a field (stop the webview Find / tab accel).
-      if (!(mod && (e.key === "f" || e.key === "F" || slashKey || e.code === "Backslash" || e.code === "IntlBackslash" || digit !== ""))) {
+      // ⌘F / ⌘K / ⌘\ / ⌘1–5 still apply from a field (stop the webview Find / tab accel).
+      if (!(mod && (e.key === "f" || e.key === "F" || e.key === "k" || e.key === "K" || slashKey || e.code === "Backslash" || e.code === "IntlBackslash" || digit !== ""))) {
         if (e.key === "Escape") t.blur();
         return;
       }
+    }
+    if (mod && (e.key === "k" || e.key === "K")) {
+      e.preventDefault();
+      commandOpen = true;
+      return;
     }
     if (mod && (e.key === "f" || e.key === "F")) {
       e.preventDefault();
@@ -2122,3 +2150,13 @@
     if (confirmRun) await confirmRun();
   }}
 />
+
+{#if commandOpen}
+  <CommandPalette
+    {people}
+    {personLabel}
+    onView={runCommandView}
+    onPerson={runCommandPerson}
+    onClose={() => (commandOpen = false)}
+  />
+{/if}
