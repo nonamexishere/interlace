@@ -168,7 +168,7 @@
         <li>
           <button
             type="button"
-            class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent {detail?.review.id === r.id
+            class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {detail?.review.id === r.id
               ? 'bg-accent'
               : ''}"
             onclick={() => openRow(r.id)}
@@ -190,8 +190,8 @@
         {/each}
       </ul>
       <div class="flex flex-wrap gap-2 text-xs">
-        <button type="button" class="text-muted-foreground underline" onclick={selectAll}>Select all</button>
-        <button type="button" class="text-muted-foreground underline" onclick={selectNone}>Select none</button>
+        <button type="button" class="text-muted-foreground underline focus-visible:ring-2 focus-visible:ring-ring" onclick={selectAll}>Select all</button>
+        <button type="button" class="text-muted-foreground underline focus-visible:ring-2 focus-visible:ring-ring" onclick={selectNone}>Select none</button>
       </div>
       <div class="grid grid-cols-2 gap-3">
         {#each panelsOf(detail) as panel}
@@ -199,7 +199,7 @@
             {#if panel.person_id != null}
               <input
                 type="checkbox"
-                class="mb-1 mr-1 align-middle"
+                class="mb-1 mr-1 align-middle focus-visible:ring-2 focus-visible:ring-ring"
                 checked={selected.includes(panel.person_id)}
                 onchange={(e) => toggle(panel.person_id!, e.currentTarget.checked)}
               />

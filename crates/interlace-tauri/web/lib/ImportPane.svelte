@@ -104,7 +104,7 @@
       <select
         id="kind"
         bind:value={kind}
-        class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+        class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
       >
         <option value="auto">auto-detect</option>
         <option value="whatsapp">whatsapp zip</option>

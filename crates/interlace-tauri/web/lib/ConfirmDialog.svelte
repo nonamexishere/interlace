@@ -27,6 +27,10 @@
       busy = false;
     }
   }
+
+  function cancel() {
+    open = false;
+  }
 </script>
 
 <Dialog.Root bind:open>
@@ -36,7 +40,7 @@
       <Dialog.Description>{description}</Dialog.Description>
     </Dialog.Header>
     <Dialog.Footer>
-      <Button variant="outline" disabled={busy} onclick={() => (open = false)}>Cancel</Button>
+      <Button variant="outline" disabled={busy} onclick={cancel}>Cancel</Button>
       <Button disabled={busy} onclick={go}>{confirmLabel}</Button>
     </Dialog.Footer>
   </Dialog.Content>

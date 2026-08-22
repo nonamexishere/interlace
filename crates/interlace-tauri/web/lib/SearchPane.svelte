@@ -303,7 +303,7 @@
       data-search-filters
       class="rounded-md border border-border bg-muted/40 px-3 py-2"
     >
-      <summary class="cursor-pointer text-xs font-medium text-muted-foreground">
+      <summary class="cursor-pointer text-xs font-medium text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring">
         {t("searchFilters")}
       </summary>
       <div class="mt-3 grid gap-3 sm:grid-cols-2">
@@ -328,7 +328,7 @@
             {#if personId != null}
               <button
                 type="button"
-                class="absolute top-1/2 right-2 -translate-y-1/2 text-xs text-muted-foreground underline"
+                class="absolute top-1/2 right-2 -translate-y-1/2 text-xs text-muted-foreground underline focus-visible:ring-2 focus-visible:ring-ring"
                 onclick={clearPerson}
               >
                 Clear
@@ -347,7 +347,7 @@
                       type="button"
                       role="option"
                       aria-selected={i === personHighlight}
-                      class="w-full px-3 py-1.5 text-left text-sm hover:bg-accent {i === personHighlight
+                      class="w-full px-3 py-1.5 text-left text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {i === personHighlight
                         ? 'bg-accent'
                         : ''}"
                       onclick={() => pickPerson(p)}
@@ -369,7 +369,7 @@
           <select
             id="plat"
             bind:value={platform}
-            class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="">Any</option>
             <option value="whatsapp">WhatsApp</option>
@@ -382,7 +382,7 @@
           <select
             id="skind"
             bind:value={conversationKind}
-            class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="">Any</option>
             <option value="dm">DM</option>
@@ -395,7 +395,7 @@
           <select
             id="satt"
             bind:value={attachmentFilter}
-            class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="">Any</option>
             <option value="has_file">Has file</option>
@@ -412,7 +412,7 @@
           <Input id="to" type={"date"} bind:value={to} />
         </div>
         <label class="flex items-center gap-2 text-sm sm:col-span-2">
-          <input type="checkbox" bind:checked={includeGroups} />
+          <input type="checkbox" class="focus-visible:ring-2 focus-visible:ring-ring" bind:checked={includeGroups} />
           include groups
         </label>
       </div>
@@ -462,7 +462,7 @@
       >
         <button
           type="button"
-          class="w-full rounded-md text-left hover:bg-accent {i === hitIndex
+          class="w-full rounded-md text-left hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {i === hitIndex
             ? 'ring-2 ring-ring'
             : ''}"
           onclick={() => {

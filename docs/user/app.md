@@ -146,6 +146,7 @@ names are taken from the people list at Merge… time, not the header. Confirm
 shows display names, not ids. Names never auto-merge. Unlink stays on each
 identity row.
 Merge/unlink/undo do not rewrite `messages.sender_identity_id`.
+Chrome and dialogs show visible focus rings; keyboard can open Merge, confirm, and dismiss; voice-note seek is announced.
 
 Tabs: **Search** (same FTS as CLI). The query is the first control; filters
 are secondary (person, platform, kind, attachment, optional date range,

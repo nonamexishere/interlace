@@ -184,7 +184,8 @@ Phase 2.1 milestone (#6): **closed**.
 | #212 / PR #251 + #252 | People sidebar fixed `w-72`, rail, ⌘\\; follow-up: hover title, `/` on rail, expand-now under 880px, physical Backslash |
 | #213 / PR #253 | Optional right inspector — identities + last activity; Merge / include-groups / unlink live there; not a second timeline |
 | #214 / PR #254 | People listbox arrows change person; Tab is filter → selected person → timeline; j/k still messages |
-| #215 | Command palette (⌘K) — views + jump to a loaded person; local only; people list capped; field keeps A/C/V |
+| #215 / PR #255 | Command palette (⌘K) — views + jump to a loaded person; local only; people list capped; field keeps A/C/V |
+| #216 | Focus rings and ARIA audit on chrome and dialogs |
 
 ## Open — product now (Phase 2.2)
 
@@ -197,8 +198,8 @@ load-bearing (a11y, titlebar, search).
 
 | # | Note |
 | --- | --- |
-| **#216** | Focus rings and ARIA audit on chrome and dialogs. Next coding. |
-| **#217**–**#222** | Contrast / appearance / status tokens / import / review chrome / motion — see #197 |
+| **#217** | Contrast tokens. Next coding. |
+| **#218**–**#222** | Appearance / status tokens / import / review chrome / motion — see #197 |
 
 Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github.com/nonamexishere/interlace/milestone/7).
 
@@ -211,7 +212,7 @@ Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github
 
 ## Recommended next steps
 
-1. Next coding: **#216** (focus rings / ARIA). Do not start 1.1 / P3 / P4.
+1. Next coding: **#217** (contrast). Do not start 1.1 / P3 / P4.
 2. Do **not** start 1.1 / P3 / P4 unprompted. Ask before another `app-v*` / `v*` / crates.io.
 
 ## Commands (copy-paste)
@@ -284,7 +285,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
 > Product track: Phase 2.2 UI/UX polish (#197). Read
-> `docs/design/UI-DESIGN.md`. Next coding is **#216** (focus rings / ARIA).
+> `docs/design/UI-DESIGN.md`. Next coding is **#217** (contrast).
 > Orchestrator does not implement product code. Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag. After merges, update this handoff in the same session.
