@@ -27,6 +27,7 @@
   let confirmRun = $state<(() => Promise<void>) | null>(null);
   let loading = $state(true);
   let undoing = $state(false);
+  let resolving = $state(false);
   let selected = $state<number[]>([]);
 
   const UNDOABLE = new Set(["merge_persons", "link", "unlink"]);
@@ -82,6 +83,7 @@
   }
 
   function ask(title: string, description: string, run: () => Promise<void>) {
+    if (resolving || undoing) return;
     confirmTitle = title;
     confirmDesc = description;
     confirmRun = run;
@@ -96,14 +98,21 @@
   }
 
   function accept() {
-    if (!detail || !canAccept()) return;
+    if (resolving || undoing || !detail || !canAccept()) return;
     const id = detail.review.id;
     const ids = [...selected];
     const n = ids.length;
     ask("Link these people?", `Merge ${n} people into one. Messages stay put.`, async () => {
-      await api.reviewAccept(id, ids);
-      await reload();
-      void onChanged();
+      resolving = true;
+      try {
+        await api.reviewAccept(id, ids);
+        await reload();
+        void onChanged();
+      } catch (e) {
+        onError(e);
+      } finally {
+        resolving = false;
+      }
     });
   }
 
@@ -127,12 +136,19 @@
   }
 
   function reject() {
-    if (!detail) return;
+    if (resolving || undoing || !detail) return;
     const id = detail.review.id;
     ask("Stop suggesting this pair?", "These people will not be suggested again.", async () => {
-      await api.reviewReject(id);
-      await reload();
-      void onChanged();
+      resolving = true;
+      try {
+        await api.reviewReject(id);
+        await reload();
+        void onChanged();
+      } catch (e) {
+        onError(e);
+      } finally {
+        resolving = false;
+      }
     });
   }
 
@@ -289,8 +305,8 @@
         Accept links these people and can be undone. Reject only stops suggesting this pair.
       </p>
       <div class="flex gap-2">
-        <Button onclick={accept} disabled={!canAccept()}>Accept</Button>
-        <Button variant="outline" onclick={reject}>Reject</Button>
+        <Button onclick={accept} disabled={resolving || undoing || !canAccept()}>Accept</Button>
+        <Button variant="outline" onclick={reject} disabled={resolving || undoing}>Reject</Button>
       </div>
     </Card>
   {/if}
