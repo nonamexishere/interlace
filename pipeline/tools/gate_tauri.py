@@ -297,6 +297,11 @@
 #     voice seek aria-valuenow + name; no aria-hidden on message bodies;
 #     docs (not a WCAG certificate). Keep #133 listbox/article, #q,
 #     sidebar, overlay, inspector, CSP, #215 data-command-palette.
+#217: contrast tokens — light + dark both readable. Light
+#     --color-muted-foreground L ≤ 40; dark (prefers-color-scheme) L ≥ 62.
+#     Named --search-mark / --color-search-mark (hue 40–60) on both;
+#     color-scheme: light dark; no Theme menu / --warning|--success.
+#     Docs: system appearance without a reload. Keep #198 / #216.
 #224: person timeline measure-and-cache variable row heights (constant 88)
 #     fallback). Lists ≤250 mount fully; longer lists still window. Spacers /
 #     visibleRange / ensureTlIndexVisible use prefix sums, not index * 88.
@@ -22542,6 +22547,480 @@ def assert_focus_aria_audit(crate: Path) -> None:
         fail("#216: keep data-command-palette (#215)")
 
 
+# #217 — contrast tokens: light + dark both readable (CSS variables only).
+_CONTRAST_HSL = re.compile(
+    r"hsla?\(\s*(-?[\d.]+)\s*(?:deg)?\s*[,/\s]\s*"
+    r"(-?[\d.]+)%\s*[,/\s]\s*(-?[\d.]+)%",
+    re.I,
+)
+_CONTRAST_SEARCH_MARK_VAR = re.compile(
+    r"var\(\s*--(?:color-)?search-mark\s*\)",
+    re.I,
+)
+_CONTRAST_MARK_FOREGROUND = re.compile(
+    r"color\s*:\s*var\(\s*--(?:color-)?foreground\s*\)",
+    re.I,
+)
+_CONTRAST_COLOR_SCHEME = re.compile(
+    r"(?:^|[,}\s])(?::root|html)(?:\s*,\s*(?:html|body|#app|:root))*\s*\{"
+    r"[^}]*color-scheme\s*:\s*light\s+dark\b",
+    re.I | re.S,
+)
+_CONTRAST_DARK_MEDIA = re.compile(
+    r"@media\s*\(\s*prefers-color-scheme\s*:\s*dark\s*\)\s*\{",
+    re.I,
+)
+_CONTRAST_AT_THEME = re.compile(r"@theme\b[^{]*\{")
+_CONTRAST_ROOT = re.compile(r"(?:^|[,}\s]):root(?:\s*,\s*(?:html|body|#app|:root))*\s*\{")
+_CONTRAST_TOKEN_CLASS = re.compile(
+    r"(?<![\w-])(?:text-muted-foreground|bg-muted|bg-background|"
+    r"text-foreground|border-border)(?![\w-])"
+)
+_CONTRAST_THEME_PICKER = re.compile(
+    r"("
+    r"\bdata-theme\b"
+    r"|theme-picker"
+    r"|Theme menu"
+    r"|Appearance menu"
+    r"|high-contrast"
+    r"|highContrast"
+    r")",
+    re.I,
+)
+_CONTRAST_STATUS_PAIR = re.compile(r"--(?:color-)?(?:warning|success)\s*:")
+_CONTRAST_DOCS_SYSTEM = re.compile(
+    r"("
+    r"system (?:light(?:/| and | / )dark|appearance)"
+    r"|follows? system (?:light|dark|appearance)"
+    r"|macOS appearance"
+    r"|prefers-color-scheme"
+    r"|light(?:/| and )dark.{0,80}system"
+    r")",
+    re.I | re.S,
+)
+_CONTRAST_DOCS_NO_RELOAD = re.compile(
+    r"("
+    r"without (?:a |an )?(?:reload|restart|relaunch)"
+    r"|no reload"
+    r"|does not (?:require|need) (?:a )?(?:reload|restart|relaunch)"
+    r"|updates?(?: the (?:app|chrome|window))? without (?:a )?(?:reload|restart)"
+    r")",
+    re.I,
+)
+_CONTRAST_DOCS_READABLE = re.compile(
+    r"("
+    r"readable.{0,80}(?:on both|in both|light and dark|both (?:light|appearances|modes))"
+    r"|(?:on both|light and dark|both (?:appearances|modes)).{0,80}readable"
+    r"|preview.{0,80}readable"
+    r")",
+    re.I | re.S,
+)
+_CONTRAST_DOCS_MARKS = re.compile(
+    r"("
+    r"(?:search[- ]?)?marks?.{0,100}"
+    r"(?:still work|on both|light and dark|both (?:appearances|modes)|stay yellow|yellow-enough)"
+    r"|(?:yellow|highlighted).{0,80}mark.{0,80}"
+    r"(?:both|light and dark|still work|without.{0,20}reload)"
+    r")",
+    re.I | re.S,
+)
+_CONTRAST_SEARCH_MARK_NAMES = ("--search-mark", "--color-search-mark")
+
+
+def _css_brace_body(src: str, open_idx: int) -> str:
+    if open_idx < 0 or open_idx >= len(src) or src[open_idx] != "{":
+        return ""
+    depth = 0
+    j = open_idx
+    while j < len(src):
+        if src[j] == "{":
+            depth += 1
+        elif src[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return src[open_idx + 1 : j]
+        j += 1
+    return ""
+
+
+def _css_at_bodies(css: str, head: re.Pattern[str]) -> list[str]:
+    out: list[str] = []
+    for m in head.finditer(css):
+        brace = css.find("{", m.start())
+        body = _css_brace_body(css, brace)
+        if body:
+            out.append(body)
+    return out
+
+
+def _contrast_light_blob(css: str) -> str:
+    """@theme plus :root that is not inside prefers-color-scheme: dark."""
+    chunks = list(_css_at_bodies(css, _CONTRAST_AT_THEME))
+    dark_spans: list[tuple[int, int]] = []
+    for m in _CONTRAST_DARK_MEDIA.finditer(css):
+        brace = css.find("{", m.start())
+        body = _css_brace_body(css, brace)
+        if body:
+            dark_spans.append((brace, brace + 1 + len(body)))
+    for m in _CONTRAST_ROOT.finditer(css):
+        brace = css.find("{", m.start())
+        if any(start <= brace <= end for start, end in dark_spans):
+            continue
+        body = _css_brace_body(css, brace)
+        if body:
+            chunks.append(body)
+    return "\n".join(chunks)
+
+
+def _contrast_dark_blob(css: str) -> str:
+    return "\n".join(_css_at_bodies(css, _CONTRAST_DARK_MEDIA))
+
+
+def _hsl_tuple(value: str) -> tuple[float, float, float] | None:
+    m = _CONTRAST_HSL.search(value)
+    if not m:
+        return None
+    return float(m.group(1)), float(m.group(2)), float(m.group(3))
+
+
+def _search_mark_rule_bodies(css: str) -> list[str]:
+    out: list[str] = []
+    for m in re.finditer(r"\.search-mark\b[^{]*\{", css):
+        body = _css_brace_body(css, css.find("{", m.start()))
+        if body:
+            out.append(body)
+    return out
+
+
+def _contrast_tag_ok(tag: str) -> bool:
+    if not tag:
+        return False
+    surface = _hue_surface(tag)
+    if _HUE_AMBER.search(surface) or _HUE_YELLOW.search(surface):
+        return False
+    return bool(_CONTRAST_TOKEN_CLASS.search(tag))
+
+
+def _contrast_surface_tag(src: str, hook: str) -> str:
+    at = src.find(hook)
+    if at < 0:
+        return ""
+    return _markup_open_tag(src, src.rfind("<", 0, at + 1))
+
+
+def assert_contrast_tokens(crate: Path) -> None:
+    """#217: light + dark contrast via tokens (not a third theme / WCAG cert)."""
+    svelte_files = _product_svelte(crate)
+    if not svelte_files:
+        fail("#217: crates/interlace-tauri/web/**/*.svelte required (contrast tokens)")
+
+    # 1) No text-amber-900 / amber-* / yellow-* in product Svelte (#198 finder).
+    offenders: list[str] = []
+    for p in svelte_files:
+        hits = [
+            h
+            for h in _hue_findings(p.read_text())
+            if h.startswith("amber") or h.startswith("yellow")
+        ]
+        if hits:
+            offenders.append(f"{p.relative_to(crate)}: {'; '.join(hits)}")
+    if offenders:
+        fail(
+            "#217: product Svelte must not contain text-amber-900 / amber-* / "
+            "yellow-* (CSS variables only; reuse #198). Found:\n  "
+            + "\n  ".join(offenders)
+        )
+
+    css_path = crate / "web" / "app.css"
+    if not css_path.is_file():
+        fail("#217: web/app.css required (light/dark contrast tokens)")
+    css = css_path.read_text()
+    light_blob = _contrast_light_blob(css)
+    dark_blob = _contrast_dark_blob(css)
+
+    # 2) Light --color-muted-foreground L ≤ 40; dark (prefers-color-scheme) L ≥ 62.
+    light_muted = _css_var(light_blob, ("--color-muted-foreground",))
+    if not light_muted:
+        fail(
+            "#217: light --color-muted-foreground required in @theme / "
+            "non-dark :root (do not make tokens dark-only)"
+        )
+    light_hsl = _hsl_tuple(light_muted)
+    if not light_hsl:
+        fail(
+            "#217: light --color-muted-foreground must be HSL so lightness "
+            "can be checked (≤ 40)"
+        )
+    if light_hsl[2] > 40:
+        fail(
+            "#217: light --color-muted-foreground HSL lightness must be ≤ 40 "
+            "(@theme / non-dark :root) so people preview and chips stay "
+            f"readable; found L={light_hsl[2]:g}"
+        )
+    dark_muted = _css_var(dark_blob, ("--color-muted-foreground",))
+    if not dark_muted:
+        fail(
+            "#217: dark --color-muted-foreground required inside "
+            "@media (prefers-color-scheme: dark)"
+        )
+    dark_hsl = _hsl_tuple(dark_muted)
+    if not dark_hsl:
+        fail(
+            "#217: dark --color-muted-foreground must be HSL so lightness "
+            "can be checked (≥ 62)"
+        )
+    if dark_hsl[2] < 62:
+        fail(
+            "#217: dark --color-muted-foreground HSL lightness must be ≥ 62 "
+            "(inside prefers-color-scheme: dark); "
+            f"found L={dark_hsl[2]:g}"
+        )
+
+    # 3) --search-mark or --color-search-mark in light + dark; .search-mark
+    #    uses the var; both hues 40–60 (yellow-enough). Keep foreground color.
+    light_mark = _css_var(light_blob, _CONTRAST_SEARCH_MARK_NAMES)
+    dark_mark = _css_var(dark_blob, _CONTRAST_SEARCH_MARK_NAMES)
+    if not light_mark:
+        fail(
+            "#217: define --search-mark or --color-search-mark for light "
+            "(@theme / :root) — .search-mark must not be a one-off hsl"
+        )
+    if not dark_mark:
+        fail(
+            "#217: define --search-mark or --color-search-mark inside "
+            "@media (prefers-color-scheme: dark)"
+        )
+    mark_rules = _search_mark_rule_bodies(css)
+    if not mark_rules:
+        fail("#217: .search-mark rule required (named search-mark token)")
+    if not any(_CONTRAST_SEARCH_MARK_VAR.search(body) for body in mark_rules):
+        fail(
+            "#217: .search-mark must use var(--search-mark) or "
+            "var(--color-search-mark) (not a one-off hsl)"
+        )
+    if not any(_CONTRAST_MARK_FOREGROUND.search(body) for body in mark_rules):
+        fail(
+            "#217: .search-mark must keep color: var(--color-foreground) "
+            "(or --foreground)"
+        )
+    light_mark_hsl = _hsl_tuple(light_mark)
+    dark_mark_hsl = _hsl_tuple(dark_mark)
+    if not light_mark_hsl or not dark_mark_hsl:
+        fail(
+            "#217: --search-mark / --color-search-mark must be HSL "
+            "(hue 40–60, yellow-enough on both)"
+        )
+    if not (40 <= light_mark_hsl[0] <= 60):
+        fail(
+            "#217: light search-mark hue must be 40–60 (yellow-enough); "
+            f"found H={light_mark_hsl[0]:g}"
+        )
+    if not (40 <= dark_mark_hsl[0] <= 60):
+        fail(
+            "#217: dark search-mark hue must be 40–60 (yellow-enough); "
+            f"found H={dark_mark_hsl[0]:g}"
+        )
+
+    # 4) color-scheme: light dark on :root or html; dark media still overrides.
+    if not _CONTRAST_COLOR_SCHEME.search(css):
+        fail(
+            "#217: :root or html must set color-scheme: light dark "
+            "(macOS appearance flips the app without a reload)"
+        )
+    if not dark_blob.strip():
+        fail(
+            "#217: keep @media (prefers-color-scheme: dark) so tokens "
+            "still override in dark"
+        )
+    if not _css_var(dark_blob, ("--color-background", "--color-foreground", "--color-muted-foreground")):
+        fail(
+            "#217: prefers-color-scheme: dark must still override tokens "
+            "(background / foreground / muted-foreground)"
+        )
+
+    # 5) Preview / chips / cloud / toast / doctor issue box stay on tokens.
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#217: App.svelte required (people preview / chips / banners)")
+    app = app_path.read_text()
+    toast_path = crate / "web" / "lib" / "components" / "ui" / "toast" / "toast.svelte"
+    toast_src = toast_path.read_text() if toast_path.is_file() else ""
+    doctor_path = crate / "web" / "lib" / "DoctorPane.svelte"
+    doctor_src = doctor_path.read_text() if doctor_path.is_file() else ""
+    svelte_blob = "\n".join(p.read_text() for p in svelte_files)
+
+    preview_tag = ""
+    for src in (app, svelte_blob):
+        m = re.search(r"\{p\.preview\b", src)
+        if not m:
+            continue
+        found = _open_tag_before(src, m.start())
+        if found:
+            preview_tag = found[1]
+        for tag in _ancestor_tags(src, m.start(), limit=6):
+            if _CONTRAST_TOKEN_CLASS.search(tag):
+                preview_tag = tag
+                break
+        if preview_tag:
+            break
+    if not preview_tag:
+        fail(
+            "#217: people preview / last-activity line required "
+            "(token classes, not raw amber)"
+        )
+    if not _contrast_tag_ok(preview_tag):
+        fail(
+            "#217: people preview / last-activity line must use token classes "
+            "(text-muted-foreground / bg-muted / bg-background / "
+            "text-foreground / border-border), not raw amber"
+        )
+
+    chip_tag = _contrast_surface_tag(svelte_blob, "data-platform-chip")
+    if not chip_tag:
+        fail("#217: data-platform-chip required (token classes, not raw amber)")
+    if not _contrast_tag_ok(chip_tag):
+        fail(
+            "#217: data-platform-chip must use token classes "
+            "(text-muted-foreground / bg-muted / bg-background / "
+            "text-foreground / border-border), not raw amber"
+        )
+
+    cloud_tag = _contrast_surface_tag(app, "data-cloud-warning")
+    if not cloud_tag:
+        fail("#217: data-cloud-warning required (token classes, not raw amber)")
+    if not _contrast_tag_ok(cloud_tag):
+        fail(
+            "#217: data-cloud-warning must use token classes "
+            "(text-muted-foreground / bg-muted / bg-background / "
+            "text-foreground / border-border), not raw amber"
+        )
+
+    toast_tag = _contrast_surface_tag(toast_src or svelte_blob, "data-toast")
+    if not toast_tag:
+        fail("#217: data-toast required (token classes, not raw amber)")
+    if not _contrast_tag_ok(toast_tag):
+        fail(
+            "#217: data-toast must use token classes "
+            "(text-muted-foreground / bg-muted / bg-background / "
+            "text-foreground / border-border), not raw amber"
+        )
+
+    doctor_box = ""
+    for src in (app, doctor_src):
+        at = src.find("Doctor found")
+        if at < 0:
+            continue
+        for tag in _ancestor_tags(src, at, limit=8):
+            if _CONTRAST_TOKEN_CLASS.search(tag) or re.search(
+                r"\b(?:rounded-md|border|bg-)\b", tag
+            ):
+                doctor_box = tag
+                break
+        if doctor_box:
+            break
+    if not doctor_box:
+        fail("#217: doctor issue box required (token classes, not raw amber)")
+    if not _contrast_tag_ok(doctor_box):
+        fail(
+            "#217: doctor issue box must use token classes "
+            "(text-muted-foreground / bg-muted / bg-background / "
+            "text-foreground / border-border), not raw amber"
+        )
+
+    # 6) No Theme menu / data-theme / high-contrast third theme; light tokens stay.
+    if _CONTRAST_THEME_PICKER.search(svelte_blob):
+        fail(
+            "#217: not in scope — no Theme menu / data-theme / high-contrast "
+            "third theme (system appearance only; #218 is later)"
+        )
+    if not light_blob.strip() or not _css_var(
+        light_blob,
+        ("--color-background", "--color-foreground", "--color-muted-foreground"),
+    ):
+        fail(
+            "#217: light @theme / :root tokens must still exist "
+            "(do not force dark-only)"
+        )
+
+    # 7) No --warning / --success pair (#219).
+    if _CONTRAST_STATUS_PAIR.search(css) or _CONTRAST_STATUS_PAIR.search(svelte_blob):
+        fail(
+            "#217: not in scope — do not add --warning / --success "
+            "(#219 is later)"
+        )
+
+    # 8) Docs: system light/dark without a reload; readable on both; marks work.
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+    if not dtxt.strip():
+        fail(
+            "#217: docs/user/app.md required — system light/dark without a "
+            "reload; readable on both; marks still work"
+        )
+    if not _CONTRAST_DOCS_SYSTEM.search(dtxt):
+        fail(
+            "#217: docs/user/app.md must say chrome follows system light/dark"
+        )
+    if not _CONTRAST_DOCS_NO_RELOAD.search(dtxt):
+        fail(
+            "#217: docs/user/app.md must say appearance updates without a reload"
+        )
+    if not _CONTRAST_DOCS_READABLE.search(dtxt):
+        fail(
+            "#217: docs/user/app.md must say preview / chips / marks / banners "
+            "stay readable on both"
+        )
+    if not _CONTRAST_DOCS_MARKS.search(dtxt):
+        fail(
+            "#217: docs/user/app.md must say search marks still work on both"
+        )
+    if _A11Y_WCAG_CERT.search(dtxt):
+        fail(
+            "#217: docs/user/app.md must not claim WCAG certified / certificate"
+        )
+
+    # 9) Do not soften #q, sidebar, overlay, inspector, CSP, #198, #216 rings.
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    search = search_path.read_text() if search_path.is_file() else ""
+    conf = (crate / "tauri.conf.json").read_text()
+    if not re.search(r"""\bid\s*=\s*(?:["']q["']|\{\s*["']q["']\s*\})""", search):
+        fail('#217: keep id="q" as the canonical query field (#208)')
+    if not re.search(r"\bdata-people-sidebar\b", app):
+        fail("#217: keep data-people-sidebar (#159 / #212)")
+    if not re.search(r"titleBarStyle", conf) and not re.search(
+        r"\bdata-tauri-drag-region\b", app
+    ):
+        fail("#217: keep the overlay titlebar (#211)")
+    if not re.search(r"\bdata-person-inspector\b", app):
+        fail("#217: keep data-person-inspector (#213)")
+    if CSP not in conf:
+        fail("#217: do not soften tauri CSP")
+    missing_defs = [name for name in _SHADCN_TOKEN_DEFS if name not in css]
+    if missing_defs:
+        fail(
+            "#217: keep #198 shadcn tokens "
+            f"({', '.join(missing_defs)} missing)"
+        )
+    missing_uses = [tok for tok in _SHADCN_TOKEN_USES if tok not in svelte_blob]
+    if missing_uses:
+        fail(
+            "#217: keep #198 token/variable classes "
+            f"({', '.join(missing_uses)} missing)"
+        )
+    button_path = (
+        crate / "web" / "lib" / "components" / "ui" / "button" / "button.svelte"
+    )
+    input_path = crate / "web" / "lib" / "components" / "ui" / "input" / "input.svelte"
+    if not button_path.is_file() or not _has_focus_visible_ring2(
+        _without_comments(button_path.read_text())
+    ):
+        fail("#217: keep #216 Button focus-visible:ring-2 ring-ring")
+    if not input_path.is_file() or not _has_focus_visible_ring2(
+        _without_comments(input_path.read_text())
+    ):
+        fail("#217: keep #216 Input focus-visible:ring-2 ring-ring")
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -22669,6 +23148,7 @@ def main() -> None:
     assert_command_palette_field_keys(crate)
     assert_command_palette_clipboard(crate)
     assert_focus_aria_audit(crate)
+    assert_contrast_tokens(crate)
     assert_a11y_listbox_focus_motion(crate)
     assert_human_time_people(crate)
     assert_drag_drop_import(crate)
