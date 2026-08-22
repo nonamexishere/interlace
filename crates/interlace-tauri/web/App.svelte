@@ -119,7 +119,8 @@
   const SIDEBAR_PREF = "interlace.peopleSidebarCollapsed";
   let userCollapsed = $state(false);
   let narrow = $state(false);
-  const sidebarCollapsed = $derived(narrow || userCollapsed);
+  let forceOpen = $state(false);
+  const sidebarCollapsed = $derived(userCollapsed || (narrow && !forceOpen));
 
   function readSidebarPref(): boolean {
     return localStorage.getItem(SIDEBAR_PREF) === "1";
@@ -127,11 +128,14 @@
 
   function persistSidebar(next: boolean) {
     userCollapsed = next;
+    forceOpen = !next; // Expand → open now even if narrow
     localStorage.setItem(SIDEBAR_PREF, next ? "1" : "0");
   }
 
   function syncNarrow() {
-    narrow = window.innerWidth < 880;
+    const next = window.innerWidth < 880;
+    if (next && !narrow) forceOpen = false; // just crossed into narrow
+    narrow = next;
   }
 
   const SANDBOX_DENIED =
@@ -1185,9 +1189,11 @@
     const digit = e.key >= "1" && e.key <= "5" ? e.key : /^Digit[1-5]$/.test(e.code) ? e.code.slice(5) : "";
     // AltGr is ctrlKey+altKey; do not treat it as ⌘/Ctrl (AZERTY/Turkish-Q type ~#{[ via AltGr+digit).
     const mod = e.metaKey || (e.ctrlKey && !e.altKey);
+    const slashKey =
+      e.key === "\\" || e.code === "Backslash" || e.code === "IntlBackslash";
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) {
       // ⌘F / ⌘\ / ⌘1–5 still apply from a field (stop the webview Find / tab accel).
-      if (!(mod && (e.key === "f" || e.key === "F" || e.key === "\\" || digit !== ""))) {
+      if (!(mod && (e.key === "f" || e.key === "F" || slashKey || e.code === "Backslash" || e.code === "IntlBackslash" || digit !== ""))) {
         if (e.key === "Escape") t.blur();
         return;
       }
@@ -1197,7 +1203,7 @@
       void whenSearchPaneReady().then((qEl) => qEl?.focus());
       return;
     }
-    if (mod && e.key === "\\") {
+    if (mod && slashKey) {
       e.preventDefault();
       persistSidebar(!sidebarCollapsed);
       return;
@@ -1580,11 +1586,11 @@
             <p class="mt-1 text-xs">Open the Doctor tab to run integrity, rebuild FTS, or GC CAS in-app.</p>
           </div>
         {/if}
-        <div class="mt-4 min-w-0 space-y-1.5">
+        {/if}
+        <div class={sidebarCollapsed ? "sr-only" : "mt-4 min-w-0 space-y-1.5"}>
           <Label for="person-filter">Filter people</Label>
           <Input id="person-filter" type="search" bind:value={filter} placeholder="name" class="min-w-0" />
         </div>
-        {/if}
         <ul class="mt-2 min-w-0 space-y-0.5" role="listbox" aria-label="People" aria-busy={peopleLoading}>
           {#each filtered as p}
             <li class="min-w-0" role="presentation">
@@ -1592,6 +1598,7 @@
                 type="button"
                 role="option"
                 aria-selected={selectedId === p.id}
+                title={p.display_name}
                 aria-label={`${p.display_name}${p.is_self ? " (self)" : ""}${p.last_activity_at ? ` ${humanTime(p.last_activity_at)}` : ""}`}
                 class="w-full min-w-0 max-w-full rounded-md text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {sidebarCollapsed
                   ? 'flex justify-center px-0 py-1'
