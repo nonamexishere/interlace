@@ -1,6 +1,6 @@
 # Agent / session handoff
 
-**Date:** 2026-08-21. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
+**Date:** 2026-08-22. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -183,7 +183,8 @@ Phase 2.1 milestone (#6): **closed**.
 | #211 / PR #250 | Overlay titlebar — native traffic lights, `data-tauri-drag-region` on the top bar, no second Interlace wordmark. `setTitle` still follows view |
 | #212 / PR #251 + #252 | People sidebar fixed `w-72`, rail, ⌘\\; follow-up: hover title, `/` on rail, expand-now under 880px, physical Backslash |
 | #213 / PR #253 | Optional right inspector — identities + last activity; Merge / include-groups / unlink live there; not a second timeline |
-| #214 | People listbox arrows change person; Tab is filter → selected person → timeline; j/k still messages |
+| #214 / PR #254 | People listbox arrows change person; Tab is filter → selected person → timeline; j/k still messages |
+| #215 | Command palette (⌘K) — views + jump to a loaded person; local only; people list capped; field keeps A/C/V |
 
 ## Open — product now (Phase 2.2)
 
@@ -196,8 +197,8 @@ load-bearing (a11y, titlebar, search).
 
 | # | Note |
 | --- | --- |
-| **#215** | Command palette (⌘K) for views and people — local only. Next coding. |
-| **#216**–**#222** | Chrome / a11y / appearance — see #197 |
+| **#216** | Focus rings and ARIA audit on chrome and dialogs. Next coding. |
+| **#217**–**#222** | Contrast / appearance / status tokens / import / review chrome / motion — see #197 |
 
 Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github.com/nonamexishere/interlace/milestone/7).
 
@@ -210,7 +211,7 @@ Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github
 
 ## Recommended next steps
 
-1. Next coding: **#215** (command palette). Do not start 1.1 / P3 / P4.
+1. Next coding: **#216** (focus rings / ARIA). Do not start 1.1 / P3 / P4.
 2. Do **not** start 1.1 / P3 / P4 unprompted. Ask before another `app-v*` / `v*` / crates.io.
 
 ## Commands (copy-paste)
@@ -283,7 +284,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
 > Product track: Phase 2.2 UI/UX polish (#197). Read
-> `docs/design/UI-DESIGN.md`. Next coding is **#215** (command palette).
+> `docs/design/UI-DESIGN.md`. Next coding is **#216** (focus rings / ARIA).
 > Orchestrator does not implement product code. Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag. After merges, update this handoff in the same session.
