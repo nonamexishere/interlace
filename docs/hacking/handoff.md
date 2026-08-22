@@ -81,8 +81,8 @@ ad-hoc, not notarized). Ask before another `app-v*` / `v*` / crates.io publish.
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `8720da4` **Merge pull request #249** (#210
-search hit density) plus this branch’s #211 titlebar work. Tag **`app-v0.1.1`**
+HEAD when this was rewritten: `d02385f` **Merge pull request #250** (#211
+overlay titlebar) plus this branch’s #212 sidebar work. Tag **`app-v0.1.1`**
 is still the unsigned app. Epic **#108**, milestone 6, and the Phase 1 CLI
 milestone are **closed**. Product track is **#197** / milestone 7. Re-check
 with `git log -1` / `gh pr list`.
@@ -180,7 +180,8 @@ Phase 2.1 milestone (#6): **closed**.
 | #208 / PR #245 | Always-available chrome search field; ⌘F from every view including People focuses `#q` |
 | #209 / PR #248 | Search filters secondary (disclosure) + optional `type=date` range; invalid dates do not search. Space/Enter on Filters `<summary>` must not steal hit keys |
 | #210 / PR #249 | Search hits: short `humanTime` + person/title, then `splitSnippet` + `<mark>`; no raw ISO dump |
-| #211 | Overlay titlebar — native traffic lights, `data-tauri-drag-region` on the top bar, no second Interlace wordmark. `setTitle` still follows view |
+| #211 / PR #250 | Overlay titlebar — native traffic lights, `data-tauri-drag-region` on the top bar, no second Interlace wordmark. `setTitle` still follows view |
+| #212 | People sidebar fixed `w-72`, collapses to a rail (control + ⌘\\); auto-collapse under 880px; preference is localStorage, not iCloud |
 
 ## Open — product now (Phase 2.2)
 
@@ -193,8 +194,8 @@ load-bearing (a11y, titlebar, search).
 
 | # | Note |
 | --- | --- |
-| **#212** | Collapsible people sidebar — fixed width, graceful on resize. Next coding. |
-| **#213**–**#222** | Chrome / a11y / appearance — see #197 |
+| **#213** | Optional right inspector — identities and meta, not a second timeline. Next coding. |
+| **#214**–**#222** | Chrome / a11y / appearance — see #197 |
 
 Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github.com/nonamexishere/interlace/milestone/7).
 
@@ -207,7 +208,7 @@ Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github
 
 ## Recommended next steps
 
-1. Next coding: **#212** (collapsible people sidebar). Do not start
+1. Next coding: **#213** (optional right inspector). Do not start
    1.1 / P3 / P4.
 2. Do **not** start 1.1 / P3 / P4 unprompted. Ask before another `app-v*` / `v*` / crates.io.
 
@@ -281,7 +282,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
 > Product track: Phase 2.2 UI/UX polish (#197). Read
-> `docs/design/UI-DESIGN.md`. Next coding is **#212** (collapsible sidebar).
+> `docs/design/UI-DESIGN.md`. Next coding is **#213** (right inspector).
 > Orchestrator does not implement product code. Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag. After merges, update this handoff in the same session.

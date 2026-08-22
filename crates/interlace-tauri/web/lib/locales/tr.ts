@@ -34,4 +34,6 @@ export const tr: ChromePack = {
     "Aynı kontroller interlace doctor. Bu pencere arşiv kilidini tutuyor — terminalde doctor çalıştırmadan önce kapatın.",
   copyText: "Metni kopyala",
   revealInFinder: "Finder'da göster",
+  collapseSidebar: "Kişi kenar çubuğunu daralt",
+  expandSidebar: "Kişi kenar çubuğunu genişlet",
 };

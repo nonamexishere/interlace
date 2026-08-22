@@ -24,6 +24,9 @@
   import EmptyState from "$lib/EmptyState.svelte";
   import CasAttach from "$lib/CasAttach.svelte";
   import { t } from "$lib/i18n";
+  import PanelLeft from "@lucide/svelte/icons/panel-left";
+  import PanelLeftClose from "@lucide/svelte/icons/panel-left-close";
+  import User from "@lucide/svelte/icons/user";
 
   let err = $state("");
   let setup = $state(true);
@@ -112,6 +115,24 @@
       return hay.includes(q);
     }),
   );
+
+  const SIDEBAR_PREF = "interlace.peopleSidebarCollapsed";
+  let userCollapsed = $state(false);
+  let narrow = $state(false);
+  const sidebarCollapsed = $derived(narrow || userCollapsed);
+
+  function readSidebarPref(): boolean {
+    return localStorage.getItem(SIDEBAR_PREF) === "1";
+  }
+
+  function persistSidebar(next: boolean) {
+    userCollapsed = next;
+    localStorage.setItem(SIDEBAR_PREF, next ? "1" : "0");
+  }
+
+  function syncNarrow() {
+    narrow = window.innerWidth < 880;
+  }
 
   const SANDBOX_DENIED =
     "macOS blocked that folder. Use Open existing\u2026 once so Interlace can remember it.";
@@ -1165,8 +1186,8 @@
     // AltGr is ctrlKey+altKey; do not treat it as ⌘/Ctrl (AZERTY/Turkish-Q type ~#{[ via AltGr+digit).
     const mod = e.metaKey || (e.ctrlKey && !e.altKey);
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) {
-      // ⌘F / ⌘1–5 still apply from a field (stop the webview Find / tab accel).
-      if (!(mod && (e.key === "f" || e.key === "F" || digit !== ""))) {
+      // ⌘F / ⌘\ / ⌘1–5 still apply from a field (stop the webview Find / tab accel).
+      if (!(mod && (e.key === "f" || e.key === "F" || e.key === "\\" || digit !== ""))) {
         if (e.key === "Escape") t.blur();
         return;
       }
@@ -1174,6 +1195,11 @@
     if (mod && (e.key === "f" || e.key === "F")) {
       e.preventDefault();
       void whenSearchPaneReady().then((qEl) => qEl?.focus());
+      return;
+    }
+    if (mod && e.key === "\\") {
+      e.preventDefault();
+      persistSidebar(!sidebarCollapsed);
       return;
     }
     if (mod && digit !== "") {
@@ -1227,6 +1253,9 @@
   }
 
   onMount(() => {
+    userCollapsed = readSidebarPref();
+    syncNarrow();
+    window.addEventListener("resize", syncNarrow);
     window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", onCopyMenuAway);
     window.addEventListener("pointerup", onTimelinePointerUp);
@@ -1274,6 +1303,7 @@
     return () => {
       menuGone = true;
       for (const unlisten of menuUnlisten) unlisten();
+      window.removeEventListener("resize", syncNarrow);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("mousedown", onCopyMenuAway);
       window.removeEventListener("pointerup", onTimelinePointerUp);
@@ -1485,12 +1515,33 @@
       onGoPeople={() => (view = "people")}
     />
   {:else if st}
-    <div class="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+    <div class="flex min-h-0 min-w-0 flex-1">
       <div
-        class="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto border-r border-border p-4"
         data-people-sidebar
+        data-people-sidebar-collapsed={sidebarCollapsed ? true : undefined}
         aria-busy={peopleLoading}
+        class="min-h-0 min-w-0 shrink-0 overflow-x-hidden overflow-y-auto border-r border-border {sidebarCollapsed
+          ? 'w-12 p-1'
+          : 'w-72 p-4'}"
       >
+        <div class="flex {sidebarCollapsed ? 'justify-center' : 'justify-end'}">
+          <Button
+            variant="ghost"
+            size="icon"
+            class="size-8 shrink-0"
+            data-sidebar-toggle
+            aria-expanded={!sidebarCollapsed}
+            aria-label={sidebarCollapsed ? t("expandSidebar") : t("collapseSidebar")}
+            onclick={() => persistSidebar(!sidebarCollapsed)}
+          >
+            {#if sidebarCollapsed}
+              <PanelLeft class="size-4" />
+            {:else}
+              <PanelLeftClose class="size-4" />
+            {/if}
+          </Button>
+        </div>
+        {#if !sidebarCollapsed}
         <p class="break-all text-xs text-muted-foreground">{st.path}</p>
         <dl class="mt-3 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-sm">
           <dt class="text-muted-foreground">owner</dt>
@@ -1533,6 +1584,7 @@
           <Label for="person-filter">Filter people</Label>
           <Input id="person-filter" type="search" bind:value={filter} placeholder="name" class="min-w-0" />
         </div>
+        {/if}
         <ul class="mt-2 min-w-0 space-y-0.5" role="listbox" aria-label="People" aria-busy={peopleLoading}>
           {#each filtered as p}
             <li class="min-w-0" role="presentation">
@@ -1541,22 +1593,34 @@
                 role="option"
                 aria-selected={selectedId === p.id}
                 aria-label={`${p.display_name}${p.is_self ? " (self)" : ""}${p.last_activity_at ? ` ${humanTime(p.last_activity_at)}` : ""}`}
-                class="w-full min-w-0 max-w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {selectedId ===
-                p.id
+                class="w-full min-w-0 max-w-full rounded-md text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {sidebarCollapsed
+                  ? 'flex justify-center px-0 py-1'
+                  : 'px-2 py-1.5 text-left'} {selectedId === p.id
                   ? 'bg-accent'
                   : ''} {p.is_self ? 'font-semibold' : ''}"
                 onclick={() => selectPerson(p.id)}
               >
-                <span class="block truncate">{p.is_self ? `${p.display_name} (self)` : p.display_name}</span>
-                {#if p.last_activity_at || p.preview}
-                  <span class="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
-                    {humanTime(p.last_activity_at)}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
+                {#if sidebarCollapsed}
+                  <span class="flex size-8 items-center justify-center rounded-md text-sm font-medium" aria-hidden="true">
+                    {#if p.display_name.charAt(0)}
+                      {p.display_name.charAt(0)}
+                    {:else}
+                      <User class="size-4" />
+                    {/if}
                   </span>
+                {:else}
+                  <span class="block truncate">{p.is_self ? `${p.display_name} (self)` : p.display_name}</span>
+                  {#if p.last_activity_at || p.preview}
+                    <span class="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+                      {humanTime(p.last_activity_at)}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
+                    </span>
+                  {/if}
                 {/if}
               </button>
             </li>
           {/each}
         </ul>
+        {#if !sidebarCollapsed}
         {#if peopleLoading}
           <div class="mt-3 min-w-0 space-y-2" aria-hidden="true">
             <Skeleton class="h-4 w-[88%]" />
@@ -1598,8 +1662,9 @@
         <Button variant="outline" size="sm" class="mt-4 max-w-full" onclick={openPicker}>
           Open other archive…
         </Button>
+        {/if}
       </div>
-      <div class="flex min-h-0 min-w-0 flex-col">
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col">
         <div class="relative z-20 shrink-0 bg-background px-4 pt-4">
         <div class="mb-3 flex items-baseline justify-between gap-3">
           <h1 class="text-xl font-semibold tracking-tight">

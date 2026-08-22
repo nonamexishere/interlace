@@ -246,6 +246,13 @@
 #     chrome-search; the drag attribute needs allow-start-dragging), drop
 #     the in-app Interlace wordmark. Keep #129 setTitle and #130 File/View.
 #     Not: Windows/Linux chrome, custom traffic-light buttons.
+#212: collapsible people sidebar — fixed expanded width (w-72 / 18rem, not
+#     only shrinking minmax(0,18rem)), data-sidebar-toggle + collapsed hook,
+#     rail / icons (no raw person ids), ⌘\\ / Ctrl+\\ in onKey (AltGr-safe
+#     mod, works from fields like ⌘F), localStorage persist (not
+#     write_last_path / config.toml), auto-collapse at 880/800.
+#     Keep #159 overflow-x, #208 chrome search, #211 overlay. Not: liquid
+#     multi-column, hiding Search/Review chrome.
 #224: person timeline measure-and-cache variable row heights (constant 88)
 #     fallback). Lists ≤250 mount fully; longer lists still window. Spacers /
 #     visibleRange / ensureTlIndexVisible use prefix sums, not index * 88.
@@ -19376,6 +19383,582 @@ def assert_custom_titlebar(crate: Path) -> None:
         fail("#211: deny.toml must keep banning reqwest / hyper")
 
 
+# #212 — collapsible people sidebar (fixed width, rail, ⌘\, local persist).
+_MINMAX_PEOPLE_TRACK = re.compile(
+    r"minmax\s*\(\s*0\s*,\s*(?:18|16)rem\s*\)",
+    re.I,
+)
+_FIXED_PEOPLE_WIDTH = re.compile(
+    r"("
+    r"(?<![\w-])w-(?:72|64)\b"
+    r"|(?<![\w-])w-\[[\"']?(?:18|16)rem[\"']?\]"
+    r"|width\s*:\s*(?:18|16)rem"
+    r"|grid-cols-\[[^\]]*?(?:18|16)rem"
+    r"|grid-template-columns\s*:\s*(?:18|16)rem"
+    r")",
+    re.I,
+)
+_RAIL_WIDTH = re.compile(
+    r"(?<![\w-])w-(?:12|14|16)\b|(?<![\w-])w-\[[\"']?(?:3(?:\.5)?|4)rem[\"']?\]",
+    re.I,
+)
+_RAIL_ICON = re.compile(
+    r"("
+    r"@lucide/svelte/icons/(?:user|users|user-round|circle-user)"
+    r"|<(?:User|Users|UserRound|CircleUser)\b"
+    r"|(?:display_name|displayName|\.name)\s*(?:\?\.|\.)\s*"
+    r"(?:charAt\s*\(\s*0\s*\)|slice\s*\(\s*0\s*,\s*1\s*\)|\[0\])"
+    r"|\binitials?\b"
+    r")",
+    re.I,
+)
+_KEY_BACKSLASH = re.compile(
+    r"("
+    r"(?:e\.)?key\s*===?\s*[\"']\\\\[\"']"
+    r"|[\"']\\\\[\"']\s*===?\s*(?:e\.)?key"
+    r"|(?:e\.)?key\s*===?\s*[\"']Backslash[\"']"
+    r"|[\"']Backslash[\"']\s*===?\s*(?:e\.)?key"
+    r"|(?:e\.)?code\s*===?\s*[\"']Backslash[\"']"
+    r"|[\"']Backslash[\"']\s*===?\s*(?:e\.)?code"
+    r")"
+)
+_ALTGR_SAFE_MOD = re.compile(
+    r"(?:e\.)?ctrlKey\s*&&\s*!(?:e\.)?altKey",
+)
+_LS_CALL = re.compile(
+    r"localStorage\s*\.\s*(?:getItem|setItem)\s*\(\s*"
+    r"(?:"
+    r"(?P<q>[\"'])(?P<lit>[^\"']+)(?P=q)"
+    r"|(?P<id>[A-Za-z_][\w]*)"
+    r")"
+)
+_LS_BRACKET = re.compile(r"localStorage\s*\[\s*[\"']([^\"']+)[\"']\s*\]")
+_COLLAPSE_WORD = re.compile(r"collaps", re.I)
+_LAST_PATH_API = re.compile(r"\b(?:write_last_path|read_last_path)\b")
+_CONFIG_TOML = re.compile(r"\bconfig\.toml\b")
+_AUTO_WIDTH = re.compile(
+    r"("
+    r"\binnerWidth\b"
+    r"|\bmatchMedia\s*\("
+    r"|addEventListener\s*\(\s*[\"']resize[\"']"
+    r"|\bonresize\b"
+    r")",
+    re.I,
+)
+_NARROW_PX = re.compile(r"\b(?:880|800)\b")
+_SELECT_PERSON_CALL = re.compile(r"\b(?:selectPerson|personShow)\s*\(")
+_DOCS_COLLAPSE = re.compile(
+    r"(?:people|sidebar).{0,80}collaps|collaps.{0,80}(?:people|sidebar)",
+    re.I | re.S,
+)
+_DOCS_BACKSLASH = re.compile(
+    r"("
+    r"⌘\s*\\"
+    r"|Cmd(?:-|\s*|\+)\s*\\"
+    r"|Command(?:-|\s*|\+)\s*\\"
+    r"|Ctrl(?:-|\s*|\+)\s*\\"
+    r"|ctrl(?:-|\s*|\+)\s*\\"
+    r")",
+    re.I,
+)
+_DOCS_LOCAL_PREF = re.compile(
+    r"("
+    r"local(?:Storage)?"
+    r".{0,80}(?:not|never|isn.t).{0,24}iCloud"
+    r"|(?:not|never|isn.t).{0,24}iCloud.{0,80}local"
+    r"|preference is local"
+    r"|local(?:ly)?(?: persist| only| pref)"
+    r"|localStorage"
+    r")",
+    re.I | re.S,
+)
+_DOCS_NOT_ICLOUD = re.compile(
+    r"(?:not|never|isn.t).{0,40}iCloud|iCloud.{0,40}(?:not|never)",
+    re.I,
+)
+_DOCS_800 = re.compile(
+    r"(?:~|about |around |near )?\s*800\s*(?:px|pixels)?",
+    re.I,
+)
+_CLICK_ON = re.compile(
+    r"(?:on:click|onclick)\s*=\s*\{",
+    re.I,
+)
+
+
+def _people_collapse_shell(markup: str) -> str:
+    """Parent grid + people pane open tag (expanded-width lives here)."""
+    m = re.search(r"\bdata-people-sidebar\b", markup)
+    if not m:
+        return ""
+    return markup[max(0, m.start() - 500) : m.end() + 480]
+
+
+def _has_fixed_people_width(blob: str) -> bool:
+    """True when expanded width is a fixed token, not only minmax(0,18rem)."""
+    stripped = _MINMAX_PEOPLE_TRACK.sub("", blob)
+    return bool(_FIXED_PEOPLE_WIDTH.search(stripped))
+
+
+def _mentions_backslash_key(src: str) -> bool:
+    return bool(_KEY_BACKSLASH.search(src)) or bool(
+        re.search(r"[\"']Backslash[\"']", src)
+    )
+
+
+def _ls_pref_keys(src: str) -> list[str]:
+    """Literal / resolved localStorage keys (sidebar persist)."""
+    keys: list[str] = []
+    for m in _LS_CALL.finditer(src):
+        lit = m.group("lit")
+        if lit:
+            keys.append(lit)
+            continue
+        name = m.group("id")
+        if not name:
+            continue
+        cm = re.search(
+            rf"(?:const|let|var)\s+{re.escape(name)}\s*=\s*[\"'`]([^\"'`]+)[\"'`]",
+            src,
+        )
+        keys.append(cm.group(1) if cm else name)
+    keys.extend(_LS_BRACKET.findall(src))
+    return keys
+
+
+def _pref_key_ok(key: str) -> bool:
+    low = key.lower()
+    mentions = "sidebar" in low or "collapsed" in low
+    namespaced = "interlace" in low or "." in key
+    return mentions and namespaced
+
+
+def _rust_fn_body(src: str, name: str) -> str:
+    m = re.search(rf"(?:pub\s+)?(?:async\s+)?fn\s+{re.escape(name)}\s*\(", src)
+    if not m:
+        return ""
+    close_paren = _match_closer(src, m.end() - 1)
+    if close_paren < 0:
+        return ""
+    brace = src.find("{", close_paren)
+    if brace < 0:
+        return ""
+    close_b = _match_closer(src, brace)
+    if close_b < 0:
+        return src[brace + 1 :]
+    return src[brace + 1 : close_b]
+
+
+def _toml_keys_in_fn(body: str) -> list[str]:
+    keys: list[str] = []
+    for s in re.findall(r'"(?:[^"\\]|\\.)*"', body):
+        keys.extend(re.findall(r"([A-Za-z_][\w]*)\s*=", s))
+    return keys
+
+
+def _click_handler_names(tag: str) -> list[str]:
+    names = re.findall(
+        r"(?:on:click|onclick)\s*=\s*\{[^}]*?\b([A-Za-z_][\w]*)\s*\(",
+        tag,
+        re.I,
+    )
+    names += re.findall(
+        r"(?:on:click|onclick)\s*=\s*\{([A-Za-z_][\w]*)\}",
+        tag,
+        re.I,
+    )
+    return names
+
+
+def _toggle_collapse_surface(app: str, markup: str) -> str:
+    """data-sidebar-toggle handlers + named collapse helpers."""
+    parts: list[str] = []
+    for m in re.finditer(r"\bdata-sidebar-toggle\b", markup):
+        tag = _opening_tag(markup, m.start())
+        parts.append(tag)
+        parts.append(markup[max(0, m.start() - 80) : m.end() + 240])
+        for name in _click_handler_names(tag):
+            inner = _ts_fn_body(app, name) or _function_body(app, name)
+            if inner:
+                parts.append(_expand_fn_calls(app, inner))
+        # Inline onclick={() => { ... }} body.
+        cm = _CLICK_ON.search(tag)
+        if cm:
+            brace = tag.find("{", cm.end() - 1)
+            if brace >= 0:
+                parts.append(tag[brace:])
+    for name in re.findall(
+        r"(?:function|const|let)\s+"
+        r"(toggle\w*(?:Sidebar|Collapse)|set\w*(?:Sidebar|Collapsed)\w*)",
+        app,
+        re.I,
+    ):
+        inner = _ts_fn_body(app, name) or _function_body(app, name)
+        if inner:
+            parts.append(_expand_fn_calls(app, inner))
+    return "\n".join(parts)
+
+
+def _gated_on_collapse(markup: str, pos: int) -> bool:
+    for kind, cond, _extra in _template_stack(markup, pos):
+        if kind not in {"if", "if-else"}:
+            continue
+        if _COLLAPSE_WORD.search(cond):
+            return True
+    return False
+
+
+def _auto_collapse_surface(app: str, logic: str) -> str:
+    cleaned = _without_comments(app)
+    blob = cleaned + "\n" + logic
+    parts = [_windows_around(blob, _AUTO_WIDTH, before=220, after=520)]
+    for m in re.finditer(
+        r"addEventListener\s*\(\s*[\"']resize[\"']\s*,\s*([A-Za-z_][\w]*)",
+        blob,
+    ):
+        inner = _ts_fn_body(app, m.group(1)) or _function_body(app, m.group(1))
+        if inner:
+            parts.append(inner)
+    return "\n".join(parts)
+
+
+def assert_people_sidebar_collapse(crate: Path) -> None:
+    """#212: fixed-width people sidebar; collapse to a rail; persist locally.
+
+    Expanded width is a token (w-72 / 18rem), not only shrinking
+    minmax(0,18rem). data-sidebar-toggle + collapsed hook. ⌘\\ / Ctrl+\\
+    in onKey (AltGr-safe, works from fields). localStorage persist — not
+    write_last_path / config.toml. Auto-collapse at 880/800. Toggle must
+    not remount the open person. Keep nav + chrome search. Not: liquid
+    multi-column, hiding Search/Review.
+    """
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#212: App.svelte required (people sidebar collapse lives there)")
+    app = app_path.read_text()
+    markup = _strip_html_comments(_svelte_markup(app))
+    app_clean = _without_comments(app)
+    logic = _web_logic(crate)
+    logic_clean = _without_comments(logic)
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    search = search_path.read_text() if search_path.is_file() else ""
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+    session_path = repo_root() / "crates" / "interlace-core" / "src" / "session.rs"
+    session = session_path.read_text() if session_path.is_file() else ""
+    rust = _tauri_rust_blob(crate)
+    conf_path = crate / "tauri.conf.json"
+    conf = conf_path.read_text() if conf_path.is_file() else ""
+
+    # 1) data-people-sidebar stays; expanded width is a fixed token.
+    if re.search(r"\bdata-people-sidebar\b", app) and not re.search(
+        r"\bdata-people-sidebar\b", markup
+    ):
+        fail(
+            "#212: data-people-sidebar must stay on the people pane markup "
+            "(not only a comment or script string)"
+        )
+    if not re.search(r"\bdata-people-sidebar\b", markup):
+        fail(
+            "#212: data-people-sidebar must stay on the left people pane "
+            "(collapse is that column, not a new shell)"
+        )
+    shell = _people_collapse_shell(markup)
+    if not _has_fixed_people_width(shell):
+        fail(
+            "#212: people sidebar expanded width must be a fixed token "
+            "(w-72 / 18rem), not only shrinking minmax(0,18rem)"
+        )
+
+    # 2) Collapse control + collapsed hook.
+    if re.search(r"\bdata-sidebar-toggle\b", app) and not re.search(
+        r"\bdata-sidebar-toggle\b", markup
+    ):
+        fail(
+            "#212: data-sidebar-toggle must be in App.svelte markup "
+            "(not only a comment or script string)"
+        )
+    if not re.search(r"\bdata-sidebar-toggle\b", markup):
+        fail(
+            "#212: people sidebar needs a collapse control "
+            "(data-sidebar-toggle) that collapses to a rail"
+        )
+    toggle_tag = _open_tag_around(markup, r"data-sidebar-toggle")
+    pane_tag = _open_tag_around(markup, r"data-people-sidebar")
+    has_pane_hook = bool(re.search(r"\bdata-people-sidebar-collapsed\b", markup))
+    has_aria = bool(re.search(r"\baria-expanded\b", toggle_tag))
+    if not has_pane_hook and not has_aria:
+        fail(
+            "#212: collapsed state must be visible in markup "
+            "(data-people-sidebar-collapsed on the pane or aria-expanded "
+            "on data-sidebar-toggle)"
+        )
+    if has_pane_hook and not re.search(
+        r"\bdata-people-sidebar-collapsed\b", pane_tag + "\n" + shell
+    ):
+        # Hook may sit on the same pane tag or the people column wrapper.
+        if not re.search(r"\bdata-people-sidebar-collapsed\b", markup):
+            fail(
+                "#212: data-people-sidebar-collapsed must sit on the people "
+                "pane (or aria-expanded on the toggle)"
+            )
+
+    # 3) Rail / icons path; no raw person ids in list labels (#159 spirit).
+    regions = _people_sidebar_regions(crate)
+    region_blob = "\n".join(regions) if regions else shell
+    rail_src = region_blob + "\n" + shell + "\n" + markup
+    has_rail_w = bool(_RAIL_WIDTH.search(rail_src))
+    has_rail_icon = bool(_RAIL_ICON.search(region_blob) or _RAIL_ICON.search(shell))
+    has_collapsed_if = bool(
+        re.search(r"\{#if\s+[^}]{0,120}collaps", markup, re.I)
+    )
+    if not (has_rail_w or has_rail_icon or has_collapsed_if):
+        fail(
+            "#212: collapsed people sidebar must be a rail / icons path "
+            "(w-12 / w-14, or initials / Lucide person icon — not a hidden column)"
+        )
+    if re.search(
+        r"(?:collaps[^;]{0,80}\b(?:hidden|w-0|invisible)\b"
+        r"|\b(?:hidden|w-0|invisible)\b[^;]{0,80}collaps)",
+        region_blob + "\n" + shell,
+        re.I,
+    ) and not (has_rail_w or has_rail_icon):
+        fail(
+            "#212: collapse must go to a rail (w-12 / icons), "
+            "not hide the people column"
+        )
+    each_blocks: list[str] = []
+    for p in _web_sources(crate):
+        if p.suffix != ".svelte" or p.name in _PERSON_PANE_SKIP:
+            continue
+        block = _people_each_block(_svelte_markup(p.read_text()))
+        if block:
+            each_blocks.append(block)
+    people_rows = "\n".join(each_blocks)
+    label_src = people_rows + "\n" + region_blob
+    visible_rows = _strip_tag_attrs(label_src)
+    visible_rows = re.sub(r"\{[#/:@].*?\}", "", visible_rows, flags=re.S)
+    if _PEOPLE_ID_VISIBLE.search(visible_rows):
+        fail(
+            "#212: no raw person ids in people-list / rail labels "
+            "(show display name / initial; data-id attributes are fine)"
+        )
+    if _PEOPLE_ID_FALLBACK.search(label_src):
+        fail("#212: do not fall back a missing person name to a raw id")
+
+    # 4) ⌘\\ / Ctrl+\\ in existing onKey — AltGr-safe, works from fields.
+    raw_body = _app_keydown_body(app_clean) or _app_keydown_body(app)
+    if not raw_body.strip():
+        fail(
+            "#212: App.svelte must handle window keydown "
+            "(onKey) so ⌘\\ / Ctrl+\\ can collapse the sidebar"
+        )
+    body = _expand_fn_calls(app_clean, raw_body)
+    if body == raw_body:
+        body = _expand_fn_calls(app, raw_body)
+    prefix, tail = _split_people_only(raw_body)
+    prefix_x = _expand_fn_calls(app_clean, prefix) if prefix.strip() else body
+    if prefix_x == prefix:
+        prefix_x = _expand_fn_calls(app, prefix) if prefix.strip() else body
+    if not _KEY_BACKSLASH.search(raw_body) and not _KEY_BACKSLASH.search(body):
+        fail(
+            "#212: App key handler must treat metaKey/ctrlKey + \\ / Backslash "
+            "as sidebar collapse (⌘\\ / Ctrl+\\)"
+        )
+    if tail and _KEY_BACKSLASH.search(tail) and not _KEY_BACKSLASH.search(prefix_x):
+        fail(
+            "#212: ⌘\\ / Ctrl+\\ must run like ⌘F "
+            "(it is after `if (view !== \"people\") return` and would not "
+            "fire from an input off People)"
+        )
+    bs_surface = _windows_around(prefix_x, _KEY_BACKSLASH)
+    if not bs_surface.strip():
+        bs_surface = _windows_around(body, _KEY_BACKSLASH)
+    if not _has_mod_combo(bs_surface) and not _has_mod_combo(prefix_x):
+        fail(
+            "#212: sidebar collapse must accept metaKey or ctrlKey "
+            "(⌘\\ on macOS; Ctrl+\\ so gates/tests see the fallback)"
+        )
+    if not _ALTGR_SAFE_MOD.search(prefix_x) and not _ALTGR_SAFE_MOD.search(bs_surface):
+        fail(
+            "#212: ⌘\\ / Ctrl+\\ must use the AltGr-safe mod "
+            "(metaKey || (ctrlKey && !altKey)) — same as #132"
+        )
+    if not _MOD_EITHER.search(bs_surface) and not re.search(r"\bmod\b", bs_surface):
+        fail("#212: \\ / Backslash collapse must be a metaKey/ctrlKey combo, not a bare key")
+    guard_span = _input_guard_span(raw_body)
+    handler = _KEY_BACKSLASH.search(raw_body) or _KEY_BACKSLASH.search(body)
+    if guard_span and handler:
+        guard = raw_body[guard_span[0] : guard_span[1] + 1]
+        after_guard = handler.start() > guard_span[1]
+        if after_guard and not _mentions_backslash_key(guard):
+            fail(
+                "#212: ⌘\\ / Ctrl+\\ must work from an INPUT like ⌘F "
+                "(allow the combo through the INPUT/TEXTAREA/SELECT guard)"
+            )
+
+    # 5) Persist via namespaced localStorage — not write_last_path / config.toml.
+    web_blob = app_clean + "\n" + logic_clean
+    if not re.search(r"localStorage\s*\.\s*setItem\s*\(", web_blob):
+        fail(
+            "#212: persist collapse in localStorage.setItem "
+            "(namespaced key; not iCloud, not write_last_path)"
+        )
+    if not re.search(r"localStorage\s*\.\s*getItem\s*\(", web_blob) and not _LS_BRACKET.search(
+        web_blob
+    ):
+        fail(
+            "#212: restore the persisted sidebar collapse from localStorage.getItem "
+            "(same namespaced key)"
+        )
+    ls_keys = _ls_pref_keys(web_blob)
+    if not any(_pref_key_ok(k) for k in ls_keys):
+        fail(
+            "#212: localStorage key must be namespaced and mention sidebar / "
+            "collapsed (e.g. interlace.peopleSidebarCollapsed)"
+        )
+    if not session_path.is_file():
+        fail("#212: crates/interlace-core/src/session.rs required (do not stash UI prefs there)")
+    wl = _rust_fn_body(_without_comments(session), "write_last_path")
+    if not wl.strip():
+        fail(
+            "#212: keep session.rs write_last_path as the last_archive_path writer "
+            "(do not rewrite it to dump UI prefs)"
+        )
+    extra_keys = [k for k in _toml_keys_in_fn(wl) if k != "last_archive_path"]
+    if extra_keys or re.search(r"\b(?:sidebar|collapsed|people_sidebar)\b", wl, re.I):
+        fail(
+            "#212: do not rewrite session.rs write_last_path to dump extra keys "
+            "(sidebar collapse is not last_archive_path / config.toml)"
+        )
+    persist_bits = [
+        _toggle_collapse_surface(app, markup),
+        _windows_around(web_blob, re.compile(r"localStorage"), before=160, after=220),
+        _windows_around(web_blob, _COLLAPSE_WORD, before=120, after=200),
+    ]
+    persist_surface = "\n".join(persist_bits)
+    if _LAST_PATH_API.search(persist_surface) or _CONFIG_TOML.search(persist_surface):
+        fail(
+            "#212: do not persist the sidebar pref via write_last_path / "
+            "read_last_path / config.toml (localStorage only)"
+        )
+    rust_clean = _without_comments(session + "\n" + rust)
+    for m in re.finditer(r"sidebar|collapsed", rust_clean, re.I):
+        window = rust_clean[max(0, m.start() - 360) : m.end() + 360]
+        if _LAST_PATH_API.search(window) or _CONFIG_TOML.search(window):
+            fail(
+                "#212: do not persist the sidebar pref via write_last_path / "
+                "read_last_path / config.toml (localStorage only)"
+            )
+
+    # 6) Auto-collapse on narrow windows (880 / 800).
+    auto_src = _auto_collapse_surface(app, logic)
+    if not _AUTO_WIDTH.search(app_clean) and not _AUTO_WIDTH.search(logic_clean):
+        fail(
+            "#212: auto-collapse the people sidebar on a narrow window "
+            "(innerWidth / matchMedia / resize)"
+        )
+    if not _NARROW_PX.search(auto_src):
+        fail(
+            "#212: auto-collapse threshold must mention 880 or 800 "
+            "(keep the timeline readable at ~800px)"
+        )
+
+    # 7) Toggle path does not remount the open person.
+    toggle_src = _toggle_collapse_surface(app, markup)
+    if _SELECT_PERSON_CALL.search(toggle_src):
+        fail(
+            "#212: collapse toggle must not call selectPerson / personShow "
+            "(do not remount the open person)"
+        )
+    for m in re.finditer(
+        r"""id\s*=\s*["']person-timeline["']|#person-timeline""",
+        markup,
+    ):
+        if _gated_on_collapse(markup, m.start()):
+            fail(
+                "#212: {#if collapsed} must not wrap the timeline "
+                "(#person-timeline stays mounted)"
+            )
+    for m in re.finditer(r"\{#key\s+([^}]*)\}", markup):
+        if _COLLAPSE_WORD.search(m.group(1)) and re.search(
+            r"person-timeline", markup[m.end() : m.end() + 8000]
+        ):
+            fail(
+                "#212: {#key collapsed} must not wrap the timeline "
+                "(toggling collapse must not remount the open person)"
+            )
+
+    # 8) Top nav + chrome search stay (do not hide Search/Review).
+    if not re.search(r"<nav\b", markup):
+        fail("#212: keep the top nav (People / Search / Review / Import / Doctor)")
+    if not re.search(r"\bdata-chrome-search\b", markup):
+        fail("#212: keep chrome search field data-chrome-search (do not hide Search chrome)")
+    for rx, label in (
+        (re.compile(r"<nav\b"), "top nav"),
+        (re.compile(r"\bdata-chrome-search\b"), "data-chrome-search"),
+    ):
+        hit = rx.search(markup)
+        if hit and _gated_on_collapse(markup, hit.start()):
+            fail(
+                f"#212: collapse must not hide the {label} "
+                "(Search / Review chrome stays; collapse is the people column only)"
+            )
+
+    # 9) Docs: collapse + shortcut + local persist + readable ~800px.
+    if not dtxt.strip():
+        fail(
+            "#212: docs/user/app.md required — people sidebar collapse, "
+            "⌘\\ / Ctrl+\\, local persist, readable ~800px"
+        )
+    if not _DOCS_COLLAPSE.search(dtxt):
+        fail(
+            "#212: docs/user/app.md must say the people sidebar collapses "
+            "(fixed width; control + shortcut)"
+        )
+    if not _DOCS_BACKSLASH.search(dtxt):
+        fail("#212: docs/user/app.md must document ⌘\\ / Ctrl+\\ (collapse the people sidebar)")
+    if not _DOCS_LOCAL_PREF.search(dtxt):
+        fail(
+            "#212: docs/user/app.md must say the collapse preference is local "
+            "(localStorage / local, not iCloud)"
+        )
+    if not _DOCS_NOT_ICLOUD.search(dtxt):
+        fail(
+            "#212: docs/user/app.md must say the collapse preference is not iCloud"
+        )
+    if not _DOCS_800.search(dtxt):
+        fail(
+            "#212: docs/user/app.md must say the timeline stays readable "
+            "around 800px"
+        )
+
+    # 10) Do not soften #q, chrome search, sidebar, overflow-x, virtualizer,
+    #     overlay titlebar, CSP.
+    if not re.search(r"""\bid\s*=\s*(?:["']q["']|\{\s*["']q["']\s*\})""", search):
+        fail('#212: keep id="q" as the canonical query field (#208)')
+    if not re.search(r"\bdata-chrome-search\b", app):
+        fail("#212: keep chrome search field data-chrome-search (#208)")
+    if not re.search(r"\bdata-people-sidebar\b", app):
+        fail("#212: keep data-people-sidebar (#159 / #212)")
+    if not _OVERFLOW_X_HIDDEN.search(shell) and not _OVERFLOW_X_HIDDEN.search(region_blob):
+        fail(
+            "#212: keep overflow-x-hidden on the people pane (#159) "
+            "(do not rewrite assert_people_sidebar_no_x_scroll)"
+        )
+    if not re.search(r"\bvisibleRange\b", app + "\n" + logic):
+        fail(
+            "#212: keep the person-timeline virtualizer visibleRange "
+            "(#120 / #224)"
+        )
+    if not re.search(r"titleBarStyle", conf) and not re.search(
+        r"\bdata-tauri-drag-region\b", app
+    ):
+        fail("#212: keep the overlay titlebar (#211)")
+    if CSP not in conf:
+        fail("#212: do not soften tauri CSP")
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -19495,6 +20078,7 @@ def main() -> None:
     assert_keyboard_map(crate)
     assert_chrome_search_field(crate)
     assert_custom_titlebar(crate)
+    assert_people_sidebar_collapse(crate)
     assert_a11y_listbox_focus_motion(crate)
     assert_human_time_people(crate)
     assert_drag_drop_import(crate)
