@@ -20,9 +20,9 @@
 
   async function go() {
     busy = true;
+    open = false;
     try {
       await onconfirm();
-      open = false;
     } finally {
       busy = false;
     }

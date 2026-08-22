@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type ReviewPanel, type ReviewRow, type ReviewShow } from "./api";
+  import { api, type LinkEvent, type ReviewPanel, type ReviewRow, type ReviewShow } from "./api";
   import { Button } from "$lib/components/ui/button/index.js";
+  import { Card } from "$lib/components/ui/card/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { Separator } from "$lib/components/ui/separator/index.js";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import EmptyState from "./EmptyState.svelte";
 
@@ -17,13 +19,30 @@
   } = $props();
 
   let rows = $state<ReviewRow[]>([]);
+  let events = $state<LinkEvent[]>([]);
   let detail = $state<ReviewShow | null>(null);
   let confirmOpen = $state(false);
   let confirmTitle = $state("");
   let confirmDesc = $state("");
   let confirmRun = $state<(() => Promise<void>) | null>(null);
   let loading = $state(true);
+  let undoing = $state(false);
   let selected = $state<number[]>([]);
+
+  const UNDOABLE = new Set(["merge_persons", "link", "unlink"]);
+
+  const lastUndoable = $derived.by(() => {
+    const undone = new Set(
+      events
+        .filter((e) => e.op === "split_person" && e.undo_of != null)
+        .map((e) => e.undo_of as number),
+    );
+    return (
+      events.find(
+        (e) => UNDOABLE.has(e.op) && e.actor === "user" && !undone.has(e.id),
+      ) ?? null
+    );
+  });
 
   function panelsOf(shown: ReviewShow): ReviewPanel[] {
     return shown.sides && shown.sides.length > 0 ? shown.sides : [shown.left, shown.right];
@@ -42,6 +61,7 @@
     loading = true;
     try {
       rows = await api.reviewList();
+      events = await api.linkEvents();
       if (detail) {
         const still = rows.find((r) => r.id === detail?.review.id);
         applyDetail(still ? await api.reviewShow(still.id) : null);
@@ -80,10 +100,10 @@
     const id = detail.review.id;
     const ids = [...selected];
     const n = ids.length;
-    ask(`Accept review ${id}?`, `Merge ${n} people into one. Messages stay put.`, async () => {
+    ask("Link these people?", `Merge ${n} people into one. Messages stay put.`, async () => {
       await api.reviewAccept(id, ids);
-      await onChanged();
       await reload();
+      void onChanged();
     });
   }
 
@@ -109,11 +129,35 @@
   function reject() {
     if (!detail) return;
     const id = detail.review.id;
-    ask(`Reject review ${id}?`, "These people will not be suggested again.", async () => {
+    ask("Stop suggesting this pair?", "These people will not be suggested again.", async () => {
       await api.reviewReject(id);
-      await onChanged();
       await reload();
+      void onChanged();
     });
+  }
+
+  function requestUndo() {
+    const ev = lastUndoable;
+    if (!ev || undoing) return;
+    const id = ev.id;
+    ask("Undo last link?", "Reverses the last identity graph change. Messages stay put.", async () => {
+      await runUndo(id);
+    });
+  }
+
+  async function runUndo(id: number) {
+    if (undoing) return;
+    undoing = true;
+    try {
+      await api.undo(id);
+      await reload();
+      // People list refresh holds the archive lock; do not block Review on it.
+      void onChanged();
+    } catch (e) {
+      onError(e);
+    } finally {
+      undoing = false;
+    }
   }
 
   onMount(() => {
@@ -173,7 +217,7 @@
               : ''}"
             onclick={() => openRow(r.id)}
           >
-            #{r.id} · {r.left_name} → {r.right_name || `person ${r.right_person_id ?? "?"}`}
+            {r.left_name} → {r.right_name || "—"}
             <span class="text-muted-foreground"> ({r.score.toFixed(2)})</span>
           </button>
         </li>
@@ -181,8 +225,23 @@
     </ul>
   {/if}
 
+  {#if lastUndoable}
+    <div class="mb-3">
+      <Button
+        variant="outline"
+        size="sm"
+        data-review-undo
+        disabled={undoing}
+        onclick={requestUndo}
+      >
+        {undoing ? "Undoing…" : "Undo last link"}
+      </Button>
+    </div>
+  {/if}
+
   {#if detail}
-    <div class="space-y-3 border-t border-border pt-3">
+    <Separator />
+    <Card data-review-card class="mt-3 space-y-3 p-3">
       <p class="text-sm">{detail.review.reason}</p>
       <ul class="space-y-1 text-xs text-muted-foreground">
         {#each detail.evidence as e}
@@ -225,11 +284,15 @@
           </label>
         {/each}
       </div>
+      <Separator />
+      <p class="text-xs text-muted-foreground">
+        Accept links these people and can be undone. Reject only stops suggesting this pair.
+      </p>
       <div class="flex gap-2">
         <Button onclick={accept} disabled={!canAccept()}>Accept</Button>
         <Button variant="outline" onclick={reject}>Reject</Button>
       </div>
-    </div>
+    </Card>
   {/if}
 </ScrollArea>
 
