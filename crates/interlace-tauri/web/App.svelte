@@ -116,6 +116,12 @@
     }),
   );
 
+  const peopleTabId = $derived(
+    selectedId != null && filtered.some((p) => p.id === selectedId)
+      ? selectedId
+      : (filtered[0]?.id ?? null),
+  );
+
   const SIDEBAR_PREF = "interlace.peopleSidebarCollapsed";
   let userCollapsed = $state(false);
   let narrow = $state(false);
@@ -1255,6 +1261,7 @@
         e.key === "ArrowDown"
           ? Math.min(ids.length - 1, Math.max(0, cur) + (cur < 0 ? 0 : 1))
           : Math.max(0, cur < 0 ? 0 : cur - 1);
+      if (ids[next] === selectedId) return;
       void selectPerson(ids[next]);
       void tick().then(() => {
         const box = document.querySelector("[role='listbox'][aria-label='People']");
@@ -1623,13 +1630,13 @@
           <Input id="person-filter" type="search" bind:value={filter} placeholder="name" class="min-w-0" />
         </div>
         <ul class="mt-2 min-w-0 space-y-0.5" role="listbox" aria-label="People" aria-busy={peopleLoading}>
-          {#each filtered as p, i}
+          {#each filtered as p}
             <li class="min-w-0" role="presentation">
               <button
                 type="button"
                 role="option"
                 aria-selected={selectedId === p.id}
-                tabindex={selectedId === p.id || (selectedId == null && i === 0) ? 0 : -1}
+                tabindex={p.id === peopleTabId ? 0 : -1}
                 title={p.display_name}
                 aria-label={`${p.display_name}${p.is_self ? " (self)" : ""}${p.last_activity_at ? ` ${humanTime(p.last_activity_at)}` : ""}`}
                 class="w-full min-w-0 max-w-full rounded-md text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {sidebarCollapsed
