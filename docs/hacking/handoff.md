@@ -186,7 +186,8 @@ Phase 2.1 milestone (#6): **closed**.
 | #214 / PR #254 | People listbox arrows change person; Tab is filter → selected person → timeline; j/k still messages |
 | #215 / PR #255 | Command palette (⌘K) — views + jump to a loaded person; local only; people list capped; field keeps A/C/V |
 | #216 / PR #256 | Focus rings and ARIA audit on chrome and dialogs |
-| #217 | Contrast tokens — light and dark both readable |
+| #217 / PR #257 | Contrast tokens — light and dark both readable |
+| #218 | Appearance follows OS; dark is the intended archival look; named overlay / lightbox tokens; no Theme menu |
 
 ## Open — product now (Phase 2.2)
 
@@ -199,8 +200,8 @@ load-bearing (a11y, titlebar, search).
 
 | # | Note |
 | --- | --- |
-| **#218** | Appearance (in-app Theme / local override). Next coding. |
-| **#219**–**#222** | Status tokens / import / review chrome / motion — see #197 |
+| **#219** | Status tokens (`--warning` / `--success`). Next coding. |
+| **#220**–**#222** | Import / review chrome / motion — see #197 |
 
 Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github.com/nonamexishere/interlace/milestone/7).
 
@@ -213,7 +214,7 @@ Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github
 
 ## Recommended next steps
 
-1. Next coding: **#218** (appearance). Do not start 1.1 / P3 / P4.
+1. Next coding: **#219** (status tokens). Do not start 1.1 / P3 / P4.
 2. Do **not** start 1.1 / P3 / P4 unprompted. Ask before another `app-v*` / `v*` / crates.io.
 
 ## Commands (copy-paste)
@@ -286,7 +287,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
 > Product track: Phase 2.2 UI/UX polish (#197). Read
-> `docs/design/UI-DESIGN.md`. Next coding is **#218** (appearance).
+> `docs/design/UI-DESIGN.md`. Next coding is **#219** (status tokens).
 > Orchestrator does not implement product code. Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag. After merges, update this handoff in the same session.

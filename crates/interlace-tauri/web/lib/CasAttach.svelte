@@ -386,7 +386,7 @@
   >
     <button
       type="button"
-      class="absolute top-3 right-3 z-[101] inline-flex items-center gap-1.5 rounded-md bg-black/50 px-3 py-1.5 text-sm text-white hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-ring"
+      class="lightbox-chrome absolute top-3 right-3 z-[101] inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-ring"
       data-lightbox-close
       aria-label="Close photo"
       onclick={(e) => {
@@ -400,7 +400,7 @@
     {#if imageItems().length > 1}
       <button
         type="button"
-        class="absolute left-3 z-[101] rounded-md bg-black/50 px-3 py-2 text-white hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-ring"
+        class="lightbox-chrome absolute left-3 z-[101] rounded-md px-3 py-2 focus-visible:ring-2 focus-visible:ring-ring"
         data-lightbox-prev
         aria-label="Previous image"
         onclick={(e) => {
@@ -412,7 +412,7 @@
       </button>
       <button
         type="button"
-        class="absolute right-3 z-[101] rounded-md bg-black/50 px-3 py-2 text-white hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-ring"
+        class="lightbox-chrome absolute right-3 z-[101] rounded-md px-3 py-2 focus-visible:ring-2 focus-visible:ring-ring"
         data-lightbox-next
         aria-label="Next image"
         onclick={(e) => {
