@@ -333,6 +333,10 @@
 #     resolving/undoing (not only !canAccept()); accept/reject/ask no-op
 #     on that flag; Accept/Reject callbacks try/catch onError (as runUndo).
 #     Optional: ConfirmDialog refuses open = true while busy.
+#     Follow-up (onerror + undo-while-resolving): ConfirmDialog go()
+#     catch + onerror/onError; App.svelte ConfirmDialog passes
+#     onerror/onError/showErr; Review Undo disabled mentions resolving
+#     and requestUndo returns early when resolving.
 #224: person timeline measure-and-cache variable row heights (constant 88)
 #     fallback). Lists ≤250 mount fully; longer lists still window. Spacers /
 #     visibleRange / ensureTlIndexVisible use prefix sums, not index * 88.
@@ -24191,6 +24195,8 @@ _REVIEW_UNDO_USE = re.compile(r"(?:\bapi\s*\.\s*)?\bundo\s*\(")
 _REVIEW_AWAIT_ONCONFIRM = re.compile(r"await\s+onconfirm\s*\(")
 _REVIEW_OPEN_FALSE = re.compile(r"\bopen\s*=\s*false\b")
 _REVIEW_AWAIT_CHANGED = re.compile(r"await\s+onChanged\s*\(")
+_REVIEW_ONERROR_PROP = re.compile(r"\b(?:onerror|onError)\b")
+_REVIEW_APP_CONFIRM_ERR = re.compile(r"\b(?:onerror|onError|showErr)\b")
 _REVIEW_INFLIGHT_TOKEN = re.compile(
     r"\b(?:resolving|undoing|busy|accepting|rejecting|"
     r"inFlight|inflight|isBusy|working|pending|acting)\b"
@@ -24496,6 +24502,57 @@ def _confirm_refuses_open_while_busy(src: str) -> bool:
     return False
 
 
+def _confirm_go_catches_onconfirm(go_body: str) -> bool:
+    """True if onconfirm is in try/catch, chained .catch, or onerror call."""
+    if re.search(r"\b(?:onerror|onError)\s*\(", go_body) and re.search(
+        r"\bonconfirm\s*\(", go_body
+    ):
+        return True
+    for m in re.finditer(r"\bonconfirm\s*\(", go_body):
+        close = _match_closer(go_body, m.end() - 1)
+        if close < 0:
+            continue
+        rest = go_body[close + 1 :].lstrip()
+        if rest.startswith(".catch"):
+            return True
+    for m in re.finditer(r"\btry\s*\{", go_body):
+        open_b = m.end() - 1
+        close_b = _match_closer(go_body, open_b)
+        if close_b < 0:
+            continue
+        if not re.search(r"\bonconfirm\s*\(", go_body[open_b + 1 : close_b]):
+            continue
+        rest = go_body[close_b + 1 :].lstrip()
+        if rest.startswith("catch"):
+            return True
+    return False
+
+
+def _review_component_tag(src: str, name: str) -> str:
+    """First <Name ...> opening tag, including {nested} attrs."""
+    m = re.search(rf"<{re.escape(name)}\b", src)
+    if not m:
+        return ""
+    found = _open_tag_before(src, min(len(src), m.end() + 1))
+    if found and found[0] == m.start():
+        return found[1]
+    return ""
+
+
+def _review_undo_control_tag(markup: str) -> str:
+    """Opening tag of the Review Undo control (`data-review-undo`)."""
+    m = re.search(r"\bdata-review-undo\b", markup)
+    if not m:
+        return ""
+    for tag in _ancestor_tags(markup, m.start(), limit=8):
+        if re.match(r"<(?:Button|button)\b", tag, re.I):
+            return tag
+        if _review_attr_expr(tag, "disabled"):
+            return tag
+    found = _open_tag_before(markup, m.start() + 1)
+    return found[1] if found else ""
+
+
 def assert_review_chrome(crate: Path) -> None:
     """#221: ReviewPane Card chrome — safe, reversible, still no raw ids.
 
@@ -24505,6 +24562,10 @@ def assert_review_chrome(crate: Path) -> None:
     Follow-up (in-flight Accept/Reject): disable Accept/Reject while
     resolving/undoing; accept/reject/ask return early on that flag;
     callbacks call onError.
+    Follow-up (onerror + undo-while-resolving): ConfirmDialog go()
+    catches onconfirm and has onerror/onError; App ConfirmDialog
+    passes onerror/onError/showErr; Undo disabled + requestUndo
+    honor resolving.
     """
     review_path = crate / "web" / "lib" / "ReviewPane.svelte"
     if not review_path.is_file():
@@ -24666,6 +24727,45 @@ def assert_review_chrome(crate: Path) -> None:
         fail(
             "#221: ConfirmDialog must refuse open = true while busy "
             "(or leave Cancel enabled so a resurrected overlay is dismissable)"
+        )
+
+    # 6d) Follow-up (onerror + undo-while-resolving): catch + banner;
+    #     Undo disabled / requestUndo honor resolving.
+    has_onerror = bool(_REVIEW_ONERROR_PROP.search(confirm_src))
+    if not has_onerror or not _confirm_go_catches_onconfirm(go_body):
+        fail(
+            "#221: ConfirmDialog go() must catch onconfirm "
+            "and have an onerror / onError prop"
+        )
+    app_confirm_path = crate / "web" / "App.svelte"
+    app_confirm_src = (
+        app_confirm_path.read_text() if app_confirm_path.is_file() else ""
+    )
+    app_confirm_tag = _review_component_tag(app_confirm_src, "ConfirmDialog")
+    if not app_confirm_tag:
+        fail("#221: App.svelte ConfirmDialog required")
+    if not _REVIEW_APP_CONFIRM_ERR.search(app_confirm_tag):
+        fail(
+            "#221: App.svelte ConfirmDialog must pass "
+            "onerror / onError / showErr"
+        )
+    undo_tag = _review_undo_control_tag(surface)
+    undo_disabled = _review_attr_expr(undo_tag, "disabled") if undo_tag else ""
+    if not _review_mentions_inflight(cleaned, undo_disabled, {"resolving"}):
+        fail(
+            "#221: Review Undo disabled must mention resolving "
+            "(not only undoing)"
+        )
+    undo_req = _review_fn_body(cleaned, "requestUndo")
+    if not undo_req:
+        fail("#221: ReviewPane requestUndo() required")
+    undo_conds = _review_if_return_conds(undo_req)
+    undo_cond_blob = "\n".join(
+        _expand_fn_calls(cleaned, c, depth=2) for c in undo_conds
+    )
+    if not _review_mentions_inflight(cleaned, undo_cond_blob, {"resolving"}):
+        fail(
+            "#221: requestUndo() must return early when resolving"
         )
 
     # 7) No name_score threshold UI; sample loop stays panel.samples.
