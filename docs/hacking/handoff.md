@@ -81,11 +81,11 @@ ad-hoc, not notarized). Ask before another `app-v*` / `v*` / crates.io publish.
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `a4ede77` **Merge pull request #253** (#213
-inspector) plus this branch’s #214 keyboard map. Tag **`app-v0.1.1`**
-is still the unsigned app. Epic **#108**, milestone 6, and the Phase 1 CLI
-milestone are **closed**. Product track is **#197** / milestone 7. Re-check
-with `git log -1` / `gh pr list`.
+HEAD when this was rewritten: `d96fa39` **Merge pull request #258** (#218
+OS appearance) plus this branch `feat/ui-status-tokens` (#219). Tag
+**`app-v0.1.1`** is still the unsigned app. Epic **#108**, milestone 6, and
+the Phase 1 CLI milestone are **closed**. Product track is **#197** /
+milestone 7. Re-check with `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
 
@@ -187,7 +187,8 @@ Phase 2.1 milestone (#6): **closed**.
 | #215 / PR #255 | Command palette (⌘K) — views + jump to a loaded person; local only; people list capped; field keeps A/C/V |
 | #216 / PR #256 | Focus rings and ARIA audit on chrome and dialogs |
 | #217 / PR #257 | Contrast tokens — light and dark both readable |
-| #218 | Appearance follows OS; dark is the intended archival look; named overlay / lightbox tokens; no Theme menu |
+| #218 / PR #258 | Appearance follows OS; dark is the intended archival look; named overlay / lightbox tokens; no Theme menu |
+| #219 | Status tokens — `--color-warning` / `--color-success` (HSL); cloud + doctor use warning, not destructive; import done is quiet |
 
 ## Open — product now (Phase 2.2)
 
@@ -200,8 +201,8 @@ load-bearing (a11y, titlebar, search).
 
 | # | Note |
 | --- | --- |
-| **#219** | Status tokens (`--warning` / `--success`). Next coding. |
-| **#220**–**#222** | Import / review chrome / motion — see #197 |
+| **#220** | Import cancel / progress chrome. Next coding. |
+| **#221**–**#222** | Review chrome / motion — see #197 |
 
 Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github.com/nonamexishere/interlace/milestone/7).
 
@@ -214,7 +215,7 @@ Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github
 
 ## Recommended next steps
 
-1. Next coding: **#219** (status tokens). Do not start 1.1 / P3 / P4.
+1. Next coding: **#220** (import cancel / progress). Do not start 1.1 / P3 / P4.
 2. Do **not** start 1.1 / P3 / P4 unprompted. Ask before another `app-v*` / `v*` / crates.io.
 
 ## Commands (copy-paste)
@@ -287,7 +288,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
 > Product track: Phase 2.2 UI/UX polish (#197). Read
-> `docs/design/UI-DESIGN.md`. Next coding is **#219** (status tokens).
+> `docs/design/UI-DESIGN.md`. Next coding is **#220** (import cancel / progress).
 > Orchestrator does not implement product code. Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag. After merges, update this handoff in the same session.
