@@ -123,29 +123,36 @@
       <Button variant="outline" onclick={() => pick(true)}>Pick folder…</Button>
       <Button onclick={start} disabled={progress.status === "running"}>Start import</Button>
     </div>
-    <p class="text-sm">
-      Status: <strong>{progress.status}</strong>
-      {#if progress.kind}
-        · {progress.kind}
+    <div
+      class={progress.status === "done"
+        ? "space-y-3 rounded-md border border-success bg-success/15 p-3 text-sm text-success"
+        : undefined}
+      data-import-done={progress.status === "done" || undefined}
+    >
+      <p class="text-sm">
+        Status: <strong>{progress.status}</strong>
+        {#if progress.kind}
+          · {progress.kind}
+        {/if}
+        {#if progress.detail}
+          · {progress.detail}
+        {/if}
+      </p>
+      {#if progress.stats}
+        <dl class="grid grid-cols-[10rem_1fr] gap-1 text-sm">
+          <dt class="text-muted-foreground">messages</dt>
+          <dd>{progress.stats.inserted_messages} inserted, {progress.stats.skipped_dupes} dupes</dd>
+          <dt class="text-muted-foreground">identities</dt>
+          <dd>{progress.stats.inserted_identities}</dd>
+          <dt class="text-muted-foreground">attachments</dt>
+          <dd>{progress.stats.attachments_stored}</dd>
+          <dt class="text-muted-foreground">warnings / rejected</dt>
+          <dd>{progress.stats.warnings} / {progress.stats.rejected}</dd>
+          <dt class="text-muted-foreground">review</dt>
+          <dd>{progress.stats.review_enqueued} enqueued</dd>
+        </dl>
       {/if}
-      {#if progress.detail}
-        · {progress.detail}
-      {/if}
-    </p>
-    {#if progress.stats}
-      <dl class="grid grid-cols-[10rem_1fr] gap-1 text-sm">
-        <dt class="text-muted-foreground">messages</dt>
-        <dd>{progress.stats.inserted_messages} inserted, {progress.stats.skipped_dupes} dupes</dd>
-        <dt class="text-muted-foreground">identities</dt>
-        <dd>{progress.stats.inserted_identities}</dd>
-        <dt class="text-muted-foreground">attachments</dt>
-        <dd>{progress.stats.attachments_stored}</dd>
-        <dt class="text-muted-foreground">warnings / rejected</dt>
-        <dd>{progress.stats.warnings} / {progress.stats.rejected}</dd>
-        <dt class="text-muted-foreground">review</dt>
-        <dd>{progress.stats.review_enqueued} enqueued</dd>
-      </dl>
-    {/if}
+    </div>
     {#if progress.error}
       <p class="text-sm text-destructive">{progress.error}</p>
     {/if}

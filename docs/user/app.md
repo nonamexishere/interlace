@@ -7,6 +7,8 @@ Chrome colors come from design tokens / CSS variables, not raw Tailwind hues.
 Chrome follows the macOS appearance (system light/dark) without a reload;
 dark is the intended archival look and light is a first-class alternate;
 lightbox and dialogs match the same tokens; there is no Theme menu.
+Cloud and doctor warnings use the warning token. Import done is quiet
+(muted or success).
 People preview, platform chips, banners, and search marks stay readable on
 both, and marks stay yellow.
 Timeline and search message bodies are 14–15px (line-height 1.5). People-row
