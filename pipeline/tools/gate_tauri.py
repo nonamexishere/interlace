@@ -300,13 +300,19 @@
 #217: contrast tokens — light + dark both readable. Light
 #     --color-muted-foreground L ≤ 40; dark (prefers-color-scheme) L ≥ 62.
 #     Named --search-mark / --color-search-mark (hue 40–60) on both;
-#     color-scheme: light dark; no Theme menu / --warning|--success.
+#     color-scheme: light dark; no Theme menu.
 #     Docs: system appearance without a reload. Keep #198 / #216.
 #218: appearance follows OS — no Theme / Appearance menu / data-theme;
 #     no fetch / HTTP theme; named --overlay / --scrim / --lightbox-scrim
 #     (dialog + .photo-lightbox use var(...); no bg-black/50); toast
 #     bg-background + text-foreground; splash + color-scheme stay.
 #     Docs: OS, dark archival, lightbox/dialogs match. Keep #217.
+#219: status colors via tokens — --warning / --warning-foreground (and
+#     --success if import-done is not muted) in light + dark; HSL;
+#     warning hue 30–55; success hue 120–160. Cloud + doctor issues
+#     use warning (not muted-only / text-destructive). Import done is
+#     quiet (muted or success; no celebration). Docs: warning token +
+#     quiet import done. Keep #217 / #218.
 #224: person timeline measure-and-cache variable row heights (constant 88)
 #     fallback). Lists ≤250 mount fully; longer lists still window. Spacers /
 #     visibleRange / ensureTlIndexVisible use prefix sums, not index * 88.
@@ -22579,7 +22585,10 @@ _CONTRAST_AT_THEME = re.compile(r"@theme\b[^{]*\{")
 _CONTRAST_ROOT = re.compile(r"(?:^|[,}\s]):root(?:\s*,\s*(?:html|body|#app|:root))*\s*\{")
 _CONTRAST_TOKEN_CLASS = re.compile(
     r"(?<![\w-])(?:text-muted-foreground|bg-muted|bg-background|"
-    r"text-foreground|border-border)(?![\w-])"
+    r"text-foreground|border-border|"
+    r"bg-warning|text-warning|text-warning-foreground|border-warning|"
+    r"bg-success|text-success|text-success-foreground|border-success|"
+    r"status-warning|status-success)(?![\w-])"
 )
 _CONTRAST_THEME_PICKER = re.compile(
     r"("
@@ -22592,7 +22601,6 @@ _CONTRAST_THEME_PICKER = re.compile(
     r")",
     re.I,
 )
-_CONTRAST_STATUS_PAIR = re.compile(r"--(?:color-)?(?:warning|success)\s*:")
 _CONTRAST_DOCS_SYSTEM = re.compile(
     r"("
     r"system (?:light(?:/| and | / )dark|appearance)"
@@ -22945,13 +22953,6 @@ def assert_contrast_tokens(crate: Path) -> None:
         fail(
             "#217: light @theme / :root tokens must still exist "
             "(do not force dark-only)"
-        )
-
-    # 7) No --warning / --success pair (#219).
-    if _CONTRAST_STATUS_PAIR.search(css) or _CONTRAST_STATUS_PAIR.search(svelte_blob):
-        fail(
-            "#217: not in scope — do not add --warning / --success "
-            "(#219 is later)"
         )
 
     # 8) Docs: system light/dark without a reload; readable on both; marks work.
@@ -23307,13 +23308,6 @@ def assert_appearance_os(crate: Path) -> None:
     if not _APPEARANCE_DOCS_NO_THEME.search(dtxt):
         fail("#218: docs/user/app.md must say there is no Theme menu")
 
-    # 9) No --warning / --success pair (#219).
-    if _CONTRAST_STATUS_PAIR.search(css) or _CONTRAST_STATUS_PAIR.search(svelte_blob):
-        fail(
-            "#218: not in scope — do not add --warning / --success "
-            "(#219 is later)"
-        )
-
     # 10) Do not soften #q, sidebar, overlay titlebar, inspector, CSP, #217.
     app_path = crate / "web" / "App.svelte"
     app = app_path.read_text() if app_path.is_file() else ""
@@ -23356,6 +23350,516 @@ def assert_appearance_os(crate: Path) -> None:
         _CONTRAST_SEARCH_MARK_VAR.search(body) for body in mark_rules
     ):
         fail("#218: keep #217 .search-mark on var(--search-mark)")
+
+
+# #219 — status colors via tokens (warning / optional success; no raw amber).
+_STATUS_WARNING_NAMES = ("--warning", "--color-warning")
+_STATUS_WARNING_FG_NAMES = ("--warning-foreground", "--color-warning-foreground")
+_STATUS_SUCCESS_NAMES = ("--success", "--color-success")
+_STATUS_SUCCESS_FG_NAMES = ("--success-foreground", "--color-success-foreground")
+_STATUS_WARNING_USE = re.compile(
+    r"("
+    r"(?<![\w-])(?:bg-warning|text-warning|text-warning-foreground|"
+    r"border-warning|status-warning)(?![\w-])"
+    r"|var\(\s*--(?:color-)?warning(?:-foreground)?\s*\)"
+    r")"
+)
+_STATUS_SUCCESS_USE = re.compile(
+    r"("
+    r"(?<![\w-])(?:bg-success|text-success|text-success-foreground|"
+    r"border-success|status-success)(?![\w-])"
+    r"|var\(\s*--(?:color-)?success(?:-foreground)?\s*\)"
+    r")"
+)
+_STATUS_MUTED_USE = re.compile(
+    r"(?<![\w-])(?:text-muted-foreground|bg-muted|bg-background|"
+    r"text-foreground|border-border)(?![\w-])"
+)
+_STATUS_RAW_HUE = re.compile(r"(?<![\w-])(?:amber|yellow|emerald|green)-\d+")
+_STATUS_GRADIENT = re.compile(r"(?<![\w-])bg-gradient")
+_STATUS_CONFETTI = re.compile(r"\bconfetti\b", re.I)
+_STATUS_AUDIO_CTOR = re.compile(r"\bAudio\s*\(")
+_STATUS_CELEBRATION = re.compile(
+    r"("
+    r"\bcelebrat(?:e|ion|ing|ory)\b"
+    r"|\bcongratulations\b"
+    r"|\bhooray\b"
+    r"|\bwoo+hoo\b"
+    r"|🎉"
+    r")",
+    re.I,
+)
+_STATUS_CANCEL_IMPORT = re.compile(
+    r"("
+    r"Cancel import"
+    r"|importCancel"
+    r"|cancelImport"
+    r"|data-import-cancel"
+    r")",
+    re.I,
+)
+_STATUS_SVELTE_TRANSITION = re.compile(r"\b(?:transition|in|out)\s*:\s*([A-Za-z_]\w*)")
+_STATUS_DOCS_WARNING = re.compile(
+    r"("
+    r"warning token"
+    r"|--(?:color-)?warning"
+    r"|(?:cloud|doctor).{0,120}warning token"
+    r"|warnings?.{0,80}warning token"
+    r")",
+    re.I | re.S,
+)
+_STATUS_DOCS_QUIET_DONE = re.compile(
+    r"("
+    r"import done.{0,100}(?:quiet|muted|success)"
+    r"|(?:quiet|muted|success).{0,80}import done"
+    r"|import (?:done|success).{0,80}(?:quiet|muted|success token)"
+    r"|quiet import done"
+    r")",
+    re.I | re.S,
+)
+_STATUS_TOAST_FADE_180 = re.compile(
+    r"transition\s*:\s*fade\s*=\s*\{\{?\s*duration\s*:\s*180\s*\}"
+)
+
+
+def _status_selector_bodies(css: str, hook: str) -> list[str]:
+    """Rule bodies whose selector mentions a data-* hook or a .class."""
+    if hook.startswith("data-"):
+        sel = rf"\[{re.escape(hook)}\]"
+    else:
+        sel = rf"\.{re.escape(hook)}\b"
+    out: list[str] = []
+    for m in re.finditer(rf"{sel}[^{{]*\{{", css):
+        body = _css_brace_body(css, css.find("{", m.start()))
+        if body:
+            out.append(body)
+    return out
+
+
+def _status_hook_blob(src: str, hook: str) -> str:
+    """Opening-tag ancestors plus a short window around a data-* / text hook."""
+    at = src.find(hook)
+    if at < 0:
+        return ""
+    tags = _ancestor_tags(src, at, limit=8)
+    window = src[max(0, at - 160) : at + 280]
+    return "\n".join(tags) + "\n" + window
+
+
+def _status_surface_uses(
+    blob: str,
+    css: str,
+    use_rx: re.Pattern[str],
+    names: tuple[str, ...],
+    hooks: tuple[str, ...] = (),
+) -> bool:
+    if use_rx.search(blob):
+        return True
+    for hook in hooks:
+        for body in _status_selector_bodies(css, hook):
+            if use_rx.search(body) or _css_var(body, names):
+                return True
+    for cls in _appearance_class_names(blob):
+        if use_rx.search(cls):
+            return True
+        for body in _status_selector_bodies(css, cls):
+            if use_rx.search(body) or _css_var(body, names):
+                return True
+    return False
+
+
+def _status_doctor_box(src: str) -> str:
+    """Non-partial doctor issues card (App 'Doctor found' / DoctorPane list)."""
+    for needle in ("Doctor found issues", "Doctor found", "{#each issues"):
+        at = src.find(needle)
+        if at < 0:
+            continue
+        for tag in _ancestor_tags(src, at, limit=8):
+            if "data-partial" in tag:
+                continue
+            if (
+                _CONTRAST_TOKEN_CLASS.search(tag)
+                or _STATUS_WARNING_USE.search(tag)
+                or re.search(r"\b(?:rounded-md|border|bg-)\b", tag)
+            ):
+                return tag
+    return ""
+
+
+def _status_require_pair(
+    light_blob: str,
+    dark_blob: str,
+    names: tuple[str, ...],
+    fg_names: tuple[str, ...],
+    *,
+    label: str,
+    hue_lo: float,
+    hue_hi: float,
+) -> None:
+    pretty = " / ".join(names)
+    pretty_fg = " / ".join(fg_names)
+    light = _css_var(light_blob, names)
+    if not light:
+        fail(
+            f"#219: {pretty} required in light (@theme / non-dark :root)"
+        )
+    dark = _css_var(dark_blob, names)
+    if not dark:
+        fail(
+            f"#219: {pretty} required inside "
+            "@media (prefers-color-scheme: dark)"
+        )
+    light_fg = _css_var(light_blob, fg_names)
+    if not light_fg:
+        fail(
+            f"#219: {pretty_fg} required in light (@theme / non-dark :root)"
+        )
+    dark_fg = _css_var(dark_blob, fg_names)
+    if not dark_fg:
+        fail(
+            f"#219: {pretty_fg} required inside "
+            "@media (prefers-color-scheme: dark)"
+        )
+    for side, val in (
+        ("light", light),
+        ("dark", dark),
+        ("light foreground", light_fg),
+        ("dark foreground", dark_fg),
+    ):
+        if not _hsl_tuple(val):
+            fail(f"#219: {label} tokens must be HSL ({side})")
+    light_hsl = _hsl_tuple(light)
+    dark_hsl = _hsl_tuple(dark)
+    if light_hsl is None or dark_hsl is None:
+        fail(f"#219: {label} tokens must be HSL (hue {hue_lo:g}–{hue_hi:g})")
+    if not (hue_lo <= light_hsl[0] <= hue_hi):
+        fail(
+            f"#219: light {pretty} hue must be {hue_lo:g}–{hue_hi:g}; "
+            f"found H={light_hsl[0]:g}"
+        )
+    if not (hue_lo <= dark_hsl[0] <= hue_hi):
+        fail(
+            f"#219: dark {pretty} hue must be {hue_lo:g}–{hue_hi:g}; "
+            f"found H={dark_hsl[0]:g}"
+        )
+
+
+def assert_status_tokens(crate: Path) -> None:
+    """#219: status colors via tokens (warning / optional success; no raw amber)."""
+    svelte_files = _product_svelte(crate)
+    if not svelte_files:
+        fail("#219: crates/interlace-tauri/web/**/*.svelte required (status tokens)")
+
+    css_path = crate / "web" / "app.css"
+    if not css_path.is_file():
+        fail("#219: web/app.css required (warning / success status tokens)")
+    css = css_path.read_text()
+    light_blob = _contrast_light_blob(css)
+    dark_blob = _contrast_dark_blob(css)
+    svelte_blob = "\n".join(p.read_text() for p in svelte_files)
+
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#219: App.svelte required (cloud banner + Doctor found box)")
+    app = app_path.read_text()
+    doctor_path = crate / "web" / "lib" / "DoctorPane.svelte"
+    if not doctor_path.is_file():
+        fail("#219: DoctorPane.svelte required (issues card uses warning token)")
+    doctor_src = doctor_path.read_text()
+    import_path = crate / "web" / "lib" / "ImportPane.svelte"
+    import_src = import_path.read_text() if import_path.is_file() else ""
+
+    # 1) --warning / --color-warning + foreground pair in light and dark; HSL;
+    #    warning hue 30–55 both sides.
+    _status_require_pair(
+        light_blob,
+        dark_blob,
+        _STATUS_WARNING_NAMES,
+        _STATUS_WARNING_FG_NAMES,
+        label="warning",
+        hue_lo=30,
+        hue_hi=55,
+    )
+
+    # 2) If import-done uses success (not muted): --success pair both sides;
+    #    HSL; hue 120–160. Missing success is OK when check 5 stays muted.
+    done_src = ""
+    done_tag = ""
+    for src in (import_src, app, svelte_blob):
+        tag = _contrast_surface_tag(src, "data-import-done")
+        if tag:
+            done_src = src
+            done_tag = tag
+            break
+    done_blob = (
+        _status_hook_blob(done_src, "data-import-done") if done_src else done_tag
+    )
+    done_uses_success = _status_surface_uses(
+        done_blob,
+        css,
+        _STATUS_SUCCESS_USE,
+        _STATUS_SUCCESS_NAMES,
+        ("data-import-done", "status-success"),
+    )
+    done_uses_muted = bool(_STATUS_MUTED_USE.search(done_blob))
+    if done_uses_success:
+        _status_require_pair(
+            light_blob,
+            dark_blob,
+            _STATUS_SUCCESS_NAMES,
+            _STATUS_SUCCESS_FG_NAMES,
+            label="success",
+            hue_lo=120,
+            hue_hi=160,
+        )
+
+    # 3) data-cloud-warning uses a warning token (not muted-only, not amber-*).
+    cloud_tag = _contrast_surface_tag(app, "data-cloud-warning")
+    if not cloud_tag:
+        fail(
+            "#219: data-cloud-warning required (warning token, not muted-only)"
+        )
+    cloud_blob = _status_hook_blob(app, "data-cloud-warning")
+    if _STATUS_RAW_HUE.search(_hue_surface(cloud_blob)):
+        fail(
+            "#219: data-cloud-warning must not use amber-* / yellow-* / "
+            "emerald-* / green-* (warning token only)"
+        )
+    if not _status_surface_uses(
+        cloud_blob,
+        css,
+        _STATUS_WARNING_USE,
+        _STATUS_WARNING_NAMES,
+        ("data-cloud-warning", "status-warning"),
+    ):
+        fail(
+            "#219: data-cloud-warning must use a warning token class / "
+            "var(--warning) / var(--color-warning) (not muted-only, not amber-*)"
+        )
+
+    # 4) App.svelte “Doctor found” box and DoctorPane issues card use warning
+    #    (not text-destructive as the status color). Scan/partial may stay.
+    app_doctor = _status_doctor_box(app)
+    if not app_doctor:
+        fail(
+            "#219: App.svelte “Doctor found” box required "
+            "(warning token, not text-destructive)"
+        )
+    app_doctor_blob = app_doctor + "\n" + _status_hook_blob(app, "Doctor found")
+    if re.search(r"(?<![\w-])text-destructive(?![\w-])", app_doctor):
+        fail(
+            "#219: App.svelte “Doctor found” box must use a warning token "
+            "(not text-destructive as the status color)"
+        )
+    if not _status_surface_uses(
+        app_doctor_blob,
+        css,
+        _STATUS_WARNING_USE,
+        _STATUS_WARNING_NAMES,
+        ("status-warning",),
+    ):
+        fail(
+            "#219: App.svelte “Doctor found” box must use a warning token "
+            "(not text-destructive as the status color)"
+        )
+
+    pane_doctor = _status_doctor_box(doctor_src)
+    if not pane_doctor:
+        fail(
+            "#219: DoctorPane.svelte issues card required "
+            "(warning token, not text-destructive)"
+        )
+    pane_blob = pane_doctor + "\n" + _status_hook_blob(doctor_src, "Doctor found")
+    if re.search(r"(?<![\w-])text-destructive(?![\w-])", pane_doctor):
+        fail(
+            "#219: DoctorPane.svelte issues card must use a warning token "
+            "(not text-destructive as the status color)"
+        )
+    if not _status_surface_uses(
+        pane_blob,
+        css,
+        _STATUS_WARNING_USE,
+        _STATUS_WARNING_NAMES,
+        ("status-warning",),
+    ):
+        fail(
+            "#219: DoctorPane.svelte issues card must use a warning token "
+            "(not text-destructive as the status color)"
+        )
+
+    # 5) data-import-done exists; muted token classes or success tokens;
+    #    no bg-gradient / confetti / celebration.
+    if "data-import-done" not in svelte_blob:
+        fail(
+            "#219: data-import-done required (muted token classes or success "
+            "tokens; no bg-gradient / confetti / celebration)"
+        )
+    if not done_tag:
+        fail(
+            "#219: data-import-done required (muted token classes or success "
+            "tokens; no bg-gradient / confetti / celebration)"
+        )
+    if not (done_uses_muted or done_uses_success):
+        fail(
+            "#219: data-import-done must use muted token classes or success "
+            "tokens (no bg-gradient / confetti / celebration)"
+        )
+    if _STATUS_GRADIENT.search(done_blob) or _STATUS_CONFETTI.search(done_blob):
+        fail(
+            "#219: data-import-done must not use bg-gradient / confetti / "
+            "celebration"
+        )
+    if _STATUS_CELEBRATION.search(_hue_surface(done_blob)):
+        fail(
+            "#219: data-import-done must not use bg-gradient / confetti / "
+            "celebration"
+        )
+
+    # 6) No amber-* / yellow-* / emerald-* / green-* on those three surfaces.
+    surface_hits: list[str] = []
+    for label, blob in (
+        ("data-cloud-warning", cloud_blob),
+        ("App.svelte Doctor found", app_doctor_blob),
+        ("DoctorPane issues card", pane_blob),
+        ("data-import-done", done_blob),
+    ):
+        found = sorted(set(_STATUS_RAW_HUE.findall(_hue_surface(blob))))
+        if found:
+            surface_hits.append(f"{label}: {', '.join(found)}")
+    if surface_hits:
+        fail(
+            "#219: no amber-* / yellow-* / emerald-* / green-* on cloud / "
+            "doctor / import-done surfaces. Found:\n  "
+            + "\n  ".join(surface_hits)
+        )
+
+    # 7) No confetti / Audio( / celebration copy.
+    chrome_hits: list[str] = []
+    for p in svelte_files:
+        surface = _hue_surface(p.read_text())
+        found: list[str] = []
+        if _STATUS_CONFETTI.search(surface):
+            found.append("confetti")
+        if _STATUS_AUDIO_CTOR.search(surface):
+            found.append("Audio(")
+        celeb = sorted({m.group(0) for m in _STATUS_CELEBRATION.finditer(surface)})
+        if celeb:
+            found.append("celebration (" + ", ".join(celeb) + ")")
+        if found:
+            chrome_hits.append(f"{p.relative_to(crate)}: {', '.join(found)}")
+    if chrome_hits:
+        fail(
+            "#219: no confetti / Audio( / celebration copy. Found:\n  "
+            + "\n  ".join(chrome_hits)
+        )
+
+    # 8) docs/user/app.md: warning token + quiet import done.
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+    if not dtxt.strip():
+        fail(
+            "#219: docs/user/app.md required — warning token + quiet import done"
+        )
+    if not _STATUS_DOCS_WARNING.search(dtxt):
+        fail(
+            "#219: docs/user/app.md must say cloud / doctor warnings use the "
+            "warning token"
+        )
+    if not _STATUS_DOCS_QUIET_DONE.search(dtxt):
+        fail(
+            "#219: docs/user/app.md must say import done is quiet "
+            "(muted or success)"
+        )
+
+    # 9) No Cancel-import UI (#220), no review-queue chrome rewrite (#221),
+    #    no new Svelte transition durations (#222).
+    if (
+        _STATUS_CANCEL_IMPORT.search(import_src)
+        or _STATUS_CANCEL_IMPORT.search(svelte_blob)
+        or re.search(r">\s*Cancel\s*<", import_src)
+    ):
+        fail("#219: not in scope — no Cancel-import UI (#220)")
+    review_path = crate / "web" / "lib" / "ReviewPane.svelte"
+    review = review_path.read_text() if review_path.is_file() else ""
+    if (
+        not review
+        or "Accept" not in review
+        or "Reject" not in review
+        or "Loading review queue" not in review
+        or (
+            "identifierLabel" not in review
+            and "value_normalized" not in review
+        )
+        or "reviewList" not in review
+        or "reviewAccept" not in review
+        or "reviewReject" not in review
+    ):
+        fail("#219: not in scope — no review-queue chrome rewrite (#221)")
+    trans_hits: list[str] = []
+    for p in svelte_files:
+        text = p.read_text()
+        rel = str(p.relative_to(crate))
+        is_toast = rel.endswith("toast/toast.svelte")
+        for m in _STATUS_SVELTE_TRANSITION.finditer(text):
+            if is_toast and m.group(1) == "fade" and _STATUS_TOAST_FADE_180.search(
+                text
+            ):
+                continue
+            trans_hits.append(f"{rel}: {m.group(0)}")
+        if "svelte/transition" in text and not is_toast:
+            trans_hits.append(f"{rel}: svelte/transition")
+    if trans_hits:
+        fail(
+            "#219: not in scope — no new Svelte transition durations (#222). "
+            "Found: " + ", ".join(trans_hits)
+        )
+
+    # 10) Do not soften #q, sidebar, overlay titlebar, inspector, CSP,
+    #     #217 muted / search-mark, #218 overlay / no Theme.
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    search = search_path.read_text() if search_path.is_file() else ""
+    conf = (crate / "tauri.conf.json").read_text()
+    if not re.search(r"""\bid\s*=\s*(?:["']q["']|\{\s*["']q["']\s*\})""", search):
+        fail('#219: keep id="q" as the canonical query field (#208)')
+    if not re.search(r"\bdata-people-sidebar\b", app):
+        fail("#219: keep data-people-sidebar (#159 / #212)")
+    if not re.search(r"titleBarStyle", conf) and not re.search(
+        r"\bdata-tauri-drag-region\b", app
+    ):
+        fail("#219: keep the overlay titlebar (#211)")
+    if not re.search(r"\bdata-person-inspector\b", app):
+        fail("#219: keep data-person-inspector (#213)")
+    if CSP not in conf:
+        fail("#219: do not soften tauri CSP")
+    light_muted = _css_var(light_blob, ("--color-muted-foreground",))
+    light_hsl = _hsl_tuple(light_muted) if light_muted else None
+    if not light_hsl or light_hsl[2] > 40:
+        fail(
+            "#219: keep #217 light --color-muted-foreground HSL L ≤ 40 "
+            "(@theme / non-dark :root)"
+        )
+    dark_muted = _css_var(dark_blob, ("--color-muted-foreground",))
+    dark_hsl = _hsl_tuple(dark_muted) if dark_muted else None
+    if not dark_hsl or dark_hsl[2] < 62:
+        fail(
+            "#219: keep #217 dark --color-muted-foreground HSL L ≥ 62 "
+            "(inside prefers-color-scheme: dark)"
+        )
+    if not _css_var(light_blob, _CONTRAST_SEARCH_MARK_NAMES) or not _css_var(
+        dark_blob, _CONTRAST_SEARCH_MARK_NAMES
+    ):
+        fail("#219: keep #217 --search-mark / --color-search-mark on both sides")
+    mark_rules = _search_mark_rule_bodies(css)
+    if not mark_rules or not any(
+        _CONTRAST_SEARCH_MARK_VAR.search(body) for body in mark_rules
+    ):
+        fail("#219: keep #217 .search-mark on var(--search-mark)")
+    if not _css_var(css, _APPEARANCE_SCRIM_NAMES):
+        fail("#219: keep #218 --overlay / --scrim / --lightbox-scrim")
+    if _APPEARANCE_THEME_UI.search(svelte_blob) or _APPEARANCE_MENU_LABEL.search(
+        svelte_blob
+    ):
+        fail("#219: keep #218 — no Theme / Appearance menu / data-theme")
 
 
 def main() -> None:
@@ -23487,6 +23991,7 @@ def main() -> None:
     assert_focus_aria_audit(crate)
     assert_contrast_tokens(crate)
     assert_appearance_os(crate)
+    assert_status_tokens(crate)
     assert_a11y_listbox_focus_motion(crate)
     assert_human_time_people(crate)
     assert_drag_drop_import(crate)

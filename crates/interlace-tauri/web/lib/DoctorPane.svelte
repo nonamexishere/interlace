@@ -121,7 +121,7 @@
     />
   {:else}
     <div
-      class="rounded-md border border-destructive/40 bg-muted p-3 text-sm text-destructive"
+      class="rounded-md border border-warning bg-warning/15 p-3 text-sm text-warning"
     >
       <p class="font-medium">Doctor found issues</p>
       <ul class="mt-1 list-disc pl-4">

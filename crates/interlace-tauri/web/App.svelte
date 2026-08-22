@@ -1497,7 +1497,7 @@
 
   {#if st && cloudWarning}
     <Card
-      class="rounded-none border-x-0 border-t-0 bg-muted px-4 py-2 text-sm text-muted-foreground shadow-none"
+      class="rounded-none border-x-0 border-t-0 border-warning bg-warning/15 px-4 py-2 text-sm text-warning shadow-none"
       data-cloud-warning
     >
       <p class="font-medium">This archive looks like it sits on iCloud, Dropbox, or Google Drive.</p>
@@ -1642,7 +1642,7 @@
           </ul>
         {/if}
         {#if doctor.length}
-          <div class="mt-2 min-w-0 rounded-md border border-destructive/40 bg-muted p-2 text-sm text-destructive">
+          <div class="mt-2 min-w-0 rounded-md border border-warning bg-warning/15 p-2 text-sm text-warning">
             <p class="font-medium">Doctor found {doctor.length} issue{doctor.length === 1 ? "" : "s"}</p>
             <ul class="mt-1 min-w-0 list-disc pl-4">
               {#each doctor as d}
