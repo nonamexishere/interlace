@@ -251,6 +251,12 @@
 #     rail / icons (no raw person ids), ⌘\\ / Ctrl+\\ in onKey (AltGr-safe
 #     mod, works from fields like ⌘F), localStorage persist (not
 #     write_last_path / config.toml), auto-collapse at 880/800.
+#     Follow-up: rail hover name (title={display_name} / owned Tooltip),
+#     #person-filter stays mounted (not inside a collapse {#if}), forceOpen
+#     (or eq) so Expand opens under 880 (not only narrow || userCollapsed;
+#     crossing into narrow still auto-collapses), e.code Backslash /
+#     IntlBackslash (INPUT guard lets the code path through). Docs: Expand
+#     on a narrow window; / still filters when the rail is showing.
 #     Keep #159 overflow-x, #208 chrome search, #211 overlay. Not: liquid
 #     multi-column, hiding Search/Review chrome.
 #224: person timeline measure-and-cache variable row heights (constant 88)
@@ -19480,9 +19486,67 @@ _DOCS_800 = re.compile(
     r"(?:~|about |around |near )?\s*800\s*(?:px|pixels)?",
     re.I,
 )
+_DOCS_EXPAND_NARROW = re.compile(
+    r"("
+    r"\bexpand(?:s|ed|ing)?\b.{0,120}(?:narrow|under\s*880|< ?880)"
+    r"|(?:narrow|under\s*880|< ?880).{0,120}\bexpand(?:s|ed|ing)?\b"
+    r")",
+    re.I | re.S,
+)
+_DOCS_SLASH_RAIL = re.compile(
+    r"("
+    r"(?:^|[\s`])/[\s`].{0,140}(?:\brail\b|when\s+collaps|while\s+collaps)"
+    r"|(?:\brail\b|when\s+collaps|while\s+collaps).{0,140}(?:^|[\s`])/"
+    r"|person-filter.{0,100}(?:\brail\b|when\s+collaps|while\s+collaps)"
+    r"|(?:\brail\b|collaps\w*).{0,80}(?:person-filter|people filter)"
+    r"|still\s+filter.{0,80}(?:\brail\b|collaps)"
+    r")",
+    re.I | re.S,
+)
 _CLICK_ON = re.compile(
     r"(?:on:click|onclick)\s*=\s*\{",
     re.I,
+)
+_TITLE_DISPLAY = re.compile(
+    r"\btitle\s*=\s*\{[^}]{0,200}(?:display_name|displayName|personLabel)",
+    re.I,
+)
+_TITLE_RAW_ID = re.compile(
+    r"\btitle\s*=\s*\{[^}]{0,80}(?:\bp\.id\b|\bperson\.id\b)",
+    re.I,
+)
+_OWNED_TOOLTIP_IMPORT = re.compile(
+    r"from\s+[\"']\$lib/components/ui/tooltip(?:/index(?:\.js|\.ts)?)?[\"']",
+)
+_TOOLTIP_OPEN = re.compile(r"<Tooltip(?:Content|Trigger|Provider|\.Root|\.Content)?\b")
+_PERSON_FILTER_MARKUP = re.compile(
+    r"""(?:id\s*=\s*(?:["']person-filter["']|\{\s*["']person-filter["']\s*\})|#person-filter)"""
+)
+_SESSION_OVERRIDE = re.compile(
+    r"\b(?:"
+    r"forceOpen|forceExpanded|force_open|forceWide|"
+    r"sessionOpen|sessionExpanded|sessionOverride|"
+    r"expandOverride|openOverride|overrideOpen|overrideNarrow|"
+    r"pinnedOpen|stayOpen|stayExpanded|keepOpen|keepExpanded|"
+    r"expandNow|force\w*Open|\w*Override"
+    r")\b",
+)
+_CODE_BACKSLASH = re.compile(
+    r"(?:e\.)?code\s*===?\s*[\"']Backslash[\"']"
+    r"|[\"']Backslash[\"']\s*===?\s*(?:e\.)?code"
+)
+_CODE_INTL_BACKSLASH = re.compile(
+    r"(?:e\.)?code\s*===?\s*[\"']IntlBackslash[\"']"
+    r"|[\"']IntlBackslash[\"']\s*===?\s*(?:e\.)?code"
+)
+_CODE_BACKSLASH_EITHER = re.compile(
+    r"("
+    r"(?:e\.)?code\s*===?\s*[\"'](?:Intl)?Backslash[\"']"
+    r"|[\"'](?:Intl)?Backslash[\"']\s*===?\s*(?:e\.)?code"
+    r"|(?:e\.)?code\s*\.includes\s*\(\s*[\"']Backslash[\"']"
+    r"|(?:e\.)?code\s*\.endsWith\s*\(\s*[\"']Backslash[\"']"
+    r"|\[[^\]]*Backslash[^\]]*\]\s*\.includes\s*\(\s*(?:e\.)?code"
+    r")"
 )
 
 
@@ -19608,6 +19672,114 @@ def _gated_on_collapse(markup: str, pos: int) -> bool:
     return False
 
 
+def _split_if_at(markup: str, if_start: int) -> tuple[str, str]:
+    """Then / else bodies of the {#if} starting at if_start."""
+    head = re.match(r"\{#if\s+[^}]+\}", markup[if_start:])
+    if not head:
+        return "", ""
+    body_start = if_start + head.end()
+    depth = 1
+    else_body_start: int | None = None
+    then_end: int | None = None
+    for t in _TMPL_TOKEN.finditer(markup, body_start):
+        tok = t.group(0)
+        if tok.startswith("{#if"):
+            depth += 1
+        elif tok.startswith("{/if}"):
+            depth -= 1
+            if depth == 0:
+                if then_end is None:
+                    then_end = t.start()
+                then = markup[body_start:then_end]
+                els = markup[else_body_start : t.start()] if else_body_start is not None else ""
+                return then, els
+        elif depth == 1 and (tok.startswith("{:else}") or tok.startswith("{:else if")):
+            if then_end is None:
+                then_end = t.start()
+                else_body_start = t.end()
+    then = markup[body_start:then_end] if then_end is not None else markup[body_start:]
+    els = markup[else_body_start:] if else_body_start is not None else ""
+    return then, els
+
+
+def _collapsed_people_surface(people_rows: str) -> str:
+    """Always-on option tags plus the collapsed / rail {#if} branch."""
+    parts: list[str] = []
+    for m in re.finditer(
+        r"<button\b[^>]*>|<[^>]*\brole\s*=\s*[\"']option[\"'][^>]*>",
+        people_rows,
+        re.I | re.S,
+    ):
+        parts.append(m.group(0))
+    for m in re.finditer(r"\{#if\s+([^}]*)\}", people_rows):
+        if not _COLLAPSE_WORD.search(m.group(1)):
+            continue
+        then, els = _split_if_at(people_rows, m.start())
+        if re.search(r"!\s*[\w.]*collaps", m.group(1), re.I):
+            parts.append(els)
+        else:
+            parts.append(then)
+    return "\n".join(parts)
+
+
+def _people_row_tooltip_ok(app: str, people_rows: str) -> bool:
+    """Owned Tooltip on the row (wraps the option) or inside the rail branch."""
+    if not _OWNED_TOOLTIP_IMPORT.search(app):
+        return False
+    if not _TOOLTIP_OPEN.search(people_rows):
+        return False
+    hover = _collapsed_people_surface(people_rows)
+    for m in re.finditer(r"<Tooltip\b", people_rows):
+        inner = _matched_inner(people_rows, m.start())
+        tree = people_rows[m.start() : m.start() + 240] + "\n" + inner
+        if not re.search(r"display_name|displayName|personLabel", tree):
+            continue
+        wraps_option = bool(re.search(r"\brole\s*=\s*[\"']option[\"']|<button\b", inner, re.I))
+        in_rail = bool(_TOOLTIP_OPEN.search(hover)) and (
+            people_rows[m.start() : m.start() + 40] in hover or inner[:80] in hover
+        )
+        if wraps_option or in_rail:
+            return True
+    return False
+
+
+def _sidebar_collapsed_rhs(src: str) -> str:
+    """RHS of sidebarCollapsed = … / $derived(…)."""
+    m = re.search(r"\bsidebarCollapsed\s*=\s*", src)
+    if not m:
+        return ""
+    rest = src[m.end() :]
+    dm = re.match(r"\$derived(?:\.by)?\s*\(", rest)
+    if dm:
+        close = _match_closer(rest, dm.end() - 1)
+        return rest[dm.end() : close] if close >= 0 else rest[dm.end() :]
+    end = rest.find(";")
+    return rest[:end] if end >= 0 else rest[:240]
+
+
+def _hard_narrow_or_user(rhs: str) -> bool:
+    compact = re.sub(r"\s+", "", rhs)
+    return bool(
+        re.fullmatch(
+            r"\(?(narrow\|\|userCollapsed|userCollapsed\|\|narrow)\)?",
+            compact,
+        )
+    )
+
+
+def _backslash_codes_ok(src: str) -> bool:
+    """True when onKey treats physical Backslash and IntlBackslash."""
+    if re.search(
+        r"(?:e\.)?code\s*\.\s*(?:includes|endsWith)\s*\(\s*[\"']Backslash[\"']",
+        src,
+    ):
+        return True
+    arr = re.search(r"\[([^\]]*)\]\s*\.includes\s*\(\s*(?:e\.)?code", src)
+    if arr and "Backslash" in arr.group(1) and "IntlBackslash" in arr.group(1):
+        return True
+    return bool(_CODE_BACKSLASH.search(src) and _CODE_INTL_BACKSLASH.search(src))
+
+
 def _auto_collapse_surface(app: str, logic: str) -> str:
     cleaned = _without_comments(app)
     blob = cleaned + "\n" + logic
@@ -19629,7 +19801,9 @@ def assert_people_sidebar_collapse(crate: Path) -> None:
     minmax(0,18rem). data-sidebar-toggle + collapsed hook. ⌘\\ / Ctrl+\\
     in onKey (AltGr-safe, works from fields). localStorage persist — not
     write_last_path / config.toml. Auto-collapse at 880/800. Toggle must
-    not remount the open person. Keep nav + chrome search. Not: liquid
+    not remount the open person. Keep nav + chrome search. Follow-up:
+    rail hover name, #person-filter stays mounted, forceOpen so Expand
+    works under 880, e.code Backslash / IntlBackslash. Not: liquid
     multi-column, hiding Search/Review.
     """
     app_path = crate / "web" / "App.svelte"
@@ -19933,7 +20107,136 @@ def assert_people_sidebar_collapse(crate: Path) -> None:
             "around 800px"
         )
 
-    # 10) Do not soften #q, chrome search, sidebar, overflow-x, virtualizer,
+    # 10) Rail hover name: title={display_name} or owned Tooltip. aria-label stays.
+    hover_src = _collapsed_people_surface(people_rows)
+    if _TITLE_RAW_ID.search(people_rows) or _TITLE_RAW_ID.search(hover_src):
+        fail(
+            "#212: rail hover name must interpolate display_name "
+            "(no raw person ids on title=)"
+        )
+    has_title = bool(_TITLE_DISPLAY.search(hover_src))
+    has_tip = _people_row_tooltip_ok(app, people_rows)
+    if not has_title and not has_tip:
+        fail(
+            "#212: collapsed / rail person rows must expose a hover name "
+            "(title={p.display_name} or owned Tooltip); keep aria-label; "
+            "no raw person ids"
+        )
+    if not re.search(
+        r"aria-label\s*=\s*\{[^}]{0,240}(?:display_name|displayName|personLabel)",
+        people_rows,
+    ):
+        fail(
+            "#212: keep aria-label on person rows "
+            "(hover title is extra; do not drop VoiceOver)"
+        )
+
+    # 11) #person-filter stays in the DOM when the rail is showing.
+    pf = list(_PERSON_FILTER_MARKUP.finditer(markup))
+    if not pf:
+        fail(
+            "#212: #person-filter must stay in the DOM when the rail is showing "
+            "(/ still focuses it; do not unmount the filter)"
+        )
+    for m in pf:
+        if _gated_on_collapse(markup, m.start()):
+            fail(
+                "#212: #person-filter must not sit inside a {#if …collaps…} block "
+                "(/ still filters when the rail is showing; sr-only is OK)"
+            )
+
+    # 12) Session override so Expand opens while innerWidth < 880.
+    rhs = _sidebar_collapsed_rhs(app_clean) or _sidebar_collapsed_rhs(app)
+    if _hard_narrow_or_user(rhs):
+        fail(
+            "#212: visible collapse must not be only narrow || userCollapsed "
+            "(need a session override so Expand can open while innerWidth < 880)"
+        )
+    if not _SESSION_OVERRIDE.search(rhs):
+        fail(
+            "#212: people sidebar needs a session override (forceOpen or "
+            "equivalent) so Expand / ⌘\\ can open while innerWidth < 880"
+        )
+    persist_fn = _ts_fn_body(app, "persistSidebar") or _function_body(app, "persistSidebar")
+    override_assign = "\n".join(
+        [
+            toggle_src,
+            persist_fn,
+            bs_surface,
+            _windows_around(app_clean, _SESSION_OVERRIDE, before=80, after=120),
+        ]
+    )
+    if not re.search(
+        rf"{_SESSION_OVERRIDE.pattern}\s*=",
+        override_assign,
+    ):
+        fail(
+            "#212: Expand / toggle / ⌘\\ must set forceOpen (or equivalent) "
+            "so the pane opens immediately under 880"
+        )
+    clear_bits = [
+        auto_src,
+        persist_fn,
+        _ts_fn_body(app, "syncNarrow") or _function_body(app, "syncNarrow"),
+        _windows_around(app_clean, _NARROW_PX, before=160, after=280),
+    ]
+    clear_surface = "\n".join(clear_bits)
+    override_names = _SESSION_OVERRIDE.findall(rhs) or _SESSION_OVERRIDE.findall(app_clean)
+    cleared = False
+    for name in override_names:
+        if re.search(rf"\b{re.escape(name)}\s*=\s*(?:false|0|!1)\b", clear_surface):
+            cleared = True
+            break
+        if re.search(
+            rf"if\s*\([^)]{{0,80}}(?:narrow|innerWidth\s*<)[^)]*\)\s*"
+            rf"\{{[^}}]{{0,160}}\b{re.escape(name)}\s*=",
+            clear_surface,
+            re.I,
+        ):
+            cleared = True
+            break
+    if not cleared and not re.search(
+        r"(?://|/\*)[^\n]{0,200}(?:forceOpen|force.?open|override).{0,80}"
+        r"(?:clear|reset|false).{0,60}(?:narrow|880|cross)",
+        app,
+        re.I,
+    ):
+        fail(
+            "#212: crossing into narrow must clear forceOpen (or equivalent) "
+            "so auto-collapse still runs at innerWidth < 880"
+        )
+
+    # 13) Physical ⌘\\ : e.code Backslash / IntlBackslash (INPUT guard too).
+    code_src = prefix_x + "\n" + body + "\n" + raw_body
+    if not _backslash_codes_ok(code_src):
+        fail(
+            "#212: onKey must match e.code === \"Backslash\" or "
+            "\"IntlBackslash\" (keep e.key === \"\\\\\" allowed; Turkish-Q / ISO)"
+        )
+    if guard_span:
+        guard = raw_body[guard_span[0] : guard_span[1] + 1]
+        guard_x = _expand_fn_calls(app_clean, guard)
+        if guard_x == guard:
+            guard_x = _expand_fn_calls(app, guard)
+        if not _CODE_BACKSLASH_EITHER.search(guard_x) and not _backslash_codes_ok(guard_x):
+            fail(
+                "#212: INPUT guard must let the e.code Backslash / IntlBackslash "
+                "path through, not only e.key === \"\\\\\""
+            )
+
+    # 14) Docs: Expand on a narrow window; / still filters when the rail shows.
+    if not _DOCS_EXPAND_NARROW.search(dtxt):
+        fail(
+            "#212: docs/user/app.md must say Expand works on a narrow window "
+            "(innerWidth < 880 is not a hard floor)"
+        )
+    if not _DOCS_SLASH_RAIL.search(dtxt):
+        fail(
+            "#212: docs/user/app.md must say / still filters when the rail "
+            "is showing (#person-filter stays mounted)"
+        )
+
+    # 15) Do not soften #q, chrome search, sidebar, overflow-x, virtualizer,
     #     overlay titlebar, CSP.
     if not re.search(r"""\bid\s*=\s*(?:["']q["']|\{\s*["']q["']\s*\})""", search):
         fail('#212: keep id="q" as the canonical query field (#208)')
