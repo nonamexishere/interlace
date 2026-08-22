@@ -28,6 +28,9 @@
   --bubble-me: hsl(214 76% 90%);
   --bubble-them: hsl(240 4.8% 93%);
   --search-mark: hsl(54 96% 77%);
+  --overlay: hsl(0 0% 0% / 0.5);
+  --lightbox-scrim: hsl(0 0% 0% / 0.8);
+  --lightbox-chrome-fg: hsl(0 0% 98%);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -131,7 +134,20 @@ body {
 }
 
 .photo-lightbox {
-  background-color: hsl(0 0% 0% / 0.8);
+  background-color: var(--lightbox-scrim);
+}
+
+.dialog-overlay {
+  background-color: var(--overlay);
+}
+
+.lightbox-chrome {
+  background-color: var(--overlay);
+  color: var(--lightbox-chrome-fg);
+}
+
+.lightbox-chrome:hover {
+  background-color: var(--lightbox-scrim);
 }
 
 @media (prefers-reduced-motion: reduce) {
