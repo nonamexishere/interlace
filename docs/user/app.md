@@ -7,7 +7,9 @@ Chrome colors come from design tokens / CSS variables, not raw Tailwind hues.
 Chrome follows the macOS appearance (system light/dark) without a reload;
 dark is the intended archival look and light is a first-class alternate;
 lightbox and dialogs match the same tokens; there is no Theme menu.
-Cloud and doctor warnings use the warning token. Import done is quiet
+Cloud and doctor warnings use the warning token. Import progress is
+visible in-window. Cancel is shown while running but disabled because
+the import cannot be stopped once started. Import done is quiet
 (muted or success).
 People preview, platform chips, banners, and search marks stay readable on
 both, and marks stay yellow.
@@ -186,7 +188,7 @@ CLI: `interlace search --attachment has_file|omitted|missing`. **Review**
 (accept/reject name-only pairs; each side shows linked identifier
 kind + normalized value — phone/email/display_name — under the title so a
 name-similarity card is decidable without the CLI), **Import** (ZIP/mbox/vcf/Takeout via the
-folder picker; progress in-window), **Doctor** (integrity / rebuild FTS / GC
+folder picker; progress in-window; Cancel is shown while running but disabled because the import cannot be stopped), **Doctor** (integrity / rebuild FTS / GC)
 CAS with a confirm dialog — same as the CLI, no extra window).
 Drop a local ZIP or mbox onto the window (any tab) to start import — no URLs.
 
