@@ -4,6 +4,9 @@ Phase 2 desktop window. **Offline.** No account. No sync. No updater.
 Visual language: [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md)
 (Phase 2.2, epic [#197](https://github.com/nonamexishere/interlace/issues/197)).
 Chrome colors come from design tokens / CSS variables, not raw Tailwind hues.
+Chrome follows the macOS appearance (system light/dark) without a reload;
+people preview, platform chips, banners, and search marks stay readable on
+both, and marks stay yellow.
 Timeline and search message bodies are 14–15px (line-height 1.5). People-row
 and bubble-caption meta is 12–13px. System UI font only — no remote font.
 
