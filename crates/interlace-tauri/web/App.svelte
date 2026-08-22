@@ -1111,6 +1111,14 @@
     return people.find((p) => p.id === id);
   }
 
+  const selectedPerson = $derived(personById(selectedId));
+
+  function focusPersonInspector() {
+    void tick().then(() => {
+      (document.querySelector("[data-person-inspector]") as HTMLElement | null)?.focus();
+    });
+  }
+
   function openMerge() {
     const keep = personById(selectedId);
     if (!keep) {
@@ -1216,12 +1224,12 @@
       return;
     }
     if (e.key === "Escape") {
-      if (copyMenu) {
-        closeCopyMenu();
-        return;
-      }
-      if (document.querySelector("[data-context-menu]")) {
+      if (copyMenu) { closeCopyMenu(); return; }
+      if (document.querySelector("[data-context-menu]")) { e.preventDefault(); return; }
+      const ae = document.activeElement as HTMLElement | null;
+      if (showPersonChrome && ae?.closest?.("[data-person-inspector]")) {
         e.preventDefault();
+        showPersonChrome = false;
         return;
       }
       view = "people";
@@ -1672,13 +1680,18 @@
         {/if}
       </div>
       <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div class="flex min-h-0 min-w-0 flex-1">
+          <div class="flex min-h-0 min-w-0 flex-1 flex-col">
         <div class="relative z-20 shrink-0 bg-background px-4 pt-4">
         <div class="mb-3 flex items-baseline justify-between gap-3">
           <h1 class="text-xl font-semibold tracking-tight">
             <button
               type="button"
               class="text-left"
-              onclick={() => (showPersonChrome = !showPersonChrome)}
+              onclick={() => (
+                (showPersonChrome = !showPersonChrome),
+                showPersonChrome && focusPersonInspector()
+              )}
             >
               {personTitle}
             </button>
@@ -1814,29 +1827,6 @@
             {/if}
           </div>
         {/if}
-        {#if showPersonChrome}
-          <div class="mb-3 flex items-center gap-3">
-            <Button variant="outline" size="sm" disabled={!personById(selectedId)} onclick={openMerge}
-              >Merge…</Button
-            >
-            <label class="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                bind:checked={includeGroups}
-                onchange={() => selectedId && selectPerson(selectedId)}
-              />
-              include groups
-            </label>
-          </div>
-          <ul class="mb-3 space-y-1 text-sm text-muted-foreground">
-            {#each identities as ident}
-              <li class="flex items-center justify-between gap-2">
-                <span>{ident.platform} {ident.kind} {ident.display_name || ident.value}</span>
-                <Button variant="outline" size="sm" onclick={() => doUnlink(ident.id)}>unlink</Button>
-              </li>
-            {/each}
-          </ul>
-        {/if}
         </div>
         <ScrollArea
           id="person-timeline"
@@ -1960,6 +1950,44 @@
         </ol>
         <div id="timeline-end"></div>
         </ScrollArea>
+          </div>
+          {#if showPersonChrome}
+            <aside
+              data-person-inspector
+              tabindex="-1"
+              class="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-l border-border p-4 text-sm"
+              aria-label={t("inspector")}
+            >
+              <p class="font-medium">{personTitle}</p>
+              <p class="text-xs text-muted-foreground">
+                {t("lastActivity")}
+                {humanTime(selectedPerson?.last_activity_at)}
+              </p>
+              <div class="flex flex-col gap-2">
+                <Button variant="outline" size="sm" disabled={!personById(selectedId)} onclick={openMerge}
+                  >Merge…</Button
+                >
+                <label class="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    bind:checked={includeGroups}
+                    onchange={() => selectedId && selectPerson(selectedId)}
+                  />
+                  include groups
+                </label>
+              </div>
+              <p class="text-xs font-medium">{t("identities")}</p>
+              <ul class="space-y-1 text-sm text-muted-foreground">
+                {#each identities as ident}
+                  <li class="flex items-center justify-between gap-2">
+                    <span>{ident.kind} {ident.value || ident.display_name || ""}</span>
+                    <Button variant="outline" size="sm" onclick={() => doUnlink(ident.id)}>unlink</Button>
+                  </li>
+                {/each}
+              </ul>
+            </aside>
+          {/if}
+        </div>
         <p class="shrink-0 bg-background px-4 pb-4 pt-2 text-xs text-muted-foreground">
           Bodies are text only. Day headings are UTC. <kbd class="rounded border border-border px-1">j</kbd>/<kbd
             class="rounded border border-border px-1">k</kbd
