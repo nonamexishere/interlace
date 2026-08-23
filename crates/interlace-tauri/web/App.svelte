@@ -6,7 +6,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { api, type Identity, type LinkEvent, type Person, type PersonConversation, type Status, type TimelineRow } from "./lib/api";
   import { mergeTargets } from "./lib/utils";
-  import { humanTime } from "./lib/formatTime";
+  import { humanTime, localDay, localDayLabel, utcTime } from "./lib/formatTime";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Card } from "$lib/components/ui/card/index.js";
@@ -303,29 +303,6 @@
     quotedOpen = { ...quotedOpen, [messageId]: !quotedOpen[messageId] };
   }
 
-  /** UTC calendar day key (`YYYY-MM-DD`) from RFC3339 `sent_at`. Empty if missing. */
-  function utcDay(iso: string | null | undefined): string {
-    if (!iso || iso.length < 10) return "";
-    return iso.slice(0, 10);
-  }
-
-  /** UTC day heading as day/month/year. Empty if `sent_at` is missing. */
-  function utcDayLabel(iso: string | null | undefined): string {
-    const key = utcDay(iso);
-    if (!key) return "";
-    const [y, m, d] = key.split("-");
-    if (!y || !m || !d) return "";
-    return `${d}/${m}/${y}`;
-  }
-
-  /** UTC hour:minute from RFC3339 `sent_at`. Empty if missing. */
-  function utcTime(iso: string | null | undefined): string {
-    if (!iso) return "";
-    const t = iso.indexOf("T");
-    if (t < 0 || iso.length < t + 6) return "";
-    return iso.slice(t + 1, t + 6);
-  }
-
   /** Known kind order for chip toolbar (others sort after). */
   const KIND_ORDER = ["dm", "email_thread", "group"] as const;
 
@@ -398,7 +375,7 @@
       ),
   );
 
-  /** Consecutive filtered rows: same side, conversation, and UTC day. */
+  /** Consecutive filtered rows: same side, conversation, and host calendar day. */
   function isGroupedFollower(i: number): boolean {
     if (i <= 0) return false;
     const pos = filteredTimeline.findIndex((item) => item.index === i);
@@ -409,7 +386,7 @@
     return (
       cur.row.from_me === prev.row.from_me &&
       cur.row.conversation_id === prev.row.conversation_id &&
-      utcDay(cur.row.sent_at) === utcDay(prev.row.sent_at)
+      localDay(cur.row.sent_at) === localDay(prev.row.sent_at)
     );
   }
 
@@ -587,12 +564,12 @@
       [];
     for (let i = 0; i < rows.length; i++) {
       const { row, index } = rows[i];
-      const key = utcDay(row.sent_at);
+      const key = localDay(row.sent_at);
       // i === 0 starts a group so sticky day heading stays when the day began above the window.
-      const dayChanged = i === 0 || key !== utcDay(rows[i - 1]?.row.sent_at);
+      const dayChanged = i === 0 || key !== localDay(rows[i - 1]?.row.sent_at);
       const last = groups[groups.length - 1];
       if (!last || dayChanged) {
-        groups.push({ key, label: key ? utcDayLabel(row.sent_at) : "", rows: [{ row, index }] });
+        groups.push({ key, label: key ? localDayLabel(row.sent_at) : "", rows: [{ row, index }] });
       } else {
         last.rows.push({ row, index });
       }
@@ -1921,9 +1898,9 @@
           {/if}
           {#each windowedDayGroups as group}
             <li class="day-group min-w-0">
-              {#if utcDay(group.rows[0]?.row.sent_at)}
+              {#if group.rows[0]?.row.sent_at && localDay(group.rows[0].row.sent_at)}
                 <h3 class="day-heading mb-2 text-center text-xs font-medium text-muted-foreground">
-                  {group.label} UTC
+                  {group.label}
                 </h3>
               {/if}
               <div>
@@ -2058,7 +2035,7 @@
           {/if}
         </div>
         <p class="shrink-0 bg-background px-4 pb-4 pt-2 text-xs text-muted-foreground">
-          Bodies are text only. Day headings are UTC. <kbd class="rounded border border-border px-1">j</kbd>/<kbd
+          Bodies are text only. Day headings follow the Mac timezone. <kbd class="rounded border border-border px-1">j</kbd>/<kbd
             class="rounded border border-border px-1">k</kbd
           >
           move.

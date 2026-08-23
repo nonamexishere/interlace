@@ -33,8 +33,8 @@ use `tokio` without `net`). Phase 1 = CLI; Phase 2 = Svelte 5 desktop UI
 (UI0–UI8 done). **Phase 2.1 is closed** (epic #108, milestone 6). First
 unsigned app release is **`app-v0.1.1`**. **Phase 2.2 polish is done.**
 **Active product track: Phase 2.3** (epic **#264**). **#265** / PR **#282**,
-#266 / PR **#283**, and **#267** / PR **#285** are **done**. Next coding
-**#268**. Normative:
+#266 / PR **#283**, and **#267** / PR **#285** are **done**. **#268** is
+in flight. Next coding **#269**. Normative:
 [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md). Do not start 1.1 / 3 / 4.
 
 Normative spec: [`docs/design/DESIGN.md`](../design/DESIGN.md).
@@ -90,7 +90,7 @@ merge, `master` is that merge commit. Tag **`app-v0.1.2`** (last shipped;
 still unsigned). Epic **#108**, milestone 6, and the Phase 1 CLI milestone
 are **closed**. Phase 2.2 polish (#197 / #219–#222) is **done**. Phase **2.3**
 (epic **#264**): **#265** / PR **#282**, **#266** / PR **#283**, and
-**#267** / PR **#285** done. Next coding **#268**. Re-check with
+**#267** / PR **#285** done. **#268** in flight; next coding **#269**. Re-check with
 `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
@@ -217,8 +217,9 @@ load-bearing (a11y, titlebar, search).
 
 ### Suggested next
 
-1. Next coding **#268** — local-timezone day headings (UTC stays stored).
-Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*` tag.
+1. Next coding **#269**. **#268** is in flight (local-timezone day headings;
+   UTC stays stored). Do not start 1.1 / P3 / P4. Ask before the first
+   notarized `app-v*` tag.
 
 Full board: issue **#264**. Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7).
 
@@ -231,7 +232,7 @@ Full board: issue **#264**. Phase 2.2 archive: [#197](https://github.com/nonamex
 
 ## Recommended next steps
 
-1. Next coding **#268** (local-timezone day headings). Do not start 1.1 / P3 / P4.
+1. Next coding **#269**. **#268** is in flight (local-timezone day headings). Do not start 1.1 / P3 / P4.
 2. Last shipped app tag is **`app-v0.1.2`** (unsigned). Workflow can
    Developer ID + notarize the next `app-v*` once Apple secrets exist.
    Ask before another `app-v*` / `v*` / crates.io.
@@ -306,8 +307,8 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
 > Product track: Phase 2.3 (epic #264). Read
-> `docs/design/UI-DESIGN.md`. Next coding **#268**. #265 / PR #282, #266 /
-> PR #283, and #267 / PR #285 are done.
+> `docs/design/UI-DESIGN.md`. Next coding **#269**. #268 is in flight.
+> #265 / PR #282, #266 / PR #283, and #267 / PR #285 are done.
 > Orchestrator does not implement product code. Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag (`app-v0.1.2` is current; first notarized tag is not cut). After
