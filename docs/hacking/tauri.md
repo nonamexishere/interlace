@@ -98,3 +98,5 @@ offline / not encrypted at rest / FileVault. No updater / Check for Updates.
 ## Issue DAG
 
 Epic #37. UI0–UI7 done. UI8 (#46) unsigned `.app`/`.dmg` on `app-v*` tags.
+Later tags (#267 / PR #285) Developer ID sign + notarize when Apple secrets
+are set. Ask before the first notarized `app-v*`.

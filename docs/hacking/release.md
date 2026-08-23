@@ -49,7 +49,8 @@ an ad-hoc build as if it were notarized.
 Local `tauri:dev` / `tauri:build` stay ad-hoc (`signingIdentity: "-"`
 in the committed `tauri.conf.json`). CI injects the real identity.
 
-**Ask before the first notarized `app-v*` tag.** Do not tag from this PR.
+**Ask before the first notarized `app-v*` tag.** #267 / PR #285 wired
+the workflow; the tag is not cut.
 
 ```bash
 git checkout master
