@@ -386,7 +386,7 @@
     return (
       cur.row.from_me === prev.row.from_me &&
       cur.row.conversation_id === prev.row.conversation_id &&
-      localDay(cur.row.sent_at) === localDay(prev.row.sent_at)
+      localDay(cur.row.sent_at, cur.row.platform) === localDay(prev.row.sent_at, prev.row.platform)
     );
   }
 
@@ -564,12 +564,18 @@
       [];
     for (let i = 0; i < rows.length; i++) {
       const { row, index } = rows[i];
-      const key = localDay(row.sent_at);
+      const key = localDay(row.sent_at, row.platform);
       // i === 0 starts a group so sticky day heading stays when the day began above the window.
-      const dayChanged = i === 0 || key !== localDay(rows[i - 1]?.row.sent_at);
+      const dayChanged =
+        i === 0 ||
+        key !== localDay(rows[i - 1]?.row.sent_at, rows[i - 1]?.row.platform);
       const last = groups[groups.length - 1];
       if (!last || dayChanged) {
-        groups.push({ key, label: key ? localDayLabel(row.sent_at) : "", rows: [{ row, index }] });
+        groups.push({
+          key,
+          label: key ? localDayLabel(row.sent_at, row.platform) : "",
+          rows: [{ row, index }],
+        });
       } else {
         last.rows.push({ row, index });
       }
@@ -1898,7 +1904,7 @@
           {/if}
           {#each windowedDayGroups as group}
             <li class="day-group min-w-0">
-              {#if group.rows[0]?.row.sent_at && localDay(group.rows[0].row.sent_at)}
+              {#if group.rows[0]?.row.sent_at && localDay(group.rows[0].row.sent_at, group.rows[0].row.platform)}
                 <h3 class="day-heading mb-2 text-center text-xs font-medium text-muted-foreground">
                   {group.label}
                 </h3>
@@ -1917,7 +1923,7 @@
                       data-from-me={item.row.from_me}
                       data-grouped={isGroupedFollower(item.index) || undefined}
                       tabindex="0"
-                      aria-label={`${utcTime(item.row.sent_at)} ${displayBody(item.row.body_text || item.row.subject || "").slice(0, 80)}`}
+                      aria-label={`${utcTime(item.row.sent_at, item.row.platform)} ${displayBody(item.row.body_text || item.row.subject || "").slice(0, 80)}`}
                       onclick={() => (tlIndex = item.index)}
                       oncontextmenu={(e) => openCopyMenu(e, item.row)}
                     >
@@ -1926,7 +1932,7 @@
                         class="caption flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
                         data-bubble-meta
                       >
-                        <time>{utcTime(item.row.sent_at)}</time>
+                        <time>{utcTime(item.row.sent_at, item.row.platform)}</time>
                         <Badge
                           variant="outline"
                           class="platform-chip rounded-full border-border/80 bg-background/60 px-1.5 py-px text-[0.65rem] font-medium leading-none text-muted-foreground"

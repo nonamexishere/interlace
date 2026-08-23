@@ -471,7 +471,7 @@
           }}
         >
           <div class="text-xs text-muted-foreground">
-            {[humanTime(h.sent_at), h.person_name || h.conversation_title || ""]
+            {[humanTime(h.sent_at, h.platform), h.person_name || h.conversation_title || ""]}
               .filter(Boolean)
               .join(" · ")}
           </div>
