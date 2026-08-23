@@ -36,15 +36,18 @@ cargo install interlace --locked
 The app binary is **not** published on crates.io (`interlace-tauri` is
 `publish = false`). `cargo install interlace` stays the CLI (D3).
 
-## Install the .app (unsigned)
+## Install the .app (notarized)
 
-GitHub Releases for tags `app-v*` (example `app-v0.1.2`) attach:
+GitHub Releases for tags `app-v*` attach:
 
 - `Interlace.app.zip`
 - `Interlace_<version>_<arch>.dmg`
 
-No Sparkle, no updater, no network entitlement. Ad-hoc signed only — not
-notarized. After you put `Interlace.app` in `/Applications` (or anywhere):
+No Sparkle, no updater, no `network.server`. After a notarized `app-v*`
+(Developer ID), drag Interlace.app to Applications and open. You do not
+need `xattr`.
+
+Fallback for older ad-hoc tags (`app-v0.1.2` and earlier):
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Interlace.app

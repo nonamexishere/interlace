@@ -11,7 +11,7 @@ Phase 2.1 is **done**. Phase 2.2 polish is **done**.
 
 | What | Notes |
 | --- | --- |
-| Phase 2.3 | Epic [#264](https://github.com/nonamexishere/interlace/issues/264). **#266** / [PR #283](https://github.com/nonamexishere/interlace/pull/283) done. Next coding **#267**. #265 PR [#282](https://github.com/nonamexishere/interlace/pull/282) still open. Do not start 1.1 / P3 / P4. |
+| Phase 2.3 | Epic [#264](https://github.com/nonamexishere/interlace/issues/264). **#266** / [PR #283](https://github.com/nonamexishere/interlace/pull/283) done. **#267** in flight; next coding **#268**. #265 PR [#282](https://github.com/nonamexishere/interlace/pull/282) still open. Do not start 1.1 / P3 / P4. |
 | Phase 2.2 | Epic [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7). Normative [`UI-DESIGN.md`](../design/UI-DESIGN.md). **Done** (#198–#222 / PRs #225–#262). |
 | Desktop app | **`app-v0.1.2` shipped** ([release](https://github.com/nonamexishere/interlace/releases/tag/app-v0.1.2)). Ask before another `app-v*`. |
 | crates.io | Published **0.1.1**. Do not `cargo publish` / `v*` without asking. |

@@ -28,25 +28,43 @@ Do **not** publish 0.0.1 again. Do **not** invent a fourth crates.io name
 `interlace-tauri` stays unpublished. The macOS **.app / .dmg** is a different
 tag (`app-v*`); see below.
 
-## Unsigned desktop app (`app-v*`)
+## Desktop app (`app-v*`) — Developer ID + notarized
 
-Separate from crates.io. After UI8 is on `master`:
+Separate from crates.io. When Apple signing/notary secrets are set,
+`.github/workflows/app-release.yml` Developer ID signs and notarizes
+(via notarytool / Tauri 2 env) the `.app` / `.dmg`.
+
+GitHub Actions secrets (never commit these):
+
+- `APPLE_CERTIFICATE` — base64-encoded Developer ID Application `.p12`
+- `APPLE_CERTIFICATE_PASSWORD` — p12 password
+- `APPLE_SIGNING_IDENTITY` — e.g. `Developer ID Application: …`
+- notary: `APPLE_API_KEY` + `APPLE_API_ISSUER` + `APPLE_API_KEY_PATH`
+  (App Store Connect API key id / issuer / `.p8` contents), **or**
+  `APPLE_ID` + `APPLE_PASSWORD` + `APPLE_TEAM_ID`
+
+The job **fails closed** if those secrets are empty. It does not upload
+an ad-hoc build as if it were notarized.
+
+Local `tauri:dev` / `tauri:build` stay ad-hoc (`signingIdentity: "-"`
+in the committed `tauri.conf.json`). CI injects the real identity.
+
+**Ask before the first notarized `app-v*` tag.** Do not tag from this PR.
 
 ```bash
 git checkout master
 git pull
-git tag -a app-v0.1.1 -m "Interlace.app 0.1.1"
-git push origin app-v0.1.1
+git tag -a app-v0.1.3 -m "Interlace.app 0.1.3"
+git push origin app-v0.1.3
 ```
 
-`.github/workflows/app-release.yml` runs `npm run tauri:build` on macOS,
-checks the `.app` still has sandbox + `network.client` and **no**
-`network.server`
-entitlement, and attaches `Interlace.app.zip` + `.dmg` to that GitHub
-Release. Ad-hoc sign (`signingIdentity: "-"`). No notarization, no updater.
+The workflow checks the `.app` still has sandbox + `network.client` and
+**no** `network.server` entitlement, staples the notary ticket, and
+attaches `Interlace.app.zip` + `.dmg` to that GitHub Release. No updater.
 
-Users: `xattr -dr com.apple.quarantine` then open. CLI remains
-`cargo install interlace`.
+Users: drag Interlace.app to Applications and open. Fallback for older
+ad-hoc tags (`app-v0.1.2` and earlier):
+`xattr -dr com.apple.quarantine`. CLI remains `cargo install interlace`.
 
 Do **not** put the `.dmg` on a `v*` crates.io tag.
 
