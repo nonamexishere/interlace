@@ -111,8 +111,24 @@ jobs:
           test -n "$app"
           test -n "$dmg"
           codesign --verify --deep --strict "$app"
-          # Tauri notarizes via notarytool when APPLE_* is set; staple if the CLI did not.
+          # Tauri 2.11 notarizes the .app only; staple it, then submit the signed DMG.
           xcrun stapler staple "$app"
+          # Same notary method as fail-closed / write-key: API key file path, or Apple ID.
+          # APPLE_API_KEY_PATH is the .p8 path (contents already written if needed).
+          if test -n "${APPLE_API_KEY:-}" && test -n "${APPLE_API_ISSUER:-}" && test -n "${APPLE_API_KEY_PATH:-}"; then
+            xcrun notarytool submit "$dmg" --wait \
+              --key "${APPLE_API_KEY_PATH}" \
+              --key-id "${APPLE_API_KEY}" \
+              --issuer "${APPLE_API_ISSUER}"
+          elif test -n "${APPLE_ID:-}" && test -n "${APPLE_PASSWORD:-}" && test -n "${APPLE_TEAM_ID:-}"; then
+            xcrun notarytool submit "$dmg" --wait \
+              --apple-id "${APPLE_ID}" \
+              --password "${APPLE_PASSWORD}" \
+              --team-id "${APPLE_TEAM_ID}"
+          else
+            echo "app-v* needs notarytool credentials (APPLE_API_KEY+APPLE_API_ISSUER+APPLE_API_KEY_PATH or APPLE_ID+APPLE_PASSWORD+APPLE_TEAM_ID); will not staple an un-submitted DMG" >&2
+            exit 1
+          fi
           xcrun stapler staple "$dmg"
           zip_path="target/release/bundle/macos/Interlace.app.zip"
           ditto -c -k --keepParent "$app" "$zip_path"
