@@ -365,6 +365,17 @@
 #     visibleRange / ensureTlIndexVisible use prefix sums, not index * 88.
 #     Keep the #120 window helpers. Not: 10M in one view, lazy-decode every
 #     photo, live average fallback, #206/#207 changes.
+#267: Developer ID + notarize app-v* — workflow mentions notarytool / Developer ID
+#     / Tauri notarize env; job fails closed if signing/notary secrets are missing;
+#     user docs drag-and-open (xattr fallback for old tags); entitlements +
+#     createUpdaterArtifacts false + no Sparkle/updater/HTTP client stay;
+#     release.md lists secret names + ask before first notarized tag.
+#     Committed signingIdentity may stay "-". See gate_app_release.assert_app_notarize.
+#     Follow-up (empty APPLE_ID shadows API-key): app-release.yml unsets empty
+#     APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID (or only exports the chosen
+#     notary method) before tauri:build.
+#     Follow-up (DMG notary): app-release.yml must notarytool submit the DMG
+#     ($dmg / .dmg) before stapler staple of that DMG.
 """
 
 from __future__ import annotations
@@ -375,6 +386,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import fail, repo_root, run  # noqa: E402
+from gate_app_release import assert_app_notarize  # noqa: E402
 
 # IPC-only connect-src (no general http/https). 'none' blanks the .app (#107).
 CSP = (
@@ -25506,6 +25518,8 @@ def main() -> None:
         fail("entitlements must include network.client (WKWebView local UI)")
     if "allow-jit" not in ent:
         fail("entitlements must include cs.allow-jit for WKWebView")
+
+    assert_app_notarize(crate)
 
     app = (crate / "web" / "App.svelte").read_text()
     if "phones home" not in app or "HTTP" not in app:

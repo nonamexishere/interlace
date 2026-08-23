@@ -1,7 +1,8 @@
-# Unsigned macOS .app / .dmg. Tags: app-v0.1.1
+# Developer ID + notarized macOS .app / .dmg (notarytool). Tags: app-v*
 # Separate from crates.io (v* / publish.yml). Never uploads crates.
 # No updater, no network.server. network.client is WKWebView-only.
-# Ad-hoc sign only (signingIdentity "-").
+# Local tauri.conf signingIdentity stays "-"; CI injects APPLE_SIGNING_IDENTITY.
+# Fail closed if Apple secrets are empty — never upload ad-hoc as notarized.
 name: app-release
 
 on:
@@ -15,6 +16,16 @@ permissions:
 jobs:
   macos-app:
     runs-on: macos-latest
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_KEY_PATH: ${{ secrets.APPLE_API_KEY_PATH }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -23,25 +34,102 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: crates/interlace-tauri/package-lock.json
-      - name: tauri build (app + dmg)
+      - name: Fail closed if signing/notary secrets are missing
+        run: |
+          set -euo pipefail
+          set +x
+          # Do not print secret values. Empty secrets must not upload ad-hoc.
+          test -n "${APPLE_CERTIFICATE}"
+          test -n "${APPLE_CERTIFICATE_PASSWORD}"
+          test -n "${APPLE_SIGNING_IDENTITY}"
+          if test -n "${APPLE_API_KEY:-}" && test -n "${APPLE_API_ISSUER:-}"; then
+            test -n "${APPLE_API_KEY_PATH}"
+          elif test -n "${APPLE_ID:-}" && test -n "${APPLE_PASSWORD:-}" && test -n "${APPLE_TEAM_ID:-}"; then
+            :
+          else
+            echo "app-v* needs notarytool credentials (APPLE_API_KEY+APPLE_API_ISSUER+APPLE_API_KEY_PATH or APPLE_ID+APPLE_PASSWORD+APPLE_TEAM_ID); will not upload ad-hoc as notarized" >&2
+            exit 1
+          fi
+      - name: Import Developer ID certificate
+        run: |
+          set -euo pipefail
+          set +x
+          cert_path="${RUNNER_TEMP}/certificate.p12"
+          keychain_path="${RUNNER_TEMP}/app-signing.keychain-db"
+          keychain_password="$(openssl rand -base64 32)"
+          printf '%s' "${APPLE_CERTIFICATE}" | base64 --decode > "${cert_path}"
+          security create-keychain -p "${keychain_password}" "${keychain_path}"
+          security set-keychain-settings -lut 21600 "${keychain_path}"
+          security unlock-keychain -p "${keychain_password}" "${keychain_path}"
+          security import "${cert_path}" -P "${APPLE_CERTIFICATE_PASSWORD}" -A -t cert -f pkcs12 -k "${keychain_path}"
+          security set-key-partition-list -S apple-tool:,apple: -k "${keychain_password}" "${keychain_path}"
+          security list-keychain -d user -s "${keychain_path}"
+          rm -f "${cert_path}"
+          echo "KEYCHAIN_PATH=${keychain_path}" >> "${GITHUB_ENV}"
+          echo "KEYCHAIN_PASSWORD=${keychain_password}" >> "${GITHUB_ENV}"
+      - name: Write notarytool API key
+        run: |
+          set -euo pipefail
+          set +x
+          if test -n "${APPLE_API_KEY:-}" && test -n "${APPLE_API_ISSUER:-}" && test -n "${APPLE_API_KEY_PATH:-}"; then
+            if test ! -f "${APPLE_API_KEY_PATH}"; then
+              key_path="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY}.p8"
+              printf '%s\n' "${APPLE_API_KEY_PATH}" > "${key_path}"
+              chmod 600 "${key_path}"
+              echo "APPLE_API_KEY_PATH=${key_path}" >> "${GITHUB_ENV}"
+            fi
+          fi
+      - name: tauri build (Developer ID + notarize)
         working-directory: crates/interlace-tauri
         run: |
           set -euo pipefail
+          set +x
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          # Empty GitHub secrets are ""; Tauri 2 treats Some("") as Apple ID
+          # auth and never reads APPLE_API_KEY. Unset empties (do not print).
+          for v in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if test -z "${!v}"; then
+              unset "$v"
+            fi
+          done
           npm ci
           npm run tauri:build
       - name: assert no network entitlement on .app
         run: python3 pipeline/tools/gate_app_bundle.py
-      - name: GitHub Release (unsigned .app.zip + .dmg)
+      - name: GitHub Release (Developer ID + notarized .app.zip + .dmg)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          set +x
+          test -n "${APPLE_CERTIFICATE}"
+          test -n "${APPLE_SIGNING_IDENTITY}"
           tag="${GITHUB_REF_NAME}"
           ver="${tag#app-v}"
           app=$(find target/release/bundle/macos -maxdepth 1 -name '*.app' | head -n1)
           dmg=$(find target/release/bundle/dmg -maxdepth 1 -name '*.dmg' | head -n1)
           test -n "$app"
           test -n "$dmg"
+          codesign --verify --deep --strict "$app"
+          # Tauri 2.11 notarizes the .app only; staple it, then submit the signed DMG.
+          xcrun stapler staple "$app"
+          # Same notary method as fail-closed / write-key: API key file path, or Apple ID.
+          # APPLE_API_KEY_PATH is the .p8 path (contents already written if needed).
+          if test -n "${APPLE_API_KEY:-}" && test -n "${APPLE_API_ISSUER:-}" && test -n "${APPLE_API_KEY_PATH:-}"; then
+            xcrun notarytool submit "$dmg" --wait \
+              --key "${APPLE_API_KEY_PATH}" \
+              --key-id "${APPLE_API_KEY}" \
+              --issuer "${APPLE_API_ISSUER}"
+          elif test -n "${APPLE_ID:-}" && test -n "${APPLE_PASSWORD:-}" && test -n "${APPLE_TEAM_ID:-}"; then
+            xcrun notarytool submit "$dmg" --wait \
+              --apple-id "${APPLE_ID}" \
+              --password "${APPLE_PASSWORD}" \
+              --team-id "${APPLE_TEAM_ID}"
+          else
+            echo "app-v* needs notarytool credentials (APPLE_API_KEY+APPLE_API_ISSUER+APPLE_API_KEY_PATH or APPLE_ID+APPLE_PASSWORD+APPLE_TEAM_ID); will not staple an un-submitted DMG" >&2
+            exit 1
+          fi
+          xcrun stapler staple "$dmg"
           zip_path="target/release/bundle/macos/Interlace.app.zip"
           ditto -c -k --keepParent "$app" "$zip_path"
           notes=$(awk -v ver="$ver" '
@@ -49,8 +137,8 @@ jobs:
             p && /^## \[/ {exit}
             p
           ' CHANGELOG.md || true)
-          extra="Unsigned macOS app (ad-hoc). Not notarized.
-          After download: xattr -dr com.apple.quarantine Interlace.app
+          extra="Developer ID signed and notarized (notarytool). Drag Interlace.app to Applications and open.
+          Fallback for older ad-hoc tags (app-v0.1.2 and earlier): xattr -dr com.apple.quarantine Interlace.app
           CLI remains: cargo install interlace --locked
           This tag does **not** publish crates.io."
           gh release create "$tag" \

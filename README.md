@@ -17,17 +17,19 @@ network client.
 
 ## Install
 
-**Desktop app (macOS, unsigned):** GitHub Releases on `app-v*` tags
-(`Interlace_*.dmg` or `Interlace.app.zip`). Not notarized.
+**Desktop app (macOS, notarized):** GitHub Releases on `app-v*` tags
+(`Interlace_*.dmg` or `Interlace.app.zip`). Developer ID + notarized.
+
+Drag Interlace.app to Applications and open. After a notarized `app-v*`,
+Gatekeeper is happy (no xattr). The app never phones home.
+**`cargo install interlace` is still the CLI** — the `.dmg` does not
+replace that crates.io name.
+
+Fallback for older ad-hoc tags (`app-v0.1.2` and earlier):
 
 ```bash
-# after you copy Interlace.app out of the DMG / zip:
 xattr -dr com.apple.quarantine /Applications/Interlace.app
 ```
-
-Gatekeeper will complain once; that is expected until codesign. The app
-never phones home. **`cargo install interlace` is still the CLI** — the
-`.dmg` does not replace that crates.io name.
 
 ```bash
 cargo install interlace --locked
