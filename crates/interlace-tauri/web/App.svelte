@@ -78,6 +78,7 @@
   let tlAppending = $state(false);
   let tlError = $state("");
   let peopleLoading = $state(true);
+  let peopleGen = 0;
   let tlGen = 0;
   let doctor = $state<string[]>([]);
   let pinLatestObs: ResizeObserver | null = null;
@@ -721,11 +722,14 @@
   }
 
   async function refreshPeople() {
+    const gen = ++peopleGen;
     peopleLoading = true;
     try {
-      people = await api.people();
+      const next = await api.people();
+      if (gen !== peopleGen) return;
+      people = next;
     } finally {
-      peopleLoading = false;
+      if (gen === peopleGen) peopleLoading = false;
     }
   }
 

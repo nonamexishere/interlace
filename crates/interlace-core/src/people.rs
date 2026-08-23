@@ -184,6 +184,7 @@ fn person_list_on_with_groups(
          WHERE p.tombstoned_at IS NULL
          ORDER BY p.is_self DESC, act.sent_at IS NULL, act.sent_at DESC, p.id"
     );
+    let tx = conn.unchecked_transaction()?;
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], |r| {
         let subject: Option<String> = r.get(4)?;
@@ -206,6 +207,7 @@ fn person_list_on_with_groups(
         out.push(row?);
     }
     attach_identity_values(conn, &mut out)?;
+    tx.commit()?;
     Ok(out)
 }
 

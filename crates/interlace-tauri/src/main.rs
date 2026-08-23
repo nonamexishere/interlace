@@ -25,6 +25,7 @@ use interlace_core::{
     CoreError, ImportCancel, ImportOpts, ImporterRegistry, LockMode, PersonMergeOpts, Platform,
     SearchQuery, SourceKind,
 };
+use rusqlite::{Connection, OpenFlags};
 use tauri::http::{header, StatusCode};
 use tauri::menu::{AboutMetadata, Menu, MenuBuilder, MenuItem, SubmenuBuilder};
 use tauri::{AppHandle, Emitter};
@@ -523,9 +524,7 @@ fn with_arch_mut<T>(
 
 #[tauri::command]
 fn people(state: tauri::State<AppState>) -> Result<serde_json::Value, String> {
-    // Snapshot off the archive mutex so Review / Confirm / Undo can run
-    // while the window-function scan fills (#265). Exclusive flock stays
-    // on the primary Archive. Do not take() the Archive (import pattern).
+    // Drop the archive mutex before the heavy read; do not take() the Archive.
     let root = {
         let guard = state.archive.lock().map_err(err)?;
         let Some(arch) = guard.as_ref() else {
@@ -533,10 +532,27 @@ fn people(state: tauri::State<AppState>) -> Result<serde_json::Value, String> {
         };
         arch.root.clone()
     };
-    let snap = rusqlite::Connection::open(root.join("archive.sqlite")).map_err(err)?;
+    let snap = Connection::open_with_flags(
+        root.join("archive.sqlite"),
+        OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .map_err(err)?;
+    snap.pragma_update(None, "query_only", "ON").map_err(err)?;
+    snap.pragma_update(None, "temp_store", "MEMORY")
+        .map_err(err)?;
     snap.pragma_update(None, "busy_timeout", 5_000i64)
         .map_err(err)?;
-    serde_json::to_value(person_list_on(&snap).map_err(err)?).map_err(err)
+    let list = person_list_on(&snap).map_err(err)?;
+    {
+        let guard = state.archive.lock().map_err(err)?;
+        let Some(arch) = guard.as_ref() else {
+            return Err("no archive open".into());
+        };
+        if arch.root != root {
+            return Err("archive changed".into());
+        }
+    }
+    serde_json::to_value(list).map_err(err)
 }
 
 #[tauri::command]
