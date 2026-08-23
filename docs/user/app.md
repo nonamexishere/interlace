@@ -37,7 +37,7 @@ The app binary is **not** published on crates.io (`interlace-tauri` is
 
 ## Install the .app (unsigned)
 
-GitHub Releases for tags `app-v*` (example `app-v0.1.1`) attach:
+GitHub Releases for tags `app-v*` (example `app-v0.1.2`) attach:
 
 - `Interlace.app.zip`
 - `Interlace_<version>_<arch>.dmg`
@@ -56,8 +56,8 @@ Ship a new build:
 
 ```bash
 git checkout master && git pull
-git tag -a app-v0.1.1 -m "Interlace.app 0.1.1"
-git push origin app-v0.1.1
+git tag -a app-v0.1.2 -m "Interlace.app 0.1.2"
+git push origin app-v0.1.2
 ```
 
 That runs `.github/workflows/app-release.yml` only. It does **not** publish
