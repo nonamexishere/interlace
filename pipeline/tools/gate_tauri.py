@@ -2,7 +2,16 @@
 """UI0: unpublished tauri shell, macOS deny exception, CSP, no network entitlement.
 
 #111: person timeline must be chat bubbles (from_me right / else left), not a log.
-#112: UTC calendar-day headings (2024-03-15) when sent_at's day changes.
+#112: calendar-day headings (2024-03-15) when sent_at's day changes.
+#268: day headings + people-row short times follow the host / Mac timezone
+#     (parse sent_at ISO as UTC, then local getters / Intl). Storage /
+#     api.ts sent_at and last_activity_at stay ISO UTC. No TZ picker, no
+#     tzdata / network TZ database. Search type=date from/to stay. Docs:
+#     display follows the host timezone; storage stays UTC.
+#     Follow-up: WhatsApp / omitted-platform is wall-clock export digits
+#     (no Date); Gmail / zoned still new Date + local getters. Timeline /
+#     Search pass platform. Docs: WhatsApp wall-clock; Gmail follows Mac
+#     TZ; storage stays UTC. `_ts_function_body` sees `: string {`.
 #113: open at latest (scroll after layout); older above; Load older at the top; prepend without jump;
 #     last bubble sits above the “Bodies are text only” chrome (list bottom pad);
 #     clear tlLoading before the open-person scroll; nested rAF so wrap has happened.
@@ -152,7 +161,7 @@
 #     background GC on open (gc_cas / GC thread not started from
 #     applyStatus/open). Docs: open is not blocked on hashing cas/; Doctor
 #     tab still finds missing blobs.
-#184: people-list last_activity_at is a short human time (e.g. 11 Aug 14:32 UTC)
+#184: people-list last_activity_at is a short human time (e.g. 11 Aug 14:32)
 #     for display and VoiceOver / aria-label (name + short time), not raw
 #     2024-08-11T14:32:00Z. Keep ISO on archive / API JSON types. Do not
 #     t() message bodies. Not a date-picker locale pack. Do not put
@@ -215,7 +224,7 @@
 #     Keep #202/#203/#204/#137/#156/#113/#120. Docs: failed pane shows
 #     Error + Retry; the rest of the shell stays.
 #206: group consecutive person-timeline bubbles — same from_me + same
-#     conversation_id + same UTC day is one caption (time+chip) then quieter
+#     conversation_id + same calendar day is one caption (time+chip) then quieter
 #     followers (data-grouped, or skip .caption / data-platform-chip). Key off
 #     the filtered list (previous index), not only the previous windowed row.
 #     Day headings stay; each message stays its own row (data-tl-index / j/k).
@@ -453,7 +462,7 @@ _PRE_WRAP = re.compile(
     re.S,
 )
 
-# #112 — day heading when the UTC calendar day of sent_at changes.
+# #112 — day heading when the calendar day of sent_at changes.
 _DAY_HEADING = re.compile(
     r"(<h[2-4]\b"
     r"|role\s*=\s*[\"']heading[\"']"
@@ -473,13 +482,19 @@ _PREV_DAY = re.compile(
     r")",
     re.I,
 )
-# RFC3339 UTC `2024-03-15T…Z` → calendar day is the `YYYY-MM-DD` prefix (or UTC getters).
+# Calendar day of sent_at: UTC ISO prefix, UTC getters, or host-local getters / Intl.
+# #268: slice(0, 10) is not the only legal day key.
 _ISO_DAY = re.compile(
     r"("
     r"\.slice\s*\(\s*0\s*,\s*10\s*\)"
     r"|\.substring\s*\(\s*0\s*,\s*10\s*\)"
     r"|toISOString\s*\(\s*\)\s*\.\s*slice\s*\(\s*0\s*,\s*10\s*\)"
     r"|getUTCFullYear"
+    r"|getFullYear"
+    r"|getMonth"
+    r"|getDate"
+    r"|toLocaleDateString"
+    r"|Intl\.DateTimeFormat"
     r")",
 )
 _LOCAL_DAY = re.compile(
@@ -992,7 +1007,7 @@ def assert_chat_bubbles(crate: Path) -> None:
 
 
 def assert_day_separators(crate: Path) -> None:
-    """#112: UTC day heading (DD/MM/YYYY) when sent_at's day changes; sticky."""
+    """#112: day heading (DD/MM/YYYY) when sent_at's day changes; sticky."""
     block = _timeline_block(crate)
     app = (crate / "web" / "App.svelte").read_text()
     logic = _web_logic(crate)
@@ -1002,7 +1017,7 @@ def assert_day_separators(crate: Path) -> None:
     if not _DAY_HEADING.search(block):
         fail(
             "#112: person timeline must insert a day heading "
-            "(h2–h4, role=heading, or day-heading) when the UTC calendar day changes"
+            "(h2–h4, role=heading, or day-heading) when the calendar day changes"
         )
     # Heading is a timeline separator, not a label inside the #111 bubble.
     outside_bubbles = block
@@ -1010,7 +1025,7 @@ def assert_day_separators(crate: Path) -> None:
         outside_bubbles = outside_bubbles.replace(btn, "", 1)
     if not _DAY_HEADING.search(outside_bubbles):
         fail(
-            "#112: day heading must sit on the timeline when the UTC day changes, "
+            "#112: day heading must sit on the timeline when the calendar day changes, "
             "not inside a chat bubble"
         )
 
@@ -1018,28 +1033,46 @@ def assert_day_separators(crate: Path) -> None:
     if not if_conds:
         fail(
             "#112: day heading must be conditional "
-            "(when sent_at's UTC calendar day changes; no heading if sent_at is missing)"
+            "(when sent_at's calendar day changes; no heading if sent_at is missing)"
         )
-    if not any(re.search(r"sent_at|utcDay|dayKey|calendarDay|isoDay|\bday\b", c, re.I) for c in if_conds):
+    if not any(
+        re.search(
+            r"sent_at|utcDay|localDay|hostDay|dayKey|calendarDay|isoDay|\bday\b",
+            c,
+            re.I,
+        )
+        for c in if_conds
+    ):
         fail(
-            "#112: day heading {#if} must key off the UTC calendar day of sent_at "
+            "#112: day heading {#if} must key off the calendar day of sent_at "
             "(do not invent a heading for a row with no date)"
         )
 
     if not _PREV_DAY.search(block) and not _PREV_DAY.search(app):
         fail(
-            "#112: must compare the current row's UTC calendar day to the previous "
+            "#112: must compare the current row's calendar day to the previous "
             "row (timeline[i - 1]) so a multi-year DM gets day/month/year separators"
         )
 
-    if not _ISO_DAY.search(app) and not _ISO_DAY.search(block) and not _ISO_DAY.search(logic):
+    has_day_key = (
+        _ISO_DAY.search(app)
+        or _ISO_DAY.search(block)
+        or _ISO_DAY.search(logic)
+        or _LOCAL_DAY.search(app)
+        or _LOCAL_DAY.search(block)
+        or _LOCAL_DAY.search(logic)
+    )
+    if not has_day_key:
         fail(
-            "#112: compare days on the UTC ISO date prefix of sent_at "
-            "(slice(0, 10) or UTC getters / toISOString)"
+            "#112: compare days on the calendar day of sent_at "
+            "(local getFullYear/getMonth/getDate, Intl, or ISO prefix / UTC getters)"
         )
     if not re.search(
         r"("
         r"utcDayLabel"
+        r"|localDayLabel"
+        r"|hostDayLabel"
+        r"|calendarDayLabel"
         r"|split\s*\(\s*[\"']-[\"']\s*\)"
         r"|/\$\{"
         r"|day\s*/\s*month"
@@ -1049,10 +1082,6 @@ def assert_day_separators(crate: Path) -> None:
         re.I,
     ):
         fail("#112: day headings must display day/month/year (15/03/2024), not YYYY-MM-DD")
-
-    chrome = app + "\n" + block
-    if _LOCAL_DAY.search(chrome) and not re.search(r"getUTC(?:FullYear|Month|Date)", chrome):
-        fail("#112: days are UTC; do not format archive-local or the host timezone")
 
     if _YESTERDAY.search(block) or _YESTERDAY.search(app):
         fail("#112: day headings must be day/month/year, not relative “yesterday”")
@@ -1076,23 +1105,467 @@ def assert_day_separators(crate: Path) -> None:
         if not re.search(r"if\s*\(\s*!\s*(?:row\.)?sent_at", day_src):
             fail("#112: missing sent_at must not crash; guard before slicing")
 
-    markup = app
-    script_end = app.rfind("</script>")
-    if script_end >= 0:
-        markup = app[script_end:]
-    if "UTC" not in markup and "UTC" not in block:
-        fail("#112: say UTC in the UI copy (timeline days are UTC)")
-
-    if "UTC" not in dtxt:
-        fail("#112: docs/user/app.md must say timeline days are UTC")
     if not re.search(r"(day heading|day separator)", dtxt, re.I):
-        fail("#112: docs/user/app.md must describe UTC day headings")
+        fail("#112: docs/user/app.md must describe day headings")
     if not re.search(r"(day/month/year|DD/MM/YYYY|15/03/2024)", dtxt, re.I):
         fail("#112: docs/user/app.md must say day headings are day/month/year")
 
     sticky_src = "\n".join(p.read_text() for p in _web_sources(crate))
     if not re.search(r"(position\s*:\s*sticky|\bsticky\b)", sticky_src, re.I):
         fail("#112: day heading must stick to the top of the message list while scrolling")
+
+
+# #268 — host-TZ day headings + short times; storage stays UTC ISO.
+_DAY_KEY_HELPERS = (
+    "utcDay",
+    "utc_day",
+    "localDay",
+    "local_day",
+    "hostDay",
+    "calendarDay",
+    "dayKey",
+    "isoDay",
+)
+_TIME_HELPERS = (
+    "utcTime",
+    "localTime",
+    "hostTime",
+    "bubbleTime",
+)
+_UTC_ISO_DAY_SLICE = re.compile(
+    r"\.slice\s*\(\s*0\s*,\s*10\s*\)|\.substring\s*\(\s*0\s*,\s*10\s*\)"
+)
+_LOCAL_CAL_GETTERS = re.compile(
+    r"("
+    r"\bgetFullYear\s*\("
+    r"|\bgetMonth\s*\("
+    r"|\bgetDate\s*\("
+    r"|toLocaleDateString"
+    r"|Intl\.DateTimeFormat"
+    r")"
+)
+_LOCAL_HM_GETTERS = re.compile(
+    r"("
+    r"\bgetHours\s*\("
+    r"|\bgetMinutes\s*\("
+    r"|\bgetDate\s*\("
+    r"|toLocaleString"
+    r"|toLocaleTimeString"
+    r"|Intl\.DateTimeFormat"
+    r"|hour\s*:\s*[\"']2-digit[\"']"
+    r")"
+)
+_FORCED_UTC_TZ = re.compile(r"timeZone\s*:\s*[\"']UTC[\"']")
+_PARSE_ISO_UTC = re.compile(r"new\s+Date\s*\(|Date\.parse\s*\(")
+_TZDATA_DEP = re.compile(
+    r"("
+    r"\btzdata\b"
+    r"|\bchrono-tz\b"
+    r"|\biana-time-zone\b"
+    r"|\bmoment-timezone\b"
+    r"|\bluxon\b"
+    r"|timezonedb"
+    r"|worldtimeapi"
+    r")",
+    re.I,
+)
+_SEARCH_TYPE_DATE = re.compile(r"type\s*=\s*\{?\s*[\"']date[\"']")
+_WA_OR_WALLCLOCK = re.compile(
+    r"("
+    r"\bwhatsapp\b"
+    r"|wall[-_ ]?clock"
+    r"|\bexport\b"
+    r")",
+    re.I,
+)
+_ISO_DIGIT_ESCAPE = re.compile(
+    r"("
+    r"\.slice\s*\("
+    r"|\.substring\s*\("
+    r"|\.substr\s*\("
+    r"|split\s*\(\s*[\"']T[\"']"
+    r"|\.match\s*\("
+    r")"
+)
+_DOCS_WA_WALL = re.compile(
+    r"("
+    r"whatsapp.{0,140}(?:wall[- ]?clock|export(?:ed)?\s+time|export\s+wall)"
+    r"|(?:wall[- ]?clock|export(?:ed)?\s+time).{0,140}whatsapp"
+    r")",
+    re.I | re.S,
+)
+_DOCS_GMAIL_ZONE = re.compile(
+    r"("
+    r"gmail.{0,140}(?:host|Mac)(?:'s)?\s+time\s*zone"
+    r"|(?:host|Mac)(?:'s)?\s+time\s*zone.{0,140}gmail"
+    r"|zoned.{0,100}(?:gmail|time\s*zone|host|Mac)"
+    r"|gmail.{0,100}zoned"
+    r")",
+    re.I | re.S,
+)
+
+
+def _fn_body(src: str, name: str) -> str:
+    return _ts_function_body(src, name) or _function_body(src, name) or ""
+
+
+def _host_local_day_ok(body: str) -> bool:
+    """Parse ISO as UTC, then host-local calendar getters.
+
+    Dual-path bodies may also slice WhatsApp wall-clock digits. Slice-only
+    (no Date + local getters) still fails.
+    """
+    if not body or _FORCED_UTC_TZ.search(body):
+        return False
+    if not _PARSE_ISO_UTC.search(body):
+        return False
+    return bool(_LOCAL_CAL_GETTERS.search(body))
+
+
+def _human_time_host_local(body: str) -> bool:
+    """Month + hour:minute from host-local getters / Intl, not the UTC ISO slice."""
+    if not body or _FORCED_UTC_TZ.search(body):
+        return False
+    if not _PARSE_ISO_UTC.search(body):
+        return False
+    has_month = bool(_MONTH_SHORT.search(body) or re.search(r"\bgetMonth\s*\(", body))
+    has_local_hm = bool(_LOCAL_HM_GETTERS.search(body))
+    return has_month and has_local_hm
+
+
+def _called_day_keys(region: str) -> list[str]:
+    found: list[str] = []
+    for name in _DAY_KEY_HELPERS:
+        if re.search(rf"\b{re.escape(name)}\s*\(", region):
+            found.append(name)
+    return found
+
+
+def _split_tz_helper_names() -> tuple[str, ...]:
+    names: list[str] = []
+    for name in (
+        *_DAY_KEY_HELPERS,
+        "localDayLabel",
+        "utcDayLabel",
+        *_TIME_HELPERS,
+        *_HUMAN_TIME_HELPERS,
+    ):
+        if name not in names:
+            names.append(name)
+    return tuple(names)
+
+
+def _whatsapp_escape_ok(body: str) -> bool:
+    """WhatsApp / omitted-platform path uses stored wall-clock digits."""
+    if not body:
+        return False
+    if not _WA_OR_WALLCLOCK.search(body):
+        return False
+    return bool(_ISO_DIGIT_ESCAPE.search(body))
+
+
+def _zoned_gmail_ok(body: str) -> bool:
+    """Gmail / zoned path: new Date + host-local getters, not forced UTC."""
+    if not body or _FORCED_UTC_TZ.search(body):
+        return False
+    if not _PARSE_ISO_UTC.search(body):
+        return False
+    return bool(_LOCAL_CAL_GETTERS.search(body) or _LOCAL_HM_GETTERS.search(body))
+
+
+def _helper_call_args(src: str, name: str) -> list[str]:
+    out: list[str] = []
+    for m in re.finditer(rf"\b{re.escape(name)}\s*\(", src):
+        out.append(_call_arg(src, m.end() - 1))
+    return out
+
+
+def _assert_typed_fn_body_visible() -> None:
+    """Depth-0 `{` after `: string` is the function body, not a type object."""
+    typed_day = (
+        "export function localDay(iso: string | null | undefined): string {\n"
+        "  return 'ok';\n"
+        "}\n"
+    )
+    if not _ts_function_body(typed_day, "localDay").strip():
+        fail(
+            "#268: _ts_function_body must find the body of "
+            "export function localDay(...): string {"
+        )
+    foo_src = "function foo(): string { return 1 }"
+    if "return 1" not in _ts_function_body(foo_src, "foo"):
+        fail(
+            "#268: _ts_function_body must extract a typed "
+            "function foo(): string { return 1 } body"
+        )
+
+
+def assert_local_tz_display(crate: Path) -> None:
+    """#268: day headings + people-row times follow the host timezone.
+
+    Parse stored `sent_at` ISO as UTC, then local getters / Intl. Storage /
+    api.ts stay ISO UTC. No TZ picker, no tzdata crate. Search type=date stays.
+    Docs: display follows the host / Mac timezone; storage stays UTC.
+
+    Follow-up: WhatsApp / omitted platform displays wall-clock export digits;
+    Gmail / zoned still Date-converts. Timeline / Search pass platform.
+    `_ts_function_body` must see `export function localDay(...): string {`.
+    """
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#268: App.svelte required (host-TZ day headings)")
+    app = app_path.read_text()
+    logic = _web_logic(crate)
+    cleaned = _without_comments(app + "\n" + logic)
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+
+    # 1) Day heading / grouping key is the host calendar day, not UTC slice(0, 10).
+    script_end = app.rfind("</script>")
+    markup = app[script_end:] if script_end >= 0 else app
+    regions = "\n".join(
+        p
+        for p in (
+            _fn_body(app, "isGroupedFollower"),
+            _fn_body(app, "isGrouped"),
+            _grouping_logic_src(cleaned),
+            _derived_body(app, "windowedDayGroups") or "",
+            _derived_body(app, "dayGroups") or "",
+            markup,
+        )
+        if p
+    )
+    called = _called_day_keys(regions)
+    host_local = False
+    if called:
+        for name in called:
+            body = _fn_body(app, name) or _fn_body(logic, name) or _fn_body(cleaned, name)
+            if _host_local_day_ok(body):
+                host_local = True
+            else:
+                fail(
+                    "#268: day headings must use the host calendar day of sent_at "
+                    "(parse ISO as UTC, then getFullYear/getMonth/getDate or Intl) "
+                    "— not slice(0, 10) of the UTC ISO as the displayed day"
+                )
+    elif _host_local_day_ok(regions):
+        host_local = True
+    if not host_local:
+        fail(
+            "#268: day headings must use the host calendar day of sent_at "
+            "(parse ISO as UTC, then getFullYear/getMonth/getDate or Intl) "
+            "— not slice(0, 10) of the UTC ISO as the displayed day"
+        )
+
+    # 2) People-row short time is host-local month + hour:minute.
+    human_ok = False
+    for name in _HUMAN_TIME_HELPERS:
+        body = _fn_body(logic, name)
+        if body and _human_time_host_local(body):
+            human_ok = True
+            break
+    if not human_ok:
+        fail(
+            "#268: humanTime (or same helper) must format people-row short times "
+            "with host-local month + hour:minute (getHours/getDate or Intl), "
+            "not the UTC ISO prefix / T slice"
+        )
+
+    # 3) Bubble hour:minute uses the same host-TZ conversion.
+    time_ok = False
+    for name in _TIME_HELPERS:
+        body = _fn_body(app, name) or _fn_body(logic, name)
+        if (
+            body
+            and _PARSE_ISO_UTC.search(body)
+            and re.search(r"\bget(?:Hours|Minutes)\s*\(", body)
+            and not _FORCED_UTC_TZ.search(body)
+        ):
+            time_ok = True
+            break
+    if not time_ok:
+        fail(
+            "#268: bubble hour:minute must use the host timezone "
+            "(parse ISO as UTC, then getHours/getMinutes) so the caption "
+            "agrees with the local day heading"
+        )
+
+    # 4) Storage / api.ts sent_at and last_activity_at stay ISO strings.
+    api_path = crate / "web" / "lib" / "api.ts"
+    if not api_path.is_file():
+        fail("#268: web/lib/api.ts required (sent_at / last_activity_at stay ISO UTC)")
+    api = api_path.read_text()
+    if not re.search(r"\blast_activity_at\??\s*:\s*string", api):
+        fail(
+            "#268: api.ts last_activity_at must stay an ISO UTC string "
+            "(do not rewrite stored timestamps)"
+        )
+    if not re.search(r"\bsent_at\??\s*:\s*string", api):
+        fail(
+            "#268: api.ts sent_at must stay an ISO UTC string "
+            "(do not rewrite stored timestamps)"
+        )
+    if re.search(r"\b(?:sent_at|last_activity_at)\??\s*:\s*Date\b", api):
+        fail("#268: api.ts sent_at / last_activity_at must stay ISO strings, not Date")
+
+    # 5) No timezone picker. No tzdata / network TZ database.
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    search = search_path.read_text() if search_path.is_file() else ""
+    if _TZ_PICKER.search(app) or _TZ_PICKER.search(search):
+        fail("#268: no timezone picker")
+    dep_files = (
+        repo_root() / "Cargo.toml",
+        crate / "Cargo.toml",
+        repo_root() / "crates" / "interlace-core" / "Cargo.toml",
+        crate / "package.json",
+    )
+    for dep in dep_files:
+        if dep.is_file() and _TZDATA_DEP.search(dep.read_text()):
+            fail("#268: no tzdata / network TZ database / tzdata crate")
+    if _TZDATA_DEP.search(cleaned):
+        fail("#268: no tzdata / network TZ database / tzdata crate")
+
+    # 6) Search type=date from/to filters stay.
+    if not search_path.is_file():
+        fail("#268: SearchPane.svelte required (type=date from/to filters stay)")
+    if not _SEARCH_TYPE_DATE.search(search):
+        fail(
+            "#268: Search type=date filters must still exist "
+            "(do not remove or rewrite from/to)"
+        )
+    if not re.search(r"\bid=[\"']from[\"']", search) or not re.search(
+        r"\bid=[\"']to[\"']", search
+    ):
+        fail(
+            "#268: Search type=date from/to filters must still exist "
+            "(do not remove or rewrite them)"
+        )
+
+    # 7) Docs: display follows the host / Mac timezone; storage stays UTC.
+    if not dtxt.strip():
+        fail(
+            "#268: docs/user/app.md required — display follows the host / Mac "
+            "timezone; storage stays UTC"
+        )
+    if not re.search(
+        r"("
+        r"(?:follow|follows|use|uses)\s+(?:the\s+)?(?:host|Mac)(?:'s)?\s+time\s*zone"
+        r"|display.{0,80}(?:host|Mac).{0,24}time\s*zone"
+        r"|(?:host|Mac)(?:'s)?\s+time\s*zone.{0,60}(?:display|heading|people)"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail(
+            "#268: docs/user/app.md must say display follows the host / Mac timezone"
+        )
+    if re.search(
+        r"("
+        r"days are\s+UTC"
+        r"|day headings are UTC"
+        r"|not the host time\s*zone"
+        r")",
+        dtxt,
+        re.I,
+    ):
+        fail(
+            "#268: docs/user/app.md must not say timeline days are UTC / "
+            "not the host timezone"
+        )
+    if not re.search(
+        r"("
+        r"(?:stor(?:e|age|ed)|archive JSON|SQLite).{0,80}UTC"
+        r"|UTC.{0,80}(?:stor(?:e|age|ed)|archive JSON|SQLite)"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail("#268: docs/user/app.md must say storage stays UTC")
+    if re.search(r"timezone picker|time-zone picker", dtxt, re.I):
+        fail("#268: no timezone picker (docs must not add one)")
+
+    # 8) Typed helper body is visible (`: string {` is the body, not a type).
+    _assert_typed_fn_body_visible()
+    if not (_fn_body(logic, "localDay") or _fn_body(app, "localDay")).strip():
+        fail(
+            "#268: localDay helper body must be visible "
+            "(including with a : string return type)"
+        )
+
+    # 9) WhatsApp / wall-clock escape AND Gmail / zoned Date + local getters.
+    saw_split_helper = False
+    for name in _split_tz_helper_names():
+        body = (
+            _helper_with_callees(logic, name)
+            or _fn_body(logic, name)
+            or _fn_body(app, name)
+        )
+        if not body.strip():
+            continue
+        saw_split_helper = True
+        if not _whatsapp_escape_ok(body):
+            fail(
+                "#268: day/time helper "
+                f"{name} must mention a whatsapp (or wall-clock / export) "
+                "branch — do not Date-convert every ISO"
+            )
+        if not _zoned_gmail_ok(body):
+            fail(
+                "#268: day/time helper "
+                f"{name} must still parse zoned/Gmail ISO with new Date + "
+                "local getters — do not only slice(0, 10) every ISO"
+            )
+    if not saw_split_helper:
+        fail(
+            "#268: day/time helpers (localDay / humanTime / utcTime) "
+            "must exist so WhatsApp wall-clock and Gmail zoned paths can split"
+        )
+
+    # 10) Timeline / Search sent_at call sites pass platform. last_activity_at
+    #     has no Person.platform — omit is the wall-clock path; do not require it.
+    tl_has_platform = False
+    search_has_platform = False
+    for name in _split_tz_helper_names():
+        for args in _helper_call_args(app, name):
+            if re.search(r"\bsent_at\b", args) and not re.search(
+                r"\bplatform\b", args
+            ):
+                fail(
+                    "#268: Timeline / Search day-time helpers must pass "
+                    "platform (row.platform / h.platform) so WhatsApp "
+                    "wall-clock and Gmail zoned paths can split"
+                )
+            if re.search(r"\bplatform\b", args):
+                tl_has_platform = True
+        for args in _helper_call_args(search, name):
+            if re.search(r"\bsent_at\b", args) and not re.search(
+                r"\bplatform\b", args
+            ):
+                fail(
+                    "#268: Timeline / Search day-time helpers must pass "
+                    "platform (row.platform / h.platform) so WhatsApp "
+                    "wall-clock and Gmail zoned paths can split"
+                )
+            if re.search(r"\bplatform\b", args):
+                search_has_platform = True
+    if not tl_has_platform or not search_has_platform:
+        fail(
+            "#268: Timeline / Search day-time helpers must pass "
+            "platform (row.platform / h.platform) so WhatsApp "
+            "wall-clock and Gmail zoned paths can split"
+        )
+
+    # 11) Docs: WhatsApp wall-clock; Gmail / zoned follow Mac TZ; storage UTC.
+    if not _DOCS_WA_WALL.search(dtxt):
+        fail(
+            "#268: docs/user/app.md must say WhatsApp export times "
+            "display as wall-clock"
+        )
+    if not _DOCS_GMAIL_ZONE.search(dtxt):
+        fail(
+            "#268: docs/user/app.md must say Gmail / zoned times "
+            "follow the Mac timezone"
+        )
 
 
 def _matching_each_end(markup: str, each_start: int) -> int:
@@ -2166,9 +2639,11 @@ def _ts_function_body(src: str, name: str) -> str:
             depth = 0
             while i < n:
                 c = src[i]
-                if c in "<({[":
+                # Depth-0 `{` after a return type is the function body.
+                # Do not put `{` in the open-type set before that break.
+                if c in "<([":
                     depth += 1
-                elif c in ">)}]":
+                elif c in ">)]":
                     depth -= 1
                 elif depth <= 0 and (src.startswith("=>", i) or c == "{"):
                     break
@@ -13898,6 +14373,9 @@ _HM_PART = re.compile(
     r"("
     r"getUTCHours"
     r"|getUTCMinutes"
+    r"|getHours"
+    r"|getMinutes"
+    r"|getDate"
     r"|slice\s*\(\s*11\s*,\s*16\s*\)"
     r"|slice\s*\(\s*t\s*\+\s*1\s*,\s*t\s*\+\s*6\s*\)"
     r"|hour\s*:\s*[\"']2-digit[\"']"
@@ -13977,12 +14455,14 @@ def _attr_brace_values(src: str, attr: str) -> list[str]:
 
 
 def _short_time_formatter_ok(logic: str) -> bool:
-    """A helper (or inline) turns ISO into a short UTC time like `11 Aug 14:32`."""
+    """A helper (or inline) turns ISO into a short time like `11 Aug 14:32`."""
     for name in _HUMAN_TIME_HELPERS:
         body = _ts_function_body(logic, name) or _function_body(logic, name)
         if body and _MONTH_SHORT.search(body) and _HM_PART.search(body):
             return True
-    if _MONTH_SHORT.search(logic) and _HM_PART.search(logic) and _UTC_FMT.search(logic):
+    if _MONTH_SHORT.search(logic) and _HM_PART.search(logic) and (
+        _UTC_FMT.search(logic) or re.search(r"\bget(?:Hours|Minutes|Date|Month|FullYear)\s*\(", logic)
+    ):
         return True
     return False
 
@@ -14041,7 +14521,7 @@ def assert_human_time_people(crate: Path) -> None:
     #    may live in another web/ file. Do not require “yesterday” in App.svelte.
     if not _short_time_formatter_ok(logic):
         fail(
-            "#184: format last_activity_at as a short UTC time "
+            "#184: format last_activity_at as a short time "
             "(e.g. 11 Aug 14:32) — month + hour:minute, not YYYY-MM-DDTHH:MM:SSZ"
         )
     if not _people_uses_short_time(people_each):
@@ -18082,7 +18562,7 @@ def assert_partial_retry_generation(crate: Path) -> None:
             )
 
 
-# #206 — group consecutive same-side / same-conversation / same-UTC-day bubbles.
+# #206 — group consecutive same-side / same-conversation / same-calendar-day bubbles.
 # Static: followers omit the run caption; grouping keys off filteredTimeline[i-1].
 _GROUPING_COND = re.compile(
     r"("
@@ -18142,7 +18622,10 @@ _PREV_INDEX = re.compile(
     r")",
     re.I,
 )
-_GROUP_DAY_KEY = re.compile(r"\butcDay\b|\butc_day\b|\bdayKey\b|\bisoDay\b")
+_GROUP_DAY_KEY = re.compile(
+    r"\butcDay\b|\butc_day\b|\blocalDay\b|\blocal_day\b|\bhostDay\b|"
+    r"\bcalendarDay\b|\bdayKey\b|\bisoDay\b"
+)
 _NET_AVATAR = re.compile(
     r"("
     r"<img\b[^>]{0,400}src\s*=\s*[\"']https?://"
@@ -18247,7 +18730,7 @@ def _grouping_logic_src(cleaned: str) -> str:
 
 
 def _has_three_key_run(src: str) -> bool:
-    """from_me + conversation_id + UTC day compared against a previous row."""
+    """from_me + conversation_id + calendar day compared against a previous row."""
     for m in re.finditer(r"conversation_id", src):
         win = src[max(0, m.start() - 500) : m.end() + 500]
         if not re.search(r"\bfrom_me\b", win):
@@ -18283,7 +18766,7 @@ def _grouping_uses_filtered_prev(cleaned: str) -> bool:
 
 
 def _docs_206_ok(dtxt: str) -> bool:
-    """Consecutive same-side / same-conversation / same-UTC-day share one caption."""
+    """Consecutive same-side / same-conversation / same calendar day share one caption."""
     if not re.search(r"hour:minute", dtxt, re.I):
         return False
     if not re.search(r"platform chip", dtxt, re.I):
@@ -18294,7 +18777,11 @@ def _docs_206_ok(dtxt: str) -> bool:
             continue
         if not re.search(r"same[- ]conversation", win, re.I):
             continue
-        if not re.search(r"same[- ]UTC[- ]day|same UTC day", win, re.I):
+        if not re.search(
+            r"same[- ](?:UTC[- ]|calendar[- ])day|same (?:UTC |calendar )?day",
+            win,
+            re.I,
+        ):
             continue
         if not re.search(r"share one|one caption|quieter", win, re.I):
             continue
@@ -18319,7 +18806,7 @@ def _casattach_stripped_from_followers(markup: str) -> bool:
 
 
 def assert_timeline_grouped_runs(crate: Path) -> None:
-    """#206: consecutive same from_me + conversation + UTC day share one caption.
+    """#206: consecutive same from_me + conversation + calendar day share one caption.
 
     Acceptance: a 5-message run shows one caption then four quieter bubbles.
     Grouping keys off the filtered list (previous index), not only the previous
@@ -18345,7 +18832,7 @@ def assert_timeline_grouped_runs(crate: Path) -> None:
     if not _followers_omit_caption(timeline_markup) and not _followers_omit_caption(block):
         fail(
             "#206: consecutive filtered rows with the same from_me, same "
-            "conversation_id, and same UTC day must form a run — run-start "
+            "conversation_id, and same calendar day must form a run — run-start "
             "keeps the caption (time + platform chip); followers omit it "
             "(data-grouped, or {#if} that skips .caption / data-platform-chip). "
             "Do not paint a caption on every bubble"
@@ -18360,20 +18847,20 @@ def assert_timeline_grouped_runs(crate: Path) -> None:
             "captions"
         )
 
-    # 3) Break the run when from_me, conversation_id, or UTC day changes.
+    # 3) Break the run when from_me, conversation_id, or calendar day changes.
     group_src = _grouping_logic_src(cleaned)
     if not _has_three_key_run(group_src) and not _has_three_key_run(cleaned):
         fail(
-            "#206: grouping key is from_me + conversation_id + UTC day "
+            "#206: grouping key is from_me + conversation_id + calendar day "
             "(break the run when any of those change). Do not group across "
-            "different conversation_id or a different UTC day"
+            "different conversation_id or a different calendar day"
         )
     identity_src = group_src or cleaned
     for m in re.finditer(r"sender_identity_id", identity_src):
         win = identity_src[max(0, m.start() - 280) : m.end() + 280]
         if _GROUPING_COND.search(win) or re.search(r"\bfrom_me\b", win):
             fail(
-                "#206: grouping key is from_me + conversation_id + UTC day — "
+                "#206: grouping key is from_me + conversation_id + calendar day — "
                 "do not invent sender_identity_id (that is #207)"
             )
 
@@ -18398,7 +18885,7 @@ def assert_timeline_grouped_runs(crate: Path) -> None:
     if not _DAY_HEADING.search(block):
         fail(
             "#206: do not soften #112 — day headings (day-heading) stay when "
-            "the UTC day changes"
+            "the calendar day changes"
         )
     if "caption" not in block.lower() and "<time" not in block.lower():
         fail(
@@ -18440,17 +18927,17 @@ def assert_timeline_grouped_runs(crate: Path) -> None:
             "CDN face pile)"
         )
 
-    # 8) D24: consecutive same-side / same-conversation / same-UTC-day share one caption.
+    # 8) D24: consecutive same-side / same-conversation / same calendar day share one caption.
     if not dtxt.strip():
         fail(
             "#206: docs/user/app.md required — consecutive same-side / "
-            "same-conversation / same-UTC-day bubbles share one caption "
+            "same-conversation / same-calendar-day bubbles share one caption "
             "(keep the existing hour:minute + platform chip sentence)"
         )
     if not _docs_206_ok(dtxt):
         fail(
             "#206: docs/user/app.md must say consecutive same-side / "
-            "same-conversation / same-UTC-day bubbles share one caption "
+            "same-conversation / same-calendar-day bubbles share one caption "
             "(keep the existing hour:minute + platform chip sentence for "
             "the run-start)"
         )
@@ -25963,6 +26450,7 @@ def main() -> None:
         fail("placeholder UI7 CLI-only copy must be gone")
     assert_chat_bubbles(crate)
     assert_day_separators(crate)
+    assert_local_tz_display(crate)
     assert_timeline_latest(crate)
     assert_conversation_switcher(crate)
     assert_timeline_platform_chips(crate)

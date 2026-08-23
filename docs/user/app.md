@@ -115,10 +115,10 @@ findings so a remounted Doctor tab does not flash the old list.
 After open: **people list + timeline** (groups hidden unless you tick include
 groups). The people list is **recent-first** by last D18 activity (you sent
 the message, or you share a DM / email thread). Each row shows that last
-activity as a **short UTC time** (`11 Aug 14:32`), not the raw ISO, and a
+activity as a **short time** (`11 Aug 14:32`) from the stored wall-clock digits, not the raw ISO, and a
 one-line **plain-text** preview (the last message’s subject if it has one,
 otherwise a truncated body — never HTML). The merge-target picker uses the
-same short time. Archive JSON still stores ISO. Contacts with no matching messages
+same short time. Archive JSON still stores ISO UTC. Contacts with no matching messages
 stay listed at the bottom. A large people list does not freeze Review,
 Confirm, or Undo while it fills — exclusive flock on the archive
 folder is still held. A slower people reply is discarded if you Accept, Undo,
@@ -139,19 +139,20 @@ shows a small text **platform chip** (not a brand logo). An **optional right ins
 conversation: identities and last activity, with Merge, include groups, and
 unlink there. It is not a second timeline. The person timeline is a **chat**, not a log:
 messages you sent sit on the right, the other person on the left. Each
-bubble caption is **hour:minute** (UTC) plus the platform chip — not the
-calendar date again. Consecutive same-side, same-conversation, same-UTC-day
+bubble caption is **hour:minute** (host timezone) plus the platform chip — not the
+calendar date again. Consecutive same-side, same-conversation, same calendar day
 bubbles share one caption; followers are quieter. Every bubble stacks identity/time, then body/subject, then attachments (WhatsApp and Gmail the same). Opening a person shows the **latest messages** (the loading line)
 clears first, then the list waits for wrap and the pane is pinned
 to the bottom while heights settle, so the newest bubble is fully
 visible above the text-only footer even on a narrow pane or a long
-UTC day). Older rows sit above; newest at
+calendar day). Older rows sit above; newest at
 the bottom. **Load older**
 is at the top of the list and prepends earlier pages without jumping
-the viewport. Large threads **virtualize**: only the rows in (and near) the viewport are in the DOM, so a long DM stays scrollable. The person timeline virtualizes with **measured row heights** so two-sided DMs scroll without jumping. A **day heading** (`15/03/2024` UTC, day/month/year) is
-inserted when the UTC calendar day of `sent_at` changes and **sticks**
-to the top of the message list until the next day replaces it. Days are
-UTC (not the host timezone). A row with no `sent_at` gets no heading. Bodies stay visible plain-text
+the viewport. Large threads **virtualize**: only the rows in (and near) the viewport are in the DOM, so a long DM stays scrollable. The person timeline virtualizes with **measured row heights** so two-sided DMs scroll without jumping. A **day heading** (`15/03/2024`, day/month/year) is
+inserted when the host calendar day of `sent_at` changes and **sticks**
+to the top of the message list until the next day replaces it. WhatsApp
+export times display as wall-clock; Gmail / zoned times follow the Mac
+timezone. Display follows the host / Mac timezone; storage / archive JSON stay UTC. A row with no `sent_at` gets no heading. Bodies stay visible plain-text
 nodes (`whitespace-pre-wrap`) so a screen reader still hears them — never
 HTML. **Gmail / email-thread** bubbles show the subject as a title when present
 and fold quoted reply tails (`On … wrote:`, lines starting with `>`) behind
