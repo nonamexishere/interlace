@@ -15,6 +15,8 @@ People preview, platform chips, banners, and search marks stay readable on
 both, and marks stay yellow.
 Timeline and search message bodies are 14–15px (line-height 1.5). People-row
 and bubble-caption meta is 12–13px. System UI font only — no remote font.
+The command palette, person inspector, and toasts use a short fade or slide.
+Reduced motion makes them instant. There is no celebration and no auto-playing media.
 
 The archive is still a folder you own (same `~/Interlace` as the CLI). This
 app does not phone home and contains no HTTP **client**. A Tauri build may

@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { fade } from "svelte/transition";
   import * as Command from "$lib/components/ui/command/index.js";
   import type { Person } from "./api";
+  import { chromeMotionMs } from "./motion";
 
   const PALETTE_PEOPLE_CAP = 32;
 
@@ -90,6 +92,7 @@
   class="fixed inset-0 z-[100] flex items-start justify-center bg-background/80 pt-[15vh]"
   data-command-palette
   role="presentation"
+  transition:fade={{ duration: chromeMotionMs() }}
   onclick={onClose}
 >
   <div
