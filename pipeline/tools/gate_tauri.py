@@ -374,6 +374,8 @@
 #     Follow-up (empty APPLE_ID shadows API-key): app-release.yml unsets empty
 #     APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID (or only exports the chosen
 #     notary method) before tauri:build.
+#     Follow-up (DMG notary): app-release.yml must notarytool submit the DMG
+#     ($dmg / .dmg) before stapler staple of that DMG.
 """
 
 from __future__ import annotations

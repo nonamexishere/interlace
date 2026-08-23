@@ -10,6 +10,8 @@ docs/hacking/release.md names the secrets and says ask before the first
 notarized app-v* tag. Committed signingIdentity may stay "-".
 Empty APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID must be unset (or only the
 chosen notary method exported) before tauri:build so API-key auth is not shadowed.
+The signed DMG must be notarytool-submitted ($dmg / .dmg) before stapler staple
+of that DMG (Tauri 2.11 notarizes the .app only).
 """
 
 from __future__ import annotations
@@ -117,6 +119,18 @@ _TAURI_BUILD_RUN = re.compile(
     r"(?ms)^[ \t]+run:\s*\|\n((?:[ \t]+.+\n)*?[ \t]+.*\btauri:build\b.*)"
 )
 
+# #267 follow-up: notarytool submit of the DMG must precede stapler staple of it.
+# Command at line start (not a comment). $dmg / ${dmg} / path.dmg count; $app does not.
+_DMG_ARG = r"(?:\$\{dmg\}|\$dmg|[^\s#]+?\.dmg\b)"
+_NOTARYTOOL_SUBMIT_DMG = re.compile(
+    r"(?m)^[ \t]*(?:xcrun[ \t]+)?notarytool[ \t]+submit\b"
+    r"(?:\\[ \t]*\n[ \t]+|[^\n#])*?" + _DMG_ARG
+)
+_STAPLER_STAPLE_DMG = re.compile(
+    r"(?m)^[ \t]*(?:xcrun[ \t]+)?stapler[ \t]+staple\b"
+    r"(?:\\[ \t]*\n[ \t]+|[^\n#])*?" + _DMG_ARG
+)
+
 
 def _positive_notarize(text: str) -> bool:
     """True if text claims a notarized / Developer ID install (not only 'not notarized')."""
@@ -145,6 +159,15 @@ def _tauri_build_run_script(wtxt: str) -> str:
     """The run: | block that invokes tauri:build, or empty."""
     m = _TAURI_BUILD_RUN.search(wtxt)
     return m.group(1) if m else ""
+
+
+def _notarytool_submit_dmg_before_staple(wtxt: str) -> bool:
+    """True if notarytool submit of $dmg/.dmg appears before stapler staple of it."""
+    submit = _NOTARYTOOL_SUBMIT_DMG.search(wtxt)
+    staple = _STAPLER_STAPLE_DMG.search(wtxt)
+    if submit is None or staple is None:
+        return False
+    return submit.start() < staple.start()
 
 
 def _unsets_apple_id_trio(script: str) -> bool:
@@ -207,6 +230,9 @@ def assert_app_notarize(crate: Path) -> None:
 
     Follow-up: empty APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID must be unset
     (or not always exported) before tauri:build so API-key notary is not shadowed.
+
+    Follow-up: app-release.yml must notarytool submit the DMG ($dmg / .dmg)
+    before stapler staple of that DMG (Tauri 2.11 notarizes the .app only).
     """
     root = repo_root()
     wf = root / ".github" / "workflows" / "app-release.yml"
@@ -314,6 +340,15 @@ def assert_app_notarize(crate: Path) -> None:
             "#267: app-release.yml must unset empty APPLE_ID / APPLE_PASSWORD / "
             "APPLE_TEAM_ID (or only export the chosen notary method) before "
             "tauri:build"
+        )
+
+    # 7) Signed DMG must be submitted to notarytool before it is stapled.
+    #    Tauri 2.11 submits/staples the .app only; stapler staple "$dmg" with
+    #    no prior notarytool submit exits 65 and aborts before gh release create.
+    if not _notarytool_submit_dmg_before_staple(wtxt):
+        fail(
+            "#267: app-release.yml must notarytool submit the DMG "
+            "($dmg / .dmg) before stapler staple of that DMG"
         )
 
 
