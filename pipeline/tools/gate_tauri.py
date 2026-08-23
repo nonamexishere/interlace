@@ -397,6 +397,11 @@
 #     until the gen-guarded assign (no hits = [] at the start of run();
 #     do not paint the skeleton over existing hits). Do not rewrite
 #     #203 / #205 / the rest of #270.
+#     Follow-up (PR #288 review fold): run() clears the debounce timer
+#     (or a named timer) before api.search; applyStatus / refreshPeople
+#     fire-and-forget has .catch / showErr / onError; onHitsKey does
+#     not return solely on searching when hits exist; no restating
+#     “Typing in #q searches (debounce)” comment.
 #222: motion — 150–250ms Svelte fade/fly/slide on palette, inspector, toast;
 #     prefers-reduced-motion uses duration 0 (JS matchMedia / MediaQuery;
 #     CSS 0.01ms is not enough). No spring / bounce / lottie / celebration.
@@ -19999,6 +20004,14 @@ _SEARCH_PRE_IPC_EXPANDED = re.compile(
 _SEARCH_PRE_IPC_BODY = re.compile(r"\bbody\s*=\s*(?:\"\"|''|``)")
 _SEARCH_PRE_IPC_HITINDEX = re.compile(r"\bhitIndex\s*=(?!=)")
 _SEARCH_PRE_IPC_HITS_CLEAR = re.compile(r"\bhits\s*=\s*\[\s*\]")
+_SEARCH_CLEAR_TIMEOUT = re.compile(r"\bclear(?:Timeout|Interval)\s*\(")
+_SEARCH_TIMER_PERSON_BLUR = re.compile(r"personBlur", re.I)
+_SEARCH_ERR_HANDLER = re.compile(r"\b(?:showErr|onError)\b")
+_SEARCH_VOID_CALL = re.compile(r"\bvoid\s+([A-Za-z_$][\w$]*)\s*\(")
+_SEARCH_RESTATE_DEBOUNCE_COMMENT = re.compile(
+    r"Typing in #q searches\s*\(\s*debounce\s*\)",
+    re.I,
+)
 
 
 def _svelte_effect_args(src: str) -> list[str]:
@@ -20164,6 +20177,113 @@ def _run_before_ipc(body: str) -> str:
     return _blank_returning_blocks(prefix)
 
 
+def _run_clears_debounce_timer(pre_ipc: str) -> bool:
+    """True if the pre-IPC prefix clears a timer other than the person-blur one."""
+    for m in _SEARCH_CLEAR_TIMEOUT.finditer(pre_ipc):
+        open_p = pre_ipc.find("(", m.start())
+        if open_p < 0:
+            continue
+        close = _match_closer(pre_ipc, open_p)
+        arg = pre_ipc[open_p + 1 : close] if close > open_p else ""
+        if _SEARCH_TIMER_PERSON_BLUR.search(arg):
+            continue
+        return True
+    return False
+
+
+def _js_unawaited_calls(blob: str, name: str) -> list[int]:
+    """Close-paren index of each `name(` that is not `await` / a definition."""
+    out: list[int] = []
+    for m in re.finditer(rf"\b{re.escape(name)}\s*\(", blob):
+        before = blob[: m.start()]
+        if re.search(r"\bawait\s+$", before):
+            continue
+        if re.search(r"\b(?:async\s+)?function\s+$", before):
+            continue
+        if re.search(
+            rf"(?:const|let|var)\s+{re.escape(name)}\s*=\s*"
+            rf"(?:async\s*)?(?:function\s*)?$",
+            before,
+        ):
+            continue
+        open_p = m.end() - 1
+        close = _match_closer(blob, open_p)
+        if close > open_p:
+            out.append(close)
+    return out
+
+
+def _trailing_catch_has_err(blob: str, close: int) -> bool:
+    """True if `name(…)` is followed by `.catch(…showErr|onError…)`."""
+    rest = blob[close + 1 :].lstrip()
+    if not rest.startswith(".catch"):
+        return False
+    open_p = blob.find("(", close + 1)
+    if open_p < 0:
+        return False
+    end = _match_closer(blob, open_p)
+    if end < 0:
+        return False
+    return bool(_SEARCH_ERR_HANDLER.search(blob[open_p + 1 : end]))
+
+
+def _fire_forget_people_caught(app: str, apply_body: str) -> bool:
+    """applyStatus's unawaited refreshPeople (or a void wrapper) has .catch."""
+    sites = _js_unawaited_calls(apply_body, "refreshPeople")
+    if sites:
+        return all(_trailing_catch_has_err(apply_body, close) for close in sites)
+    for m in _SEARCH_VOID_CALL.finditer(apply_body):
+        name = m.group(1)
+        if name == "refreshPeople":
+            continue
+        inner = _ts_fn_body(app, name) or _function_body(app, name)
+        if not inner or not re.search(r"\brefreshPeople\s*\(", inner):
+            continue
+        inner_sites = _js_unawaited_calls(inner, "refreshPeople")
+        if inner_sites and all(
+            _trailing_catch_has_err(inner, close) for close in inner_sites
+        ):
+            return True
+        return False
+    return False
+
+
+def _hits_key_bails_on_searching(body: str) -> bool:
+    """True if a hit-key if-return fires on `searching` while hits exist."""
+    for cond in _review_if_return_conds(body):
+        if not re.search(r"(?<![\w.])searching\b", cond):
+            continue
+        if _ident_negated(cond, "searching") and not re.search(
+            r"(?<![!\w.])searching\b", cond
+        ):
+            continue
+        # `searching && !hits.length` only — not a bail on a visible list.
+        if (
+            _SEARCH_HITS_EMPTY.search(cond)
+            and "&&" in cond
+            and "||" not in cond
+        ):
+            continue
+        return True
+    return False
+
+
+def _js_comment_text(src: str) -> str:
+    """`//` and `/*` blobs only (markup / strings skipped via `_js_next`)."""
+    bits: list[str] = []
+    i = 0
+    n = len(src)
+    while i < n:
+        if src.startswith("//", i) or src.startswith("/*", i):
+            end = _js_next(src, i)
+            bits.append(src[i:end])
+            i = end
+            continue
+        nxt = _js_next(src, i)
+        i = nxt if nxt != i else i + 1
+    return "\n".join(bits)
+
+
 def assert_search_as_you_type(crate: Path) -> None:
     """#270: typing in #q searches; do not hitch on a people refresh.
 
@@ -20181,6 +20301,12 @@ def assert_search_as_you_type(crate: Path) -> None:
     the gen-guarded assign — no `hits = []` at the start of `run()`, and
     `{#if searching}` must not paint the skeleton over existing hits.
     Do not rewrite #203 / #205 / the rest of #270.
+
+    Follow-up (PR #288 review fold): `run()` clears the debounce timer
+    (or a named timer) before `api.search`. `applyStatus` /
+    `refreshPeople` fire-and-forget has `.catch` / `showErr` / `onError`.
+    `onHitsKey` does not `return` solely on `searching` when hits exist.
+    No restating “Typing in #q searches (debounce)” comment.
     """
     search_path = crate / "web" / "lib" / "SearchPane.svelte"
     if not search_path.is_file():
@@ -20357,6 +20483,48 @@ def assert_search_as_you_type(crate: Path) -> None:
         fail(
             "#270: previous hits must stay until the gen-guarded assign "
             "— no hits = [] at the start of run()"
+        )
+
+    # 12) run() clears the debounce timer before api.search (submit / Retry /
+    #     chrome requestSubmit must not leave a second FTS armed).
+    pre_timer = _expand_fn_calls(cleaned, pre_ipc) if pre_ipc else ""
+    if not _run_clears_debounce_timer(pre_timer or pre_ipc):
+        fail(
+            "#270: run() must clear the debounce timer (or a named timer) "
+            "before api.search — submit / Retry / chrome requestSubmit "
+            "must not leave a second FTS armed"
+        )
+
+    # 13) applyStatus / refreshPeople fire-and-forget surfaces errors.
+    apply_body = _ts_fn_body(app_clean, "applyStatus") or _function_body(
+        app_clean, "applyStatus"
+    )
+    if not apply_body or not _fire_forget_people_caught(app_clean, apply_body):
+        fail(
+            "#270: applyStatus / refreshPeople fire-and-forget must "
+            ".catch(showErr) / onError — do not leave void refreshPeople() "
+            "unhandled"
+        )
+
+    # 14) Hit-list keys still work while a follow-up search is in flight.
+    hits_key = (
+        _ts_fn_body(cleaned, "onHitsKey")
+        or _function_body(cleaned, "onHitsKey")
+        or _ts_fn_body(cleaned, "onHitKey")
+        or _function_body(cleaned, "onHitKey")
+    )
+    if hits_key and _hits_key_bails_on_searching(hits_key):
+        fail(
+            "#270: onHitsKey must not return solely on searching when "
+            "hits exist — gate keyboard nav on !hits.length only"
+        )
+
+    # 15) Do not restate the $effect body in a comment.
+    if _SEARCH_RESTATE_DEBOUNCE_COMMENT.search(_js_comment_text(src)):
+        fail(
+            '#270: drop the restating “Typing in #q searches (debounce)” '
+            "comment — a one-liner on why the effect must not track "
+            "run()’s other inputs is OK"
         )
 
 
