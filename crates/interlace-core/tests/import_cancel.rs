@@ -33,6 +33,10 @@
 //! running` (probe/hash has started), then `cancel()` and join with a short
 //! timeout. Must return `CoreError::Cancelled` and must not finish the file
 //! (inserted / skipped_dupes well below the fixture). Placeholder `Ada` only.
+//!
+//! Same-file re-import after cancel-before-start: one `sources` row for
+//! that kind + origin; `file_blake3` filled on the success path (not a
+//! leftover hashless fork).
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -56,6 +60,23 @@ fn tmp_root() -> std::path::PathBuf {
 
 fn count(arch: &interlace_core::db::Archive, sql: &str) -> i64 {
     arch.conn.query_row(sql, [], |r| r.get(0)).unwrap()
+}
+
+fn origin_key(path: &std::path::Path) -> String {
+    path.canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .to_string()
+}
+
+fn sources_for_origin(arch: &interlace_core::db::Archive, kind: &str, origin: &str) -> i64 {
+    arch.conn
+        .query_row(
+            "SELECT COUNT(*) FROM sources WHERE kind = ?1 AND origin_path = ?2",
+            rusqlite::params![kind, origin],
+            |r| r.get(0),
+        )
+        .unwrap()
 }
 
 /// Tiny contacts card. Placeholder name only.
@@ -333,6 +354,54 @@ fn second_run_import_after_cancel_starts() {
     );
 
     assert_status_matches_sql(&arch);
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Cancel-before-start then a successful re-import of the same Ada vcf
+/// must reuse one `sources` row and fill `file_blake3`.
+#[test]
+fn cancel_then_success_reuses_one_sources_row() {
+    let root = tmp_root();
+    let vcf = root.join("ada.vcf");
+    write_ada_vcf(&vcf);
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+
+    let err = arch
+        .run_import(SourceKind::ContactsVcf, &vcf, &cancelled_opts())
+        .expect_err("cancel must not succeed as a full done import");
+    assert_distinct_cancel_err(&err, &vcf);
+
+    let origin = origin_key(&vcf);
+    arch.run_import(SourceKind::ContactsVcf, &vcf, &ImportOpts::default())
+        .expect("second run_import of the same file must succeed");
+
+    let n = sources_for_origin(&arch, "contacts_vcf", &origin);
+    assert_eq!(
+        n, 1,
+        "re-import of the same file must reuse one sources row; got {n}"
+    );
+    assert_eq!(
+        count(
+            &arch,
+            "SELECT COUNT(*) FROM sources WHERE kind = 'contacts_vcf'"
+        ),
+        1,
+        "same-file re-import must not fork a second sources row for contacts_vcf"
+    );
+
+    let blake3: Option<String> = arch
+        .conn
+        .query_row(
+            "SELECT file_blake3 FROM sources WHERE kind = ?1 AND origin_path = ?2",
+            rusqlite::params!["contacts_vcf", origin],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        blake3.as_deref().is_some_and(|h| !h.is_empty()),
+        "success path must fill file_blake3 on the reused row (not a leftover hashless fork); got {blake3:?}"
+    );
 
     let _ = std::fs::remove_dir_all(&root);
 }

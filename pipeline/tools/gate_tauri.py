@@ -332,6 +332,11 @@
 #     cancel on ZIP open / list / hash (`open_zip_cancellable` /
 #     `list_zip` / `hash_file`), not only `maybe_commit`; ImportPane
 #     must not promise only “Stops after this file”.
+#     Fold (sources upsert + Cancelled media): `upsert_source` /
+#     `abort_cancelled` fall back to `origin_path` when blake3 misses
+#     (or UPDATE `file_blake3` on the existing row); WhatsApp media
+#     `Err` near `read_zip_entry_capped` returns `Cancelled` (not only
+#     `ctx.warn` / `media_read`); `ImportCancel` docs have no `#266`.
 #221: review queue chrome — owned Card + Separator (`data-review-card`);
 #     Accept/Reject stay explicit and not destructive; no raw review /
 #     person ids in queue or confirm copy; Undo on the Review pane
@@ -24172,8 +24177,75 @@ def _import_fn_checks_cancel(src: str, name: str) -> bool:
     return bool(body and _IMPORT_CANCEL_WORD.search(body))
 
 
+_UPSERT_UPDATE_BLAKE3 = re.compile(
+    r"UPDATE\s+sources\b[\s\S]{0,500}\bfile_blake3\b",
+    re.I,
+)
+_UPSERT_SELECT_BLAKE3 = re.compile(r"SELECT\b[^;]{0,200}file_blake3", re.I)
+_UPSERT_SELECT_ORIGIN = re.compile(r"SELECT\b[^;]{0,200}origin_path", re.I)
+
+
+def _upsert_origin_fallback_or_hash_update(upsert: str, abort: str) -> bool:
+    """Reuse a hashless sources row: UPDATE file_blake3, or origin_path after a blake3 miss."""
+    blob = f"{upsert}\n{abort}"
+    if _UPSERT_UPDATE_BLAKE3.search(blob):
+        return True
+    blake3_sel = _UPSERT_SELECT_BLAKE3.search(upsert)
+    if not blake3_sel:
+        return False
+    for origin_sel in _UPSERT_SELECT_ORIGIN.finditer(upsert):
+        if origin_sel.start() <= blake3_sel.start():
+            continue
+        between = upsert[blake3_sel.end() : origin_sel.start()]
+        if "else" not in between:
+            return True
+    return False
+
+
+def _wa_media_zip_match_body(wa: str) -> str:
+    """`match read_zip_entry_capped(...) { ... }` body (media read, not fn def)."""
+    m = re.search(r"match\s+read_zip_entry_capped\s*\(", wa)
+    if not m:
+        return ""
+    paren = wa.find("(", m.start())
+    if paren < 0:
+        return ""
+    close_paren = _match_closer(wa, paren)
+    if close_paren < 0:
+        return ""
+    brace = wa.find("{", close_paren)
+    if brace < 0:
+        return ""
+    close_b = _match_closer(wa, brace)
+    if close_b < 0:
+        return wa[brace + 1 :]
+    return wa[brace + 1 : close_b]
+
+
+def _import_cancel_struct_docs(model: str) -> str:
+    """Rustdoc / attributes immediately above `pub struct ImportCancel`."""
+    m = re.search(r"pub struct ImportCancel\b", model)
+    if not m:
+        return ""
+    docs: list[str] = []
+    for line in reversed(model[: m.start()].splitlines()):
+        s = line.strip()
+        if (
+            s.startswith("///")
+            or s.startswith("//!")
+            or s.startswith("//")
+            or s.startswith("#[")
+            or not s
+        ):
+            docs.append(line)
+            continue
+        break
+    docs.reverse()
+    return "\n".join(docs)
+
+
 def assert_import_cancel(crate: Path) -> None:
-    """#266: cooperative Cancel — enabled while running; in-file abort."""
+    """#266: cooperative Cancel — enabled while running; in-file abort; sources reuse."""
     root = repo_root()
     import_path = crate / "web" / "lib" / "ImportPane.svelte"
     import_src = import_path.read_text() if import_path.is_file() else ""
@@ -24316,6 +24388,35 @@ def assert_import_cancel(crate: Path) -> None:
             "#266: no JoinHandle abort / thread::kill "
             "(cooperative flag only)"
         )
+
+    # 12) upsert_source / abort_cancelled: origin_path fallback or UPDATE file_blake3.
+    upsert_body = _rust_fn_body(import_txt, "upsert_source")
+    abort_body = _rust_fn_body(import_txt, "abort_cancelled")
+    if not upsert_body.strip():
+        fail("#266: upsert_source required in crates/interlace-core/src/import/mod.rs")
+    if not _upsert_origin_fallback_or_hash_update(upsert_body, abort_body):
+        fail(
+            "#266: upsert_source / abort_cancelled must fall back to "
+            "origin_path when blake3 misses, or UPDATE file_blake3 "
+            "on the existing row (not a hashless-only insert)"
+        )
+
+    # 13) WhatsApp media Err arm near read_zip_entry_capped returns Cancelled.
+    media_match = _without_comments(_wa_media_zip_match_body(wa))
+    if (
+        not media_match.strip()
+        or not re.search(r"\bCancelled\b", media_match)
+        or not re.search(r"\breturn\b", media_match)
+    ):
+        fail(
+            "#266: WhatsApp media Err arm near read_zip_entry_capped "
+            "must return Cancelled (not only ctx.warn / media_read)"
+        )
+
+    # 14) ImportCancel docs must not embed #266.
+    cancel_docs = _import_cancel_struct_docs(model)
+    if "#266" in cancel_docs:
+        fail("#266: ImportCancel docs in model.rs must not contain #266")
 
 
 # #221 — review queue chrome: Card/Separator, no raw ids, undo on the pane.
