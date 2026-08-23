@@ -32,8 +32,8 @@ HTTP client (cargo-deny bans `reqwest`/`hyper`/`tokio` on core+cli; Tauri may
 use `tokio` without `net`). Phase 1 = CLI; Phase 2 = Svelte 5 desktop UI
 (UI0–UI8 done). **Phase 2.1 is closed** (epic #108, milestone 6). First
 unsigned app release is **`app-v0.1.1`**. **Phase 2.2 polish is done.**
-**Active product track: Phase 2.3** (epic **#264**). #266 is in flight.
-Next coding **#267**. Normative:
+**Active product track: Phase 2.3** (epic **#264**). #266 / PR **#283**
+is **done**. Next coding **#267**. #265 PR **#282** is still open. Normative:
 [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md). Do not start 1.1 / 3 / 4.
 
 Normative spec: [`docs/design/DESIGN.md`](../design/DESIGN.md).
@@ -82,11 +82,12 @@ ad-hoc, not notarized). Ask before another `app-v*` / `v*` / crates.io publish.
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `f6567ef` **Merge pull request #263**
-(`app-v0.1.2`). Tag **`app-v0.1.2`**. Epic **#108**, milestone 6, and the
+HEAD when this was rewritten: `22ddb6f` **Merge pull request #283**
+(#266 import cancel). Tag **`app-v0.1.2`**. Epic **#108**, milestone 6, and the
 Phase 1 CLI milestone are **closed**. Phase 2.2 polish (#197 / #219–#222)
-is **done**. Phase **2.3** (epic **#264**): **#266** in flight (import
-cancel). Next coding **#267**. Re-check with `git log -1` / `gh pr list`.
+is **done**. Phase **2.3** (epic **#264**): **#266** / PR **#283** done.
+Next coding **#267**. #265 PR **#282** still open. Re-check with
+`git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
 
@@ -194,6 +195,12 @@ Phase 2.1 milestone (#6): **closed**.
 | #221 / PR #261 | Review queue chrome — Card + Separator; no raw person ids; Undo last link on the Review pane |
 | #222 / PR #262 | Motion — 150–250ms fade/fly/slide on palette, inspector, toast; reduced motion is duration 0 |
 
+### Done — Phase 2.3
+
+| # | What |
+| --- | --- |
+| #266 / PR #283 | Cooperative import cancel — Cancel stops the run (`interrupted`); committed rows stay; no thread kill |
+
 ## Open — product now (Phase 2.3)
 
 Epic **#264**. Phase 2.2 polish (#197) is **done**. Normative
@@ -204,7 +211,8 @@ load-bearing (a11y, titlebar, search).
 
 ### Suggested next
 
-**#266** in flight (cooperative import cancel). Next coding **#267**.
+1. **#267** Developer ID + notarize the unsigned `.app`.
+2. Land **#265** (PR **#282**) if still wanted — people list off the mutex.
 Do not start 1.1 / P3 / P4.
 
 Full board: issue **#264**. Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7).
@@ -218,7 +226,8 @@ Full board: issue **#264**. Phase 2.2 archive: [#197](https://github.com/nonamex
 
 ## Recommended next steps
 
-1. Finish **#266** (this branch). Next coding **#267**. Do not start 1.1 / P3 / P4.
+1. Next coding: **#267** (Developer ID + notarize). #265 PR **#282** still
+   open. Do not start 1.1 / P3 / P4.
 2. Unsigned app tag is **`app-v0.1.2`**. Ask before another `app-v*` / `v*` / crates.io.
 
 ## Commands (copy-paste)
@@ -291,7 +300,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
 > Product track: Phase 2.3 (epic #264). Read
-> `docs/design/UI-DESIGN.md`. #266 is in flight; next coding **#267**.
+> `docs/design/UI-DESIGN.md`. Next coding **#267**. #266 / PR #283 is done.
 > Orchestrator does not implement product code. Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag (`app-v0.1.2` is current). After merges, update this handoff in the same session.
