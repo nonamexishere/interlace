@@ -4,15 +4,15 @@ Canonical in-repo copy of issue **#52**. Work top-down. One issue → one PR
 (`Fixes #N`). How we work: [pipeline.md](pipeline.md) (test-author → impl →
 reviewer; parent chat sequences those roles as separate agents; CI is the gate).
 
-Do **not** start Phase 1.1 (#57–#69) or Phase 3/4 (#72–#82) while 2.2 is
-open. Phase 2.1 is **done**. Phase 2.2 is **now**.
+Do **not** start Phase 1.1 (#57–#69) or Phase 3/4 (#72–#82) unprompted.
+Phase 2.1 is **done**. Phase 2.2 polish is **done**.
 
 ## Now
 
 | What | Notes |
 | --- | --- |
-| Phase 2.2 | Epic [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7). Normative [`UI-DESIGN.md`](../design/UI-DESIGN.md). Next coding **none**. #198–#221 / PR #261 landed (PRs #225–#261). #222 motion on this branch (no PR yet). |
-| Desktop app | **`app-v0.1.1` shipped** ([release](https://github.com/nonamexishere/interlace/releases/tag/app-v0.1.1)). Ask before another `app-v*`. |
+| Phase 2.2 | Epic [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7). Normative [`UI-DESIGN.md`](../design/UI-DESIGN.md). **Done** (#198–#222 / PRs #225–#262). Next coding **none**. |
+| Desktop app | **`app-v0.1.2` shipped** ([release](https://github.com/nonamexishere/interlace/releases/tag/app-v0.1.2)). Ask before another `app-v*`. |
 | crates.io | Published **0.1.1**. Do not `cargo publish` / `v*` without asking. |
 
 ## Done (do not re-implement)

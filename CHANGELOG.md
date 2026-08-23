@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-23
+
+Unsigned desktop app after Phase 2.2 UI/UX polish. **Not** a crates.io
+release — CLI / `interlace-core` stay **0.1.1**. Tag **`app-v0.1.2`**.
+
+### Added
+
+- Design tokens, typography, Lucide icons, owned Card/Tooltip/Separator/Badge.
+- Empty / loading / error / partial states; recoverable toasts.
+- Timeline grouping and hierarchy; virtualized long threads; always-on search.
+- Overlay titlebar, collapsible sidebar, optional inspector, command palette.
+- Keyboard map, focus/ARIA, contrast tokens, OS appearance (dark archival).
+- Status tokens (`--warning` / `--success`) for cloud, doctor, and import done.
+- Import Cancel shown while running (disabled — core has no stop).
+- Review queue Card chrome; undo last user link; confirm closes before work.
+- Short fade/fly on palette, inspector, and toast; instant under Reduce motion.
+
+### Fixed
+
+- Person timeline stutter on two-sided DMs (variable-height virtualizer).
+- Confirm/undo no longer freeze the window on the People-list archive lock.
+
 ### Added
 
 - `interlace --version` / `-V` (same for `interlace-cli`).

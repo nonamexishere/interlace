@@ -72,20 +72,19 @@ App holds exclusive flock. Close `interlace-app` / `tauri:dev` before CLI
 
 Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`,
 `v0.1.1` tags). Workspace version is still **0.1.1**. App crate
-`interlace-tauri` is `publish = false`. **`app-v0.1.1` is tagged** (unsigned
-Apple Silicon `.app.zip` + `.dmg` on
-[GitHub Releases](https://github.com/nonamexishere/interlace/releases/tag/app-v0.1.1);
+`interlace-tauri` is `publish = false`. **`app-v0.1.2` is the unsigned app**
+(Apple Silicon `.app.zip` + `.dmg` on
+[GitHub Releases](https://github.com/nonamexishere/interlace/releases/tag/app-v0.1.2);
 ad-hoc, not notarized). Ask before another `app-v*` / `v*` / crates.io publish.
 
 `master` is **protected**: required checks `check` + `tauri`, strict,
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `9cb41ca` **Merge pull request #261** (#221
-review queue chrome) plus this branch `feat/ui-motion` (#222). Tag
-**`app-v0.1.1`** is still the unsigned app. Epic **#108**, milestone 6, and
-the Phase 1 CLI milestone are **closed**. Product track is **#197** /
-milestone 7. Re-check with `git log -1` / `gh pr list`.
+HEAD when this was rewritten: `8e989c9` **Merge pull request #262** (#222
+motion). Tag **`app-v0.1.2`**. Epic **#108**, milestone 6, and the Phase 1
+CLI milestone are **closed**. Phase 2.2 polish (#197 / #219–#222) is
+**done**. Re-check with `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
 
@@ -191,7 +190,7 @@ Phase 2.1 milestone (#6): **closed**.
 | #219 / PR #259 | Status tokens — `--color-warning` / `--color-success` (HSL); cloud + doctor use warning, not destructive; import done is quiet |
 | #220 / PR #260 | Import progress — disabled Cancel while running (core has no stop); done stays quiet counts |
 | #221 / PR #261 | Review queue chrome — Card + Separator; no raw person ids; Undo last link on the Review pane |
-| #222 | Motion — 150–250ms fade/fly/slide on palette, inspector, toast; reduced motion is duration 0 |
+| #222 / PR #262 | Motion — 150–250ms fade/fly/slide on palette, inspector, toast; reduced motion is duration 0 |
 
 ## Open — product now (Phase 2.2)
 
@@ -216,7 +215,7 @@ Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github
 ## Recommended next steps
 
 1. Next coding: none (Phase 2.2 suggested board is empty). Do not start 1.1 / P3 / P4.
-2. Do **not** start 1.1 / P3 / P4 unprompted. Ask before another `app-v*` / `v*` / crates.io.
+2. Unsigned app tag is **`app-v0.1.2`**. Ask before another `app-v*` / `v*` / crates.io.
 
 ## Commands (copy-paste)
 
@@ -291,4 +290,4 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > `docs/design/UI-DESIGN.md`. Next coding is none (Phase 2.2 suggested board is empty).
 > Orchestrator does not implement product code. Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
-> tag. After merges, update this handoff in the same session.
+> tag (`app-v0.1.2` is current). After merges, update this handoff in the same session.
