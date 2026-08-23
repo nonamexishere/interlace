@@ -276,7 +276,7 @@ pub struct OpenOptions {
     pub create: bool,
 }
 
-/// Cooperative stop flag for `run_import` (#266). Clone is cheap (`Arc`).
+/// Cooperative stop flag for `run_import`.
 #[derive(Debug, Clone)]
 pub struct ImportCancel {
     flag: Arc<AtomicBool>,

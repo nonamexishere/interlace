@@ -366,14 +366,21 @@ fn upsert_source(
         if let Some(r) = rows.next()? {
             return Ok(r.get(0)?);
         }
-    } else {
-        let mut stmt = archive
-            .conn
-            .prepare("SELECT id FROM sources WHERE kind = ?1 AND origin_path = ?2 LIMIT 1")?;
-        let mut rows = stmt.query(rusqlite::params![kind_sql, origin])?;
-        if let Some(r) = rows.next()? {
-            return Ok(r.get(0)?);
+    }
+    let mut stmt = archive
+        .conn
+        .prepare("SELECT id FROM sources WHERE kind = ?1 AND origin_path = ?2 LIMIT 1")?;
+    let mut rows = stmt.query(rusqlite::params![kind_sql, origin])?;
+    if let Some(r) = rows.next()? {
+        let id: i64 = r.get(0)?;
+        if let Some(h) = blake3 {
+            archive.conn.execute(
+                "UPDATE sources SET file_blake3 = ?1, bytes = COALESCE(?2, bytes)
+                 WHERE id = ?3",
+                rusqlite::params![h, bytes.map(|b| b as i64), id],
+            )?;
         }
+        return Ok(id);
     }
     archive.conn.execute(
         "INSERT INTO sources(kind, label, origin_path, bytes, file_blake3)

@@ -401,6 +401,9 @@ impl SourceImporter for WhatsappImporter {
                                 )?;
                             }
                             Err(e) => {
+                                if matches!(e, CoreError::Cancelled) {
+                                    return Err(e);
+                                }
                                 ctx.warn(Warning {
                                     severity: Severity::Reject,
                                     locator: format!("{}:{}", chat_name, m.line_no),
