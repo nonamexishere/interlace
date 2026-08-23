@@ -377,6 +377,13 @@
 #     catch + onerror/onError; App.svelte ConfirmDialog passes
 #     onerror/onError/showErr; Review Undo disabled mentions resolving
 #     and requestUndo returns early when resolving.
+#269: people sidebar undo chrome — short human label (op + display name if
+#     cheap), not #{e.id} / raw event id as the title. Same undoable set
+#     as Review: user + merge_persons/link/unlink, skip split_person /
+#     undo_of. Never call doUndo / api.undo on split_person. Confirm has
+#     no Undo event ${id}. ConfirmDialog close-first + App onerror stay
+#     (#221). Docs: sidebar undo + skip split / no raw event id.
+#     Do not rewrite #221 / #265.
 #222: motion — 150–250ms Svelte fade/fly/slide on palette, inspector, toast;
 #     prefers-reduced-motion uses duration 0 (JS matchMedia / MediaQuery;
 #     CSS 0.01ms is not enough). No spring / bounce / lottie / celebration.
@@ -26011,6 +26018,281 @@ def assert_review_chrome(crate: Path) -> None:
         fail("#221: keep #218 — no Theme / Appearance menu / data-theme")
 
 
+# #269 — people sidebar undo chrome (names, skip split_person). Sibling of #221.
+_SIDEBAR_UNDO_EACH_SRC = re.compile(
+    r"\b(?:events|undoableEvents|undoEvents|sidebarEvents|sidebarUndo|"
+    r"undoable|lastUndoable|filteredEvents|linkEvents|undoList)\b",
+    re.I,
+)
+_SIDEBAR_RAW_ID_TITLE = re.compile(
+    r"("
+    r"#\{\s*(?:e|ev|event|row)\s*\.\s*id\s*\}"
+    r"|#\{\s*id\s*\}"
+    r")"
+)
+_SIDEBAR_BARE_ID_TEXT = re.compile(
+    r"\{\s*(?:e|ev|event|row)\s*\.\s*id\s*\}"
+)
+_SIDEBAR_CONFIRM_RAW = re.compile(
+    r"("
+    r"Undo event\s*\$\{"
+    r"|Undo event\s*['\"`]\s*\+"
+    r"|event\s+\$\{\s*id"
+    r"|event\s+\$\{\s*(?:e|ev|event)\s*\.\s*id"
+    r")"
+)
+_SIDEBAR_UNDO_FN_NAMES = (
+    "doUndo",
+    "requestUndo",
+    "undoLast",
+    "undoEvent",
+    "askUndo",
+    "runUndo",
+)
+_SIDEBAR_DOCS_UNDO = re.compile(
+    r"("
+    r"(?:people\s+)?sidebar.{0,160}\bundo\b"
+    r"|\bundo\b.{0,160}(?:people\s+)?sidebar"
+    r")",
+    re.I | re.S,
+)
+_SIDEBAR_DOCS_SKIP = re.compile(
+    r"("
+    r"split_person"
+    r"|undo-log"
+    r"|undo log"
+    r"|already[- ]undone"
+    r"|skip(?:s|ping)?\s+(?:the\s+)?(?:undo[- ]log|split)"
+    r")",
+    re.I,
+)
+_SIDEBAR_DOCS_NO_RAW = re.compile(
+    r"("
+    r"raw event ids?"
+    r"|no raw event"
+    r"|not raw event"
+    r"|without raw event"
+    r"|not.{0,40}(?:raw )?event id"
+    r"|event id as (?:the )?(?:title|label|only)"
+    r"|name/?op(?: label)?"
+    r")",
+    re.I,
+)
+
+
+def _svelte_each_blocks(text: str) -> list[tuple[str, str]]:
+    """`(source as alias …, inner)` for each `{#each}` in markup (nested-aware)."""
+    out: list[tuple[str, str]] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        m = re.search(r"\{#each\s+([^}]+)\}", text[i:])
+        if not m:
+            break
+        inner_start = i + m.end()
+        depth = 1
+        j = inner_start
+        while j < n and depth:
+            nxt = re.search(r"\{#each\b|\{/each\}", text[j:])
+            if not nxt:
+                j = n
+                break
+            tok = nxt.group(0)
+            j = j + nxt.end()
+            if tok.startswith("{#each"):
+                depth += 1
+            else:
+                depth -= 1
+        inner_end = j - len("{/each}") if depth == 0 else n
+        out.append((m.group(1).strip(), text[inner_start:inner_end]))
+        i = inner_start
+    return out
+
+
+def _markup_text_nodes(block: str) -> str:
+    """Drop attribute values so `{e.id}` in onclick / bind does not count."""
+    out = re.sub(r"\b[\w:.-]+\s*=\s*\{(?:[^{}]|\{[^{}]*\})*\}", " ", block)
+    out = re.sub(r"\b[\w:.-]+\s*=\s*\"[^\"]*\"", " ", out)
+    out = re.sub(r"\b[\w:.-]+\s*=\s*'[^']*'", " ", out)
+    return out
+
+
+def _people_sidebar_region(markup: str) -> str:
+    """People sidebar slice (data-people-sidebar → timeline / inspector)."""
+    m = re.search(r"\bdata-people-sidebar\b", markup)
+    if not m:
+        return ""
+    start = m.start()
+    rest = markup[start + 20 :]
+    end_m = re.search(
+        r"("
+        r"id\s*=\s*[\"']person-timeline[\"']"
+        r"|data-person-inspector"
+        r"|data-conversation-switcher"
+        r")",
+        rest,
+    )
+    end = start + 20 + end_m.start() if end_m else min(len(markup), start + 16000)
+    return markup[start:end]
+
+
+def _sidebar_undo_fn_blob(cleaned: str) -> str:
+    chunks: list[str] = []
+    for name in _SIDEBAR_UNDO_FN_NAMES:
+        body = _ts_fn_body(cleaned, name) or _function_body(cleaned, name)
+        if body:
+            chunks.append(body)
+    return "\n".join(chunks)
+
+
+def _sidebar_each_guard_blob(cleaned: str, inner: str) -> str:
+    """Each-block plus named helpers it calls (isUndoable / lastUndoable)."""
+    parts = [inner]
+    for name in re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", inner):
+        if name in {"doUndo", "undo", "api"}:
+            continue
+        body = _ts_fn_body(cleaned, name) or _function_body(cleaned, name)
+        if body:
+            parts.append(body)
+    return "\n".join(parts)
+
+
+def assert_sidebar_undo_chrome(crate: Path) -> None:
+    """#269: people sidebar undo — human label, skip split_person.
+
+    Same undoable set as Review lastUndoable. No raw event id as the title.
+    Confirm has no Undo event ${id}. ConfirmDialog close-first + App
+    onerror stay (#221). Do not rewrite #221 / #265.
+    """
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#269: App.svelte required (people sidebar undo chrome lives there)")
+    app_src = app_path.read_text()
+    cleaned = _without_comments(app_src)
+    markup = _svelte_markup(app_src)
+    sidebar = _people_sidebar_region(markup) or markup
+
+    # 1) Visible title is not #{e.id} / raw event id.
+    title_blobs: list[str] = [_markup_text_nodes(sidebar)]
+    for src, inner in _svelte_each_blocks(markup):
+        if _SIDEBAR_UNDO_EACH_SRC.search(src):
+            title_blobs.append(_markup_text_nodes(inner))
+    title_blob = "\n".join(title_blobs)
+    raw_title = _SIDEBAR_RAW_ID_TITLE.search(title_blob) or _SIDEBAR_BARE_ID_TEXT.search(
+        title_blob
+    )
+    if raw_title:
+        fail(
+            "#269: people sidebar undo list must not show #{e.id} / raw "
+            "event id as the title (use a short human op + name label; "
+            f"found {raw_title.group(0)!r})"
+        )
+
+    # 2) Undo path mentions split_person + undo_of (or lastUndoable).
+    has_split = "split_person" in cleaned
+    has_undo_of = "undo_of" in cleaned
+    has_last = "lastUndoable" in cleaned
+    if not (has_split and (has_undo_of or has_last)):
+        fail(
+            "#269: App.svelte undo path must mention split_person and "
+            "undo_of (or lastUndoable) — skip the leftover undo-log"
+        )
+
+    # 3) Do not call doUndo / api.undo on every events row / split_person.
+    for src, inner in _svelte_each_blocks(markup):
+        head = src.split(" as ", 1)[0].strip()
+        if not re.fullmatch(r"events", head):
+            continue
+        if not re.search(r"\b(?:doUndo|api\s*\.\s*undo)\s*\(", inner):
+            continue
+        guard = _sidebar_each_guard_blob(cleaned, inner)
+        if not re.search(r"split_person|undo_of|lastUndoable", guard):
+            fail(
+                "#269: do not call doUndo / api.undo on every events row "
+                "including split_person — filter to the Review lastUndoable "
+                "set (user merge/link/unlink, not already undone)"
+            )
+
+    # 4) Confirm title/body for sidebar undo has no Undo event ${id}.
+    undo_fn_blob = _sidebar_undo_fn_blob(cleaned)
+    confirm_blob = undo_fn_blob if undo_fn_blob.strip() else cleaned
+    raw_confirm = _SIDEBAR_CONFIRM_RAW.search(confirm_blob)
+    if raw_confirm:
+        fail(
+            "#269: sidebar undo confirm must not say Undo event ${id} / "
+            "event ${id} (Undo last link? / Undo this merge? is fine; "
+            f"found {raw_confirm.group(0)!r})"
+        )
+
+    # 5) Keep #221: ConfirmDialog close-first + App onerror; Review
+    #    lastUndoable / data-review-undo / skip split_person.
+    confirm_path = crate / "web" / "lib" / "ConfirmDialog.svelte"
+    if not confirm_path.is_file():
+        fail(
+            "#269: keep #221 — ConfirmDialog.svelte required "
+            "(go() must close before await onconfirm())"
+        )
+    confirm_src = _without_comments(confirm_path.read_text())
+    go_body = _ts_fn_body(confirm_src, "go") or _function_body(confirm_src, "go")
+    if not go_body:
+        fail(
+            "#269: keep #221 — ConfirmDialog.svelte go() required "
+            "(set open = false before await onconfirm())"
+        )
+    await_onconfirm = _REVIEW_AWAIT_ONCONFIRM.search(go_body)
+    if await_onconfirm:
+        close_open = _REVIEW_OPEN_FALSE.search(go_body)
+        if not close_open or close_open.start() > await_onconfirm.start():
+            fail(
+                "#269: keep #221 — ConfirmDialog go() must set open = false "
+                "before await onconfirm() (or not await onconfirm)"
+            )
+    has_onerror = bool(_REVIEW_ONERROR_PROP.search(confirm_src))
+    if not has_onerror or not _confirm_go_catches_onconfirm(go_body):
+        fail(
+            "#269: keep #221 — ConfirmDialog go() must catch onconfirm "
+            "and have an onerror / onError prop"
+        )
+    app_confirm_tag = _review_component_tag(app_src, "ConfirmDialog")
+    if not app_confirm_tag:
+        fail("#269: keep #221 — App.svelte ConfirmDialog required")
+    if not _REVIEW_APP_CONFIRM_ERR.search(app_confirm_tag):
+        fail(
+            "#269: keep #221 — App.svelte ConfirmDialog must pass "
+            "onerror / onError / showErr"
+        )
+    review_path = crate / "web" / "lib" / "ReviewPane.svelte"
+    review_src = review_path.read_text() if review_path.is_file() else ""
+    if "data-review-undo" not in review_src or "lastUndoable" not in review_src:
+        fail("#269: keep #221 — Review data-review-undo / lastUndoable")
+    if "split_person" not in review_src or "undo_of" not in review_src:
+        fail("#269: keep #221 — Review undo must still skip split_person / undo_of")
+
+    # 6) Docs: sidebar undo + skip split / no raw event id.
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+    if not dtxt.strip():
+        fail(
+            "#269: docs/user/app.md required — people sidebar undo uses a "
+            "name/op label, skips split_person / undo-log, no raw event id"
+        )
+    if not _SIDEBAR_DOCS_UNDO.search(dtxt):
+        fail(
+            "#269: docs/user/app.md must say people sidebar undo "
+            "(name/op label, matches Review)"
+        )
+    if not _SIDEBAR_DOCS_SKIP.search(dtxt):
+        fail(
+            "#269: docs/user/app.md must say sidebar undo skips "
+            "split_person / undo-log / already-undone"
+        )
+    if not _SIDEBAR_DOCS_NO_RAW.search(dtxt):
+        fail(
+            "#269: docs/user/app.md must say sidebar undo does not use a "
+            "raw event id as the title (name/op label)"
+        )
+
+
 # #222 — 150–250ms fade/fly/slide on palette, inspector, toast; reduced = 0.
 _MOTION_IMPORT = re.compile(
     r"import\s*\{[^}]*\b(?:fade|fly|slide)\b[^}]*\}\s*from\s*"
@@ -26494,6 +26776,7 @@ def main() -> None:
     assert_import_progress(crate)
     assert_import_cancel(crate)
     assert_review_chrome(crate)
+    assert_sidebar_undo_chrome(crate)
     assert_motion(crate)
     assert_a11y_listbox_focus_motion(crate)
     assert_human_time_people(crate)
