@@ -64,6 +64,17 @@
       : mergeTargets(people, mergeKeepId, allowSelf, mergeQuery),
   );
   let events = $state<LinkEvent[]>([]);
+  const UNDOABLE = new Set(["merge_persons", "link", "unlink"]);
+  const undoableEvents = $derived.by(() => {
+    const undone = new Set(
+      events
+        .filter((e) => e.op === "split_person" && e.undo_of != null)
+        .map((e) => e.undo_of as number),
+    );
+    return events.filter(
+      (e) => UNDOABLE.has(e.op) && e.actor === "user" && !undone.has(e.id),
+    );
+  });
 
   let confirmOpen = $state(false);
   let confirmTitle = $state("");
@@ -1161,8 +1172,33 @@
     });
   }
 
-  function doUndo(id: number, op: string) {
-    ask(`Undo event ${id} (${op})?`, "Reverses the last identity graph change. Messages stay put.", async () => {
+  function undoOpLabel(op: string) {
+    if (op === "merge_persons") return "Merge";
+    if (op === "link") return "Link";
+    if (op === "unlink") return "Unlink";
+    return op;
+  }
+
+  function undoPersonName(e: LinkEvent) {
+    if (e.loser_display_name) return e.loser_display_name;
+    const ids = [e.person_id, e.keep, e.loser].filter(
+      (id): id is number => id != null,
+    );
+    for (const id of ids) {
+      const p = people.find((x) => x.id === id);
+      if (p) return p.display_name;
+    }
+    return undefined;
+  }
+
+  function undoRowLabel(e: LinkEvent) {
+    const op = undoOpLabel(e.op);
+    const name = undoPersonName(e);
+    return name ? `${op} ${name}` : op;
+  }
+
+  function doUndo(id: number) {
+    ask("Undo last link?", "Reverses the last identity graph change. Messages stay put.", async () => {
       await api.undo(id);
       await refreshPeople();
       await refreshEvents();
@@ -1714,16 +1750,18 @@
             />
           </div>
         {/if}
+        {#if undoableEvents.length > 0}
         <ul class="mt-3 min-w-0 space-y-1 text-xs">
-          {#each events as e}
+          {#each undoableEvents as e}
             <li class="flex min-w-0 items-center justify-between gap-2">
-              <span class="min-w-0 truncate">#{e.id} {e.op}</span>
-              <Button variant="outline" size="sm" class="shrink-0" tabindex="-1" onclick={() => doUndo(e.id, e.op)}>
+              <span class="min-w-0 truncate">{undoRowLabel(e)}</span>
+              <Button variant="outline" size="sm" class="shrink-0" tabindex="-1" onclick={() => doUndo(e.id)}>
                 undo
               </Button>
             </li>
           {/each}
         </ul>
+        {/if}
         <Button variant="outline" size="sm" class="mt-4 max-w-full" tabindex="-1" onclick={openPicker}>
           Open other archive…
         </Button>

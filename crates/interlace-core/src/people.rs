@@ -118,6 +118,18 @@ pub struct LinkEvent {
     /// Set on `split_person` rows: the event this undo reversed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub undo_of: Option<i64>,
+    /// Merge payload display name for the absorbed person (sidebar undo label).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loser_display_name: Option<String>,
+    /// Link / unlink payload person (sidebar undo label via people list).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub person_id: Option<i64>,
+    /// Merge payload survivor id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keep: Option<i64>,
+    /// Merge payload absorbed person id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loser: Option<i64>,
 }
 
 pub fn person_list(archive: &Archive) -> Result<Vec<PersonSummary>, CoreError> {
@@ -626,15 +638,33 @@ pub fn recent_link_events(archive: &Archive, limit: u32) -> Result<Vec<LinkEvent
     )?;
     let rows = stmt.query_map([limit as i64], |r| {
         let payload: String = r.get(4)?;
-        let undo_of = serde_json::from_str::<serde_json::Value>(&payload)
-            .ok()
+        let v = serde_json::from_str::<serde_json::Value>(&payload).ok();
+        let undo_of = v
+            .as_ref()
             .and_then(|v| v.get("undo_of").and_then(|x| x.as_i64()));
+        let loser_display_name = v
+            .as_ref()
+            .and_then(|v| v.get("loser_display_name").and_then(|x| x.as_str()))
+            .map(str::to_string);
+        let person_id = v
+            .as_ref()
+            .and_then(|v| v.get("person_id").and_then(|x| x.as_i64()));
+        let keep = v
+            .as_ref()
+            .and_then(|v| v.get("keep").and_then(|x| x.as_i64()));
+        let loser = v
+            .as_ref()
+            .and_then(|v| v.get("loser").and_then(|x| x.as_i64()));
         Ok(LinkEvent {
             id: r.get(0)?,
             ts: r.get(1)?,
             op: r.get(2)?,
             actor: r.get(3)?,
             undo_of,
+            loser_display_name,
+            person_id,
+            keep,
+            loser,
         })
     })?;
     let mut out = Vec::new();

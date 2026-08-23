@@ -67,6 +67,10 @@ export type LinkEvent = {
   op: string;
   actor?: string;
   undo_of?: number | null;
+  loser_display_name?: string | null;
+  person_id?: number | null;
+  keep?: number | null;
+  loser?: number | null;
 };
 
 export type SearchHit = {
