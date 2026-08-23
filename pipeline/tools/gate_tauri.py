@@ -384,6 +384,19 @@
 #     no Undo event ${id}. ConfirmDialog close-first + App onerror stay
 #     (#221). Docs: sidebar undo + skip split / no raw event id.
 #     Do not rewrite #221 / #265.
+#270: search-as-you-type without hitching on people refresh —
+#     #q / SearchPane has an input/effect/debounce path to run() /
+#     api.search, not submit-only. run() does not call people /
+#     refreshPeople / applyStatus. #q is not disabled by peopleLoading.
+#     Keep #q, <mark> / splitSnippet, data-search-filters. No Tantivy /
+#     no fetch( / remote search. Docs: type-to-search; not blocked on
+#     people refresh. Do not rewrite #126 / #208 / #209 / #210 / #265.
+#     Follow-up (type-to-search lag): first in-flight (searching, no
+#     hits) still has the #203 skeleton; later run() must not clear
+#     expanded / hitIndex / body before api.search; previous hits stay
+#     until the gen-guarded assign (no hits = [] at the start of run();
+#     do not paint the skeleton over existing hits). Do not rewrite
+#     #203 / #205 / the rest of #270.
 #222: motion — 150–250ms Svelte fade/fly/slide on palette, inspector, toast;
 #     prefers-reduced-motion uses duration 0 (JS matchMedia / MediaQuery;
 #     CSS 0.01ms is not enough). No spring / bounce / lottie / celebration.
@@ -19886,6 +19899,467 @@ def assert_chrome_search_field(crate: Path) -> None:
         fail("#208: not in scope — no remote search")
 
 
+# #270 — search-as-you-type without hitching on people refresh.
+_SEARCH_EFFECT = re.compile(r"\$effect(?:\.pre)?\s*\(")
+_SEARCH_Q_TOKEN = re.compile(r"(?<![\w$])q(?![\w$])")
+_SEARCH_TYPE_INPUT_ATTR = re.compile(
+    r"(?:on:input|oninput|on:keyup|onkeyup)\s*=",
+    re.I,
+)
+_SEARCH_TYPE_HANDLER = re.compile(
+    r"(?:on:input|oninput|on:keyup|onkeyup)\s*=\s*\{"
+    r"(?:"
+    r"\s*([A-Za-z_][\w]*)\s*\}"
+    r"|[^}]{0,240}?\b([A-Za-z_][\w]*)\s*\("
+    r")",
+    re.I,
+)
+_SEARCH_AS_YOU_TYPE_TRIGGER = re.compile(
+    r"("
+    r"\brun\s*\("
+    r"|\bapi\.search\s*\("
+    r"|setTimeout\s*\(\s*(?:async\s*)?(?:\(\s*\)\s*=>\s*)?(?:void\s+)?run\b"
+    r"|debounce(?:d)?\s*\(\s*(?:async\s*)?(?:\(\s*\)\s*=>\s*)?(?:void\s+)?run\b"
+    r")",
+)
+_SEARCH_PEOPLE_FROM_RUN = re.compile(
+    r"("
+    r"\brefreshPeople\s*\("
+    r"|\bapplyStatus\s*\("
+    r"|\bapi\.people\s*\("
+    r"|invoke\s*(?:<[^>]*>)?\s*\(\s*[\"']people[\"']"
+    r")",
+)
+_SEARCH_DISABLED_PEOPLE = re.compile(
+    r"disabled\s*=\s*\{[^}]*\bpeopleLoading\b",
+    re.I,
+)
+_TANTIVY_WORD = re.compile(r"\btantivy\b", re.I)
+_FETCH_CALL = re.compile(r"\bfetch\s*\(")
+_SEARCH_TYPE_HANDLER_SKIP = frozenset(
+    {
+        "preventDefault",
+        "stopPropagation",
+        "stopImmediatePropagation",
+        "trim",
+        "String",
+        "Number",
+        "Boolean",
+        "clearTimeout",
+        "setTimeout",
+        "requestAnimationFrame",
+        "queueMicrotask",
+    }
+)
+_DOCS_TYPE_TO_SEARCH = re.compile(
+    r"("
+    r"search[- ]as[- ]you[- ]type"
+    r"|as[- ]you[- ]type"
+    r"|type[- ]to[- ]search"
+    r"|typ(?:e|ing|es)\s+(?:a\s+token|in\s+(?:search\s+)?#q|in\s+the\s+query)"
+    r".{0,80}(?:search(?:es)?|runs?\s+(?:a\s+)?search|starts?\s+search)"
+    r"|typ(?:e|ing)\s+in\s+(?:search\s+)?#q\s+search"
+    r")",
+    re.I | re.S,
+)
+_DOCS_SEARCH_NOT_WAIT_PEOPLE = re.compile(
+    r"("
+    r"(?:search|#q|typ(?:e|ing)).{0,100}"
+    r"(?:does not wait|doesn't wait|do not wait|without waiting|"
+    r"not blocked|is not blocked|not wait)"
+    r".{0,80}people"
+    r"|"
+    r"(?:does not wait|doesn't wait|without waiting|not blocked)"
+    r".{0,80}people.{0,40}(?:list|refresh|rebuild)"
+    r"|"
+    r"people.{0,40}(?:list|refresh|rebuild).{0,60}"
+    r"(?:does not block|doesn't block|do not block|not block)"
+    r".{0,40}(?:search|#q)"
+    r")",
+    re.I | re.S,
+)
+_SEARCH_HITS_EMPTY = re.compile(
+    r"("
+    r"!\s*hits(?:\s*\.length)?\b"
+    r"|hits\.length\s*(?:===?|<=|<)\s*0\b"
+    r"|0\s*(?:===?|>=|>)\s*hits\.length"
+    r"|hits\.length\s*<\s*1\b"
+    r")",
+)
+_SEARCH_HITS_NONEMPTY = re.compile(
+    r"("
+    r"hits\.length\s*(?:>|>=|!==?)\s*0\b"
+    r"|hits\.length\s*(?:>|>=)\s*[1-9]"
+    r"|(?<!!)\bhits\.length\b"
+    r")",
+)
+_SEARCH_PRE_IPC_EXPANDED = re.compile(
+    r"\bexpanded\s*=\s*(?:null|undefined|void\s+0)\b"
+)
+_SEARCH_PRE_IPC_BODY = re.compile(r"\bbody\s*=\s*(?:\"\"|''|``)")
+_SEARCH_PRE_IPC_HITINDEX = re.compile(r"\bhitIndex\s*=(?!=)")
+_SEARCH_PRE_IPC_HITS_CLEAR = re.compile(r"\bhits\s*=\s*\[\s*\]")
+
+
+def _svelte_effect_args(src: str) -> list[str]:
+    """Argument blob of each `$effect(() => { … })` / `$effect.pre(…)`."""
+    out: list[str] = []
+    for m in _SEARCH_EFFECT.finditer(src):
+        open_p = src.find("(", m.start())
+        if open_p < 0:
+            continue
+        close = _match_closer(src, open_p)
+        if close < 0:
+            continue
+        out.append(src[open_p + 1 : close])
+    return out
+
+
+def _search_q_open_tag(markup: str) -> str:
+    """Open <Input>/<input> tag that carries id=q."""
+    for m in re.finditer(r"<(?:Input|input)\b", markup, re.I):
+        tag = _svelte_open_tag_at(markup, m.start())
+        if _SEARCH_Q_ID.search(tag):
+            return tag
+    return ""
+
+
+def _search_type_input_surface(src: str, q_tag: str) -> str:
+    """Named / inline input handlers on the #q field (not the person filter)."""
+    if not q_tag or not _SEARCH_TYPE_INPUT_ATTR.search(q_tag):
+        return ""
+    parts = [q_tag]
+    names: list[str] = []
+    for m in _SEARCH_TYPE_HANDLER.finditer(q_tag):
+        names.extend(n for n in m.groups() if n)
+    seen: set[str] = set()
+    for name in names:
+        if name in seen or name in _SEARCH_TYPE_HANDLER_SKIP:
+            continue
+        seen.add(name)
+        inner = _ts_fn_body(src, name) or _function_body(src, name)
+        if inner:
+            parts.append(_expand_fn_calls(src, inner))
+    return "\n".join(parts)
+
+
+def _search_as_you_type_surface(src: str, markup: str) -> str:
+    """Effect / #q-input blobs that can fire search when the query changes.
+
+    Form onsubmit / chrome requestSubmit do not count (that is submit-only).
+    Person-filter oninput does not count (different field).
+    """
+    parts: list[str] = []
+    for arg in _svelte_effect_args(src):
+        if not _SEARCH_Q_TOKEN.search(arg):
+            continue
+        parts.append(_expand_fn_calls(src, arg))
+    q_tag = _search_q_open_tag(markup)
+    input_surf = _search_type_input_surface(src, q_tag)
+    if input_surf.strip():
+        parts.append(input_surf)
+    return "\n".join(parts)
+
+
+def _has_search_as_you_type(src: str, markup: str) -> bool:
+    surface = _search_as_you_type_surface(src, markup)
+    return bool(surface.strip()) and bool(_SEARCH_AS_YOU_TYPE_TRIGGER.search(surface))
+
+
+def _search_gated_on_people_loading(
+    stack: list[tuple[str, str, str]],
+) -> bool:
+    """True if Search is only mounted when peopleLoading is false."""
+    for kind, cond, _extra in stack:
+        if not re.search(r"\bpeopleLoading\b", cond):
+            continue
+        if kind == "if" and re.search(r"!\s*peopleLoading", cond):
+            return True
+        if kind == "if-else" and not re.search(r"!\s*peopleLoading", cond):
+            return True
+    return False
+
+
+def _cond_requires_empty_hits(cond: str) -> bool:
+    """True if this {#if} only runs when the hits list is empty."""
+    return bool(_SEARCH_HITS_EMPTY.search(_cond_code(cond)))
+
+
+def _cond_requires_existing_hits(cond: str) -> bool:
+    """True if this {#if} only runs when previous hits are on screen."""
+    code = _cond_code(cond)
+    if _SEARCH_HITS_EMPTY.search(code):
+        return False
+    return bool(_SEARCH_HITS_NONEMPTY.search(code))
+
+
+def _stack_searching_true(stack: list[tuple[str, str, str]]) -> bool:
+    """True if this markup sits in a branch shown while `searching` is true."""
+    for kind, cond, _extra in stack:
+        if not re.search(r"\bsearching\b", cond):
+            continue
+        code = _cond_code(cond)
+        if kind == "if":
+            return not _ident_negated(code, "searching")
+        if kind == "if-else":
+            return _ident_negated(code, "searching")
+    return False
+
+
+def _stack_requires_empty_hits(stack: list[tuple[str, str, str]]) -> bool:
+    for kind, cond, _extra in stack:
+        if kind == "if" and _cond_requires_empty_hits(cond):
+            return True
+        if kind == "if-else" and _cond_requires_existing_hits(cond):
+            return True
+    return False
+
+
+def _stack_requires_existing_hits(stack: list[tuple[str, str, str]]) -> bool:
+    for kind, cond, _extra in stack:
+        if kind == "if" and _cond_requires_existing_hits(cond):
+            return True
+        if kind == "if-else" and _cond_requires_empty_hits(cond):
+            return True
+    return False
+
+
+def _search_skeleton_stacks(
+    markup: str, src: str
+) -> list[list[tuple[str, str, str]]]:
+    """Template stacks at each #203 skeleton hook in Search markup."""
+    names = _owned_skeleton_names(src)
+    return [
+        _template_stack(markup, pos)
+        for pos in _skeleton_hook_positions(markup, names)
+    ]
+
+
+def _blank_returning_blocks(src: str) -> str:
+    """Blank `{ … return … }` so error-path assigns are not the start of run()."""
+    chars = list(src)
+    i = 0
+    n = len(src)
+    while i < n:
+        nxt = _js_next(src, i)
+        if nxt != i:
+            i = nxt
+            continue
+        if src[i] == "{":
+            close = _match_closer(src, i)
+            if close > i and re.search(r"\breturn\b", src[i + 1 : close]):
+                for k in range(i, close + 1):
+                    if chars[k] not in "\n\r":
+                        chars[k] = " "
+                i = close + 1
+                continue
+        i += 1
+    return "".join(chars)
+
+
+def _run_before_ipc(body: str) -> str:
+    """run() text before the first `api.search` (error-return blocks blanked)."""
+    ipc_at = _first_substr_pos(body, ("api.search",))
+    prefix = body if ipc_at < 0 else body[:ipc_at]
+    return _blank_returning_blocks(prefix)
+
+
+def assert_search_as_you_type(crate: Path) -> None:
+    """#270: typing in #q searches; do not hitch on a people refresh.
+
+    `#q` / SearchPane needs an input / `$effect` / debounce path to `run()`
+    / `api.search` — form submit alone is not enough. `run()` must not call
+    `people` / `refreshPeople` / `applyStatus`. `#q` must not be disabled
+    (or unmounted) because `peopleLoading` is true. Keep `#q`, `<mark>` /
+    `splitSnippet`, `data-search-filters`. No Tantivy, no `fetch(`, no
+    remote search. Docs: type-to-search; not blocked on people refresh.
+    Do not rewrite #126 / #208 / #209 / #210 / #265.
+
+    Follow-up (type-to-search lag): first in-flight (`searching`, no hits)
+    still has the #203 skeleton. Later `run()` must not clear `expanded` /
+    `hitIndex` / `body` before `api.search`. Previous `hits` stay until
+    the gen-guarded assign — no `hits = []` at the start of `run()`, and
+    `{#if searching}` must not paint the skeleton over existing hits.
+    Do not rewrite #203 / #205 / the rest of #270.
+    """
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    if not search_path.is_file():
+        fail("#270: SearchPane.svelte required (type-to-search lives on #q)")
+    app_path = crate / "web" / "App.svelte"
+    src = search_path.read_text()
+    cleaned = _without_comments(src)
+    markup = _svelte_markup(src)
+    surface = markup if markup.strip() else src
+    app = app_path.read_text() if app_path.is_file() else ""
+    app_clean = _without_comments(app)
+    app_markup = _svelte_markup(app) if app else ""
+    docs_search = repo_root() / "docs" / "user" / "search.md"
+    docs_app = repo_root() / "docs" / "user" / "app.md"
+    dtxt = ""
+    if docs_app.is_file():
+        dtxt += docs_app.read_text() + "\n"
+    if docs_search.is_file():
+        dtxt += docs_search.read_text()
+
+    # 1) Primary red: typing in #q must run search (debounce OK).
+    #    bind:value + form onsubmit is submit-only and is not enough.
+    if not _has_search_as_you_type(cleaned, surface):
+        fail(
+            "#270: #q / SearchPane must search as you type "
+            "(input / $effect / debounce → run() / api.search) — "
+            "not submit-only"
+        )
+
+    # 2) run() (or the as-you-type path) must not wait on a people rebuild.
+    run_body = _ts_fn_body(cleaned, "run") or _function_body(cleaned, "run")
+    run_surf = _expand_fn_calls(cleaned, run_body) if run_body else ""
+    type_surf = _search_as_you_type_surface(cleaned, surface)
+    if _SEARCH_PEOPLE_FROM_RUN.search(run_surf) or _SEARCH_PEOPLE_FROM_RUN.search(
+        type_surf
+    ):
+        fail(
+            "#270: run() / the as-you-type path must not call people / "
+            "refreshPeople / applyStatus (hits stay usable while a people "
+            "refresh is in flight)"
+        )
+
+    # 3) #q is not disabled or unmounted because people are loading.
+    q_tag = _search_q_open_tag(surface) or _search_q_open_tag(src)
+    if q_tag and _SEARCH_DISABLED_PEOPLE.search(q_tag):
+        fail(
+            "#270: #q must not be disabled={peopleLoading} "
+            "(typing stays usable while the people list fills)"
+        )
+    for block in _hook_element_blocks(app_markup, "data-chrome-search"):
+        if _SEARCH_DISABLED_PEOPLE.search(block):
+            fail(
+                "#270: chrome search must not be disabled={peopleLoading} "
+                "(#q / the same run() stays usable while people loads)"
+            )
+    q_pos = _SEARCH_Q_ID.search(surface)
+    if q_pos and _search_gated_on_people_loading(
+        _template_stack(surface, q_pos.start())
+    ):
+        fail(
+            "#270: #q must not sit behind {#if !peopleLoading} "
+            "(Search stays mounted while the people list fills)"
+        )
+    sp = re.search(r"<SearchPane\b", app_markup)
+    if sp and _search_gated_on_people_loading(
+        _template_stack(app_markup, sp.start())
+    ):
+        fail(
+            "#270: SearchPane must not sit behind {#if !peopleLoading} "
+            "(Search stays usable while the people list fills)"
+        )
+
+    # 4) Keep #q, <mark> / splitSnippet, data-search-filters.
+    if not _SEARCH_Q_ID.search(surface) and not re.search(r"id=[\"']q[\"']", src):
+        fail('#270: keep id="q" as the canonical query field')
+    if not _SEARCH_MARK_TAG.search(surface) and not _SEARCH_MARK_TAG.search(src):
+        fail("#270: keep <mark> siblings on the search snippet path (#126)")
+    if not (
+        _SEARCH_HIGHLIGHT_HELPER.search(cleaned)
+        or _SEARCH_SNIPPET_SPLIT.search(cleaned)
+        or re.search(r"\bsplitSnippet\b", src)
+    ):
+        fail("#270: keep splitSnippet / snippet split on the hit path (#126)")
+    if _SEARCH_FILTERS_HOOK not in surface and _SEARCH_FILTERS_HOOK not in src:
+        fail("#270: keep data-search-filters (#209)")
+
+    # 5) Submit still works (as-you-type is extra, not a submit delete).
+    if not re.search(
+        r"(?:on:submit|onsubmit)\s*=|type\s*=\s*[\"']submit[\"']",
+        surface,
+        re.I,
+    ):
+        fail(
+            "#270: keep form submit → run() "
+            "(as-you-type is in addition to submit, not a replacement)"
+        )
+
+    # 6) No Tantivy / no fetch( / remote search.
+    rust_path = crate / "src" / "main.rs"
+    rust = rust_path.read_text() if rust_path.is_file() else ""
+    pkg = (crate / "package.json").read_text() if (crate / "package.json").is_file() else ""
+    toml = (crate / "Cargo.toml").read_text() if (crate / "Cargo.toml").is_file() else ""
+    product_claim = "\n".join(
+        (cleaned, app_clean, rust, pkg, toml, dtxt)
+    )
+    if _claim_without_negation(product_claim, _TANTIVY_WORD):
+        fail("#270: not in scope — no Tantivy (keep FTS5; that is #82)")
+    if _FETCH_CALL.search(cleaned) or _FETCH_CALL.search(
+        _search_as_you_type_surface(cleaned, surface)
+    ):
+        fail("#270: not in scope — no fetch( / remote search")
+    if _claim_without_negation(product_claim, _REMOTE_SEARCH_WORD):
+        fail("#270: not in scope — no remote search")
+
+    # 7) D24: type-to-search; not blocked on people refresh.
+    if not dtxt.strip():
+        fail(
+            "#270: docs/user/app.md required — typing in #q searches; "
+            "does not wait for the people list"
+        )
+    if not _DOCS_TYPE_TO_SEARCH.search(dtxt):
+        fail(
+            "#270: docs/user/app.md must say typing in #q searches "
+            "(search-as-you-type / type-to-search; debounce OK)"
+        )
+    if not _DOCS_SEARCH_NOT_WAIT_PEOPLE.search(dtxt):
+        fail(
+            "#270: docs/user/app.md must say search is not blocked on "
+            "a people refresh / does not wait for the people list"
+        )
+
+    # 8) First in-flight (searching, no hits) still has the #203 skeleton.
+    skel_stacks = _search_skeleton_stacks(surface, src)
+    first_inflight = [
+        st
+        for st in skel_stacks
+        if _stack_searching_true(st) and not _stack_requires_existing_hits(st)
+    ]
+    if not first_inflight:
+        fail(
+            "#270: first in-flight (searching, no hits) must still show "
+            "the #203 skeleton — do not paint “No hits” / “Type a query” "
+            "while the first api.search is in flight"
+        )
+
+    # 9) Follow-up searching must not paint that skeleton over existing hits.
+    followup_flash = [
+        st
+        for st in skel_stacks
+        if _stack_searching_true(st) and not _stack_requires_empty_hits(st)
+    ]
+    if followup_flash:
+        fail(
+            "#270: {#if searching} must not paint the #203 skeleton over "
+            "existing hits — keep the previous list until the new "
+            "api.search reply applies (gate the skeleton on no hits)"
+        )
+
+    # 10) Follow-up run() does not clear expanded / hitIndex / body before IPC.
+    pre_ipc = _run_before_ipc(run_body) if run_body else ""
+    if (
+        _SEARCH_PRE_IPC_EXPANDED.search(pre_ipc)
+        or _SEARCH_PRE_IPC_BODY.search(pre_ipc)
+        or _SEARCH_PRE_IPC_HITINDEX.search(pre_ipc)
+    ):
+        fail(
+            "#270: follow-up run() must not clear expanded / hitIndex / "
+            "body before api.search — reset those only when applying the "
+            "new hits (or on error / idle clear)"
+        )
+
+    # 11) Previous hits stay until the gen-guarded assign.
+    if _SEARCH_PRE_IPC_HITS_CLEAR.search(pre_ipc):
+        fail(
+            "#270: previous hits must stay until the gen-guarded assign "
+            "— no hits = [] at the start of run()"
+        )
+
+
 # #211 — overlay titlebar: native traffic lights, drag region, no second wordmark.
 _DRAG_REGION = re.compile(
     r"\bdata-tauri-drag-region(?:\s*=\s*(?:\"\"|''|true|\{(?:\"\"|'')\}))?",
@@ -26761,6 +27235,7 @@ def main() -> None:
     assert_chrome_locale(crate)
     assert_keyboard_map(crate)
     assert_chrome_search_field(crate)
+    assert_search_as_you_type(crate)
     assert_custom_titlebar(crate)
     assert_people_sidebar_collapse(crate)
     assert_person_inspector(crate)
