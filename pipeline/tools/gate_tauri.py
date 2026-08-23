@@ -8,6 +8,10 @@
 #     api.ts sent_at and last_activity_at stay ISO UTC. No TZ picker, no
 #     tzdata / network TZ database. Search type=date from/to stay. Docs:
 #     display follows the host timezone; storage stays UTC.
+#     Follow-up: WhatsApp / omitted-platform is wall-clock export digits
+#     (no Date); Gmail / zoned still new Date + local getters. Timeline /
+#     Search pass platform. Docs: WhatsApp wall-clock; Gmail follows Mac
+#     TZ; storage stays UTC. `_ts_function_body` sees `: string {`.
 #113: open at latest (scroll after layout); older above; Load older at the top; prepend without jump;
 #     last bubble sits above the “Bodies are text only” chrome (list bottom pad);
 #     clear tlLoading before the open-person scroll; nested rAF so wrap has happened.
@@ -1166,6 +1170,39 @@ _TZDATA_DEP = re.compile(
     re.I,
 )
 _SEARCH_TYPE_DATE = re.compile(r"type\s*=\s*\{?\s*[\"']date[\"']")
+_WA_OR_WALLCLOCK = re.compile(
+    r"("
+    r"\bwhatsapp\b"
+    r"|wall[-_ ]?clock"
+    r"|\bexport\b"
+    r")",
+    re.I,
+)
+_ISO_DIGIT_ESCAPE = re.compile(
+    r"("
+    r"\.slice\s*\("
+    r"|\.substring\s*\("
+    r"|\.substr\s*\("
+    r"|split\s*\(\s*[\"']T[\"']"
+    r"|\.match\s*\("
+    r")"
+)
+_DOCS_WA_WALL = re.compile(
+    r"("
+    r"whatsapp.{0,140}(?:wall[- ]?clock|export(?:ed)?\s+time|export\s+wall)"
+    r"|(?:wall[- ]?clock|export(?:ed)?\s+time).{0,140}whatsapp"
+    r")",
+    re.I | re.S,
+)
+_DOCS_GMAIL_ZONE = re.compile(
+    r"("
+    r"gmail.{0,140}(?:host|Mac)(?:'s)?\s+time\s*zone"
+    r"|(?:host|Mac)(?:'s)?\s+time\s*zone.{0,140}gmail"
+    r"|zoned.{0,100}(?:gmail|time\s*zone|host|Mac)"
+    r"|gmail.{0,100}zoned"
+    r")",
+    re.I | re.S,
+)
 
 
 def _fn_body(src: str, name: str) -> str:
@@ -1173,10 +1210,12 @@ def _fn_body(src: str, name: str) -> str:
 
 
 def _host_local_day_ok(body: str) -> bool:
-    """Parse ISO as UTC, then host-local calendar getters — not UTC ISO prefix."""
+    """Parse ISO as UTC, then host-local calendar getters.
+
+    Dual-path bodies may also slice WhatsApp wall-clock digits. Slice-only
+    (no Date + local getters) still fails.
+    """
     if not body or _FORCED_UTC_TZ.search(body):
-        return False
-    if _UTC_ISO_DAY_SLICE.search(body):
         return False
     if not _PARSE_ISO_UTC.search(body):
         return False
@@ -1202,12 +1241,75 @@ def _called_day_keys(region: str) -> list[str]:
     return found
 
 
+def _split_tz_helper_names() -> tuple[str, ...]:
+    names: list[str] = []
+    for name in (
+        *_DAY_KEY_HELPERS,
+        "localDayLabel",
+        "utcDayLabel",
+        *_TIME_HELPERS,
+        *_HUMAN_TIME_HELPERS,
+    ):
+        if name not in names:
+            names.append(name)
+    return tuple(names)
+
+
+def _whatsapp_escape_ok(body: str) -> bool:
+    """WhatsApp / omitted-platform path uses stored wall-clock digits."""
+    if not body:
+        return False
+    if not _WA_OR_WALLCLOCK.search(body):
+        return False
+    return bool(_ISO_DIGIT_ESCAPE.search(body))
+
+
+def _zoned_gmail_ok(body: str) -> bool:
+    """Gmail / zoned path: new Date + host-local getters, not forced UTC."""
+    if not body or _FORCED_UTC_TZ.search(body):
+        return False
+    if not _PARSE_ISO_UTC.search(body):
+        return False
+    return bool(_LOCAL_CAL_GETTERS.search(body) or _LOCAL_HM_GETTERS.search(body))
+
+
+def _helper_call_args(src: str, name: str) -> list[str]:
+    out: list[str] = []
+    for m in re.finditer(rf"\b{re.escape(name)}\s*\(", src):
+        out.append(_call_arg(src, m.end() - 1))
+    return out
+
+
+def _assert_typed_fn_body_visible() -> None:
+    """Depth-0 `{` after `: string` is the function body, not a type object."""
+    typed_day = (
+        "export function localDay(iso: string | null | undefined): string {\n"
+        "  return 'ok';\n"
+        "}\n"
+    )
+    if not _ts_function_body(typed_day, "localDay").strip():
+        fail(
+            "#268: _ts_function_body must find the body of "
+            "export function localDay(...): string {"
+        )
+    foo_src = "function foo(): string { return 1 }"
+    if "return 1" not in _ts_function_body(foo_src, "foo"):
+        fail(
+            "#268: _ts_function_body must extract a typed "
+            "function foo(): string { return 1 } body"
+        )
+
+
 def assert_local_tz_display(crate: Path) -> None:
     """#268: day headings + people-row times follow the host timezone.
 
     Parse stored `sent_at` ISO as UTC, then local getters / Intl. Storage /
     api.ts stay ISO UTC. No TZ picker, no tzdata crate. Search type=date stays.
     Docs: display follows the host / Mac timezone; storage stays UTC.
+
+    Follow-up: WhatsApp / omitted platform displays wall-clock export digits;
+    Gmail / zoned still Date-converts. Timeline / Search pass platform.
+    `_ts_function_body` must see `export function localDay(...): string {`.
     """
     app_path = crate / "web" / "App.svelte"
     if not app_path.is_file():
@@ -1381,6 +1483,89 @@ def assert_local_tz_display(crate: Path) -> None:
         fail("#268: docs/user/app.md must say storage stays UTC")
     if re.search(r"timezone picker|time-zone picker", dtxt, re.I):
         fail("#268: no timezone picker (docs must not add one)")
+
+    # 8) Typed helper body is visible (`: string {` is the body, not a type).
+    _assert_typed_fn_body_visible()
+    if not (_fn_body(logic, "localDay") or _fn_body(app, "localDay")).strip():
+        fail(
+            "#268: localDay helper body must be visible "
+            "(including with a : string return type)"
+        )
+
+    # 9) WhatsApp / wall-clock escape AND Gmail / zoned Date + local getters.
+    saw_split_helper = False
+    for name in _split_tz_helper_names():
+        body = (
+            _helper_with_callees(logic, name)
+            or _fn_body(logic, name)
+            or _fn_body(app, name)
+        )
+        if not body.strip():
+            continue
+        saw_split_helper = True
+        if not _whatsapp_escape_ok(body):
+            fail(
+                "#268: day/time helper "
+                f"{name} must mention a whatsapp (or wall-clock / export) "
+                "branch — do not Date-convert every ISO"
+            )
+        if not _zoned_gmail_ok(body):
+            fail(
+                "#268: day/time helper "
+                f"{name} must still parse zoned/Gmail ISO with new Date + "
+                "local getters — do not only slice(0, 10) every ISO"
+            )
+    if not saw_split_helper:
+        fail(
+            "#268: day/time helpers (localDay / humanTime / utcTime) "
+            "must exist so WhatsApp wall-clock and Gmail zoned paths can split"
+        )
+
+    # 10) Timeline / Search sent_at call sites pass platform. last_activity_at
+    #     has no Person.platform — omit is the wall-clock path; do not require it.
+    tl_has_platform = False
+    search_has_platform = False
+    for name in _split_tz_helper_names():
+        for args in _helper_call_args(app, name):
+            if re.search(r"\bsent_at\b", args) and not re.search(
+                r"\bplatform\b", args
+            ):
+                fail(
+                    "#268: Timeline / Search day-time helpers must pass "
+                    "platform (row.platform / h.platform) so WhatsApp "
+                    "wall-clock and Gmail zoned paths can split"
+                )
+            if re.search(r"\bplatform\b", args):
+                tl_has_platform = True
+        for args in _helper_call_args(search, name):
+            if re.search(r"\bsent_at\b", args) and not re.search(
+                r"\bplatform\b", args
+            ):
+                fail(
+                    "#268: Timeline / Search day-time helpers must pass "
+                    "platform (row.platform / h.platform) so WhatsApp "
+                    "wall-clock and Gmail zoned paths can split"
+                )
+            if re.search(r"\bplatform\b", args):
+                search_has_platform = True
+    if not tl_has_platform or not search_has_platform:
+        fail(
+            "#268: Timeline / Search day-time helpers must pass "
+            "platform (row.platform / h.platform) so WhatsApp "
+            "wall-clock and Gmail zoned paths can split"
+        )
+
+    # 11) Docs: WhatsApp wall-clock; Gmail / zoned follow Mac TZ; storage UTC.
+    if not _DOCS_WA_WALL.search(dtxt):
+        fail(
+            "#268: docs/user/app.md must say WhatsApp export times "
+            "display as wall-clock"
+        )
+    if not _DOCS_GMAIL_ZONE.search(dtxt):
+        fail(
+            "#268: docs/user/app.md must say Gmail / zoned times "
+            "follow the Mac timezone"
+        )
 
 
 def _matching_each_end(markup: str, each_start: int) -> int:
@@ -2454,9 +2639,11 @@ def _ts_function_body(src: str, name: str) -> str:
             depth = 0
             while i < n:
                 c = src[i]
-                if c in "<({[":
+                # Depth-0 `{` after a return type is the function body.
+                # Do not put `{` in the open-type set before that break.
+                if c in "<([":
                     depth += 1
-                elif c in ">)}]":
+                elif c in ">)]":
                     depth -= 1
                 elif depth <= 0 and (src.startswith("=>", i) or c == "{"):
                     break
