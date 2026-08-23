@@ -313,12 +313,25 @@
 #     use warning (not muted-only / text-destructive). Import done is
 #     quiet (muted or success; no celebration). Docs: warning token +
 #     quiet import done. Keep #217 / #218.
-#220: import progress cancelable + calm done — Cancel (`data-import-cancel`)
-#     while running, disabled with honest no-stop copy (core has no stop;
-#     no fake import_cancel / thread kill). Status running stays; done
-#     stays quiet (`data-import-done`, no Dialog/confetti). No path
-#     console.log/toast. Docs: progress visible + disabled cancel +
-#     quiet done. Keep #219 / #218.
+#220: import progress + calm done — Cancel hook (`data-import-cancel`)
+#     while running. Status running stays; done stays quiet
+#     (`data-import-done`, no Dialog/confetti). No thread kill. No path
+#     console.log/toast. No parallel/HTTP/GC. Docs: progress visible +
+#     quiet done. Keep #219 / #218. (#266 owns enabled Cancel +
+#     import_cancel; this assert no longer requires disabled Cancel,
+#     forbids import_cancel, or requires “cannot be stopped” docs.)
+#266: real import cancel — `data-import-cancel` enabled while running
+#     (not a bare `disabled`); `import_cancel` / `importCancel` in
+#     `main.rs` and `api.ts`; ImportPane click calls that API; core or
+#     Tauri mentions a cancel flag (`AtomicBool` / `ImportCancel` /
+#     `cancel` / `interrupted`); `tick` treats `interrupted` as
+#     terminal; no JoinHandle abort / thread::kill. Docs: Cancel
+#     **stops** the import (not “cannot be stopped”). Keep #220 hook /
+#     quiet done / no path toast.
+#     Follow-up (in-file): WhatsApp `import()` must not `self.probe(`;
+#     cancel on ZIP open / list / hash (`open_zip_cancellable` /
+#     `list_zip` / `hash_file`), not only `maybe_commit`; ImportPane
+#     must not promise only “Stops after this file”.
 #221: review queue chrome — owned Card + Separator (`data-review-card`);
 #     Accept/Reject stay explicit and not destructive; no raw review /
 #     person ids in queue or confirm copy; Undo on the Review pane
@@ -23858,7 +23871,9 @@ def assert_status_tokens(crate: Path) -> None:
         fail("#219: keep #218 — no Theme / Appearance menu / data-theme")
 
 
-# #220 — import progress: disabled Cancel + calm done (no fake backend).
+# #220 — import progress: Cancel hook + calm done (no thread kill).
+# #266 owns enabled Cancel + import_cancel (surgical: this block no
+# longer requires disabled / forbids the command / “cannot be stopped”).
 _IMPORT_HONEST_COPY = re.compile(
     r"("
     r"cannot stop"
@@ -23985,7 +24000,7 @@ def _import_honest_blob(src: str, tag: str) -> str:
 
 
 def assert_import_progress(crate: Path) -> None:
-    """#220: import progress — disabled Cancel + calm done (no fake backend)."""
+    """#220: import progress — Cancel hook + calm done (no thread kill)."""
     import_path = crate / "web" / "lib" / "ImportPane.svelte"
     import_src = import_path.read_text() if import_path.is_file() else ""
 
@@ -23993,58 +24008,25 @@ def assert_import_progress(crate: Path) -> None:
     if "data-import-cancel" not in import_src:
         fail(
             "#220: data-import-cancel required in ImportPane.svelte "
-            "(disabled Cancel while running)"
-        )
-
-    # 2) That control is disabled (native disabled or aria-disabled="true").
-    cancel_tag = _contrast_surface_tag(import_src, "data-import-cancel")
-    if not cancel_tag or not _IMPORT_DISABLED.search(cancel_tag):
-        fail(
-            "#220: data-import-cancel must be disabled "
-            '(native disabled or aria-disabled="true")'
-        )
-
-    # 3) Honest copy nearby / described-by: cannot stop / no stop /
-    #    cannot be cancelled / not implemented (one of these).
-    honest = _import_honest_blob(import_src, cancel_tag)
-    if not _IMPORT_HONEST_COPY.search(honest):
-        fail(
-            "#220: data-import-cancel needs honest copy nearby / described-by "
-            "(cannot stop / no stop / cannot be cancelled / not implemented)"
+            "(Cancel while running)"
         )
 
     rust_path = crate / "src" / "main.rs"
     rust = rust_path.read_text() if rust_path.is_file() else ""
-    api_path = crate / "web" / "lib" / "api.ts"
-    api = api_path.read_text() if api_path.is_file() else ""
     rust_surf = _without_comments(rust)
-    api_surf = _without_comments(api)
 
-    # 4) No import_cancel / cancelImport / importCancel command
-    #    in src/main.rs or web/lib/api.ts (do not fake a backend).
-    fake: list[str] = []
-    if _IMPORT_FAKE_CMD.search(rust_surf):
-        fake.append("src/main.rs")
-    if _IMPORT_FAKE_CMD.search(api_surf):
-        fake.append("web/lib/api.ts")
-    if fake:
-        fail(
-            "#220: no import_cancel / cancelImport / importCancel command "
-            "(do not fake a backend). Found in: " + ", ".join(fake)
-        )
-
-    # 5) No thread:: kill / JoinHandle:: abort as “cancel”.
+    # 2) No thread:: kill / JoinHandle:: abort as “cancel”.
     if _IMPORT_THREAD_KILL.search(rust_surf):
         fail(
             "#220: no thread:: kill / JoinHandle:: abort as cancel "
-            "(core has no stop; do not kill the import thread)"
+            "(do not kill the import thread)"
         )
 
-    # 6) Status running still rendered in the import pane.
+    # 3) Status running still rendered in the import pane.
     if not _IMPORT_STATUS_RUNNING.search(import_src):
         fail("#220: Status running must still be rendered in the import pane")
 
-    # 7) data-import-done still present; no Dialog wrapping done;
+    # 4) data-import-done still present; no Dialog wrapping done;
     #    no bg-gradient / confetti / celebration on done.
     if "data-import-done" not in import_src:
         fail(
@@ -24069,14 +24051,14 @@ def assert_import_progress(crate: Path) -> None:
             "celebration"
         )
 
-    # 8) No console.log of path; no toast of the import path.
+    # 5) No console.log of path; no toast of the import path.
     import_surf = _hue_surface(import_src)
     if _IMPORT_CONSOLE_PATH.search(import_surf):
         fail("#220: do not console.log the import path")
     if _IMPORT_TOAST_PATH.search(import_surf):
         fail("#220: do not toast the import path")
 
-    # 9) No parallel-import UI, no fetch( / HTTP import,
+    # 6) No parallel-import UI, no fetch( / HTTP import,
     #    no background GC button on Import.
     if _IMPORT_PARALLEL.search(import_surf):
         fail("#220: no parallel-import UI")
@@ -24085,26 +24067,20 @@ def assert_import_progress(crate: Path) -> None:
     if _IMPORT_GC_BTN.search(import_surf):
         fail("#220: no background GC button on Import")
 
-    # 10) docs/user/app.md: progress visible + cannot stop / disabled cancel
-    #     + quiet done.
+    # 7) docs/user/app.md: progress visible + quiet done.
+    #    (#266 owns “Cancel stops”; do not require “cannot be stopped”.)
     docs = repo_root() / "docs" / "user" / "app.md"
     dtxt = docs.read_text() if docs.is_file() else ""
     if not dtxt.strip():
         fail(
-            "#220: docs/user/app.md required — progress visible + "
-            "cannot stop / disabled cancel + quiet done"
+            "#220: docs/user/app.md required — progress visible + quiet done"
         )
     if not _IMPORT_DOCS_PROGRESS.search(dtxt):
         fail("#220: docs/user/app.md must say import progress is visible")
-    if not _IMPORT_DOCS_NO_STOP.search(dtxt):
-        fail(
-            "#220: docs/user/app.md must say Cancel is disabled / "
-            "the import cannot be stopped"
-        )
     if not _IMPORT_DOCS_QUIET.search(dtxt):
         fail("#220: docs/user/app.md must say import done stays quiet")
 
-    # 11) Do not soften #q, sidebar, overlay titlebar, inspector, CSP,
+    # 8) Do not soften #q, sidebar, overlay titlebar, inspector, CSP,
     #     #219 tokens / data-import-done, #218 overlay / no Theme.
     svelte_files = _product_svelte(crate)
     svelte_blob = "\n".join(p.read_text() for p in svelte_files)
@@ -24141,6 +24117,205 @@ def assert_import_progress(crate: Path) -> None:
         svelte_blob
     ):
         fail("#220: keep #218 — no Theme / Appearance menu / data-theme")
+
+
+# #266 — real import cancel (cooperative flag; Cancel enabled while running).
+_IMPORT_CANCEL_CMD = _IMPORT_FAKE_CMD
+_IMPORT_CANCEL_UNCOND_DISABLED = re.compile(
+    r"("
+    r"(?<![\w-])disabled(?:=\{true\}|=[\"']true[\"'])?(?=[\s/>])"
+    r"|aria-disabled\s*=\s*(?:\{true\}|[\"']true[\"'])"
+    r")"
+)
+_IMPORT_CANCEL_CLICK = re.compile(r"\b(?:onclick|on:click)\s*=")
+_IMPORT_CANCEL_API_CALL = re.compile(
+    r"("
+    r"\bapi\s*\.\s*importCancel\s*\("
+    r"|\bapi\s*\.\s*import_cancel\s*\("
+    r"|\bapi\s*\.\s*cancelImport\s*\("
+    r"|invoke\s*(?:<[^>]*>)?\s*\(\s*[\"']import_cancel[\"']"
+    r")"
+)
+_IMPORT_CANCEL_FLAG = re.compile(
+    r"("
+    r"\bAtomicBool\b"
+    r"|\bImportCancel\b"
+    r"|\bcancel\s*:"
+    r"|\bis_cancelled\b"
+    r"|\bis_canceled\b"
+    r")"
+)
+_IMPORT_TICK_INTERRUPTED = re.compile(
+    r"("
+    r"""status\s*===\s*["']interrupted["']"""
+    r"""|["']interrupted["']\s*===\s*[\w.]*status"""
+    r"""|\.includes\s*\(\s*["']interrupted["']"""
+    r"""|["']interrupted["']"""
+    r")",
+)
+_IMPORT_DOCS_STOPS = re.compile(
+    r"cancel.{0,120}stop",
+    re.I | re.S,
+)
+_IMPORT_SELF_PROBE = re.compile(r"self\s*\.\s*probe\s*\(")
+_IMPORT_CANCEL_WORD = re.compile(r"\b(?:Cancelled|is_cancelled|is_canceled)\b")
+_IMPORT_STOPS_AFTER_FILE = re.compile(r"Stops after this file")
+_IMPORT_AFTER_THIS_FILE = re.compile(r"after this file", re.I)
+_IMPORT_CANCEL_OPEN = re.compile(r"\bopen\b", re.I)
+
+
+def _import_fn_checks_cancel(src: str, name: str) -> bool:
+    """`fn name(..., cancel...)` body mentions Cancelled / is_cancelled."""
+    if not re.search(rf"fn\s+{re.escape(name)}\s*\([^)]*\bcancel\b", src, re.S):
+        return False
+    body = _rust_fn_body(src, name)
+    return bool(body and _IMPORT_CANCEL_WORD.search(body))
+
+
+def assert_import_cancel(crate: Path) -> None:
+    """#266: cooperative Cancel — enabled while running; in-file abort."""
+    root = repo_root()
+    import_path = crate / "web" / "lib" / "ImportPane.svelte"
+    import_src = import_path.read_text() if import_path.is_file() else ""
+    rust_path = crate / "src" / "main.rs"
+    rust = rust_path.read_text() if rust_path.is_file() else ""
+    api_path = crate / "web" / "lib" / "api.ts"
+    api = api_path.read_text() if api_path.is_file() else ""
+    rust_surf = _without_comments(rust)
+    api_surf = _without_comments(api)
+
+    # 1) import_cancel / importCancel in main.rs AND api.ts (first fail today).
+    if not _IMPORT_CANCEL_CMD.search(rust_surf):
+        fail(
+            "#266: import_cancel (or importCancel) required in "
+            "crates/interlace-tauri/src/main.rs"
+        )
+    if not _IMPORT_CANCEL_CMD.search(api_surf):
+        fail(
+            "#266: import_cancel (or importCancel) required in "
+            "crates/interlace-tauri/web/lib/api.ts"
+        )
+
+    # 2) ImportPane click / handler calls that API.
+    if "data-import-cancel" not in import_src:
+        fail("#266: keep #220 data-import-cancel")
+    cancel_tag = _contrast_surface_tag(import_src, "data-import-cancel")
+    if not cancel_tag or not _IMPORT_CANCEL_CLICK.search(cancel_tag):
+        fail(
+            "#266: data-import-cancel must have a click / handler "
+            "(onclick / on:click)"
+        )
+    if not _IMPORT_CANCEL_API_CALL.search(import_src):
+        fail(
+            "#266: ImportPane must call api.importCancel "
+            "(or invoke import_cancel) from the Cancel handler"
+        )
+
+    # 3) Cancel is enabled while running (not a bare disabled / {true}).
+    if _IMPORT_CANCEL_UNCOND_DISABLED.search(cancel_tag):
+        fail(
+            "#266: data-import-cancel must be enabled while running "
+            "(not a bare disabled / disabled={true}; "
+            "disabled={…} only when not running / already cancelling)"
+        )
+
+    # 4) Core or Tauri mentions a cancel flag.
+    model = (root / "crates" / "interlace-core" / "src" / "model.rs").read_text()
+    import_mod = (root / "crates" / "interlace-core" / "src" / "import" / "mod.rs")
+    import_txt = import_mod.read_text() if import_mod.is_file() else ""
+    ctx_path = root / "crates" / "interlace-core" / "src" / "import" / "context.rs"
+    ctx_txt = ctx_path.read_text() if ctx_path.is_file() else ""
+    flag_blob = _without_comments(model + "\n" + import_txt + "\n" + ctx_txt + "\n" + rust)
+    if not _IMPORT_CANCEL_FLAG.search(flag_blob) and not re.search(
+        r"\binterrupted\b", rust_surf
+    ):
+        fail(
+            "#266: core or Tauri must mention a cancel flag "
+            "(AtomicBool / ImportCancel / cancel / interrupted)"
+        )
+
+    # 5) tick / progress treats interrupted as terminal (not only done/failed).
+    tick = _ts_fn_body(import_src, "tick") or _function_body(import_src, "tick")
+    if not tick or not _IMPORT_TICK_INTERRUPTED.search(tick):
+        fail(
+            "#266: tick / progress must treat interrupted "
+            "(or failed-on-cancel) as terminal (not only done/failed)"
+        )
+
+    # 6) No JoinHandle abort / thread::kill.
+    if _IMPORT_THREAD_KILL.search(rust_surf):
+        fail(
+            "#266: no JoinHandle abort / thread::kill "
+            "(cooperative flag only)"
+        )
+
+    # 7) docs: Cancel stops the import (not “cannot be stopped”).
+    docs = root / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+    if not dtxt.strip():
+        fail("#266: docs/user/app.md required — Cancel stops the import")
+    if _IMPORT_DOCS_NO_STOP.search(dtxt):
+        fail(
+            "#266: docs/user/app.md must not say Cancel is disabled / "
+            "the import cannot be stopped"
+        )
+    if not _IMPORT_DOCS_STOPS.search(dtxt):
+        fail("#266: docs/user/app.md must say Cancel stops the import")
+
+    # 8) WhatsApp import() must not call self.probe( (second full ZIP hash/open).
+    wa_path = root / "crates" / "interlace-core" / "src" / "import" / "whatsapp.rs"
+    wa = wa_path.read_text() if wa_path.is_file() else ""
+    import_body = _rust_fn_body(wa, "import")
+    if not import_body.strip():
+        fail("#266: crates/interlace-core/src/import/whatsapp.rs fn import required")
+    if _IMPORT_SELF_PROBE.search(import_body):
+        fail(
+            "#266: WhatsApp import() must not call self.probe( "
+            "(second full ZIP hash/open)"
+        )
+
+    # 9) Cancel on ZIP open / list / hash — not only maybe_commit.
+    if not _import_fn_checks_cancel(import_txt, "hash_file"):
+        fail(
+            "#266: hash_file must check cancel "
+            "(Cancelled / is_cancelled), not only maybe_commit"
+        )
+    if not _import_fn_checks_cancel(wa, "open_zip_cancellable"):
+        fail(
+            "#266: ZIP open must be cancellable "
+            "(open_zip_cancellable + Cancelled / is_cancelled)"
+        )
+    if not _import_fn_checks_cancel(wa, "list_zip"):
+        fail(
+            "#266: list_zip must check cancel "
+            "(Cancelled / is_cancelled), not only maybe_commit"
+        )
+
+    # 10) ImportPane must not promise only “Stops after this file”.
+    help_blob = _import_describedby_blob(import_src, cancel_tag)
+    pane_cancel = help_blob + "\n" + import_src
+    if _IMPORT_STOPS_AFTER_FILE.search(pane_cancel):
+        fail(
+            "#266: ImportPane must not promise only “Stops after this file”"
+        )
+    if _IMPORT_AFTER_THIS_FILE.search(help_blob) and not re.search(
+        r"\b(?:hash|open|checkpoint)\b", help_blob, re.I
+    ):
+        fail(
+            "#266: ImportPane must not promise only “after this file”"
+        )
+    if not help_blob.strip() or not _IMPORT_CANCEL_OPEN.search(help_blob):
+        fail(
+            "#266: ImportPane cancel help must mention ZIP open "
+            "(hash / open / checkpoint), not “Stops after this file”"
+        )
+
+    # 11) Still no JoinHandle abort / thread::kill (keep #220 / earlier #266).
+    if _IMPORT_THREAD_KILL.search(rust_surf):
+        fail(
+            "#266: no JoinHandle abort / thread::kill "
+            "(cooperative flag only)"
+        )
 
 
 # #221 — review queue chrome: Card/Separator, no raw ids, undo on the pane.
@@ -25307,6 +25482,7 @@ def main() -> None:
     assert_appearance_os(crate)
     assert_status_tokens(crate)
     assert_import_progress(crate)
+    assert_import_cancel(crate)
     assert_review_chrome(crate)
     assert_motion(crate)
     assert_a11y_listbox_focus_motion(crate)
