@@ -1,6 +1,6 @@
 # Agent / session handoff
 
-**Date:** 2026-08-22. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
+**Date:** 2026-08-23. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -68,7 +68,7 @@ Workflow: one issue → one PR `Fixes #N` → merge when CI jobs **`check`** +
 App holds exclusive flock. Close `interlace-app` / `tauri:dev` before CLI
 `import` / `doctor --integrity` / wipe.
 
-## Snapshot (2026-08-22)
+## Snapshot (2026-08-23)
 
 Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`,
 `v0.1.1` tags). Workspace version is still **0.1.1**. App crate
@@ -81,8 +81,8 @@ ad-hoc, not notarized). Ask before another `app-v*` / `v*` / crates.io publish.
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `40bf612` **Merge pull request #260** (#220
-import progress) plus this branch `feat/ui-review-chrome` (#221). Tag
+HEAD when this was rewritten: `9cb41ca` **Merge pull request #261** (#221
+review queue chrome) plus this branch `feat/ui-motion` (#222). Tag
 **`app-v0.1.1`** is still the unsigned app. Epic **#108**, milestone 6, and
 the Phase 1 CLI milestone are **closed**. Product track is **#197** /
 milestone 7. Re-check with `git log -1` / `gh pr list`.
@@ -190,7 +190,8 @@ Phase 2.1 milestone (#6): **closed**.
 | #218 / PR #258 | Appearance follows OS; dark is the intended archival look; named overlay / lightbox tokens; no Theme menu |
 | #219 / PR #259 | Status tokens — `--color-warning` / `--color-success` (HSL); cloud + doctor use warning, not destructive; import done is quiet |
 | #220 / PR #260 | Import progress — disabled Cancel while running (core has no stop); done stays quiet counts |
-| #221 | Review queue chrome — Card + Separator; no raw person ids; Undo last link on the Review pane |
+| #221 / PR #261 | Review queue chrome — Card + Separator; no raw person ids; Undo last link on the Review pane |
+| #222 | Motion — 150–250ms fade/fly/slide on palette, inspector, toast; reduced motion is duration 0 |
 
 ## Open — product now (Phase 2.2)
 
@@ -201,9 +202,7 @@ load-bearing (a11y, titlebar, search).
 
 ### Suggested next
 
-| # | Note |
-| --- | --- |
-| **#222** | Motion / Svelte transitions — see #197. Next coding. |
+Phase 2.2 suggested coding is empty. Next coding: none.
 
 Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github.com/nonamexishere/interlace/milestone/7).
 
@@ -216,7 +215,7 @@ Full board: issue **#197** and milestone [Phase 2.2 UI/UX polish](https://github
 
 ## Recommended next steps
 
-1. Next coding: **#222** (motion / Svelte transitions). Do not start 1.1 / P3 / P4.
+1. Next coding: none (Phase 2.2 suggested board is empty). Do not start 1.1 / P3 / P4.
 2. Do **not** start 1.1 / P3 / P4 unprompted. Ask before another `app-v*` / `v*` / crates.io.
 
 ## Commands (copy-paste)
@@ -289,7 +288,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
 > Product track: Phase 2.2 UI/UX polish (#197). Read
-> `docs/design/UI-DESIGN.md`. Next coding is **#222** (motion / Svelte transitions).
+> `docs/design/UI-DESIGN.md`. Next coding is none (Phase 2.2 suggested board is empty).
 > Orchestrator does not implement product code. Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag. After merges, update this handoff in the same session.

@@ -2,6 +2,7 @@
   import type { HTMLAttributes } from "svelte/elements";
   import type { Snippet } from "svelte";
   import { fade } from "svelte/transition";
+  import { chromeMotionMs } from "$lib/motion";
   import { cn } from "$lib/utils.js";
 
   let {
@@ -18,7 +19,7 @@
 <div
   data-toast
   role="status"
-  transition:fade={{ duration: 180 }}
+  transition:fade={{ duration: chromeMotionMs() }}
   class={cn(
     "rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground shadow-md",
     className,

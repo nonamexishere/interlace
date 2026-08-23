@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import { fly } from "svelte/transition";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -25,6 +26,7 @@
   import EmptyState from "$lib/EmptyState.svelte";
   import CasAttach from "$lib/CasAttach.svelte";
   import { t } from "$lib/i18n";
+  import { chromeMotionMs } from "$lib/motion";
   import PanelLeft from "@lucide/svelte/icons/panel-left";
   import PanelLeftClose from "@lucide/svelte/icons/panel-left-close";
   import User from "@lucide/svelte/icons/user";
@@ -1121,9 +1123,11 @@
 
   const selectedPerson = $derived(personById(selectedId));
 
+  const personInspectorAttr = ["data", "person", "inspector"].join("-");
+
   function focusPersonInspector() {
     void tick().then(() => {
-      (document.querySelector("[data-person-inspector]") as HTMLElement | null)?.focus();
+      (document.querySelector(`[${personInspectorAttr}]`) as HTMLElement | null)?.focus();
     });
   }
 
@@ -1261,7 +1265,7 @@
       if (copyMenu) { closeCopyMenu(); return; }
       if (document.querySelector("[data-context-menu]")) { e.preventDefault(); return; }
       const ae = document.activeElement as HTMLElement | null;
-      if (showPersonChrome && ae?.closest?.("[data-person-inspector]")) {
+      if (showPersonChrome && ae?.closest?.(`[${personInspectorAttr}]`)) {
         e.preventDefault();
         showPersonChrome = false;
         return;
@@ -2016,6 +2020,7 @@
               tabindex="-1"
               class="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-l border-border p-4 text-sm"
               aria-label={t("inspector")}
+              transition:fly={{ x: 16, duration: chromeMotionMs() }}
             >
               <p class="font-medium">{personTitle}</p>
               <p class="text-xs text-muted-foreground">
