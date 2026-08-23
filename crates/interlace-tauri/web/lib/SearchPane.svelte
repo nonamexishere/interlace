@@ -81,11 +81,20 @@
   }
 
   let personBlurCloseTimer: ReturnType<typeof setTimeout> | null = null;
+  /** One debounce timer for type-to-search; run() clears it so submit cannot double-fire. */
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   function cancelPersonBlurClose() {
     if (personBlurCloseTimer != null) {
       clearTimeout(personBlurCloseTimer);
       personBlurCloseTimer = null;
+    }
+  }
+
+  function cancelDebounce() {
+    if (debounceTimer != null) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
     }
   }
 
@@ -143,6 +152,7 @@
   }
 
   async function run() {
+    cancelDebounce();
     const gen = ++searchGen;
     empty = false;
     searched = true;
@@ -208,17 +218,19 @@
     hitIndex = 0;
   }
 
-  // Typing in #q searches (debounce). Empty query stays idle — no FTS.
+  // Only `q` is read so filters stay submit-only.
   $effect(() => {
     const query = q;
     if (!query.trim()) {
       clearHitsIdle();
       return;
     }
-    const timer = setTimeout(() => {
+    cancelDebounce();
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
       void run();
     }, 200);
-    return () => clearTimeout(timer);
+    return () => cancelDebounce();
   });
 
   async function toggle(id: number) {
@@ -269,7 +281,7 @@
     ) {
       return;
     }
-    if (!hits.length || searching) return;
+    if (!hits.length) return;
     if (e.key === "j" || e.key === "ArrowDown") {
       e.preventDefault();
       e.stopPropagation();
