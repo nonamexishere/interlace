@@ -7,6 +7,7 @@ mod locale;
 mod takeout;
 mod whatsapp;
 
+use std::io::Read;
 use std::path::Path;
 
 use rusqlite::OptionalExtension;
@@ -151,7 +152,15 @@ pub fn run_import(
     }
     let opts = &opts;
 
-    let probe = probe_kind(kind, path, opts)?;
+    if opts.cancel.as_ref().is_some_and(|c| c.is_cancelled()) {
+        return abort_cancelled(archive, kind, path, opts);
+    }
+
+    let probe = match probe_kind(kind, path, opts) {
+        Ok(p) => p,
+        Err(CoreError::Cancelled) => return abort_cancelled(archive, kind, path, opts),
+        Err(e) => return Err(e),
+    };
     let kind = probe.kind;
     let kind_sql = source_kind_sql(kind);
     let origin = path
@@ -172,9 +181,15 @@ pub fn run_import(
     )?;
     let run_id = open_run(archive, source_id, opts.resume_run_id)?;
 
+    if opts.cancel.as_ref().is_some_and(|c| c.is_cancelled()) {
+        let e = CoreError::Cancelled;
+        mark_run(archive, run_id, "interrupted", None, Some(&e.to_string()))?;
+        return Err(e);
+    }
+
     let import_err;
     let mut stats = {
-        let mut ctx = DbImportContext::new(archive, run_id, source_id)?;
+        let mut ctx = DbImportContext::new(archive, run_id, source_id, opts.cancel.clone())?;
         match dispatch_import(kind, path, opts, &mut ctx) {
             Ok(_) => {
                 let s = ctx.stats.clone();
@@ -195,7 +210,12 @@ pub fn run_import(
         }
     };
     if let Some(e) = import_err {
-        mark_run(archive, run_id, "failed", None, Some(&e.to_string()))?;
+        let status = if matches!(e, CoreError::Cancelled) {
+            "interrupted"
+        } else {
+            "failed"
+        };
+        mark_run(archive, run_id, status, None, Some(&e.to_string()))?;
         return Err(e);
     }
 
@@ -235,6 +255,60 @@ pub fn run_import(
         .join("spill");
     let _ = std::fs::remove_dir_all(spill);
     Ok(stats)
+}
+
+/// BLAKE3 of a file. Checks `cancel` every 64 KiB so a multi-GB WhatsApp ZIP
+/// does not block Cancel for the whole hash.
+pub(crate) fn hash_file(path: &Path, cancel: Option<&ImportCancel>) -> Result<String, CoreError> {
+    let mut f = std::fs::File::open(path)?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buf = [0u8; 65536];
+    loop {
+        if cancel.is_some_and(|c| c.is_cancelled()) {
+            return Err(CoreError::Cancelled);
+        }
+        let n = f.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
+/// Like `hash_file`, but I/O errors become `None`. Cancel still fails.
+pub(crate) fn optional_file_hash(
+    path: &Path,
+    cancel: Option<&ImportCancel>,
+) -> Result<Option<String>, CoreError> {
+    match hash_file(path, cancel) {
+        Ok(h) => Ok(Some(h)),
+        Err(CoreError::Cancelled) => Err(CoreError::Cancelled),
+        Err(_) => Ok(None),
+    }
+}
+
+fn abort_cancelled(
+    archive: &Archive,
+    kind: SourceKind,
+    path: &Path,
+    opts: &ImportOpts,
+) -> Result<ImportStats, CoreError> {
+    let e = CoreError::Cancelled;
+    let origin = path
+        .canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .to_string();
+    let label = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("import")
+        .to_string();
+    let source_id = upsert_source(archive, source_kind_sql(kind), &label, &origin, None, None)?;
+    let run_id = open_run(archive, source_id, opts.resume_run_id)?;
+    mark_run(archive, run_id, "interrupted", None, Some(&e.to_string()))?;
+    Err(e)
 }
 
 fn probe_kind(kind: SourceKind, path: &Path, opts: &ImportOpts) -> Result<ProbeResult, CoreError> {
@@ -292,14 +366,21 @@ fn upsert_source(
         if let Some(r) = rows.next()? {
             return Ok(r.get(0)?);
         }
-    } else {
-        let mut stmt = archive
-            .conn
-            .prepare("SELECT id FROM sources WHERE kind = ?1 AND origin_path = ?2 LIMIT 1")?;
-        let mut rows = stmt.query(rusqlite::params![kind_sql, origin])?;
-        if let Some(r) = rows.next()? {
-            return Ok(r.get(0)?);
+    }
+    let mut stmt = archive
+        .conn
+        .prepare("SELECT id FROM sources WHERE kind = ?1 AND origin_path = ?2 LIMIT 1")?;
+    let mut rows = stmt.query(rusqlite::params![kind_sql, origin])?;
+    if let Some(r) = rows.next()? {
+        let id: i64 = r.get(0)?;
+        if let Some(h) = blake3 {
+            archive.conn.execute(
+                "UPDATE sources SET file_blake3 = ?1, bytes = COALESCE(?2, bytes)
+                 WHERE id = ?3",
+                rusqlite::params![h, bytes.map(|b| b as i64), id],
+            )?;
         }
+        return Ok(id);
     }
     archive.conn.execute(
         "INSERT INTO sources(kind, label, origin_path, bytes, file_blake3)
@@ -359,4 +440,35 @@ fn mark_run(
         rusqlite::params![status, stats_json, error, run_id],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod cancel_hash_tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn hash_file_returns_cancelled_without_reading_the_file() {
+        let dir = std::env::temp_dir().join(format!("il-hash-c-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let p = dir.join("big.bin");
+        {
+            let mut f = std::fs::File::create(&p).unwrap();
+            let chunk = vec![0u8; 1024 * 1024];
+            for _ in 0..16 {
+                f.write_all(&chunk).unwrap();
+            }
+        }
+        let token = ImportCancel::new();
+        token.cancel();
+        let t = std::time::Instant::now();
+        let err = hash_file(&p, Some(&token)).unwrap_err();
+        assert!(matches!(err, CoreError::Cancelled), "{err}");
+        assert!(
+            t.elapsed() < std::time::Duration::from_millis(500),
+            "cancelled hash must not read 16 MiB, took {:?}",
+            t.elapsed()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

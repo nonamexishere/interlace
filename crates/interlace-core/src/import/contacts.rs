@@ -57,7 +57,7 @@ impl SourceImporter for ContactsImporter {
                 .unwrap_or("contacts")
                 .to_string(),
             bytes: fs::metadata(path).ok().map(|m| m.len()),
-            file_blake3: hash_file(path).ok(),
+            file_blake3: super::optional_file_hash(path, self.opts.cancel.as_ref())?,
             locale_guess: None,
             notes: vec![],
         })
@@ -384,19 +384,4 @@ fn split_csv_line(line: &str) -> Vec<String> {
     }
     out.push(cur);
     out
-}
-
-fn hash_file(path: &Path) -> Result<String, CoreError> {
-    use std::io::Read;
-    let mut f = fs::File::open(path)?;
-    let mut hasher = blake3::Hasher::new();
-    let mut buf = [0u8; 65536];
-    loop {
-        let n = f.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    Ok(hasher.finalize().to_hex().to_string())
 }

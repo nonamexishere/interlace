@@ -22,8 +22,8 @@ use interlace_core::session::{
 use interlace_core::{
     open_archive, person_merge, person_undo, person_unlink, review_list, review_resolve,
     review_resolve_selected, review_show, search, Archive, AttachmentFilter, ConversationKind,
-    CoreError, ImportOpts, ImporterRegistry, LockMode, PersonMergeOpts, Platform, SearchQuery,
-    SourceKind,
+    CoreError, ImportCancel, ImportOpts, ImporterRegistry, LockMode, PersonMergeOpts, Platform,
+    SearchQuery, SourceKind,
 };
 use tauri::http::{header, StatusCode};
 use tauri::menu::{AboutMetadata, Menu, MenuBuilder, MenuItem, SubmenuBuilder};
@@ -43,6 +43,7 @@ struct AppState {
     archive: Arc<Mutex<Option<Archive>>>,
     archive_root: Arc<Mutex<Option<PathBuf>>>,
     import: Arc<Mutex<ImportProgress>>,
+    import_cancel: Arc<Mutex<Option<ImportCancel>>>,
 }
 
 fn err(e: impl std::fmt::Display) -> String {
@@ -756,6 +757,14 @@ fn import_progress(state: tauri::State<AppState>) -> Result<ImportProgress, Stri
 }
 
 #[tauri::command]
+fn import_cancel(state: tauri::State<AppState>) -> Result<(), String> {
+    if let Some(token) = state.import_cancel.lock().map_err(err)?.as_ref() {
+        token.cancel();
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn import_start(
     state: tauri::State<AppState>,
     path: String,
@@ -786,6 +795,8 @@ fn import_start(
         return Err("no archive open".into());
     };
     drop(slot);
+    let token = ImportCancel::new();
+    *state.import_cancel.lock().map_err(err)? = Some(token.clone());
     *state.import.lock().map_err(err)? = ImportProgress {
         status: "running".into(),
         path: Some(path.clone()),
@@ -807,13 +818,19 @@ fn import_start(
     thread::spawn(move || {
         let opts = ImportOpts {
             locale,
+            cancel: Some(token.clone()),
             ..ImportOpts::default()
         };
         let mut arch = arch;
         let total = jobs.len();
         let mut acc = interlace_core::ImportStats::default();
         let mut failed: Option<String> = None;
+        let mut interrupted = false;
         for (i, (kind_e, file)) in jobs.into_iter().enumerate() {
+            if token.is_cancelled() {
+                interrupted = true;
+                break;
+            }
             {
                 let mut p = progress.lock().unwrap_or_else(|e| e.into_inner());
                 let name = file
@@ -826,14 +843,22 @@ fn import_start(
             match arch.run_import(kind_e, &file, &opts) {
                 Ok(s) => add_stats(&mut acc, &s),
                 Err(e) => {
-                    failed = Some(format!("{}: {e}", file.display()));
+                    if matches!(e, CoreError::Cancelled) {
+                        interrupted = true;
+                    } else {
+                        failed = Some(format!("{}: {e}", file.display()));
+                    }
                     break;
                 }
             }
         }
         {
             let mut p = progress.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(e) = failed {
+            if interrupted {
+                p.status = "interrupted".into();
+                p.error = Some("import cancelled".into());
+                p.stats = Some(acc);
+            } else if let Some(e) = failed {
                 p.status = "failed".into();
                 p.error = Some(e);
                 p.stats = Some(acc);
@@ -901,6 +926,7 @@ fn main() {
                 status: "idle".into(),
                 ..ImportProgress::default()
             })),
+            import_cancel: Arc::new(Mutex::new(None)),
         })
         .menu(native_menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -956,7 +982,8 @@ fn main() {
             review_accept_cmd,
             review_reject_cmd,
             import_start,
-            import_progress
+            import_progress,
+            import_cancel
         ])
         .run(tauri::generate_context!())
         .expect("failed to start Interlace");

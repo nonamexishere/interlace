@@ -20,10 +20,16 @@ pub struct DbImportContext<'a> {
     msgs_since: u64,
     cas_since: u64,
     in_tx: bool,
+    cancel: Option<ImportCancel>,
 }
 
 impl<'a> DbImportContext<'a> {
-    pub fn new(archive: &'a mut Archive, run_id: i64, source_id: i64) -> Result<Self, CoreError> {
+    pub fn new(
+        archive: &'a mut Archive,
+        run_id: i64,
+        source_id: i64,
+        cancel: Option<ImportCancel>,
+    ) -> Result<Self, CoreError> {
         let mut ctx = Self {
             archive,
             run_id,
@@ -32,9 +38,18 @@ impl<'a> DbImportContext<'a> {
             msgs_since: 0,
             cas_since: 0,
             in_tx: false,
+            cancel,
         };
         ctx.begin()?;
         Ok(ctx)
+    }
+
+    fn check_cancel(&self) -> Result<(), CoreError> {
+        if self.cancel.as_ref().is_some_and(|c| c.is_cancelled()) {
+            Err(CoreError::Cancelled)
+        } else {
+            Ok(())
+        }
     }
 
     fn begin(&mut self) -> Result<(), CoreError> {
@@ -454,6 +469,7 @@ impl ImportContext for DbImportContext<'_> {
     }
 
     fn heartbeat(&mut self) -> Result<(), CoreError> {
+        self.check_cancel()?;
         self.archive.conn.execute(
             "UPDATE import_runs SET heartbeat_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
              WHERE id = ?1",
@@ -463,6 +479,7 @@ impl ImportContext for DbImportContext<'_> {
     }
 
     fn maybe_commit(&mut self) -> Result<(), CoreError> {
+        self.check_cancel()?;
         if self.msgs_since >= COMMIT_EVERY_MSGS || self.cas_since >= COMMIT_EVERY_CAS {
             self.heartbeat()?;
             self.commit()?;

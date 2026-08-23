@@ -1,6 +1,8 @@
 //! Frozen public types. Field names are normative; do not rename.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -115,6 +117,8 @@ pub enum CoreError {
     TakeoutLayout(String),
     #[error("fatal: {0}")]
     Fatal(String),
+    #[error("import cancelled")]
+    Cancelled,
 }
 
 impl From<rusqlite::Error> for CoreError {
@@ -272,6 +276,34 @@ pub struct OpenOptions {
     pub create: bool,
 }
 
+/// Cooperative stop flag for `run_import`.
+#[derive(Debug, Clone)]
+pub struct ImportCancel {
+    flag: Arc<AtomicBool>,
+}
+
+impl ImportCancel {
+    pub fn new() -> Self {
+        Self {
+            flag: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub fn cancel(&self) {
+        self.flag.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.flag.load(Ordering::SeqCst)
+    }
+}
+
+impl Default for ImportCancel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ImportOpts {
     pub locale: Option<String>,
@@ -281,6 +313,8 @@ pub struct ImportOpts {
     /// Archive `default_phone_region` (ISO 3166-1 alpha-2). Probe uses it to
     /// break a datetime locale tie (tr-TR vs de-DE). `--locale` still wins.
     pub phone_region: Option<String>,
+    /// When set, `run_import` / heartbeat / `maybe_commit` stop cooperatively.
+    pub cancel: Option<ImportCancel>,
 }
 
 impl Default for ImportOpts {
@@ -291,6 +325,7 @@ impl Default for ImportOpts {
             conversation_name: None,
             max_bytes: 60 * 1024 * 1024 * 1024,
             phone_region: None,
+            cancel: None,
         }
     }
 }

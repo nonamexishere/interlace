@@ -49,7 +49,7 @@ impl SourceImporter for GmailMboxImporter {
                 .unwrap_or("mail.mbox")
                 .to_string(),
             bytes: Some(bytes),
-            file_blake3: hash_file(path).ok(),
+            file_blake3: super::optional_file_hash(path, self.opts.cancel.as_ref())?,
             locale_guess: None,
             notes: vec!["mboxrd".into()],
         })
@@ -608,19 +608,4 @@ fn read_prefix(path: &Path, n: usize) -> Result<Vec<u8>, CoreError> {
     let got = f.read(&mut buf)?;
     buf.truncate(got);
     Ok(buf)
-}
-
-fn hash_file(path: &Path) -> Result<String, CoreError> {
-    use std::io::Read;
-    let mut f = fs::File::open(path)?;
-    let mut hasher = blake3::Hasher::new();
-    let mut buf = [0u8; 65536];
-    loop {
-        let n = f.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    Ok(hasher.finalize().to_hex().to_string())
 }

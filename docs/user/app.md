@@ -8,8 +8,9 @@ Chrome follows the macOS appearance (system light/dark) without a reload;
 dark is the intended archival look and light is a first-class alternate;
 lightbox and dialogs match the same tokens; there is no Theme menu.
 Cloud and doctor warnings use the warning token. Import progress is
-visible in-window. Cancel is shown while running but disabled because
-the import cannot be stopped once started. Import done is quiet
+visible in-window. Cancel stops the import at the next pause (hash /
+open / checkpoint). Status becomes interrupted or failed with
+the counts so far; another import can start after. Import done is quiet
 (muted or success).
 People preview, platform chips, banners, and search marks stay readable on
 both, and marks stay yellow.
@@ -191,7 +192,7 @@ CLI: `interlace search --attachment has_file|omitted|missing`. **Review**
 kind + normalized value — phone/email/display_name — under the title so a
 name-similarity card is decidable without the CLI; no raw person ids in the
 queue or confirm copy; Accept is undoable via Undo last link on the Review pane — only a user merge/link that has not already been undone, not import auto-links), **Import** (ZIP/mbox/vcf/Takeout via the
-folder picker; progress in-window; Cancel is shown while running but disabled because the import cannot be stopped), **Doctor** (integrity / rebuild FTS / GC)
+folder picker; progress in-window; Cancel stops the import; status interrupted/failed keeps counts; another import can start after), **Doctor** (integrity / rebuild FTS / GC)
 CAS with a confirm dialog — same as the CLI, no extra window).
 Drop a local ZIP or mbox onto the window (any tab) to start import — no URLs.
 
