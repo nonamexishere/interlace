@@ -21,6 +21,7 @@
   let path = $state("");
   let progress = $state<ImportProgress>({ status: "idle" });
   let timer: ReturnType<typeof setInterval> | null = null;
+  let cancelling = $state(false);
 
   async function pick(folder: boolean) {
     try {
@@ -48,10 +49,26 @@
     }
   }
 
+  async function cancel() {
+    if (cancelling) return;
+    cancelling = true;
+    try {
+      await api.importCancel();
+    } catch (e) {
+      cancelling = false;
+      onError(e);
+    }
+  }
+
   async function tick() {
     try {
       progress = await api.importProgress();
-      if (progress.status === "done" || progress.status === "failed") {
+      if (
+        progress.status === "done" ||
+        progress.status === "failed" ||
+        progress.status === "interrupted"
+      ) {
+        cancelling = false;
         if (timer) {
           clearInterval(timer);
           timer = null;
@@ -59,7 +76,7 @@
         if (progress.status === "failed" && progress.error) {
           onError(new Error(progress.error));
         }
-        if (progress.status === "done") {
+        if (progress.status === "done" || progress.status === "interrupted") {
           await onDone();
         }
       }
@@ -125,9 +142,10 @@
       {#if progress.status === "running"}
         <Button
           variant="outline"
-          disabled
+          disabled={cancelling}
           data-import-cancel
           aria-describedby="import-cancel-why"
+          onclick={cancel}
         >
           Cancel
         </Button>
@@ -135,7 +153,7 @@
     </div>
     {#if progress.status === "running"}
       <p id="import-cancel-why" class="text-sm text-muted-foreground">
-        This import cannot be stopped once started.
+        Stops at the next pause (hash / open / checkpoint).
       </p>
     {/if}
     <div

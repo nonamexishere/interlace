@@ -31,7 +31,7 @@ impl SourceImporter for WhatsappImporter {
     }
 
     fn probe(&self, path: &Path) -> Result<ProbeResult, CoreError> {
-        let listed = list_zip(path)?;
+        let listed = list_zip(path, self.opts.cancel.as_ref())?;
         let (chat_name, ios) = find_chat_entry(&listed)?;
         validate_zip_entry_name(&chat_name)?;
         let kind = if ios {
@@ -40,8 +40,13 @@ impl SourceImporter for WhatsappImporter {
             SourceKind::WhatsappAndroidZip
         };
         let bytes = std::fs::metadata(path).ok().map(|m| m.len());
-        let file_blake3 = hash_file(path).ok();
-        let chat = read_zip_entry(path, &chat_name, self.opts.max_bytes)?;
+        let file_blake3 = super::optional_file_hash(path, self.opts.cancel.as_ref())?;
+        let chat = read_zip_entry(
+            path,
+            &chat_name,
+            self.opts.max_bytes,
+            self.opts.cancel.as_ref(),
+        )?;
         let (text, mut notes) = decode_chat(&chat);
         let family = if ios {
             HeaderFamily::Ios
@@ -80,21 +85,26 @@ impl SourceImporter for WhatsappImporter {
     }
 
     fn import(&self, path: &Path, ctx: &mut dyn ImportContext) -> Result<ImportStats, CoreError> {
-        let probe = self.probe(path)?;
-        let family = match probe.kind {
-            SourceKind::WhatsappIosZip => HeaderFamily::Ios,
-            SourceKind::WhatsappAndroidZip => HeaderFamily::Android,
-            _ => return Err(CoreError::Probe("not a WhatsApp zip after probe".into())),
+        // Do not call probe() again: that re-opens the ZIP and re-hashes it.
+        let listed = list_zip(path, self.opts.cancel.as_ref())?;
+        let (chat_name, ios) = find_chat_entry(&listed)?;
+        let family = if ios {
+            HeaderFamily::Ios
+        } else {
+            HeaderFamily::Android
         };
-        let listed = list_zip(path)?;
         if listed.len() > ENTRY_COUNT_CAP {
             return Err(CoreError::Fatal(format!(
                 "zip entry count {} exceeds 2M cap",
                 listed.len()
             )));
         }
-        let (chat_name, _) = find_chat_entry(&listed)?;
-        let chat_bytes = read_zip_entry(path, &chat_name, self.opts.max_bytes)?;
+        let chat_bytes = read_zip_entry(
+            path,
+            &chat_name,
+            self.opts.max_bytes,
+            self.opts.cancel.as_ref(),
+        )?;
         let (text, decode_notes) = decode_chat(&chat_bytes);
         for n in decode_notes {
             ctx.warn(Warning {
@@ -109,8 +119,6 @@ impl SourceImporter for WhatsappImporter {
         let locale_id = if let Some(ref loc) = self.opts.locale {
             load_pack(loc)?;
             loc.clone()
-        } else if let Some(ref g) = probe.locale_guess {
-            g.clone()
         } else {
             let lines: Vec<&str> = text.lines().collect();
             vote_locale(&lines, Some(family), self.opts.phone_region.as_deref())?
@@ -129,7 +137,14 @@ impl SourceImporter for WhatsappImporter {
             }
         );
 
-        let parsed = parse_chat(&text, &pack, family, &chat_name, ctx)?;
+        let parsed = parse_chat(
+            &text,
+            &pack,
+            family,
+            &chat_name,
+            ctx,
+            self.opts.cancel.as_ref(),
+        )?;
         let self_folds = ctx.owner_self_folds()?;
 
         let mut humans: HashSet<String> = HashSet::new();
@@ -362,7 +377,12 @@ impl SourceImporter for WhatsappImporter {
                             .get(&safe)
                             .cloned()
                             .unwrap_or_else(|| fname.clone());
-                        match read_zip_entry_capped(path, &entry, MEDIA_ENTRY_CAP) {
+                        match read_zip_entry_capped(
+                            path,
+                            &entry,
+                            MEDIA_ENTRY_CAP,
+                            self.opts.cancel.as_ref(),
+                        ) {
                             Ok(bytes) => {
                                 let size = bytes.len() as i64;
                                 ctx.persist_attachment(
@@ -422,7 +442,6 @@ impl SourceImporter for WhatsappImporter {
             })?;
         }
 
-        let _ = probe;
         Ok(ImportStats::default())
     }
 }
@@ -445,9 +464,16 @@ fn parse_chat(
     family: HeaderFamily,
     chat_name: &str,
     ctx: &mut dyn ImportContext,
+    cancel: Option<&ImportCancel>,
 ) -> Result<Vec<ParsedLine>, CoreError> {
     let mut out: Vec<ParsedLine> = Vec::new();
     for (idx, raw_line) in text.lines().enumerate() {
+        if idx % 256 == 0 {
+            if cancel.is_some_and(|c| c.is_cancelled()) {
+                return Err(CoreError::Cancelled);
+            }
+            ctx.heartbeat()?;
+        }
         let line_no = idx + 1;
         let line = strip_cf(raw_line.trim_end_matches('\r'));
         if line.is_empty() {
@@ -713,11 +739,50 @@ fn conversation_title(
         .to_string()
 }
 
-fn list_zip(path: &Path) -> Result<Vec<String>, CoreError> {
-    let f = File::open(path)?;
-    let mut zip = ZipArchive::new(f).map_err(|e| CoreError::Probe(format!("not a zip: {e}")))?;
+fn open_zip_cancellable(
+    path: &Path,
+    cancel: Option<&ImportCancel>,
+) -> Result<ZipArchive<File>, CoreError> {
+    if cancel.is_some_and(|c| c.is_cancelled()) {
+        return Err(CoreError::Cancelled);
+    }
+    let Some(cancel) = cancel else {
+        let f = File::open(path)?;
+        return ZipArchive::new(f).map_err(|e| CoreError::Probe(format!("not a zip: {e}")));
+    };
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    let path = path.to_path_buf();
+    std::thread::Builder::new()
+        .name("il-zip-open".into())
+        .spawn(move || {
+            let sent = (|| {
+                let f = File::open(&path)?;
+                ZipArchive::new(f).map_err(|e| CoreError::Probe(format!("not a zip: {e}")))
+            })();
+            let _ = tx.send(sent);
+        })
+        .map_err(CoreError::from)?;
+    loop {
+        if cancel.is_cancelled() {
+            return Err(CoreError::Cancelled);
+        }
+        match rx.recv_timeout(std::time::Duration::from_millis(50)) {
+            Ok(r) => return r,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(CoreError::Probe("zip open failed".into()));
+            }
+        }
+    }
+}
+
+fn list_zip(path: &Path, cancel: Option<&ImportCancel>) -> Result<Vec<String>, CoreError> {
+    let mut zip = open_zip_cancellable(path, cancel)?;
     let mut names = Vec::with_capacity(zip.len());
     for i in 0..zip.len() {
+        if i % 64 == 0 && cancel.is_some_and(|c| c.is_cancelled()) {
+            return Err(CoreError::Cancelled);
+        }
         let e = zip
             .by_index(i)
             .map_err(|e| CoreError::Parse(format!("zip index {i}: {e}")))?;
@@ -760,14 +825,23 @@ fn find_chat_entry(names: &[String]) -> Result<(String, bool), CoreError> {
     }
 }
 
-fn read_zip_entry(path: &Path, name: &str, max_bytes: u64) -> Result<Vec<u8>, CoreError> {
-    read_zip_entry_capped(path, name, max_bytes)
+fn read_zip_entry(
+    path: &Path,
+    name: &str,
+    max_bytes: u64,
+    cancel: Option<&ImportCancel>,
+) -> Result<Vec<u8>, CoreError> {
+    read_zip_entry_capped(path, name, max_bytes, cancel)
 }
 
-fn read_zip_entry_capped(path: &Path, name: &str, max_bytes: u64) -> Result<Vec<u8>, CoreError> {
+fn read_zip_entry_capped(
+    path: &Path,
+    name: &str,
+    max_bytes: u64,
+    cancel: Option<&ImportCancel>,
+) -> Result<Vec<u8>, CoreError> {
     validate_zip_entry_name(name)?;
-    let f = File::open(path)?;
-    let mut zip = ZipArchive::new(f).map_err(|e| CoreError::Parse(format!("zip: {e}")))?;
+    let mut zip = open_zip_cancellable(path, cancel)?;
     let mut e = zip
         .by_name(name)
         .map_err(|err| CoreError::Parse(format!("zip entry {name}: {err}")))?;
@@ -777,13 +851,22 @@ fn read_zip_entry_capped(path: &Path, name: &str, max_bytes: u64) -> Result<Vec<
             "zip entry {name} uncompressed {sz} exceeds cap {max_bytes}"
         )));
     }
-    let mut buf = Vec::with_capacity(sz as usize);
-    e.read_to_end(&mut buf)?;
-    if buf.len() as u64 > max_bytes {
-        return Err(CoreError::Fatal(format!(
-            "zip entry {name} read {} exceeds cap {max_bytes}",
-            buf.len()
-        )));
+    let mut buf = Vec::with_capacity(sz.min(max_bytes) as usize);
+    let mut tmp = [0u8; 65536];
+    loop {
+        if cancel.is_some_and(|c| c.is_cancelled()) {
+            return Err(CoreError::Cancelled);
+        }
+        let n = e.read(&mut tmp)?;
+        if n == 0 {
+            break;
+        }
+        if buf.len() as u64 + n as u64 > max_bytes {
+            return Err(CoreError::Fatal(format!(
+                "zip entry {name} read exceeds cap {max_bytes}"
+            )));
+        }
+        buf.extend_from_slice(&tmp[..n]);
     }
     Ok(buf)
 }
@@ -829,20 +912,6 @@ fn decode_chat(bytes: &[u8]) -> (String, Vec<String>) {
             (lossy.into_owned(), notes)
         }
     }
-}
-
-fn hash_file(path: &Path) -> Result<String, CoreError> {
-    let mut f = File::open(path)?;
-    let mut hasher = blake3::Hasher::new();
-    let mut buf = [0u8; 65536];
-    loop {
-        let n = f.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    Ok(hasher.finalize().to_hex().to_string())
 }
 
 fn basename(name: &str) -> String {

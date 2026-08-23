@@ -125,7 +125,7 @@ export type ReviewShow = {
 };
 
 export type ImportProgress = {
-  status: "idle" | "running" | "done" | "failed" | string;
+  status: "idle" | "running" | "done" | "failed" | "interrupted" | string;
   path?: string | null;
   kind?: string | null;
   detail?: string | null;
@@ -207,4 +207,5 @@ export const api = {
   importStart: (args: { path: string; kind?: string | null; locale?: string | null }) =>
     invoke<void>("import_start", args),
   importProgress: () => invoke<ImportProgress>("import_progress"),
+  importCancel: () => invoke<void>("import_cancel"),
 };

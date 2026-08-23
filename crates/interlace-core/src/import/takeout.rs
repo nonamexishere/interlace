@@ -70,7 +70,7 @@ impl SourceImporter for TakeoutImporter {
                     .unwrap_or("takeout.zip")
                     .to_string(),
                 bytes: fs::metadata(path).ok().map(|m| m.len()),
-                file_blake3: hash_file(path).ok(),
+                file_blake3: super::optional_file_hash(path, self.opts.cancel.as_ref())?,
                 locale_guess: None,
                 notes: vec![],
             });
@@ -377,18 +377,4 @@ fn read_zip_entry(path: &Path, name: &str, max_bytes: u64) -> Result<Vec<u8>, Co
     let mut buf = Vec::new();
     e.read_to_end(&mut buf)?;
     Ok(buf)
-}
-
-fn hash_file(path: &Path) -> Result<String, CoreError> {
-    let mut f = File::open(path)?;
-    let mut hasher = blake3::Hasher::new();
-    let mut buf = [0u8; 65536];
-    loop {
-        let n = f.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    Ok(hasher.finalize().to_hex().to_string())
 }
