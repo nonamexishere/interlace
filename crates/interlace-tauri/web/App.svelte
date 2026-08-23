@@ -734,7 +734,8 @@
   async function applyStatus(next: Status) {
     st = next;
     setup = false;
-    await refreshPeople();
+    // Search must not wait on a people rebuild (#270). Exclusive flock stays.
+    void refreshPeople();
     await refreshEvents();
     // Do not start doctorIssuesQuick here: badge stays empty until the Doctor
     // tab. Integrity/GC onDone must keep the full list (do not clear doctor).

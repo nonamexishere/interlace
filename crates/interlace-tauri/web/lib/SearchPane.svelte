@@ -148,9 +148,6 @@
     searched = true;
     searching = true;
     searchError = "";
-    expanded = null;
-    body = "";
-    hitIndex = 0;
     const fromRaw = from.trim();
     const toRaw = to.trim();
     const fromDate = fromRaw ? Date.parse(fromRaw) : Number.NaN;
@@ -163,6 +160,9 @@
       searchError = t("searchDateInvalid");
       searching = false;
       hits = [];
+      expanded = null;
+      body = "";
+      hitIndex = 0;
       return;
     }
     try {
@@ -181,15 +181,45 @@
       hits = next;
       empty = hits.length === 0;
       hitIndex = 0;
+      expanded = null;
+      body = "";
     } catch (e) {
       if (gen === searchGen) {
         searchError = friendly(e instanceof Error ? e.message : String(e ?? ""));
         hits = [];
+        expanded = null;
+        body = "";
+        hitIndex = 0;
       }
     } finally {
       if (gen === searchGen) searching = false;
     }
   }
+
+  function clearHitsIdle() {
+    searchGen += 1;
+    hits = [];
+    empty = false;
+    searched = false;
+    searching = false;
+    searchError = "";
+    expanded = null;
+    body = "";
+    hitIndex = 0;
+  }
+
+  // Typing in #q searches (debounce). Empty query stays idle — no FTS.
+  $effect(() => {
+    const query = q;
+    if (!query.trim()) {
+      clearHitsIdle();
+      return;
+    }
+    const timer = setTimeout(() => {
+      void run();
+    }, 200);
+    return () => clearTimeout(timer);
+  });
 
   async function toggle(id: number) {
     if (expanded === id) {
@@ -420,7 +450,7 @@
     <Button type="submit" disabled={searching}>{searching ? "Searching…" : "Search"}</Button>
   </form>
 
-  {#if searching}
+  {#if searching && !hits.length}
     <div class="space-y-2" aria-hidden="true">
       <Skeleton class="h-4 w-[90%]" />
       <Skeleton class="h-3 w-[64%]" />
