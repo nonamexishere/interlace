@@ -13,7 +13,7 @@ use std::thread;
 use data_encoding::BASE64;
 use interlace_core::people::{
     attachments_for, complete_attachments, person_conversations, person_display_name,
-    person_identities, person_list, person_timeline_rows_for, recent_link_events,
+    person_identities, person_list_on, person_timeline_rows_for, recent_link_events,
 };
 use interlace_core::session::{
     init_owner_archive, read_last_bookmark, read_last_path, sandbox_denied_message,
@@ -523,9 +523,20 @@ fn with_arch_mut<T>(
 
 #[tauri::command]
 fn people(state: tauri::State<AppState>) -> Result<serde_json::Value, String> {
-    with_arch(&state, |arch| {
-        serde_json::to_value(person_list(arch).map_err(err)?).map_err(err)
-    })
+    // Snapshot off the archive mutex so Review / Confirm / Undo can run
+    // while the window-function scan fills (#265). Exclusive flock stays
+    // on the primary Archive. Do not take() the Archive (import pattern).
+    let root = {
+        let guard = state.archive.lock().map_err(err)?;
+        let Some(arch) = guard.as_ref() else {
+            return Err("no archive open".into());
+        };
+        arch.root.clone()
+    };
+    let snap = rusqlite::Connection::open(root.join("archive.sqlite")).map_err(err)?;
+    snap.pragma_update(None, "busy_timeout", 5_000i64)
+        .map_err(err)?;
+    serde_json::to_value(person_list_on(&snap).map_err(err)?).map_err(err)
 }
 
 #[tauri::command]

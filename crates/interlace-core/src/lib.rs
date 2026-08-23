@@ -24,7 +24,7 @@ pub use import::{
 pub use model::*;
 pub use people::{
     attachments_for, complete_attachments, merge_targets, person_conversations,
-    person_display_name, person_identities, person_list, person_list_with_groups,
+    person_display_name, person_identities, person_list, person_list_on, person_list_with_groups,
     person_timeline_rows, person_timeline_rows_for, recent_link_events, AttachmentRef, LinkEvent,
     PersonConversation, PersonIdentity, PersonSummary, TimelineRow,
 };

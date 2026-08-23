@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use rusqlite::OptionalExtension;
+use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 
 use crate::db::Archive;
@@ -121,7 +121,14 @@ pub struct LinkEvent {
 }
 
 pub fn person_list(archive: &Archive) -> Result<Vec<PersonSummary>, CoreError> {
-    person_list_with_groups(archive, false)
+    person_list_on(&archive.conn)
+}
+
+/// Same contract as `person_list` (groups off) on a caller-owned connection.
+/// Used for a second WAL snapshot so the primary `Archive` stays free (#265).
+/// Does not flock and does not open an archive.
+pub fn person_list_on(conn: &Connection) -> Result<Vec<PersonSummary>, CoreError> {
+    person_list_on_with_groups(conn, false)
 }
 
 /// Live persons with last D18 activity + preview.
@@ -129,6 +136,13 @@ pub fn person_list(archive: &Archive) -> Result<Vec<PersonSummary>, CoreError> {
 /// of `dm` / `email_thread`. Sort: self first, `sent_at` desc, nulls last, `id`.
 pub fn person_list_with_groups(
     archive: &Archive,
+    include_groups: bool,
+) -> Result<Vec<PersonSummary>, CoreError> {
+    person_list_on_with_groups(&archive.conn, include_groups)
+}
+
+fn person_list_on_with_groups(
+    conn: &Connection,
     include_groups: bool,
 ) -> Result<Vec<PersonSummary>, CoreError> {
     let group_sql = if include_groups {
@@ -170,7 +184,7 @@ pub fn person_list_with_groups(
          WHERE p.tombstoned_at IS NULL
          ORDER BY p.is_self DESC, act.sent_at IS NULL, act.sent_at DESC, p.id"
     );
-    let mut stmt = archive.conn.prepare(&sql)?;
+    let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], |r| {
         let subject: Option<String> = r.get(4)?;
         let body: Option<String> = r.get(5)?;
@@ -191,20 +205,20 @@ pub fn person_list_with_groups(
     for row in rows {
         out.push(row?);
     }
-    attach_identity_values(archive, &mut out)?;
+    attach_identity_values(conn, &mut out)?;
     Ok(out)
 }
 
 /// Fill each person's linked `value_normalized` for client-side people filter (#138).
 fn attach_identity_values(
-    archive: &Archive,
+    conn: &Connection,
     people: &mut [PersonSummary],
 ) -> Result<(), CoreError> {
     if people.is_empty() {
         return Ok(());
     }
     let mut by_person: HashMap<i64, Vec<String>> = HashMap::new();
-    let mut stmt = archive.conn.prepare(
+    let mut stmt = conn.prepare(
         "SELECT pi.person_id, i.value_normalized
          FROM person_identities pi
          JOIN identities i ON i.id = pi.identity_id

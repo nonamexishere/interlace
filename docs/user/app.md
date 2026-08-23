@@ -119,7 +119,10 @@ activity as a **short UTC time** (`11 Aug 14:32`), not the raw ISO, and a
 one-line **plain-text** preview (the last message’s subject if it has one,
 otherwise a truncated body — never HTML). The merge-target picker uses the
 same short time. Archive JSON still stores ISO. Contacts with no matching messages
-stay listed at the bottom. After you open a person, a **compact conversation switcher** in the header
+stay listed at the bottom. A large people list does not freeze Review,
+Confirm, or Undo while it fills — exclusive flock on the archive
+folder is still held. `/` still filters the loaded list by display name and
+linked identity values (unchanged). After you open a person, a **compact conversation switcher** in the header
 (not a second list above the bubbles) lists their chats (WhatsApp / Gmail
 when the title is empty or the person’s name; otherwise the group name or
 mail subject; platform and last activity). **All** is the default (the merged D18 stream). Picking a
