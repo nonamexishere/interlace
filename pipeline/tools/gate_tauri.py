@@ -35,6 +35,12 @@
 #     the Archive (import pattern). Exclusive flock stays (core). Keep #138
 #     identity haystack. Keep #221 void onChanged / ConfirmDialog close-first.
 #     Not: wall-clock “minutes”, #203 skeletons, #110 sort/preview.
+#     #265 follow-up: refreshPeople increments peopleGen (tlGen only if it
+#     is also the people-list gen) and does not assign people / clear
+#     peopleLoading from a stale api.people() reply; snapshot open is
+#     read-only + query_only (not bare Connection::open); person_list_on
+#     uses unchecked_transaction / BEGIN; people() comment is not the
+#     three-line #265 / flock / take() history.
 #115: timeline bubble platform chip (text badge, not CDN img) + toolbar filter
 #     All + platforms present for this person (data-derived from conversations /
 #     timeline — dynamic {#each} OK; not a forever-visible full platform matrix).
@@ -4250,6 +4256,22 @@ _PEOPLE_REVIEW_DISABLED_LOADING = re.compile(
     r"disabled\s*=\s*\{[^}]*peopleLoading",
     re.I,
 )
+_PEOPLE_ASSIGN_AWAIT = re.compile(
+    r"\bpeople\s*=\s*await\s+api\s*\.\s*people\s*\("
+)
+_PEOPLE_LOADING_FALSE = re.compile(r"\bpeopleLoading\s*=\s*false\b")
+_PEOPLE_BARE_OPEN = re.compile(r"(?:rusqlite::)?Connection::open\s*\(")
+_PEOPLE_OPEN_READONLY = re.compile(r"\bSQLITE_OPEN_READ_ONLY\b")
+_PEOPLE_OPEN_FLAGS = re.compile(r"\bOpenFlags\b")
+_PEOPLE_READ_ONLY = re.compile(r"\bREAD_ONLY\b")
+_PEOPLE_QUERY_ONLY = re.compile(r"\bquery_only\b", re.I)
+_PEOPLE_SNAPSHOT_TX = re.compile(r"unchecked_transaction|\bBEGIN\b", re.I)
+_PEOPLE_COMMENT_ISSUE = re.compile(r"#265")
+_PEOPLE_COMMENT_FLOCK = re.compile(r"Exclusive flock stays", re.I)
+_PEOPLE_COMMENT_TAKE = re.compile(
+    r"Do not take\s*\(\s*\)\s*the Archive|import pattern", re.I
+)
+_PEOPLE_GEN_COUNTER = re.compile(r"people|roster|ppl", re.I)
 
 
 def _people_rust_cmd_body(rust: str) -> str:
@@ -4368,6 +4390,83 @@ def _review_nav_disabled_while_people_loading(app: str) -> bool:
     return False
 
 
+def _people_refresh_body(src: str) -> str:
+    return _function_body(src, "refreshPeople") or _ts_fn_body(src, "refreshPeople")
+
+
+def _people_list_gen(refresh: str) -> tuple[str, str] | None:
+    """`(local, counter)` if refreshPeople increments a people-list gen.
+
+    `peopleGen` / roster / ppl names count. `tlGen` only if refreshPeople
+    itself increments it (then it is also the people-list gen).
+    """
+    ipc_at = _first_substr_pos(refresh, ("api.people",))
+    tok = _gen_increment_before_ipc(refresh, ipc_at)
+    if not tok:
+        return None
+    local, counter = tok
+    if _PEOPLE_GEN_COUNTER.search(counter) or _PEOPLE_GEN_COUNTER.search(local):
+        return tok
+    if counter == "tlGen":
+        return tok
+    return None
+
+
+def _people_cmd_comment(rust: str) -> str:
+    """Comments on `fn people` (leading body + immediately above the fn)."""
+    m = re.search(r"(?:pub\s+)?(?:async\s+)?fn\s+people\s*\(", rust)
+    if not m:
+        return ""
+    kept: list[str] = []
+    for line in reversed(rust[: m.start()].splitlines()):
+        s = line.strip()
+        if s == "":
+            if kept:
+                break
+            continue
+        if s.startswith("#["):
+            continue
+        if s.startswith("//") or s.startswith("///") or s.startswith("/*") or s.startswith("*"):
+            kept.append(s)
+            continue
+        break
+    header = list(reversed(kept))
+    lead: list[str] = []
+    for line in _people_rust_cmd_body(rust).splitlines():
+        s = line.strip()
+        if s == "":
+            if lead:
+                break
+            continue
+        if s.startswith("//") or s.startswith("/*") or s.startswith("*"):
+            lead.append(s)
+            continue
+        break
+    return "\n".join(header + lead)
+
+
+def _people_list_on_blob(core: str) -> str:
+    """person_list_on / person_list_on_with_groups (+ one hop, not attach)."""
+    parts: list[str] = []
+    skip = {"attach_identity_values"}
+    seen: set[str] = set()
+    for name in ("person_list_on", "person_list_on_with_groups"):
+        body = _rust_function_body(core, name) or _rust_fn_body(core, name)
+        if not body:
+            continue
+        parts.append(body)
+        seen.add(name)
+        for m in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
+            callee = m.group(1)
+            if callee in seen or callee in skip:
+                continue
+            seen.add(callee)
+            inner = _rust_function_body(core, callee) or _rust_fn_body(core, callee)
+            if inner:
+                parts.append(inner)
+    return "\n".join(parts)
+
+
 def assert_people_list_lock(crate: Path) -> None:
     """#265: Review / Confirm / Undo stay callable while people is filling.
 
@@ -4376,6 +4475,11 @@ def assert_people_list_lock(crate: Path) -> None:
     before Review / undo. Do not `take()` the Archive (import pattern).
     Keep #138 identity haystack and #221 void onChanged / close-first.
     Not a wall-clock “minutes” bound. Do not rewrite #203 / #110 / #221.
+
+    #265 follow-up: refreshPeople increments peopleGen and discards stale
+    api.people() replies; snapshot is read-only + query_only; list +
+    attach_identity_values share one BEGIN / unchecked_transaction;
+    people() comment is not the three-line history.
     """
     rust_path = crate / "src" / "main.rs"
     app_path = crate / "web" / "App.svelte"
@@ -4446,6 +4550,82 @@ def assert_people_list_lock(crate: Path) -> None:
         fail(
             "#265: people `/` filter must still match linked identity values "
             "(identity_values / filter_haystack / p.identities on the loaded list)"
+        )
+
+    # Follow-up: stale people reply + read-only snapshot + one-transaction list.
+    refresh = _people_refresh_body(src)
+    if not refresh.strip():
+        fail("#265: refreshPeople required (must discard stale api.people() replies)")
+    tok = _people_list_gen(refresh)
+    for m in _PEOPLE_ASSIGN_AWAIT.finditer(refresh):
+        if not tok or not _assignment_gen_guarded(
+            refresh, m.start(), tok[0], tok[1]
+        ):
+            fail(
+                "#265: refreshPeople must not assign unguarded "
+                "people = await api.people() "
+                "(increment peopleGen and keep the assignment only when gen is current)"
+            )
+    if not tok:
+        fail(
+            "#265: refreshPeople must increment a generation "
+            "(peopleGen; tlGen only if it is also the people-list gen)"
+        )
+    if not _PEOPLE_LOADING_FALSE.search(refresh):
+        fail(
+            "#265: refreshPeople must clear peopleLoading only when the "
+            "generation is current"
+        )
+    bad = _unguarded_post_ipc_writes(
+        refresh, tok[0], tok[1], ("people", "peopleLoading"), ("api.people",)
+    )
+    if bad:
+        fail(
+            "#265: refreshPeople must not assign people / clear peopleLoading "
+            "when the generation is stale"
+        )
+
+    snap = _people_expand_rust_calls(rust, people_body)
+    if _PEOPLE_BARE_OPEN.search(snap):
+        fail(
+            "#265: people snapshot must not use bare Connection::open "
+            "(open read-only with SQLITE_OPEN_READ_ONLY / OpenFlags + READ_ONLY)"
+        )
+    readonly = bool(_PEOPLE_OPEN_READONLY.search(snap)) or (
+        bool(_PEOPLE_OPEN_FLAGS.search(snap)) and bool(_PEOPLE_READ_ONLY.search(snap))
+    )
+    if not readonly or not _PEOPLE_QUERY_ONLY.search(snap):
+        fail(
+            "#265: people snapshot must open read-only "
+            "(SQLITE_OPEN_READ_ONLY / OpenFlags + READ_ONLY) and set query_only"
+        )
+
+    people_rs = (
+        repo_root() / "crates" / "interlace-core" / "src" / "people.rs"
+    )
+    core_people = people_rs.read_text() if people_rs.is_file() else ""
+    list_blob = _people_list_on_blob(core_people)
+    if not list_blob.strip():
+        fail(
+            "#265: person_list_on / person_list_on_with_groups required "
+            "(list + attach_identity_values must share one snapshot)"
+        )
+    if not _PEOPLE_SNAPSHOT_TX.search(list_blob):
+        fail(
+            "#265: person_list_on / person_list_on_with_groups must use "
+            "unchecked_transaction or BEGIN so list + attach_identity_values "
+            "are one snapshot"
+        )
+
+    comment = _people_cmd_comment(rust)
+    if (
+        _PEOPLE_COMMENT_ISSUE.search(comment)
+        and _PEOPLE_COMMENT_FLOCK.search(comment)
+        and _PEOPLE_COMMENT_TAKE.search(comment)
+    ):
+        fail(
+            "#265: people() comment must not be the three-line #265 / "
+            "Exclusive flock / take() history (one-line why is OK)"
         )
 
 
