@@ -28,6 +28,19 @@
 #     light/dark; no network images / CDN / splash video / server progress %.
 #138: people `/` filter matches linked identity values (phone/email haystack on the
 #     loaded list), not only display_name. Still client-side; no country-code UI.
+#265: people list must not hold the Tauri archive mutex for the whole heavy
+#     person_list scan. Review / Confirm / Undo stay callable while people
+#     is filling (people() does not wrap the entire person_list in with_arch,
+#     or the UI first-paints without awaiting the full list). Do not take()
+#     the Archive (import pattern). Exclusive flock stays (core). Keep #138
+#     identity haystack. Keep #221 void onChanged / ConfirmDialog close-first.
+#     Not: wall-clock “minutes”, #203 skeletons, #110 sort/preview.
+#     #265 follow-up: refreshPeople increments peopleGen (tlGen only if it
+#     is also the people-list gen) and does not assign people / clear
+#     peopleLoading from a stale api.people() reply; snapshot open is
+#     read-only + query_only (not bare Connection::open); person_list_on
+#     uses unchecked_transaction / BEGIN; people() comment is not the
+#     three-line #265 / flock / take() history.
 #115: timeline bubble platform chip (text badge, not CDN img) + toolbar filter
 #     All + platforms present for this person (data-derived from conversations /
 #     timeline — dynamic {#each} OK; not a forever-visible full platform matrix).
@@ -4221,6 +4234,399 @@ def assert_people_filter_identity(crate: Path) -> None:
         )
     if "display_name" not in window and "displayName" not in window:
         fail("#138: people filter must still match display_name")
+
+
+# #265 — people list must not hold the archive mutex for the whole heavy scan.
+_PEOPLE_LIST_HEAVY = re.compile(
+    r"\bperson_list(?:_with_groups|_on|_on_conn|_from_conn|_snapshot)?\s*\("
+)
+_PEOPLE_WITH_ARCH = re.compile(r"\bwith_arch(?:_mut)?\s*\(")
+_PEOPLE_TAKE_ARCH = re.compile(r"\.take\s*\(")
+_PEOPLE_AWAIT_API_PEOPLE = re.compile(r"await\s+api\s*\.\s*people\s*\(")
+_PEOPLE_AWAIT_ONCHANGED = re.compile(r"await\s+onChanged\s*\(")
+_PEOPLE_AWAIT_REFRESH = re.compile(r"await\s+refreshPeople\s*\(")
+_PEOPLE_PAGE_API = re.compile(r"api\s*\.\s*people(?:Page|Roster|Chunk|More)\s*\(")
+_PEOPLE_VOID_API = re.compile(r"void\s+api\s*\.\s*people\s*\(")
+_PEOPLE_THEN_API = re.compile(r"api\s*\.\s*people\s*\([^)]*\)\s*\.then\s*\(")
+_PEOPLE_FIRST_PAINT_ASSIGN = re.compile(
+    r"\bpeople\s*=\s*await\s+api\s*\.\s*people(?:Page|Roster|Chunk|More)\s*\("
+)
+_PEOPLE_FIRST_PAINT_PUSH = re.compile(r"\bpeople\s*\.(?:push|unshift|splice|concat)\s*\(")
+_PEOPLE_REVIEW_DISABLED_LOADING = re.compile(
+    r"disabled\s*=\s*\{[^}]*peopleLoading",
+    re.I,
+)
+_PEOPLE_ASSIGN_AWAIT = re.compile(
+    r"\bpeople\s*=\s*await\s+api\s*\.\s*people\s*\("
+)
+_PEOPLE_LOADING_FALSE = re.compile(r"\bpeopleLoading\s*=\s*false\b")
+_PEOPLE_BARE_OPEN = re.compile(r"(?:rusqlite::)?Connection::open\s*\(")
+_PEOPLE_OPEN_READONLY = re.compile(r"\bSQLITE_OPEN_READ_ONLY\b")
+_PEOPLE_OPEN_FLAGS = re.compile(r"\bOpenFlags\b")
+_PEOPLE_READ_ONLY = re.compile(r"\bREAD_ONLY\b")
+_PEOPLE_QUERY_ONLY = re.compile(r"\bquery_only\b", re.I)
+_PEOPLE_SNAPSHOT_TX = re.compile(r"unchecked_transaction|\bBEGIN\b", re.I)
+_PEOPLE_COMMENT_ISSUE = re.compile(r"#265")
+_PEOPLE_COMMENT_FLOCK = re.compile(r"Exclusive flock stays", re.I)
+_PEOPLE_COMMENT_TAKE = re.compile(
+    r"Do not take\s*\(\s*\)\s*the Archive|import pattern", re.I
+)
+_PEOPLE_GEN_COUNTER = re.compile(r"people|roster|ppl", re.I)
+
+
+def _people_rust_cmd_body(rust: str) -> str:
+    return _rust_function_body(rust, "people") or _rust_fn_body(rust, "people")
+
+
+def _people_expand_rust_calls(rust: str, blob: str, depth: int = 2) -> str:
+    parts = [blob]
+    seen = {"people", "with_arch", "with_arch_mut"}
+    skip = {
+        "Ok",
+        "Err",
+        "Some",
+        "None",
+        "vec",
+        "format",
+        "serde_json",
+        "to_value",
+        "json",
+        "map_err",
+        "clone",
+        "lock",
+        "as_ref",
+        "as_mut",
+        "expect",
+        "unwrap",
+        "from",
+        "join",
+        "open",
+        "if",
+        "for",
+        "while",
+        "match",
+        "return",
+        "person_list",
+        "person_list_with_groups",
+        "person_list_on",
+    }
+
+    def walk(src: str, left: int) -> None:
+        if left <= 0:
+            return
+        for m in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", src):
+            name = m.group(1)
+            if name in seen or name in skip:
+                continue
+            seen.add(name)
+            inner = _rust_function_body(rust, name) or _rust_fn_body(rust, name)
+            if not inner:
+                continue
+            parts.append(inner)
+            walk(inner, left - 1)
+
+    walk(blob, depth)
+    return "\n".join(parts)
+
+
+def _people_with_arch_wraps_heavy(rust: str, body: str) -> bool:
+    """True if a with_arch / with_arch_mut closure (or its callees) runs person_list."""
+    for m in _PEOPLE_WITH_ARCH.finditer(body):
+        args = _call_arg(body, m.end() - 1)
+        if not args:
+            continue
+        expanded = _people_expand_rust_calls(rust, args)
+        if _PEOPLE_LIST_HEAVY.search(expanded):
+            return True
+    return False
+
+
+def _people_cmd_takes_archive(rust: str, body: str) -> bool:
+    expanded = _people_expand_rust_calls(rust, body)
+    return bool(_PEOPLE_TAKE_ARCH.search(expanded))
+
+
+def _refresh_first_paints_before_full_people(refresh: str) -> bool:
+    """True if refreshPeople paints a page / fires-and-forgets before the full list."""
+    full = _PEOPLE_AWAIT_API_PEOPLE.search(refresh)
+    if not full:
+        if _PEOPLE_VOID_API.search(refresh) or _PEOPLE_THEN_API.search(refresh):
+            return True
+        if _PEOPLE_PAGE_API.search(refresh):
+            return True
+        return False
+    before = refresh[: full.start()]
+    if _PEOPLE_FIRST_PAINT_ASSIGN.search(before):
+        return True
+    if _PEOPLE_FIRST_PAINT_PUSH.search(before):
+        return True
+    return False
+
+
+def _apply_status_releases_before_people(apply_st: str) -> bool:
+    if _PEOPLE_AWAIT_REFRESH.search(apply_st):
+        return False
+    return bool(re.search(r"(?:void\s+)?refreshPeople\s*\(", apply_st))
+
+
+def _people_load_incremental(app: str, logic: str) -> bool:
+    src = _without_comments(app + "\n" + logic)
+    refresh = _function_body(src, "refreshPeople") or _ts_fn_body(src, "refreshPeople")
+    apply_st = _function_body(src, "applyStatus") or _ts_fn_body(src, "applyStatus")
+    if refresh and _refresh_first_paints_before_full_people(refresh):
+        return True
+    if apply_st and _apply_status_releases_before_people(apply_st):
+        return True
+    return False
+
+
+def _review_nav_disabled_while_people_loading(app: str) -> bool:
+    for m in re.finditer(r"<Button\b[^>]*>", app, re.S):
+        tag = m.group(0)
+        if "review" not in tag.lower():
+            continue
+        if _PEOPLE_REVIEW_DISABLED_LOADING.search(tag):
+            return True
+    return False
+
+
+def _people_refresh_body(src: str) -> str:
+    return _function_body(src, "refreshPeople") or _ts_fn_body(src, "refreshPeople")
+
+
+def _people_list_gen(refresh: str) -> tuple[str, str] | None:
+    """`(local, counter)` if refreshPeople increments a people-list gen.
+
+    `peopleGen` / roster / ppl names count. `tlGen` only if refreshPeople
+    itself increments it (then it is also the people-list gen).
+    """
+    ipc_at = _first_substr_pos(refresh, ("api.people",))
+    tok = _gen_increment_before_ipc(refresh, ipc_at)
+    if not tok:
+        return None
+    local, counter = tok
+    if _PEOPLE_GEN_COUNTER.search(counter) or _PEOPLE_GEN_COUNTER.search(local):
+        return tok
+    if counter == "tlGen":
+        return tok
+    return None
+
+
+def _people_cmd_comment(rust: str) -> str:
+    """Comments on `fn people` (leading body + immediately above the fn)."""
+    m = re.search(r"(?:pub\s+)?(?:async\s+)?fn\s+people\s*\(", rust)
+    if not m:
+        return ""
+    kept: list[str] = []
+    for line in reversed(rust[: m.start()].splitlines()):
+        s = line.strip()
+        if s == "":
+            if kept:
+                break
+            continue
+        if s.startswith("#["):
+            continue
+        if s.startswith("//") or s.startswith("///") or s.startswith("/*") or s.startswith("*"):
+            kept.append(s)
+            continue
+        break
+    header = list(reversed(kept))
+    lead: list[str] = []
+    for line in _people_rust_cmd_body(rust).splitlines():
+        s = line.strip()
+        if s == "":
+            if lead:
+                break
+            continue
+        if s.startswith("//") or s.startswith("/*") or s.startswith("*"):
+            lead.append(s)
+            continue
+        break
+    return "\n".join(header + lead)
+
+
+def _people_list_on_blob(core: str) -> str:
+    """person_list_on / person_list_on_with_groups (+ one hop, not attach)."""
+    parts: list[str] = []
+    skip = {"attach_identity_values"}
+    seen: set[str] = set()
+    for name in ("person_list_on", "person_list_on_with_groups"):
+        body = _rust_function_body(core, name) or _rust_fn_body(core, name)
+        if not body:
+            continue
+        parts.append(body)
+        seen.add(name)
+        for m in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
+            callee = m.group(1)
+            if callee in seen or callee in skip:
+                continue
+            seen.add(callee)
+            inner = _rust_function_body(core, callee) or _rust_fn_body(core, callee)
+            if inner:
+                parts.append(inner)
+    return "\n".join(parts)
+
+
+def assert_people_list_lock(crate: Path) -> None:
+    """#265: Review / Confirm / Undo stay callable while people is filling.
+
+    Static: `people` must not hold `with_arch` around the entire heavy
+    `person_list`, or the UI first-paints without awaiting the full list
+    before Review / undo. Do not `take()` the Archive (import pattern).
+    Keep #138 identity haystack and #221 void onChanged / close-first.
+    Not a wall-clock “minutes” bound. Do not rewrite #203 / #110 / #221.
+
+    #265 follow-up: refreshPeople increments peopleGen and discards stale
+    api.people() replies; snapshot is read-only + query_only; list +
+    attach_identity_values share one BEGIN / unchecked_transaction;
+    people() comment is not the three-line history.
+    """
+    rust_path = crate / "src" / "main.rs"
+    app_path = crate / "web" / "App.svelte"
+    review_path = crate / "web" / "lib" / "ReviewPane.svelte"
+    confirm_path = crate / "web" / "lib" / "ConfirmDialog.svelte"
+    rust = rust_path.read_text() if rust_path.is_file() else ""
+    app = app_path.read_text() if app_path.is_file() else ""
+    logic = _web_logic(crate)
+    review_src = review_path.read_text() if review_path.is_file() else ""
+    confirm_src = confirm_path.read_text() if confirm_path.is_file() else ""
+
+    people_body = _people_rust_cmd_body(rust)
+    if not people_body.strip():
+        fail("#265: people command required (Tauri IPC)")
+
+    if _people_cmd_takes_archive(rust, people_body):
+        fail(
+            "#265: people must not take() the Archive out of the mutex "
+            "(Review / Confirm / Undo would see no archive — that is the import pattern)"
+        )
+
+    holds_heavy = _people_with_arch_wraps_heavy(rust, people_body)
+    incremental = _people_load_incremental(app, logic)
+    if holds_heavy and not incremental:
+        fail(
+            "#265: people must not hold with_arch around the entire person_list, "
+            "or people load must first-paint without awaiting the full list "
+            "before Review / undo"
+        )
+
+    if _review_nav_disabled_while_people_loading(app):
+        fail(
+            "#265: Review tab must stay clickable while people is filling "
+            "(do not disable Review on peopleLoading)"
+        )
+
+    review_clean = _without_comments(review_src)
+    if _PEOPLE_AWAIT_ONCHANGED.search(review_clean):
+        fail(
+            "#265: ReviewPane must not await onChanged() "
+            "(keep #221 — People refresh must not block Accept / Reject / Undo)"
+        )
+    if _PEOPLE_AWAIT_API_PEOPLE.search(review_clean):
+        fail(
+            "#265: Review / undo must not await api.people() "
+            "(keep #221 — Review stays callable while people is filling)"
+        )
+
+    if confirm_src:
+        confirm_clean = _without_comments(confirm_src)
+        go_body = _ts_fn_body(confirm_clean, "go") or _function_body(confirm_clean, "go")
+        if go_body:
+            await_onconfirm = re.search(r"await\s+onconfirm\s*\(", go_body)
+            if await_onconfirm:
+                close_open = re.search(r"\bopen\s*=\s*false\b", go_body)
+                if not close_open or close_open.start() > await_onconfirm.start():
+                    fail(
+                        "#265: ConfirmDialog go() must set open = false before "
+                        "await onconfirm() (keep #221 close-first)"
+                    )
+
+    src = _without_comments(app + "\n" + logic)
+    window = _people_filter_window(src)
+    has_identity = bool(_PEOPLE_FILTER_IDENTITY_TOKENS.search(window)) or bool(
+        _PEOPLE_FILTER_IDENTITIES_FIELD.search(window)
+    )
+    if not has_identity:
+        fail(
+            "#265: people `/` filter must still match linked identity values "
+            "(identity_values / filter_haystack / p.identities on the loaded list)"
+        )
+
+    # Follow-up: stale people reply + read-only snapshot + one-transaction list.
+    refresh = _people_refresh_body(src)
+    if not refresh.strip():
+        fail("#265: refreshPeople required (must discard stale api.people() replies)")
+    tok = _people_list_gen(refresh)
+    for m in _PEOPLE_ASSIGN_AWAIT.finditer(refresh):
+        if not tok or not _assignment_gen_guarded(
+            refresh, m.start(), tok[0], tok[1]
+        ):
+            fail(
+                "#265: refreshPeople must not assign unguarded "
+                "people = await api.people() "
+                "(increment peopleGen and keep the assignment only when gen is current)"
+            )
+    if not tok:
+        fail(
+            "#265: refreshPeople must increment a generation "
+            "(peopleGen; tlGen only if it is also the people-list gen)"
+        )
+    if not _PEOPLE_LOADING_FALSE.search(refresh):
+        fail(
+            "#265: refreshPeople must clear peopleLoading only when the "
+            "generation is current"
+        )
+    bad = _unguarded_post_ipc_writes(
+        refresh, tok[0], tok[1], ("people", "peopleLoading"), ("api.people",)
+    )
+    if bad:
+        fail(
+            "#265: refreshPeople must not assign people / clear peopleLoading "
+            "when the generation is stale"
+        )
+
+    snap = _people_expand_rust_calls(rust, people_body)
+    if _PEOPLE_BARE_OPEN.search(snap):
+        fail(
+            "#265: people snapshot must not use bare Connection::open "
+            "(open read-only with SQLITE_OPEN_READ_ONLY / OpenFlags + READ_ONLY)"
+        )
+    readonly = bool(_PEOPLE_OPEN_READONLY.search(snap)) or (
+        bool(_PEOPLE_OPEN_FLAGS.search(snap)) and bool(_PEOPLE_READ_ONLY.search(snap))
+    )
+    if not readonly or not _PEOPLE_QUERY_ONLY.search(snap):
+        fail(
+            "#265: people snapshot must open read-only "
+            "(SQLITE_OPEN_READ_ONLY / OpenFlags + READ_ONLY) and set query_only"
+        )
+
+    people_rs = (
+        repo_root() / "crates" / "interlace-core" / "src" / "people.rs"
+    )
+    core_people = people_rs.read_text() if people_rs.is_file() else ""
+    list_blob = _people_list_on_blob(core_people)
+    if not list_blob.strip():
+        fail(
+            "#265: person_list_on / person_list_on_with_groups required "
+            "(list + attach_identity_values must share one snapshot)"
+        )
+    if not _PEOPLE_SNAPSHOT_TX.search(list_blob):
+        fail(
+            "#265: person_list_on / person_list_on_with_groups must use "
+            "unchecked_transaction or BEGIN so list + attach_identity_values "
+            "are one snapshot"
+        )
+
+    comment = _people_cmd_comment(rust)
+    if (
+        _PEOPLE_COMMENT_ISSUE.search(comment)
+        and _PEOPLE_COMMENT_FLOCK.search(comment)
+        and _PEOPLE_COMMENT_TAKE.search(comment)
+    ):
+        fail(
+            "#265: people() comment must not be the three-line #265 / "
+            "Exclusive flock / take() history (one-line why is OK)"
+        )
 
 
 def assert_people_sidebar_no_x_scroll(crate: Path) -> None:
@@ -25564,6 +25970,7 @@ def main() -> None:
     assert_gmail_timeline_rows(crate)
     assert_people_sidebar_no_x_scroll(crate)
     assert_people_filter_identity(crate)
+    assert_people_list_lock(crate)
     assert_boot_spinner(crate)
     assert_photo_lightbox(crate)
     assert_voice_note_player(crate)

@@ -1914,6 +1914,7 @@ dependencies = [
  "objc2",
  "objc2-foundation",
  "rfd",
+ "rusqlite",
  "serde",
  "serde_json",
  "tauri",
