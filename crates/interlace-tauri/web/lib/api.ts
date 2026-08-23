@@ -61,7 +61,13 @@ export type PersonConversation = {
   last_at?: string | null;
 };
 
-export type LinkEvent = { id: number; ts: string; op: string };
+export type LinkEvent = {
+  id: number;
+  ts: string;
+  op: string;
+  actor?: string;
+  undo_of?: number | null;
+};
 
 export type SearchHit = {
   message_id: number;

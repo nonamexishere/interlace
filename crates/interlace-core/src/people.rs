@@ -114,6 +114,10 @@ pub struct LinkEvent {
     pub id: i64,
     pub ts: String,
     pub op: String,
+    pub actor: String,
+    /// Set on `split_person` rows: the event this undo reversed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub undo_of: Option<i64>,
 }
 
 pub fn person_list(archive: &Archive) -> Result<Vec<PersonSummary>, CoreError> {
@@ -600,14 +604,21 @@ fn attach_attachments(archive: &Archive, rows: &mut [TimelineRow]) -> Result<(),
 
 pub fn recent_link_events(archive: &Archive, limit: u32) -> Result<Vec<LinkEvent>, CoreError> {
     let limit = limit.clamp(1, 50);
-    let mut stmt = archive
-        .conn
-        .prepare("SELECT id, ts, op FROM identity_link_events ORDER BY id DESC LIMIT ?1")?;
+    let mut stmt = archive.conn.prepare(
+        "SELECT id, ts, op, actor, payload_json FROM identity_link_events
+         ORDER BY id DESC LIMIT ?1",
+    )?;
     let rows = stmt.query_map([limit as i64], |r| {
+        let payload: String = r.get(4)?;
+        let undo_of = serde_json::from_str::<serde_json::Value>(&payload)
+            .ok()
+            .and_then(|v| v.get("undo_of").and_then(|x| x.as_i64()));
         Ok(LinkEvent {
             id: r.get(0)?,
             ts: r.get(1)?,
             op: r.get(2)?,
+            actor: r.get(3)?,
+            undo_of,
         })
     })?;
     let mut out = Vec::new();

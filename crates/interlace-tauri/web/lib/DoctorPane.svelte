@@ -210,4 +210,5 @@
   description={confirmDesc}
   confirmLabel={confirmLabel}
   onconfirm={runPending}
+  onerror={onError}
 />

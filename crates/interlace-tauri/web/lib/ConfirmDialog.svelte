@@ -8,21 +8,31 @@
     description,
     confirmLabel = "Confirm",
     onconfirm,
+    onerror,
   }: {
     open?: boolean;
     title: string;
     description: string;
     confirmLabel?: string;
     onconfirm: () => void | Promise<void>;
+    onerror?: (e: unknown) => void;
   } = $props();
 
   let busy = $state(false);
 
+  $effect.pre(() => {
+    if (busy && open) {
+      open = false;
+    }
+  });
+
   async function go() {
     busy = true;
+    open = false;
     try {
       await onconfirm();
-      open = false;
+    } catch (e) {
+      onerror?.(e);
     } finally {
       busy = false;
     }
@@ -40,7 +50,7 @@
       <Dialog.Description>{description}</Dialog.Description>
     </Dialog.Header>
     <Dialog.Footer>
-      <Button variant="outline" disabled={busy} onclick={cancel}>Cancel</Button>
+      <Button variant="outline" onclick={cancel}>Cancel</Button>
       <Button disabled={busy} onclick={go}>{confirmLabel}</Button>
     </Dialog.Footer>
   </Dialog.Content>
