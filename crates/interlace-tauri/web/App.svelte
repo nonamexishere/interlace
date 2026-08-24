@@ -722,6 +722,8 @@
       const next = await api.people();
       if (gen !== peopleGen) return;
       people = next;
+    } catch (e) {
+      if (gen === peopleGen) showErr(e);
     } finally {
       if (gen === peopleGen) peopleLoading = false;
     }
@@ -734,7 +736,8 @@
   async function applyStatus(next: Status) {
     st = next;
     setup = false;
-    await refreshPeople();
+    // Search must not wait on a people rebuild (#270). Exclusive flock stays.
+    void refreshPeople().catch(showErr);
     await refreshEvents();
     // Do not start doctorIssuesQuick here: badge stays empty until the Doctor
     // tab. Integrity/GC onDone must keep the full list (do not clear doctor).

@@ -81,11 +81,20 @@
   }
 
   let personBlurCloseTimer: ReturnType<typeof setTimeout> | null = null;
+  /** One debounce timer for type-to-search; run() clears it so submit cannot double-fire. */
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   function cancelPersonBlurClose() {
     if (personBlurCloseTimer != null) {
       clearTimeout(personBlurCloseTimer);
       personBlurCloseTimer = null;
+    }
+  }
+
+  function cancelDebounce() {
+    if (debounceTimer != null) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
     }
   }
 
@@ -143,14 +152,12 @@
   }
 
   async function run() {
+    cancelDebounce();
     const gen = ++searchGen;
     empty = false;
     searched = true;
     searching = true;
     searchError = "";
-    expanded = null;
-    body = "";
-    hitIndex = 0;
     const fromRaw = from.trim();
     const toRaw = to.trim();
     const fromDate = fromRaw ? Date.parse(fromRaw) : Number.NaN;
@@ -163,6 +170,9 @@
       searchError = t("searchDateInvalid");
       searching = false;
       hits = [];
+      expanded = null;
+      body = "";
+      hitIndex = 0;
       return;
     }
     try {
@@ -181,15 +191,47 @@
       hits = next;
       empty = hits.length === 0;
       hitIndex = 0;
+      expanded = null;
+      body = "";
     } catch (e) {
       if (gen === searchGen) {
         searchError = friendly(e instanceof Error ? e.message : String(e ?? ""));
         hits = [];
+        expanded = null;
+        body = "";
+        hitIndex = 0;
       }
     } finally {
       if (gen === searchGen) searching = false;
     }
   }
+
+  function clearHitsIdle() {
+    searchGen += 1;
+    hits = [];
+    empty = false;
+    searched = false;
+    searching = false;
+    searchError = "";
+    expanded = null;
+    body = "";
+    hitIndex = 0;
+  }
+
+  // Only `q` is read so filters stay submit-only.
+  $effect(() => {
+    const query = q;
+    if (!query.trim()) {
+      clearHitsIdle();
+      return;
+    }
+    cancelDebounce();
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      void run();
+    }, 200);
+    return () => cancelDebounce();
+  });
 
   async function toggle(id: number) {
     if (expanded === id) {
@@ -239,7 +281,7 @@
     ) {
       return;
     }
-    if (!hits.length || searching) return;
+    if (!hits.length) return;
     if (e.key === "j" || e.key === "ArrowDown") {
       e.preventDefault();
       e.stopPropagation();
@@ -420,7 +462,7 @@
     <Button type="submit" disabled={searching}>{searching ? "Searching…" : "Search"}</Button>
   </form>
 
-  {#if searching}
+  {#if searching && !hits.length}
     <div class="space-y-2" aria-hidden="true">
       <Skeleton class="h-4 w-[90%]" />
       <Skeleton class="h-3 w-[64%]" />

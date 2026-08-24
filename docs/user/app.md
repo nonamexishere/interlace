@@ -171,7 +171,10 @@ Chrome and dialogs show visible focus rings; keyboard can open Merge, confirm, a
 
 Tabs: **Search** (same FTS as CLI). The query is the first control; filters
 are secondary (person, platform, kind, attachment, optional date range,
-include groups). The date range is optional (empty = any). Invalid dates do
+include groups). Typing in `#q` searches as you type (a short debounce is
+fine); it does not wait for the people list. The first search shows a quiet
+skeleton; later keystrokes keep the previous hits until the new list applies.
+The date range is optional (empty = any). Invalid dates do
 not search. **Person** is
 a name-facing combobox over the same people list as the sidebar: type to filter
 by display name (case-insensitive substring; self gets a “(self)” label), Enter
@@ -208,7 +211,8 @@ Drop a local ZIP or mbox onto the window (any tab) to start import — no URLs.
 Empty lists, loading, lock conflicts, and doctor findings are shown as copy
 in the window (not only in the terminal). Empty views have a next action
 (Import / clear filter / Pick file) and no mascot. People, timeline, and search
-show a quiet muted skeleton while loading. Load older does not add the skeleton chrome; people and timeline loading is announced (busy/status). The boot spinner stays.
+show a quiet muted skeleton while loading. Search keeps the previous hit list on
+later keystrokes instead of flashing the skeleton over it. Load older does not add the skeleton chrome; people and timeline loading is announced (busy/status). The boot spinner stays.
 A failed timeline, search, or doctor scan shows Error + Retry on that pane; the rest of the shell stays.
 Reduced-motion is static bars, no shimmer. Chrome icons (play/pause,
 lightbox close, empty states) are Lucide, not emoji glyphs.
