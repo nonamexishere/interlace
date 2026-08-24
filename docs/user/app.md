@@ -218,12 +218,16 @@ Reduced-motion is static bars, no shimmer. Chrome icons (play/pause,
 lightbox close, empty states) are Lucide, not emoji glyphs.
 Platform chips and banners use owned Badge and Card primitives, not one-off chrome.
 
-Photos and voice notes stored in the archive `cas/` folder open in the
-timeline (and search). Click a photo thumbnail for a full-size in-window
-lightbox (Esc or backdrop to close; arrow keys when a message has several
-images). Voice notes play in-app with play/pause, elapsed/duration, and a
+Photos, stickers, voice notes, videos, and PDFs stored in the archive
+`cas/` folder open in the timeline (and search). Click a photo thumbnail
+for a full-size in-window lightbox (Esc or backdrop to close; arrow keys
+when a message has several images). Stickers that are images still
+lightbox. Voice notes play in-app with play/pause, elapsed/duration, and a
 progress track you can scrub; audio is loaded only from local CAS bytes
-(`data:`), never a remote stream.
+(`data:`), never a remote stream. Videos play in-window from the same
+local CAS bytes (`data:`); autoplay is off. A stored video can be opened
+full-size in-window. PDFs open in-window from
+local CAS. Video and PDF are never a remote stream (no remote viewer).
 Nothing is fetched from the network. Exports that omitted media show a
 placeholder. Right-click a timeline bubble to **Copy text** to the clipboard.
 Right-click a stored attachment to **Reveal in Finder** (local CAS file).

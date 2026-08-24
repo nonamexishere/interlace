@@ -134,6 +134,9 @@ fn sniff_mime(bytes: &[u8]) -> &'static str {
     if bytes.len() >= 12 && bytes[4..8] == *b"ftyp" {
         return "video/mp4";
     }
+    if bytes.starts_with(b"%PDF") {
+        return "application/pdf";
+    }
     if bytes.starts_with(b"ID3") {
         return "audio/mpeg";
     }

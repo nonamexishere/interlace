@@ -4,6 +4,8 @@
   import X from "@lucide/svelte/icons/x";
   import { api } from "./api";
   import { t } from "./i18n";
+  import CasPdf from "./CasPdf.svelte";
+  import CasVideo from "./CasVideo.svelte";
 
   export type Attachment = {
     id: number;
@@ -40,6 +42,22 @@
     const m = (a.mime || "").toLowerCase();
     const n = (a.filename || "").toLowerCase();
     return a.kind === "voice" || m.startsWith("audio/") || /\.(opus|ogg|mp3|m4a|aac|wav)$/.test(n);
+  }
+
+  function isVideo(a: Attachment) {
+    const m = (a.mime || "").toLowerCase();
+    const n = (a.filename || "").toLowerCase();
+    return (
+      a.kind === "video" ||
+      m.startsWith("video/") ||
+      /\.(mp4|mov|mkv|avi|webm)$/.test(n)
+    );
+  }
+
+  function isPdf(a: Attachment) {
+    const m = (a.mime || "").toLowerCase();
+    const n = (a.filename || "").toLowerCase();
+    return m === "application/pdf" || n.endsWith(".pdf");
   }
 
   let srcs = $state<Record<string, string>>({});
@@ -281,6 +299,24 @@
               }}
             />
           </button>
+        {:else if isVideo(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
+          <CasVideo
+            srcs={srcs}
+            srcKey={keyOf(a)}
+            filename={a.filename}
+            onBroken={() => {
+              broken = { ...broken, [keyOf(a)]: true };
+            }}
+          />
+        {:else if isPdf(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
+          <CasPdf
+            srcs={srcs}
+            srcKey={keyOf(a)}
+            filename={a.filename}
+            onBroken={() => {
+              broken = { ...broken, [keyOf(a)]: true };
+            }}
+          />
         {:else if isAudio(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
           {@const key = keyOf(a)}
           {@const dur = durations[key] ?? 0}
