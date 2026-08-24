@@ -402,6 +402,11 @@
 #     fire-and-forget has .catch / showErr / onError; onHitsKey does
 #     not return solely on searching when hits exist; no restating
 #     “Typing in #q searches (debounce)” comment.
+#     Follow-up (PR #288 peopleGen catch): refreshPeople increments
+#     peopleGen and, in catch, only showErr / assigns error when
+#     gen === peopleGen (a superseded people() / archive changed must
+#     not paint the banner). applyStatus still does not await
+#     refreshPeople(). Do not rewrite #265 / #205 / earlier #270.
 #222: motion — 150–250ms Svelte fade/fly/slide on palette, inspector, toast;
 #     prefers-reduced-motion uses duration 0 (JS matchMedia / MediaQuery;
 #     CSS 0.01ms is not enough). No spring / bounce / lottie / celebration.
@@ -20284,6 +20289,118 @@ def _js_comment_text(src: str) -> str:
     return "\n".join(bits)
 
 
+def _js_dot_catch_args(blob: str) -> list[str]:
+    """Argument blobs of each `.catch(` (strings / comments skipped)."""
+    out: list[str] = []
+    i = 0
+    n = len(blob)
+    while i < n:
+        nxt = _js_next(blob, i)
+        if nxt != i:
+            i = nxt
+            continue
+        if blob.startswith(".catch", i) and (
+            i + 6 >= n or not (blob[i + 6].isalnum() or blob[i + 6] in "_$")
+        ):
+            j = i + 6
+            while j < n and blob[j] in " \t\n\r":
+                j += 1
+            if j < n and blob[j] == "(":
+                close = _match_closer(blob, j)
+                if close > j:
+                    out.append(blob[j + 1 : close])
+                    i = close + 1
+                    continue
+        i += 1
+    return out
+
+
+def _js_handler_body(arg: str) -> str:
+    """Normalize a `.catch` argument to a body-like blob.
+
+    Bare `showErr` / `onError` become `showErr()` so the call regex hits.
+    """
+    s = arg.strip()
+    if not s:
+        return ""
+    fn = re.match(r"(?:async\s+)?function\b", s)
+    if fn:
+        brace = s.find("{", fn.end())
+        if brace >= 0:
+            close = _match_closer(s, brace)
+            if close > brace:
+                return s[brace + 1 : close]
+    arrow = re.match(
+        r"(?:async\s+)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>",
+        s,
+    )
+    if arrow:
+        rest = s[arrow.end() :].lstrip()
+        if rest.startswith("{"):
+            close = _match_closer(rest, 0)
+            if close > 0:
+                return rest[1:close]
+        return rest
+    if re.fullmatch(r"[A-Za-z_$][\w$]*", s):
+        return f"{s}()"
+    return s
+
+
+def _refresh_people_catch_blobs(refresh: str) -> list[str]:
+    """try/catch bodies and `.catch` handlers inside refreshPeople."""
+    blobs = [catch for _try, catch in _try_catch_blocks(refresh)]
+    blobs.extend(_js_handler_body(arg) for arg in _js_dot_catch_args(refresh))
+    return [b for b in blobs if b.strip()]
+
+
+def _site_gen_guarded(body: str, pos: int, local: str, counter: str) -> bool:
+    return _if_gen_eq_contains(body, pos, local, counter) or _same_block_gen_ne_return(
+        body, pos, local, counter
+    )
+
+
+def _catch_err_positions(catch: str) -> list[int]:
+    """showErr / onError / non-empty err= / throw sites in a catch blob."""
+    pos: list[int] = []
+    for m in re.finditer(r"\b(?:showErr|onError)\s*\(", catch):
+        pos.append(m.start())
+    for m in re.finditer(r"\berr\s*=(?!=)", catch):
+        rest = catch[m.end() :].lstrip()
+        if rest.startswith('""') or rest.startswith("''"):
+            continue
+        if re.match(r"['\"]\s*['\"]", rest):
+            continue
+        pos.append(m.start())
+    for m in re.finditer(r"\bthrow\b", catch):
+        pos.append(m.start())
+    return pos
+
+
+def _refresh_people_catch_gen_guarded(
+    refresh: str, local: str, counter: str
+) -> bool:
+    """True if refreshPeople catch only surfaces errors when gen is current.
+
+    Caller `void refreshPeople().catch(showErr)` is not gen-aware: a
+    superseded `archive changed` still paints the banner. Requires a
+    catch *inside* refreshPeople whose showErr / err= / throw is
+    `if (gen === peopleGen)` (or `if (gen !== peopleGen) return`).
+    """
+    blobs = _refresh_people_catch_blobs(refresh)
+    if not blobs:
+        return False
+    saw_surface = False
+    for blob in blobs:
+        sites = _catch_err_positions(blob)
+        if not sites:
+            continue
+        saw_surface = True
+        for pos in sites:
+            if not _site_gen_guarded(blob, pos, local, counter):
+                return False
+    return saw_surface
+
+
 def assert_search_as_you_type(crate: Path) -> None:
     """#270: typing in #q searches; do not hitch on a people refresh.
 
@@ -20307,6 +20424,11 @@ def assert_search_as_you_type(crate: Path) -> None:
     `refreshPeople` fire-and-forget has `.catch` / `showErr` / `onError`.
     `onHitsKey` does not `return` solely on `searching` when hits exist.
     No restating “Typing in #q searches (debounce)” comment.
+
+    Follow-up (PR #288 peopleGen catch): `refreshPeople` increments
+    `peopleGen` and, in `catch`, only `showErr` / assigns error when
+    `gen === peopleGen` (or equivalent). `applyStatus` still does not
+    `await refreshPeople()`. Do not rewrite #265 / #205 / earlier #270.
     """
     search_path = crate / "web" / "lib" / "SearchPane.svelte"
     if not search_path.is_file():
@@ -20525,6 +20647,36 @@ def assert_search_as_you_type(crate: Path) -> None:
             '#270: drop the restating “Typing in #q searches (debounce)” '
             "comment — a one-liner on why the effect must not track "
             "run()’s other inputs is OK"
+        )
+
+    # 16) refreshPeople increments peopleGen (keep the success-path guard).
+    refresh = _ts_fn_body(app_clean, "refreshPeople") or _function_body(
+        app_clean, "refreshPeople"
+    )
+    people_tok = _people_list_gen(refresh) if refresh else None
+    if not refresh or not people_tok:
+        fail(
+            "#270: refreshPeople must increment peopleGen "
+            "(and keep people = next only when that gen is current)"
+        )
+
+    # 17) catch only showErr / assigns error when gen === peopleGen.
+    #     Today's void refreshPeople().catch(showErr) is not enough —
+    #     a superseded archive-changed still paints the banner.
+    if not _refresh_people_catch_gen_guarded(
+        refresh, people_tok[0], people_tok[1]
+    ):
+        fail(
+            "#270: refreshPeople catch must only showErr / assign error "
+            "when gen === peopleGen — a superseded people() "
+            "(archive changed) must not paint the banner on the new archive"
+        )
+
+    # 18) applyStatus still does not await the people rebuild.
+    if apply_body and _PEOPLE_AWAIT_REFRESH.search(apply_body):
+        fail(
+            "#270: applyStatus must not await refreshPeople() "
+            "(search still must not wait on a people rebuild)"
         )
 
 
