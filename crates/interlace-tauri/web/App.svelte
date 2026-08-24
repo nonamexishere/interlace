@@ -722,6 +722,8 @@
       const next = await api.people();
       if (gen !== peopleGen) return;
       people = next;
+    } catch (e) {
+      if (gen === peopleGen) showErr(e);
     } finally {
       if (gen === peopleGen) peopleLoading = false;
     }
