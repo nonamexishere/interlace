@@ -444,6 +444,18 @@
 #     on-screen. App URL confirm uses confirmLabel Open link. Keep
 #     break-words on the body. Do not rewrite earlier #272 / #111 /
 #     #117 / #126 / #135 / #207 / #120 / #224 / #271.
+#273: jump from a timeline bubble to Search —
+#     context menuitem on data-copy-menu / data-context-menu
+#     (or a named quiet control data-bubble-search) opens Search
+#     and focuses #q (whenSearchPaneReady). Person picker is
+#     prefilled with the open person's display name (pickPerson /
+#     personLabel) — never a raw numeric id. Hits load: #q gets
+#     a short name query or existing run() / api.search (not
+#     empty-q idle only). Do not dump body_text into #q by
+#     default. Keep Copy text, #q, splitSnippet / <mark>,
+#     person picker, #124 hit→timeline jump, ⌘F → #q.
+#     Docs: bubble → Search; person name; hits; ⌘F.
+#     Do not rewrite #123 / #124 / #126 / #135 / #208 / #270 / #272.
 #222: motion — 150–250ms Svelte fade/fly/slide on palette, inspector, toast;
 #     prefers-reduced-motion uses duration 0 (JS matchMedia / MediaQuery;
 #     CSS 0.01ms is not enough). No spring / bounce / lottie / celebration.
@@ -8051,6 +8063,487 @@ def assert_bubble_linkify(crate: Path) -> None:
         )
     if not re.search(r">\s*Cancel\s*<", confirm_src):
         fail("#272: ConfirmDialog Cancel must still dismiss")
+
+
+# #273 — jump from a timeline bubble to Search (person name; hits load).
+_BUBBLE_SEARCH_HOOK = re.compile(
+    r"data-(?:bubble-search|search-from-bubble|bubble-to-search|"
+    r"search-this|search-person|timeline-search)"
+)
+_BUBBLE_SEARCH_HOOK_NAMES = (
+    "data-bubble-search",
+    "data-search-from-bubble",
+    "data-bubble-to-search",
+    "data-search-this",
+    "data-search-person",
+    "data-timeline-search",
+)
+_BUBBLE_SEARCH_MENU_LABEL = re.compile(
+    r"("
+    r">\s*Search(?:\s+this(?:\s+person)?|\s+person)?\s*<"
+    r"|t\(\s*[\"']search(?:FromBubble|This|Person|OpenPerson|Bubble)?[\"']\s*\)"
+    r"|aria-label\s*=\s*[\"']Search(?: this(?: person)?| person)?[\"']"
+    r")"
+)
+_BUBBLE_SEARCH_FN = re.compile(
+    r"\b(?:"
+    r"searchFromBubble|searchBubble|openBubbleSearch|searchThisPerson|"
+    r"searchPersonFromBubble|onBubbleSearch|handleBubbleSearch|"
+    r"jumpToSearch|openSearchFromBubble|searchOpenPerson|"
+    r"searchFromTimeline|openSearchForPerson"
+    r")\b"
+)
+_BUBBLE_SEARCH_SKIP_EXTRA = frozenset(
+    {
+        "App.svelte",
+        "SearchPane.svelte",
+        "CasAttach.svelte",
+        "CommandPalette.svelte",
+        "ConfirmDialog.svelte",
+        "ReviewPane.svelte",
+        "ImportPane.svelte",
+        "DoctorPane.svelte",
+        "EmptyState.svelte",
+        "api.ts",
+    }
+)
+_BUBBLE_SEARCH_HANDLER_SKIP = frozenset(
+    {
+        "t",
+        "e",
+        "event",
+        "true",
+        "false",
+        "void",
+        "closeCopyMenu",
+        "copyText",
+        "copyMenu",
+        "undefined",
+        "null",
+        "console",
+        "preventDefault",
+        "stopPropagation",
+    }
+)
+_BUBBLE_SEARCH_NAME_PREFILL = re.compile(
+    r"("
+    r"\bpickPerson\s*\("
+    r"|personFilter\s*=\s*personLabel\s*\("
+    r"|personFilter\s*=\s*[^;\n]{0,120}display_name"
+    r"|personFilter\s*=\s*personTitle\b"
+    r"|personFilter\s*=\s*personLabel\b"
+    r"|personLabel\s*\("
+    r")"
+)
+_BUBBLE_SEARCH_RAW_ID_LABEL = re.compile(
+    r"("
+    r"personFilter\s*=\s*(?:String\s*\(\s*)?(?:selectedId|personId|selected_id|"
+    r"p\.id|person\.id|id)\b"
+    r"|personFilter\s*=\s*`[^`]*\$\{(?:selectedId|personId|p\.id|person\.id)"
+    r")"
+)
+_BUBBLE_SEARCH_Q_NAME = re.compile(
+    r"("
+    r"(?:searchQ|(?<![\w.])q)\s*=\s*personLabel\s*\("
+    r"|(?:searchQ|(?<![\w.])q)\s*=\s*[^;\n]{0,120}display_name"
+    r"|(?:searchQ|(?<![\w.])q)\s*=\s*personTitle\b"
+    r"|(?:searchQ|(?<![\w.])q)\s*=\s*personFilter\b"
+    r"|(?:searchQ|(?<![\w.])q)\s*=\s*personLabel\b"
+    r")"
+)
+_BUBBLE_SEARCH_Q_BODY = re.compile(
+    r"("
+    r"(?:searchQ|(?<![\w.])q)\s*=\s*displayBody\s*\("
+    r"|(?:searchQ|(?<![\w.])q)\s*=\s*(?:copyMenu(?:\?)?\.)?text\b"
+    r"|(?:searchQ|(?<![\w.])q)\s*=\s*(?:row|item\.row|copyMenu)\s*"
+    r"(?:\?)?\.\s*(?:body_text|subject|text)\b"
+    r"|(?:searchQ|(?<![\w.])q)\s*=\s*(?:row|item)\.body_text"
+    r"|(?:searchQ|(?<![\w.])q)\s*=\s*body_text\b"
+    r")"
+)
+_BUBBLE_SEARCH_SELECTION = re.compile(
+    r"("
+    r"\bgetSelection\s*\("
+    r"|\bwindow\.getSelection\s*\("
+    r"|\bselectedText\b"
+    r"|\bselectedSpan\b"
+    r")"
+)
+_BUBBLE_SEARCH_RUN = re.compile(
+    r"("
+    r"\brun\s*\("
+    r"|requestSubmit\s*\("
+    r"|api\.search\s*\("
+    r")"
+)
+_BUBBLE_SEARCH_SEED_PROP = re.compile(
+    r"("
+    r"\b(?:seedPerson|selectedPerson|openPerson|searchSeed|fromBubble|"
+    r"bubblePerson|initialPerson|prefillPerson)\b"
+    r"|personFilter\s*=\s*\$bindable"
+    r"|personId\s*=\s*\$bindable"
+    r"|bind:personFilter"
+    r"|bind:personId"
+    r")"
+)
+_BUBBLE_SEARCH_DOC = re.compile(
+    r"("
+    r"timeline bubble"
+    r"|from a (?:timeline )?bubble"
+    r"|bubble.{0,80}Search"
+    r"|Search.{0,80}(?:from a )?(?:timeline )?bubble"
+    r"|right-click.{0,80}Search"
+    r"|context menu.{0,80}Search"
+    r")",
+    re.I | re.S,
+)
+
+
+def _copy_context_menu_blocks(markup: str) -> list[str]:
+    blocks: list[str] = []
+    for hook in ("data-copy-menu", "data-context-menu"):
+        blocks.extend(_hook_element_blocks(markup, hook))
+    return blocks
+
+
+def _menu_looks_like_bubble_search(block: str) -> bool:
+    if _BUBBLE_SEARCH_HOOK.search(block):
+        return True
+    if _BUBBLE_SEARCH_FN.search(block):
+        return True
+    return bool(_BUBBLE_SEARCH_MENU_LABEL.search(block))
+
+
+def _bubble_search_control_src(markup: str) -> str:
+    """Copy/context-menu Search item and/or named quiet hook on the timeline."""
+    parts: list[str] = []
+    for block in _copy_context_menu_blocks(markup):
+        if _menu_looks_like_bubble_search(block):
+            parts.append(block)
+    for hook in _BUBBLE_SEARCH_HOOK_NAMES:
+        parts.extend(_hook_element_blocks(markup, hook))
+    # Dedup overlapping slices (menu that is also the named hook).
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for p in parts:
+        if p not in seen:
+            seen.add(p)
+            uniq.append(p)
+    return "\n".join(uniq)
+
+
+def _bubble_search_extra(crate: Path, host: str) -> str:
+    """Helpers App actually mounts for bubble → Search. Unwired drafts do not count."""
+    web = crate / "web"
+    if not web.is_dir():
+        return ""
+    extra: list[str] = []
+    for p in sorted(web.rglob("*")):
+        if "node_modules" in p.parts:
+            continue
+        if p.suffix not in {".svelte", ".ts"}:
+            continue
+        if p.name in _BUBBLE_SEARCH_SKIP_EXTRA:
+            continue
+        name_hit = bool(
+            re.search(r"bubbleSearch|searchFromBubble|searchBubble", p.name, re.I)
+        )
+        text = p.read_text()
+        hook = bool(_BUBBLE_SEARCH_HOOK.search(text) or _BUBBLE_SEARCH_FN.search(text))
+        if not name_hit and not hook:
+            continue
+        stem = p.stem
+        if stem in host or re.search(
+            rf"\b{re.escape(stem)}\b|{re.escape(p.name)}", host
+        ):
+            extra.append(text)
+    return "\n".join(extra)
+
+
+def _bubble_search_handler_src(app: str, extra: str, control: str) -> str:
+    blob = app + "\n" + extra
+    names: set[str] = set(_BUBBLE_SEARCH_FN.findall(blob))
+    names.update(_BUBBLE_SEARCH_FN.findall(control))
+    for m in re.finditer(
+        r"(?:onclick|on:click)\s*=\s*\{([^}]{0,400})\}",
+        control,
+    ):
+        names.update(re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\b", m.group(1)))
+    chunks = [control]
+    for name in sorted(names):
+        if name in _BUBBLE_SEARCH_HANDLER_SKIP:
+            continue
+        fn = (
+            _ts_function_body(blob, name)
+            or _ts_fn_body(blob, name)
+            or _function_body(blob, name)
+        )
+        if fn:
+            chunks.append(fn)
+            chunks.append(_expand_fn_calls(blob, fn))
+    return "\n".join(chunks)
+
+
+def _search_props_blob(search: str) -> str:
+    m = re.search(r"=\s*\$props\s*\(\s*\)", search)
+    if not m:
+        return ""
+    start = search.rfind("let", 0, m.start())
+    if start < 0:
+        start = max(0, m.start() - 900)
+    return search[start : m.end()]
+
+
+def _search_seed_effects(search: str) -> str:
+    parts: list[str] = []
+    for m in re.finditer(r"\$effect(?:\.pre)?\s*\(", search):
+        arg = _call_arg(search, m.end() - 1)
+        if re.search(
+            r"pickPerson|personFilter|seedPerson|selectedPerson|openPerson|"
+            r"fromBubble|bubbleSearch|searchFromBubble",
+            arg,
+        ):
+            parts.append(arg)
+    return "\n".join(parts)
+
+
+def _bubble_search_seed_src(app: str, search: str, handler: str) -> str:
+    mount = _windows_around(app, re.compile(r"<SearchPane\b"), before=0, after=700)
+    effects = _search_seed_effects(search)
+    props = _search_props_blob(search)
+    surface = "\n".join([handler, mount, props, effects])
+    parts = [surface]
+    # Only expand helpers the jump / seed path actually calls (do not
+    # treat today's unused pickPerson body as a prefill).
+    for name in (
+        "pickPerson",
+        "seedPerson",
+        "prefillPerson",
+        "applySeed",
+        "searchFromBubble",
+        "openFromBubble",
+    ):
+        if not re.search(rf"\b{re.escape(name)}\b", surface):
+            continue
+        fn = _ts_fn_body(search, name) or _function_body(search, name)
+        if fn:
+            parts.append(fn)
+    return "\n".join(parts)
+
+
+def _bubble_search_q_body_is_default(seed: str) -> bool:
+    """True when #q default is body_text / displayBody, not a selected span."""
+    if not _BUBBLE_SEARCH_Q_BODY.search(seed):
+        return False
+    for m in _BUBBLE_SEARCH_Q_BODY.finditer(seed):
+        win = seed[max(0, m.start() - 160) : m.end() + 80]
+        if _BUBBLE_SEARCH_SELECTION.search(win):
+            continue
+        # `body || name` still dumps the full body as the default.
+        return True
+    return False
+
+
+def assert_bubble_search(crate: Path) -> None:
+    """#273: from a timeline bubble, open Search with that person.
+
+    Context menuitem on data-copy-menu / data-context-menu, or a named
+    quiet control (data-bubble-search), opens Search and focuses #q.
+    Person picker is the open person's display name (pickPerson /
+    personLabel) — never a raw numeric id. Hits load: short name query
+    in #q or existing run() / api.search (not empty-q idle only).
+    Do not assign body_text / displayBody to #q by default.
+    Keep Copy text, #q, splitSnippet / <mark>, person picker, #124
+    hit→timeline, ⌘F → #q. Docs: bubble → Search; name; hits; ⌘F.
+    Do not rewrite #123 / #124 / #126 / #135 / #208 / #270 / #272.
+    """
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#273: App.svelte required (timeline bubble → Search)")
+    search_path = crate / "web" / "lib" / "SearchPane.svelte"
+    if not search_path.is_file():
+        fail("#273: SearchPane.svelte required (reuse #q / pickPerson / run)")
+    app = app_path.read_text()
+    search = search_path.read_text()
+    markup = _svelte_markup(app)
+    extra = _bubble_search_extra(crate, app)
+    extra_markup = _svelte_markup(extra) if extra else ""
+    surface = markup if not extra_markup else markup + "\n" + extra_markup
+    control = _bubble_search_control_src(surface)
+    app_clean = _without_comments(app)
+    search_clean = _without_comments(search)
+    docs = repo_root() / "docs" / "user" / "app.md"
+    dtxt = docs.read_text() if docs.is_file() else ""
+
+    # 1) Primary red: no timeline → Search control.
+    if not control.strip():
+        fail(
+            "#273: timeline bubble must have a Search control "
+            "(context menuitem on data-copy-menu / data-context-menu, "
+            "or a named quiet control data-bubble-search) that opens Search"
+        )
+
+    handler = _bubble_search_handler_src(app + "\n" + extra, extra, control)
+    seed = _bubble_search_seed_src(app, search, handler)
+
+    # 2) That path sets Search view and focuses #q.
+    opens = bool(
+        re.search(r"\bwhenSearchPaneReady\b", handler)
+        or _VIEW_SEARCH_ASSIGN.search(handler)
+    )
+    focuses = bool(
+        re.search(r"\bwhenSearchPaneReady\b", handler)
+        or _FOCUS_SEARCH_Q.search(handler)
+    )
+    if not opens or not focuses:
+        fail(
+            "#273: bubble Search path must set Search view and focus #q "
+            "(whenSearchPaneReady or getElementById(\"q\") — same path as ⌘F)"
+        )
+
+    # 3) Person picker prefilled with the open person's display name.
+    mount = _windows_around(app, re.compile(r"<SearchPane\b"), before=0, after=700)
+    props = _search_props_blob(search)
+    wired = bool(
+        _BUBBLE_SEARCH_SEED_PROP.search(props)
+        or _BUBBLE_SEARCH_SEED_PROP.search(mount)
+        or _BUBBLE_SEARCH_SEED_PROP.search(seed)
+        or re.search(
+            r"\b(?:seedPerson|selectedPerson|openPerson|searchSeed|fromBubble|"
+            r"selectedId)\b",
+            mount,
+        )
+    )
+    has_name = bool(_BUBBLE_SEARCH_NAME_PREFILL.search(seed))
+    has_raw = bool(_BUBBLE_SEARCH_RAW_ID_LABEL.search(seed))
+    if not wired or not has_name:
+        fail(
+            "#273: person picker must be prefilled with the open person's "
+            "display name (pickPerson / personLabel / display_name) — "
+            "never a raw numeric person id"
+        )
+    if has_raw:
+        fail(
+            "#273: person picker visible label must be the display name "
+            "(Ada / Ada (self) via pickPerson / personLabel) — "
+            "not a raw numeric person id"
+        )
+
+    # 4) Hits load: short name query in #q, or existing run() / api.search.
+    has_name_q = bool(_BUBBLE_SEARCH_Q_NAME.search(seed))
+    has_run = bool(_BUBBLE_SEARCH_RUN.search(seed))
+    if not has_name_q and not has_run:
+        fail(
+            "#273: hits must load — #q gets a short name query "
+            "(display name) or existing run() / api.search is invoked "
+            "on this jump (not empty-q idle / clearHitsIdle only)"
+        )
+
+    # 5) #q is not assigned body_text / displayBody as the default query.
+    if _bubble_search_q_body_is_default(seed):
+        fail(
+            "#273: #q must not be assigned body_text / displayBody(...) "
+            "as the default query — prefer the person name "
+            "(a selected span is optional, not the default)"
+        )
+
+    # 6) ⌘F / chrome search / whenSearchPaneReady still focuses #q.
+    key_body = _app_keydown_body(app_clean) or _app_keydown_body(app)
+    key_x = _expand_fn_calls(app_clean, key_body) if key_body else ""
+    f_surface = _windows_around(key_x, _KEY_F) if key_x else ""
+    if not (
+        re.search(r"\bwhenSearchPaneReady\b", f_surface)
+        or _FOCUS_SEARCH_Q.search(f_surface)
+    ):
+        fail(
+            "#273: ⌘F must still switch to Search and focus #q "
+            "(whenSearchPaneReady / getElementById(\"q\") — "
+            "do not require the new bubble menu)"
+        )
+    if not re.search(r"\bwhenSearchPaneReady\b", app_clean) and not re.search(
+        r"\bwhenSearchPaneReady\b", app
+    ):
+        fail(
+            "#273: keep whenSearchPaneReady so chrome search / ⌘F "
+            "still focus #q"
+        )
+    if not _CHROME_SEARCH_HOOK.search(markup) and not _CHROME_SEARCH_HOOK.search(app):
+        fail("#273: keep data-chrome-search (#208) — chrome search still focuses #q")
+
+    # 7) Keep Copy text, #q, splitSnippet / <mark>, person picker, #124 jump.
+    if not _COPY_TEXT_LABEL.search(app) and not re.search(r"\bcopyText\b", app):
+        fail("#273: keep Copy text on the bubble context menu (#135)")
+    if not re.search(r"id=[\"']q[\"']", search):
+        fail('#273: keep id="q" as the canonical query field (#208 / #270)')
+    if not re.search(r"<mark\b", search, re.I):
+        fail("#273: keep #126 search <mark> siblings")
+    if "splitSnippet" not in search:
+        fail("#273: keep #126 splitSnippet")
+    if not re.search(r"\bpickPerson\b", search_clean) and not re.search(
+        r"\bpersonLabel\b", search_clean
+    ):
+        fail("#273: keep the #123 person picker (pickPerson / personLabel)")
+    if "data-person-picker" not in search and "data-person-picker" not in search_clean:
+        fail("#273: keep the #123 person picker (data-person-picker)")
+    if not re.search(
+        r"\b(?:onJumpToMessage|jumpToMessage|activateHit)\b",
+        app_clean + "\n" + search_clean,
+    ):
+        fail(
+            "#273: keep #124 hit→timeline jump "
+            "(activateHit / onJumpToMessage / jumpToMessage)"
+        )
+
+    # 8) Docs: bubble → Search; person name (not id); hits; ⌘F still #q.
+    if not dtxt.strip():
+        fail(
+            "#273: docs/user/app.md required — from a timeline bubble you "
+            "can open Search with that person (name, not id); hits load; "
+            "⌘F still focuses #q"
+        )
+    doc_win = ""
+    for m in _BUBBLE_SEARCH_DOC.finditer(dtxt):
+        i = m.start()
+        doc_win += dtxt[max(0, i - 80) : m.end() + 200] + "\n"
+    if not doc_win.strip() or not re.search(
+        r"("
+        r"(?:timeline )?bubble.{0,120}Search"
+        r"|Search.{0,120}(?:from a )?(?:timeline )?bubble"
+        r"|right-click.{0,80}Search"
+        r"|context menu.{0,80}Search"
+        r")",
+        doc_win,
+        re.I | re.S,
+    ):
+        fail(
+            "#273: docs/user/app.md must say from a timeline bubble you "
+            "can open Search with that person"
+        )
+    if not re.search(
+        r"("
+        r"name,?\s+not\s+(?:an? )?(?:raw )?(?:numeric )?id"
+        r"|display name"
+        r"|person(?:'s)? name"
+        r"|\bAda\b"
+        r")",
+        doc_win,
+        re.I,
+    ):
+        fail(
+            "#273: docs/user/app.md must say the bubble → Search person "
+            "is a name, not a raw id"
+        )
+    if not re.search(r"\bhits?\b", doc_win, re.I):
+        fail("#273: docs/user/app.md must say hits load on the bubble → Search jump")
+    if not re.search(
+        r"(?:⌘\s*F|Ctrl\+F|Ctrl-F).{0,80}#q|#q.{0,80}(?:⌘\s*F|Ctrl\+F|Ctrl-F)",
+        doc_win,
+        re.I | re.S,
+    ):
+        fail(
+            "#273: docs/user/app.md must say ⌘F still focuses #q "
+            "(bubble → Search does not replace Find)"
+        )
 
 
 # #120 — virtualize person timeline (visible + overscan only in the DOM).
@@ -29030,6 +29523,7 @@ def main() -> None:
     assert_voice_note_seek(crate)
     assert_cas_video_pdf(crate)
     assert_bubble_linkify(crate)
+    assert_bubble_search(crate)
     assert_virtualized_timeline(crate)
     assert_variable_height_timeline(crate)
     assert_search_platform_select(crate)
