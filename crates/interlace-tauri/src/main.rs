@@ -512,11 +512,7 @@ fn reveal_archive(state: tauri::State<AppState>) -> Result<(), String> {
         .map_err(err)?
         .clone()
         .ok_or_else(|| "no archive open".to_string())?;
-    let expected = root.canonicalize().map_err(err)?;
     let canon = root.canonicalize().map_err(err)?;
-    if canon != expected {
-        return Err("not the open archive root".into());
-    }
     let status = std::process::Command::new("/usr/bin/open")
         .arg("-R")
         .arg(&canon)
