@@ -474,6 +474,16 @@
 #     Keep /usr/bin/open -R, archive_root from app
 #     state, no webview path. Do not rewrite earlier
 #     #274 / #135 / #204 / #272 / #273.
+#275: first-run one screen — offline / no account, required
+#     phone-region, Create / Open. Owner name / emails /
+#     phones are not always-visible primary fields
+#     (disclosure or absent). createArchive still requires
+#     region and api.init; empty optional owner fields OK.
+#     FileVault / not encrypted; folder picker only; no
+#     carousel / account / sample cloud archive. Keep #137
+#     sandbox sentence and #156 “Opening last archive”.
+#     Docs: one first-run screen; optional fields not
+#     required first. Do not rewrite #137 / #156 / #274.
 #222: motion — 150–250ms Svelte fade/fly/slide on palette, inspector, toast;
 #     prefers-reduced-motion uses duration 0 (JS matchMedia / MediaQuery;
 #     CSS 0.01ms is not enough). No spring / bounce / lottie / celebration.
@@ -9215,6 +9225,416 @@ def assert_reveal_archive(crate: Path) -> None:
             f"#274: {cmd} must canonicalize the archive root once — "
             "do not compare two canonicalize() results (!= / ==); "
             "drop the dead canon != expected self-check"
+        )
+
+
+# #275 — first-run is one calm screen, not a four-field form wall.
+_SETUP_BRANCH_OPEN = re.compile(
+    r"\{:else\s+if\s+setup\b|\{#if\s+setup\b"
+)
+_SETUP_OWNER_FIELDS = ("name", "emails", "phones")
+_SETUP_SKIP_TAGS = frozenset(
+    {
+        "Button",
+        "Input",
+        "Label",
+        "Card",
+        "Separator",
+        "Badge",
+        "ScrollArea",
+        "Skeleton",
+        "Toast",
+        "Dialog",
+        "ConfirmDialog",
+        "EmptyState",
+        "CommandPalette",
+        "SearchPane",
+        "ReviewPane",
+        "ImportPane",
+        "DoctorPane",
+        "CasAttach",
+        "LinkifyBody",
+        "main",
+        "div",
+        "p",
+        "h1",
+        "h2",
+        "h3",
+        "span",
+        "form",
+        "section",
+        "header",
+        "footer",
+    }
+)
+_SETUP_DISCLOSURE_TAG = re.compile(
+    r"<(details|Disclosure|Collapsible|Accordion)(?:\.\w+)?\b",
+    re.I,
+)
+_SETUP_DISCLOSURE_IF = re.compile(
+    r"\{#if\s+([^}]*\b(?:showMore|moreOpen|ownerOpen|showOwner|"
+    r"ownerFields|showDetails|advanced|optionalOwner|extraFields|"
+    r"moreFields|ownerMore|disclose|disclosure|showExtra|"
+    r"ownerDetails|more)\b[^}]*)\}",
+    re.I,
+)
+_SETUP_HIDDEN_ATTR = re.compile(
+    r"("
+    r"\bhidden\s*="
+    r"|class:hidden\b"
+    r"|aria-hidden\b"
+    r"|(?<=\s)hidden(?=[\s/>])"
+    r")"
+)
+_SETUP_CAROUSEL = re.compile(r"\b(?:carousel|swiper|onboarding)\b", re.I)
+_SETUP_ACCOUNT_ACTION = re.compile(
+    r"\b(?:sign[\s-]*in|sign[\s-]*up|log[\s-]*in|create account|oauth)\b",
+    re.I,
+)
+_SETUP_SAMPLE_CLOUD = re.compile(
+    r"("
+    r"\b(?:sample|demo|cloud)\s+archive\b"
+    r"|try a sample"
+    r"|sample cloud"
+    r")",
+    re.I,
+)
+_SETUP_URL_FIELD = re.compile(
+    r"<input\b[^>]*\btype\s*=\s*[\"']url[\"']|bind:value=\{[^}]*archiveUrl",
+    re.I,
+)
+_SETUP_REQUIRE_OWNER = re.compile(
+    r"("
+    r"if\s*\(\s*!\s*(?:name|emails|phones)\b"
+    r"|(?:name|emails|phones)\s+is required"
+    r"|err\s*=\s*[\"'][^\"']*\b(?:name|emails?|phones?)\b[^\"']*required"
+    r")",
+    re.I,
+)
+_SETUP_DOC_ONE_SCREEN = re.compile(
+    r"("
+    r"first[- ]run.{0,80}one (?:calm )?screen"
+    r"|one (?:calm )?screen.{0,80}first[- ](?:run|open)"
+    r"|first[- ](?:run|open) is one"
+    r")",
+    re.I | re.S,
+)
+_SETUP_DOC_OPTIONAL = re.compile(
+    r"("
+    r"optional.{0,80}(?:owner|name|emails?|phones?).{0,80}"
+    r"(?:not required|later|disclosure|not .{0,24}up front|not .{0,24}first)"
+    r"|(?:owner )?(?:name|emails?|phones?).{0,60}"
+    r"(?:not required|optional).{0,40}(?:first|up front|setup)"
+    r"|optional owner.{0,40}(?:not required|disclosure|later|inspector)"
+    r")",
+    re.I | re.S,
+)
+
+
+def _svelte_closed_block_at(src: str, start: int) -> str:
+    """{#if}/{#each}/{#await}/{#key} starting at start, through its close."""
+    if start < 0 or start >= len(src) or not src.startswith("{#", start):
+        return ""
+    rest = src[start:]
+    depth = 1
+    i = 2
+    while i < len(rest):
+        if rest.startswith("{#if", i) or rest.startswith("{#each", i) or rest.startswith(
+            "{#await", i
+        ) or rest.startswith("{#key", i):
+            depth += 1
+            i += 3
+            continue
+        if rest.startswith("{/if}", i) or rest.startswith("{/each}", i) or rest.startswith(
+            "{/await}", i
+        ) or rest.startswith("{/key}", i):
+            depth -= 1
+            if depth == 0:
+                close = 5 if rest.startswith("{/if}", i) else 7
+                if rest.startswith("{/await}", i) or rest.startswith("{/key}", i):
+                    close = 8 if rest.startswith("{/await}", i) else 6
+                return rest[: i + close]
+            i += 3
+            continue
+        i += 1
+    return rest
+
+
+def _setup_branch(app: str) -> str:
+    """Markup of the setup / first-run branch ({:else if setup} or {#if setup})."""
+    markup = _svelte_markup(app)
+    m = _SETUP_BRANCH_OPEN.search(markup)
+    src = markup
+    if not m:
+        return ""
+    rest = src[m.end() :]
+    depth = 1
+    i = 0
+    while i < len(rest):
+        if rest.startswith("{#if", i) or rest.startswith("{#each", i) or rest.startswith(
+            "{#await", i
+        ) or rest.startswith("{#key", i):
+            depth += 1
+            i += 3
+            continue
+        if rest.startswith("{/if}", i) or rest.startswith("{/each}", i) or rest.startswith(
+            "{/await}", i
+        ) or rest.startswith("{/key}", i):
+            depth -= 1
+            if depth == 0:
+                return rest[:i]
+            i += 3
+            continue
+        if depth == 1 and (
+            rest.startswith("{:else", i)
+            or rest.startswith("{:then", i)
+            or rest.startswith("{:catch", i)
+        ):
+            return rest[:i]
+        i += 1
+    return rest
+
+
+def _setup_mounted_extra(crate: Path, setup: str) -> str:
+    """Svelte files the setup branch actually mounts (FirstRun / SetupScreen)."""
+    web = crate / "web"
+    if not web.is_dir() or not setup.strip():
+        return ""
+    extra: list[str] = []
+    seen: set[str] = set()
+    for m in re.finditer(r"<([A-Z][A-Za-z0-9]*)\b", setup):
+        name = m.group(1)
+        if name in _SETUP_SKIP_TAGS or name in seen:
+            continue
+        seen.add(name)
+        for p in sorted(web.rglob(f"{name}.svelte")):
+            if "node_modules" in p.parts:
+                continue
+            extra.append(p.read_text())
+    return "\n".join(extra)
+
+
+def _strip_setup_disclosures(markup: str) -> str:
+    """Primary wall: drop <details> / disclosure {#if} / hidden wrappers."""
+    text = markup
+    changed = True
+    while changed:
+        changed = False
+        m = _SETUP_DISCLOSURE_TAG.search(text)
+        if m:
+            block = _element_block_at(text, m.start())
+            if block:
+                text = text[: m.start()] + text[m.start() + len(block) :]
+                changed = True
+                continue
+        m = _SETUP_DISCLOSURE_IF.search(text)
+        if m:
+            block = _svelte_closed_block_at(text, m.start())
+            if block:
+                text = text[: m.start()] + text[m.start() + len(block) :]
+                changed = True
+                continue
+        for mm in re.finditer(r"<([A-Za-z][\w:.-]*)\b[^>]*>", text):
+            tag = mm.group(0)
+            if not _SETUP_HIDDEN_ATTR.search(tag):
+                continue
+            block = _element_block_at(text, mm.start())
+            if block:
+                text = text[: mm.start()] + text[mm.start() + len(block) :]
+                changed = True
+                break
+    return text
+
+
+def _setup_has_field(markup: str, field: str) -> bool:
+    if re.search(rf"""\bid\s*=\s*["']{re.escape(field)}["']""", markup):
+        return True
+    if re.search(rf"""\bfor\s*=\s*["']{re.escape(field)}["']""", markup):
+        return True
+    if re.search(rf"bind:value\s*=\s*\{{\s*{re.escape(field)}\s*\}}", markup):
+        return True
+    return False
+
+
+def _setup_visible_owner_fields(wall: str) -> list[str]:
+    found: list[str] = []
+    labels = {
+        "name": re.compile(r"Your name|>\s*Name\s*<|Owner name", re.I),
+        "emails": re.compile(r">\s*Emails?\b|owner emails", re.I),
+        "phones": re.compile(r">\s*Phones?\b|owner phones", re.I),
+    }
+    for field in _SETUP_OWNER_FIELDS:
+        if _setup_has_field(wall, field) or labels[field].search(wall):
+            found.append(field)
+    return found
+
+
+def _setup_fn(app: str, extra: str, name: str) -> str:
+    blob = app + "\n" + extra
+    body = (
+        _ts_function_body(blob, name)
+        or _function_body(blob, name)
+        or _ts_fn_body(blob, name)
+    )
+    if not body:
+        return ""
+    return body + "\n" + _expand_fn_calls(blob, body)
+
+
+def assert_first_run(crate: Path) -> None:
+    """#275: first-run is one calm screen, not a form wall.
+
+    Setup: offline / no account, required #region, Create + Open.
+    Owner name / emails / phones are not always-visible primary
+    fields (disclosure or absent). createArchive still requires
+    region and calls api.init; empty optional owner fields OK.
+    FileVault / not encrypted; folder picker only; no carousel /
+    account / sample cloud archive. Keep #137 sandbox sentence
+    and #156 “Opening last archive”. Docs: one first-run screen;
+    optional owner fields not required first.
+    Do not rewrite #137 / #156 / #274.
+    """
+    app_path = crate / "web" / "App.svelte"
+    if not app_path.is_file():
+        fail("#275: App.svelte required (setup / first-run screen)")
+    app = app_path.read_text()
+    setup = _setup_branch(app)
+    if not setup.strip():
+        fail(
+            "#275: App.svelte must have a setup / first-run branch "
+            "({:else if setup} or {#if setup})"
+        )
+    extra = _setup_mounted_extra(crate, setup)
+    extra_m = _svelte_markup(extra) if extra else extra
+    surface = setup + ("\n" + extra_m if extra_m else "")
+    wall = _strip_setup_disclosures(surface)
+
+    # 1) Form wall — name / emails / phones must not be always-visible
+    #    siblings of #region. Disclosure or absent is OK.
+    visible = _setup_visible_owner_fields(wall)
+    if visible:
+        listed = " / ".join(visible)
+        fail(
+            "#275: setup must not be a form wall — owner "
+            f"{listed} "
+            "are still always-visible primary fields next to #region; "
+            "put them behind a disclosure (`<details>` / More) or leave "
+            "them for the inspector"
+        )
+
+    # 2) Offline / no account copy on the setup screen.
+    if not re.search(r"\boffline\b", surface, re.I):
+        fail("#275: setup screen must say this is an offline archive")
+    if not re.search(r"\bno account\b", surface, re.I):
+        fail("#275: setup screen must say no account")
+
+    # 3) Required phone-region field (#region).
+    if not _setup_has_field(surface, "region"):
+        fail(
+            "#275: setup must have a required phone-region field (#region)"
+        )
+    if not re.search(r"required|phone-region|ISO", surface, re.I):
+        fail(
+            "#275: #region must be marked required "
+            "(ISO-2 phone-region, no silent default)"
+        )
+
+    # 4) Create + Open actions.
+    if not re.search(r"\bcreateArchive\b", surface):
+        fail("#275: setup must have a Create action (createArchive)")
+    if not re.search(r"\bopenPicker\b", surface):
+        fail("#275: setup must have an Open action (openPicker)")
+
+    # 5) createArchive still requires region and calls api.init.
+    create = _setup_fn(app, extra, "createArchive")
+    if not create.strip():
+        fail("#275: createArchive required (init still needs a region)")
+    if not re.search(r"\bapi\.init\s*\(", create):
+        fail("#275: createArchive must call api.init")
+    region_required = bool(
+        re.search(r"phone-region is required", create, re.I)
+        or (
+            re.search(r"\bregion\b", create)
+            and re.search(r"if\s*\(\s*!", create)
+            and re.search(r"\breturn\b", create)
+        )
+    )
+    if not region_required:
+        fail(
+            "#275: createArchive must require phone-region "
+            "(no silent default; empty region errors)"
+        )
+    if _SETUP_REQUIRE_OWNER.search(create):
+        fail(
+            "#275: createArchive must not require owner name / emails / "
+            "phones — empty or null optional owner fields are OK"
+        )
+    if not re.search(r"\bapplyStatus\s*\(", create):
+        fail("#275: createArchive must applyStatus after api.init (land on People)")
+
+    # 6) FileVault / not encrypted; folder picker only; no carousel /
+    #    account / sample cloud archive.
+    if not re.search(r"\bFileVault\b", surface):
+        fail("#275: setup must keep FileVault (not encrypted at rest)")
+    if not re.search(r"not encrypted", surface, re.I):
+        fail("#275: setup must keep “not encrypted at rest”")
+    open_p = _setup_fn(app, extra, "openPicker")
+    pick_src = create + "\n" + open_p + "\n" + surface
+    if not re.search(r"\bpickFolder\b|\bpick_folder\b", pick_src):
+        fail(
+            "#275: Create / Open must use the folder picker "
+            "(pickFolder / pick_folder) — no URLs"
+        )
+    if not re.search(r"folder picker|no URLs", surface, re.I):
+        fail("#275: setup must say folder picker only — no URLs")
+    if _SETUP_URL_FIELD.search(surface):
+        fail("#275: setup must not take an archive URL (folder picker only)")
+    if _SETUP_CAROUSEL.search(surface):
+        fail("#275: no onboarding carousel (one first-run screen)")
+    if _SETUP_ACCOUNT_ACTION.search(surface):
+        fail("#275: no account / sign-in on first-run")
+    if _SETUP_SAMPLE_CLOUD.search(surface):
+        fail("#275: no sample / cloud archive on first-run")
+
+    # 7) Keep #137 sandbox-denied sentence on setup / err.
+    #    Keep #156 “Opening last archive”.
+    if not _SANDBOX_137.search(app) and "SANDBOX_DENIED" not in app:
+        fail(
+            "#275: keep the #137 sandbox-denied sentence on setup / err: "
+            "macOS blocked that folder. Use Open existing… once so Interlace "
+            "can remember it."
+        )
+    err_branch = _svelte_if_true_branch(app, "err")
+    if not err_branch or not re.search(r"\{err\}", err_branch):
+        fail(
+            "#275: keep the in-page {#if err} banner so the #137 sandbox "
+            "sentence can show on setup"
+        )
+    if "Opening last archive" not in app:
+        fail('#275: keep #156 “Opening last archive”')
+
+    # 8) docs/user/app.md — one first-run screen; optional fields not first.
+    docs_path = repo_root() / "docs" / "user" / "app.md"
+    if not docs_path.is_file():
+        fail("#275: docs/user/app.md required (first-run is one screen)")
+    docs = docs_path.read_text()
+    if not _SETUP_DOC_ONE_SCREEN.search(docs):
+        fail(
+            "#275: docs/user/app.md must say first-run is one screen "
+            "(offline / no account, required region, Create / Open)"
+        )
+    if not re.search(r"\boffline\b", docs, re.I) or not re.search(
+        r"\bno account\b", docs, re.I
+    ):
+        fail("#275: docs/user/app.md must say offline / no account")
+    if not re.search(r"phone-region|required.{0,40}region|region.{0,40}required", docs, re.I):
+        fail("#275: docs/user/app.md must say phone-region is required")
+    if not re.search(r"create.{0,40}open|open.{0,40}create", docs, re.I):
+        fail("#275: docs/user/app.md must say Create / Open")
+    if not _SETUP_DOC_OPTIONAL.search(docs):
+        fail(
+            "#275: docs/user/app.md must say optional owner fields "
+            "(name / emails / phones) are not required first"
         )
 
 
@@ -30197,6 +30617,7 @@ def main() -> None:
     assert_bubble_linkify(crate)
     assert_bubble_search(crate)
     assert_reveal_archive(crate)
+    assert_first_run(crate)
     assert_virtualized_timeline(crate)
     assert_variable_height_timeline(crate)
     assert_search_platform_select(crate)
