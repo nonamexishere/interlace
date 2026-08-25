@@ -492,6 +492,9 @@
 #     unchanged (#222). No remote/webfont, no per-bubble font picker.
 #     Docs: local density; enlarges bubble bodies without reload;
 #     system font; OS appearance; no Theme menu.
+#     Follow-up: density change wipes the timeline height cache
+#     (clearPendingMeasures + rowHeights = {}). Keep VIRTUALIZE_AFTER,
+#     data-bubble-body, no location.reload.
 #     Do not rewrite #199 / #218 / #222 / #212 / #275.
 #222: motion — 150–250ms Svelte fade/fly/slide on palette, inspector, toast;
 #     prefers-reduced-motion uses duration 0 (JS matchMedia / MediaQuery;
@@ -30735,6 +30738,156 @@ def _density_css_bumps_body(css: str) -> bool:
     return len(vars_) >= 2
 
 
+# #276 follow-up — wipe timeline height cache when density changes.
+_DENSITY_STATE_READ = re.compile(r"(?<![\w.-])density(?![\w-])")
+_DENSITY_CLEAR_PENDING = re.compile(
+    r"("
+    r"\bclearPendingMeasures\s*\("
+    r"|\bpendingMeasures\s*=\s*\{\s*\}"
+    r")"
+)
+_DENSITY_HEIGHT_WIPE = re.compile(
+    r"("
+    rf"{_HEIGHT_CACHE.pattern}\s*=\s*(?:\{{\s*\}}|Object\.create\s*\(\s*null\s*\))"
+    rf"|delete\s+{_HEIGHT_CACHE.pattern}\s*\["
+    rf"|Object\.keys\s*\(\s*{_HEIGHT_CACHE.pattern}\s*\)"
+    r")"
+)
+_DENSITY_VIRTUALIZE_AFTER = re.compile(r"\bVIRTUALIZE_AFTER\s*=\s*250\b")
+_DENSITY_CALL_SKIP = frozenset(
+    {
+        "if",
+        "for",
+        "while",
+        "switch",
+        "catch",
+        "function",
+        "setItem",
+        "getItem",
+        "removeItem",
+        "setTimeout",
+        "clearTimeout",
+        "requestAnimationFrame",
+        "cancelAnimationFrame",
+        "Object",
+        "Math",
+        "Number",
+        "String",
+        "Boolean",
+        "Array",
+        "parseInt",
+        "parseFloat",
+        "isFinite",
+        "isNaN",
+        "void",
+        "typeof",
+        "document",
+        "window",
+        "localStorage",
+        "console",
+        "Error",
+        "Map",
+        "Set",
+        "JSON",
+        "Date",
+        "preventDefault",
+        "stopPropagation",
+        "getElementById",
+        "querySelector",
+        "querySelectorAll",
+        "setAttribute",
+        "getAttribute",
+        "classList",
+    }
+)
+
+
+def _density_fn_body(src: str, name: str) -> str:
+    return (
+        _ts_function_body(src, name)
+        or _ts_fn_body(src, name)
+        or _function_body(src, name)
+    )
+
+
+def _density_expand_calls(src: str, body: str, depth: int = 2) -> str:
+    """Include named helpers persistDensity / a density $effect call."""
+    chunks = [body]
+    seen: set[str] = set()
+
+    def walk(blob: str, left: int) -> None:
+        for name in re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", blob):
+            if name in seen or name in _DENSITY_CALL_SKIP:
+                continue
+            seen.add(name)
+            inner = _density_fn_body(src, name)
+            if not inner:
+                continue
+            chunks.append(inner)
+            if left > 0:
+                walk(inner, left - 1)
+
+    walk(body, depth)
+    return "\n".join(chunks)
+
+
+def _density_wipes_heights(blob: str) -> bool:
+    """True if blob assigns an empty height cache or deletes every key."""
+    if _DENSITY_HEIGHT_WIPE.search(blob):
+        return True
+    for m in re.finditer(
+        rf"{_HEIGHT_CACHE.pattern}\s*=\s*([A-Za-z_]\w*)\b",
+        blob,
+    ):
+        ident = m.group(m.lastindex or 0)
+        if not ident or _HEIGHT_CACHE.fullmatch(ident):
+            continue
+        if re.search(
+            rf"\b(?:const|let|var)\s+{re.escape(ident)}\b[^=]*=\s*\{{\s*\}}",
+            blob,
+        ):
+            return True
+    return False
+
+
+def _density_path_wipes(blob: str) -> bool:
+    return bool(_DENSITY_CLEAR_PENDING.search(blob)) and _density_wipes_heights(blob)
+
+
+def _density_persist_only_pref(blob: str) -> bool:
+    """persistDensity only writes density / localStorage — never the cache."""
+    writes_pref = bool(
+        re.search(r"\bdensity\s*=", blob)
+        or re.search(r"localStorage\s*\.\s*setItem", blob)
+        or re.search(r"dataset\.density\s*=", blob)
+    )
+    touches_cache = bool(
+        _HEIGHT_CACHE.search(blob) or _DENSITY_CLEAR_PENDING.search(blob)
+    )
+    return writes_pref and not touches_cache
+
+
+def _density_change_blobs(app_src: str, web_src: str) -> tuple[str, str]:
+    """Expanded persistDensity body, then persist + density-tracking $effects."""
+    persist = _density_fn_body(app_src, "persistDensity")
+    persist_src = app_src
+    if not persist:
+        persist = _density_fn_body(web_src, "persistDensity")
+        persist_src = web_src
+    persist_x = _density_expand_calls(persist_src, persist) if persist else ""
+    effects = [
+        a for a in _svelte_effect_args(app_src) if _DENSITY_STATE_READ.search(a)
+    ]
+    effect_src = app_src
+    if not effects:
+        effects = [
+            a for a in _svelte_effect_args(web_src) if _DENSITY_STATE_READ.search(a)
+        ]
+        effect_src = web_src
+    effect_x = "\n".join(_density_expand_calls(effect_src, e) for e in effects)
+    return persist_x, persist_x + "\n" + effect_x
+
+
 def assert_font_density(crate: Path) -> None:
     """#276: local Default / Comfortable density; persist in localStorage.
 
@@ -30744,6 +30897,9 @@ def assert_font_density(crate: Path) -> None:
     unchanged (#222). No remote/webfont, no per-bubble font picker.
     Docs: local density; no reload; system font; OS appearance;
     no Theme menu.
+    Follow-up: density change wipes the timeline height cache
+    (clearPendingMeasures + rowHeights = {}). Keep VIRTUALIZE_AFTER,
+    data-bubble-body, no location.reload.
     Do not rewrite #199 / #218 / #222 / #212 / #275.
     """
     app_path = crate / "web" / "App.svelte"
@@ -30997,6 +31153,42 @@ def assert_font_density(crate: Path) -> None:
         )
     if not _APPEARANCE_DOCS_NO_THEME.search(dtxt):
         fail("#276: docs/user/app.md must say there is no Theme menu")
+
+    # 11) Density change wipes the timeline height cache.
+    persist_x, density_change = _density_change_blobs(app_clean, web)
+    if not _density_path_wipes(density_change):
+        if persist_x and _density_persist_only_pref(persist_x):
+            fail(
+                "#276: persistDensity must wipe the timeline height cache "
+                "(clearPendingMeasures + rowHeights = {}) — "
+                "do not only write density / localStorage; Comfortable "
+                "changes bubble heights and stale rowHeights jump a "
+                "virtualized list"
+            )
+        fail(
+            "#276: persistDensity (or a density $effect) must wipe the "
+            "timeline height cache (clearPendingMeasures + rowHeights = {}) "
+            "when density changes"
+        )
+
+    # 12) Keep VIRTUALIZE_AFTER = 250, data-bubble-body, no location.reload.
+    if not _DENSITY_VIRTUALIZE_AFTER.search(app_clean):
+        fail(
+            "#276: keep VIRTUALIZE_AFTER = 250 — density must not turn off "
+            "or retune #224 virtualize-after-250"
+        )
+    if "data-bubble-body" not in web:
+        fail(
+            "#276: keep data-bubble-body — Comfortable enlarges timeline "
+            "bubble bodies (density wipe is not a reason to drop the hook)"
+        )
+    if _DENSITY_RELOAD.search(density_change) or _DENSITY_RELOAD.search(
+        _windows_around(web, _DENSITY_WORD, before=200, after=240)
+    ):
+        fail(
+            "#276: density must apply without a reload (no location.reload) "
+            "— wipe rowHeights in-process"
+        )
 
 
 def main() -> None:
