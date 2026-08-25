@@ -468,6 +468,12 @@
 #     encryption claim, no second CAS copy.
 #     Docs: Reveal archive folder; copy after close.
 #     Do not rewrite #135 / #204 / #272 / #273.
+#     Follow-up (single canonicalize): reveal_archive
+#     canonicalizes archive_root once. Fail if two
+#     canonicalize() results are compared (!= / ==).
+#     Keep /usr/bin/open -R, archive_root from app
+#     state, no webview path. Do not rewrite earlier
+#     #274 / #135 / #204 / #272 / #273.
 #222: motion — 150–250ms Svelte fade/fly/slide on palette, inspector, toast;
 #     prefers-reduced-motion uses duration 0 (JS matchMedia / MediaQuery;
 #     CSS 0.01ms is not enough). No spring / bounce / lottie / celebration.
@@ -8890,6 +8896,41 @@ def _reveal_archive_cmd_invoke(cmd: str) -> re.Pattern[str]:
     )
 
 
+_REVEAL_ARCHIVE_CANON_CMP = re.compile(
+    r"("
+    r"\bcanon\b.{0,40}(?:!=|==).{0,40}\bexpected\b"
+    r"|\bexpected\b.{0,40}(?:!=|==).{0,40}\bcanon\b"
+    r")"
+)
+_REVEAL_ARCHIVE_CANON_BIND = re.compile(
+    r"\blet\s+(?:mut\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=;]+)?="
+    r"\s*[^;]*\bcanonicalize\s*\("
+)
+
+
+def _reveal_archive_canon_self_cmp(body: str) -> bool:
+    """True if two canonicalize() results are compared with != / ==."""
+    if _REVEAL_ARCHIVE_CANON_CMP.search(body):
+        return True
+    names: list[str] = []
+    seen: set[str] = set()
+    for name in _REVEAL_ARCHIVE_CANON_BIND.findall(body):
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+    if len(names) < 2:
+        return False
+    for i, a in enumerate(names):
+        for b in names[i + 1 :]:
+            if re.search(
+                rf"\b{re.escape(a)}\b.{{0,40}}(?:!=|==).{{0,40}}\b{re.escape(b)}\b"
+                rf"|\b{re.escape(b)}\b.{{0,40}}(?:!=|==).{{0,40}}\b{re.escape(a)}\b",
+                body,
+            ):
+                return True
+    return False
+
+
 def assert_reveal_archive(crate: Path) -> None:
     """#274: Reveal archive folder in Finder from Doctor / People.
 
@@ -8901,6 +8942,9 @@ def assert_reveal_archive(crate: Path) -> None:
     fetch("http / upload / zip-to-iCloud / encryption claim / second
     CAS copy. Docs: Reveal archive folder; copy after close.
     Do not rewrite #135 / #204 / #272 / #273.
+    Follow-up: exactly one canonicalize on the archive root; fail
+    if two canonicalize() results are compared (!= / ==). Keep
+    /usr/bin/open -R, archive_root from app state, no webview path.
     """
     doctor_path = crate / "web" / "lib" / "DoctorPane.svelte"
     if not doctor_path.is_file():
@@ -9160,6 +9204,17 @@ def assert_reveal_archive(crate: Path) -> None:
     ):
         fail(
             "#274: docs must say copy that folder after closing the app"
+        )
+
+    # 7) Follow-up: exactly one canonicalize; no dead self-comparison.
+    own = _rust_function_body(rust, cmd)
+    surf = own if own.strip() else body
+    n_canon = len(re.findall(r"\bcanonicalize\s*\(", surf))
+    if n_canon != 1 or _reveal_archive_canon_self_cmp(surf):
+        fail(
+            f"#274: {cmd} must canonicalize the archive root once — "
+            "do not compare two canonicalize() results (!= / ==); "
+            "drop the dead canon != expected self-check"
         )
 
 
