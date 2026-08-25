@@ -437,7 +437,13 @@
 #     splitQuotedBody / Show quoted, #126 search <mark>.
 #     Docs: clickable http(s) in bubbles; rest stays text; confirm;
 #     not HTML mail / markdown.
-#     Do not rewrite #111 / #117 / #126 / #135 / #207 / #120 / #224 / #271.
+#     Follow-up (long URL overflow + Open link): bubble <a
+#     data-bubble-link> wraps with break-all / overflow-wrap anywhere.
+#     ConfirmDialog description wraps; Content / dialog-content is
+#     min-w-0 and/or overflow-x-hidden so Cancel + Open link stay
+#     on-screen. App URL confirm uses confirmLabel Open link. Keep
+#     break-words on the body. Do not rewrite earlier #272 / #111 /
+#     #117 / #126 / #135 / #207 / #120 / #224 / #271.
 #222: motion — 150–250ms Svelte fade/fly/slide on palette, inspector, toast;
 #     prefers-reduced-motion uses duration 0 (JS matchMedia / MediaQuery;
 #     CSS 0.01ms is not enough). No spring / bounce / lottie / celebration.
@@ -7667,6 +7673,62 @@ def _rust_http_only(body: str) -> bool:
     return True
 
 
+# #272 follow-up — long URL overflow + visible Open link.
+# break-words (overflow-wrap: break-word) is not enough for a no-space URL.
+_LINKIFY_WRAP_ANY = re.compile(
+    r"("
+    r"\bbreak-all\b"
+    r"|overflow-wrap\s*:\s*anywhere"
+    r"|overflow-wrap-anywhere"
+    r"|\[overflow-wrap:anywhere\]"
+    r"|wrap-anywhere"
+    r"|break-anywhere"
+    r")",
+    re.I,
+)
+_LINKIFY_OPEN_LINK_LABEL = re.compile(r"Open link")
+_LINKIFY_CONFIRM_LABEL_PROP = re.compile(r"\bconfirmLabel\b")
+
+
+def _linkify_anchor_surface(surface: str) -> str:
+    """The bubble <a data-bubble-link> / named link button — not the body <p>."""
+    for hook in (
+        "data-bubble-link",
+        "data-body-link",
+        "data-url-link",
+        "data-open-url",
+        "data-linkify",
+        "data-url-button",
+    ):
+        blocks = _hook_element_blocks(surface, hook)
+        if blocks:
+            return "\n".join(blocks)
+    return _windows_around(surface, re.compile(r"<a\b", re.I), before=0, after=240)
+
+
+def _linkify_confirm_desc_blob(confirm_src: str, desc_src: str) -> str:
+    """ConfirmDialog description chrome — not the whole dialog / title."""
+    parts = [
+        _windows_around(
+            confirm_src, re.compile(r"\{description\}"), before=160, after=40
+        ),
+        "\n".join(_hook_element_blocks(confirm_src, "Dialog.Description")),
+        desc_src,
+    ]
+    return "\n".join(parts)
+
+
+def _linkify_dialog_content_blob(confirm_src: str, content_src: str) -> str:
+    """ConfirmDialog Content open-tag classes and/or shared dialog-content."""
+    opens = re.findall(r"<Dialog\.Content\b[^>]*>", confirm_src)
+    return "\n".join(opens) + "\n" + content_src
+
+
+def _linkify_width_capped(blob: str) -> bool:
+    """min-w-0 and/or overflow-x-hidden — max-w-md alone still grows min-content."""
+    return bool(_MIN_W0.search(blob) or _OVERFLOW_X_HIDDEN.search(blob))
+
+
 def assert_bubble_linkify(crate: Path) -> None:
     """#272: http(s) URLs in timeline bubbles are sibling <a> / button.
 
@@ -7676,6 +7738,10 @@ def assert_bubble_linkify(crate: Path) -> None:
     whitespace-pre-wrap, break-words, Gmail quote fold, #126 <mark>.
     Not: HTML mail, markdown, tracking redirects.
     Do not rewrite #111 / #117 / #126 / #135 / #207 / #120 / #224 / #271.
+    Follow-up: long http(s) URL wraps on <a data-bubble-link> (break-all /
+    overflow-wrap anywhere) and in the ConfirmDialog description; Content /
+    dialog-content is min-w-0 and/or overflow-x-hidden; App URL confirm
+    uses confirmLabel Open link. Keep break-words on the body.
     """
     app_path = crate / "web" / "App.svelte"
     if not app_path.is_file():
@@ -7927,6 +7993,64 @@ def assert_bubble_linkify(crate: Path) -> None:
         fail("#272: docs/user/app.md must say this is still not HTML mail")
     if not re.search(r"markdown", url_doc, re.I):
         fail("#272: docs/user/app.md must say this is still not markdown")
+
+    # 9) Follow-up: long URL wraps on the link + confirm; Open link label.
+    #    Keep-checks 1–8 already cover only-http/https, no {@html, no
+    #    plugin-shell, displayBody / break-words / #126 search <mark>.
+    link_el = _linkify_anchor_surface(surface)
+    if not _LINKIFY_WRAP_ANY.search(link_el):
+        fail(
+            "#272: timeline bubble <a data-bubble-link> (or the link surface) "
+            "must wrap a long http(s) URL with break-all or overflow-wrap "
+            "anywhere — keep break-words on the bubble body"
+        )
+    confirm_src = confirm_path.read_text()
+    desc_path = (
+        crate / "web" / "lib" / "components" / "ui" / "dialog" / "dialog-description.svelte"
+    )
+    desc_src = desc_path.read_text() if desc_path.is_file() else ""
+    desc_blob = _linkify_confirm_desc_blob(confirm_src, desc_src)
+    if not _LINKIFY_WRAP_ANY.search(desc_blob):
+        fail(
+            "#272: ConfirmDialog description must wrap a long http(s) URL "
+            "(break-all or overflow-wrap anywhere) so Cancel + confirm stay "
+            "on-screen"
+        )
+    content_path = (
+        crate / "web" / "lib" / "components" / "ui" / "dialog" / "dialog-content.svelte"
+    )
+    content_src = content_path.read_text() if content_path.is_file() else ""
+    content_blob = _linkify_dialog_content_blob(confirm_src, content_src)
+    if not _linkify_width_capped(content_blob):
+        fail(
+            "#272: ConfirmDialog Content and/or shared dialog-content must "
+            "be width-capped (min-w-0 and/or overflow-x-hidden) so a long "
+            "URL cannot grow the dialog with min-content and push Cancel / "
+            "confirm off-screen"
+        )
+    app_clean = _without_comments(app)
+    handler_clean = _without_comments(handler)
+    has_open_link = bool(_LINKIFY_OPEN_LINK_LABEL.search(app_clean))
+    has_confirm_prop = bool(_LINKIFY_CONFIRM_LABEL_PROP.search(app_clean))
+    tied = bool(
+        _LINKIFY_OPEN_LINK_LABEL.search(handler_clean)
+        or _LINKIFY_CONFIRM_LABEL_PROP.search(handler_clean)
+        or (
+            has_open_link
+            and has_confirm_prop
+            and re.search(
+                r"<ConfirmDialog\b[\s\S]{0,400}\bconfirmLabel\b", app_clean
+            )
+        )
+    )
+    if not (has_open_link and has_confirm_prop and tied):
+        fail(
+            "#272: App URL confirm must use the existing confirmLabel "
+            "Open link (Cancel still dismisses; do not leave the default "
+            "Confirm)"
+        )
+    if not re.search(r">\s*Cancel\s*<", confirm_src):
+        fail("#272: ConfirmDialog Cancel must still dismiss")
 
 
 # #120 — virtualize person timeline (visible + overscan only in the DOM).
