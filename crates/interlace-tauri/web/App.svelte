@@ -175,6 +175,9 @@
   function persistDensity(next: Density) {
     density = next;
     localStorage.setItem(DENSITY_PREF, next);
+    // Comfortable changes bubble heights; stale rowHeights jump a virtualized list.
+    clearPendingMeasures();
+    rowHeights = {};
   }
 
   function syncNarrow() {
