@@ -36,6 +36,13 @@
   --lightbox-scrim: hsl(0 0% 0% / 0.8);
   --lightbox-chrome-fg: hsl(0 0% 98%);
   --bubble-body-size: 0.875rem;
+  --chrome-preview-fg: hsl(240 10% 26%);
+  --chrome-chip-bg: hsl(240 8% 92%);
+  --chrome-chip-fg: hsl(240 10% 26%);
+  --chrome-inspector-fg: hsl(240 10% 26%);
+  --chrome-review-card: hsl(240 10% 97%);
+  --chrome-palette: hsl(240 8% 16% / 0.22);
+  --chrome-toast: hsl(240 10% 97%);
 }
 
 :root[data-density="comfortable"] {
@@ -72,6 +79,13 @@
     --bubble-me: hsl(214 35% 24%);
     --bubble-them: hsl(240 3.7% 18%);
     --search-mark: hsl(45 93% 32% / 0.6);
+    --chrome-preview-fg: hsl(240 5% 64.9%);
+    --chrome-chip-bg: hsl(240 10% 3.9% / 0.6);
+    --chrome-chip-fg: hsl(240 5% 64.9%);
+    --chrome-inspector-fg: hsl(240 5% 64.9%);
+    --chrome-review-card: hsl(240 10% 3.9%);
+    --chrome-palette: hsl(240 10% 3.9% / 0.8);
+    --chrome-toast: hsl(240 10% 3.9%);
   }
 }
 
@@ -166,6 +180,31 @@ body {
 
 .lightbox-chrome:hover {
   background-color: var(--lightbox-scrim);
+}
+
+.chrome-preview-fg {
+  color: var(--chrome-preview-fg);
+}
+
+[data-platform-chip] {
+  background-color: var(--chrome-chip-bg);
+  color: var(--chrome-chip-fg);
+}
+
+[data-person-inspector] .text-muted-foreground {
+  color: var(--chrome-inspector-fg);
+}
+
+[data-review-card] {
+  background-color: var(--chrome-review-card);
+}
+
+[data-command-palette] {
+  background-color: var(--chrome-palette);
+}
+
+[data-toast] {
+  background-color: var(--chrome-toast);
 }
 
 @media (prefers-reduced-motion: reduce) {

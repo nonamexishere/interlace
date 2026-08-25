@@ -7,6 +7,8 @@ Chrome colors come from design tokens / CSS variables, not raw Tailwind hues.
 Chrome follows the macOS appearance (system light/dark) without a reload;
 dark is the intended archival look and light is a first-class alternate;
 lightbox and dialogs match the same tokens; there is no Theme menu.
+Leftover chrome (preview, chips, inspector, review, palette, toasts) is
+readable in system light; dark stays the archival look.
 Cloud and doctor warnings use the warning token. Import progress is
 visible in-window. Cancel stops the import at the next pause (hash /
 open / checkpoint). Status becomes interrupted or failed with

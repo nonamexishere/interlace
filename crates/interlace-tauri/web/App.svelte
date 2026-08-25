@@ -1817,7 +1817,7 @@
                 {:else}
                   <span class="block truncate">{p.is_self ? `${p.display_name} (self)` : p.display_name}</span>
                   {#if p.last_activity_at || p.preview}
-                    <span class="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+                    <span class="chrome-preview-fg mt-0.5 block truncate text-xs font-normal text-muted-foreground">
                       {humanTime(p.last_activity_at)}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
                     </span>
                   {/if}
@@ -2263,7 +2263,7 @@
             >
               <span>{personLabel(p)}</span>
               {#if p.last_activity_at || p.preview}
-                <span class="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+                <span class="chrome-preview-fg mt-0.5 block truncate text-xs font-normal text-muted-foreground">
                   {humanTime(p.last_activity_at)}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
                 </span>
               {/if}
