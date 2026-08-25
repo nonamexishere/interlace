@@ -19,6 +19,7 @@
     onJumpToMessage,
     friendly,
     q = $bindable(""),
+    seedPerson = null,
   }: {
     people: Person[];
     onError: (e: unknown) => void;
@@ -31,6 +32,7 @@
       sentAt?: string | null;
     }) => void | Promise<void>;
     q?: string;
+    seedPerson?: Person | null;
   } = $props();
   /** Stored person_id for api.search; null when cleared / no pick. */
   let personId = $state<number | null>(null);
@@ -72,6 +74,12 @@
     personFilter = personLabel(p);
     personListOpen = false;
   }
+
+  $effect(() => {
+    if (seedPerson) {
+      pickPerson(seedPerson);
+    }
+  });
 
   function clearPerson() {
     personId = null;

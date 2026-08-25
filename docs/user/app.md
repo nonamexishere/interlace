@@ -230,6 +230,9 @@ full-size in-window. PDFs open in-window from
 local CAS. Video and PDF are never a remote stream (no remote viewer).
 Nothing is fetched from the network. Exports that omitted media show a
 placeholder. Right-click a timeline bubble to **Copy text** to the clipboard.
+The same context menu has **Search**: from a timeline bubble you can open Search
+with that person (Ada — the name, not a raw id); hits load. **⌘F** still
+focuses `#q`.
 Right-click a stored attachment to **Reveal in Finder** (local CAS file).
 Copy and Reveal failures toast (chrome copy only — “Could not copy”).
 Sandbox-denied, archive lock, and not-an-archive stay in-page on the
