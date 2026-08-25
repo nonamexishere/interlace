@@ -3,6 +3,9 @@
 The **archive folder is the backup unit**. Phase 1 has no `interlace backup`
 command. `init` prints this on purpose.
 
+Doctor and People can **Reveal archive** folder in Finder so you do not hunt
+`~/Interlace` by hand. Backup is still copy that folder after closing the app.
+
 ```bash
 cp -a ~/Interlace /Volumes/SSD/Interlace
 interlace open --path /Volumes/SSD/Interlace

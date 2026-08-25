@@ -12,12 +12,14 @@
     onError,
     onDone,
     onGoPeople,
+    onToast,
     friendly,
   }: {
     issues?: string[];
     onError: (e: unknown) => void;
     onDone: () => Promise<void>;
     onGoPeople: () => void;
+    onToast?: (message: string) => void;
     friendly: (raw: string) => string;
   } = $props();
 
@@ -86,6 +88,14 @@
     } finally {
       busy = false;
       pending = null;
+    }
+  }
+
+  async function revealArchive() {
+    try {
+      await api.revealArchive();
+    } catch {
+      onToast?.("Could not reveal");
     }
   }
 
@@ -201,6 +211,9 @@
       of the whole folder is fine after you close this window. See
       <code class="text-xs">docs/user/backup.md</code>.
     </p>
+    <Button variant="outline" size="sm" data-reveal-archive onclick={revealArchive}>
+      {t("revealInFinder")}
+    </Button>
   </section>
 </ScrollArea>
 
