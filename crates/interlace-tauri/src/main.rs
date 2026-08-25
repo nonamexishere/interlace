@@ -503,6 +503,22 @@ fn reveal_cas(state: tauri::State<AppState>, hash: String) -> Result<(), String>
     Ok(())
 }
 
+/// Open an http(s) URL in the OS browser. Reject every other scheme.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err("only http/https urls are allowed".into());
+    }
+    let status = std::process::Command::new("/usr/bin/open")
+        .arg(&url)
+        .status()
+        .map_err(err)?;
+    if !status.success() {
+        return Err("could not open url".into());
+    }
+    Ok(())
+}
+
 fn with_arch<T>(
     state: &AppState,
     f: impl FnOnce(&Archive) -> Result<T, String>,
@@ -997,6 +1013,7 @@ fn main() {
             doctor_run_cmd,
             cas_data_url,
             reveal_cas,
+            open_url,
             people,
             person_show,
             person_timeline,
