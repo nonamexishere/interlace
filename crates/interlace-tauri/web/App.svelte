@@ -125,6 +125,10 @@
     void getCurrentWindow().setTitle(title).catch(() => {});
   });
 
+  $effect(() => {
+    document.documentElement.dataset.density = density;
+  });
+
   const filtered = $derived(
     people.filter((p) => {
       const q = filter.trim().toLowerCase();
@@ -144,7 +148,10 @@
   );
 
   const SIDEBAR_PREF = "interlace.peopleSidebarCollapsed";
+  const DENSITY_PREF = "interlace.density";
+  type Density = "default" | "comfortable";
   let userCollapsed = $state(false);
+  let density = $state<Density>("default");
   let narrow = $state(false);
   let forceOpen = $state(false);
   const sidebarCollapsed = $derived(userCollapsed || (narrow && !forceOpen));
@@ -157,6 +164,20 @@
     userCollapsed = next;
     forceOpen = !next; // Expand → open now even if narrow
     localStorage.setItem(SIDEBAR_PREF, next ? "1" : "0");
+  }
+
+  function readDensityPref(): Density {
+    return localStorage.getItem(DENSITY_PREF) === "comfortable"
+      ? "comfortable"
+      : "default";
+  }
+
+  function persistDensity(next: Density) {
+    density = next;
+    localStorage.setItem(DENSITY_PREF, next);
+    // Comfortable changes bubble heights; stale rowHeights jump a virtualized list.
+    clearPendingMeasures();
+    rowHeights = {};
   }
 
   function syncNarrow() {
@@ -1289,6 +1310,11 @@
     commandOpen = false;
   }
 
+  function runCommandDensity(next: Density) {
+    persistDensity(next);
+    commandOpen = false;
+  }
+
   function onKey(e: KeyboardEvent) {
     const t = e.target as HTMLElement | null;
     const digit = e.key >= "1" && e.key <= "5" ? e.key : /^Digit[1-5]$/.test(e.code) ? e.code.slice(5) : "";
@@ -1400,6 +1426,7 @@
 
   onMount(() => {
     userCollapsed = readSidebarPref();
+    density = readDensityPref();
     syncNarrow();
     window.addEventListener("resize", syncNarrow);
     window.addEventListener("keydown", onKey);
@@ -1523,7 +1550,7 @@
   {/if}
 {/snippet}
 
-<div class="flex h-full flex-col bg-background text-foreground">
+<div class="flex h-full flex-col bg-background text-foreground" data-density={density}>
   <header
     class="flex items-center justify-end border-b border-border py-2 pl-20 pr-4 text-sm"
     data-tauri-drag-region
@@ -1562,6 +1589,17 @@
           disabled={booting || opening}
         />
       </form>
+      <Button
+        variant="ghost"
+        size="sm"
+        class="h-8 shrink-0"
+        data-density-toggle
+        aria-pressed={density === "comfortable"}
+        aria-label={density === "comfortable" ? "Comfortable density" : "Default density"}
+        onclick={() => persistDensity(density === "comfortable" ? "default" : "comfortable")}
+      >
+        {density === "comfortable" ? "Comfortable" : "Default"}
+      </Button>
     </nav>
   {/if}
 
@@ -2267,6 +2305,7 @@
     {personLabel}
     onView={runCommandView}
     onPerson={runCommandPerson}
+    onDensity={runCommandDensity}
     onClose={() => (commandOpen = false)}
   />
 {/if}
