@@ -1,6 +1,6 @@
 # Agent / session handoff
 
-**Date:** 2026-08-24. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
+**Date:** 2026-08-25. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -34,7 +34,7 @@ use `tokio` without `net`). Phase 1 = CLI; Phase 2 = Svelte 5 desktop UI
 unsigned app release is **`app-v0.1.1`**. **Phase 2.2 polish is done.**
 **Active product track: Phase 2.3** (epic **#264**). **#265** / PR **#282**,
 #266 / PR **#283**, **#267** / PR **#285**, **#268** / PR **#286**,
-**#269** / PR **#287**, and **#270** / PR **#288** are **done**. **#271** in flight; next coding **#272**.
+**#269** / PR **#287**, **#270** / PR **#288**, and **#271** / PR **#289** are **done**. **#272** in flight; next coding **#273**.
 Normative:
 [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md). Do not start 1.1 / 3 / 4.
 
@@ -71,7 +71,7 @@ Workflow: one issue → one PR `Fixes #N` → merge when CI jobs **`check`** +
 App holds exclusive flock. Close `interlace-app` / `tauri:dev` before CLI
 `import` / `doctor --integrity` / wipe.
 
-## Snapshot (2026-08-24)
+## Snapshot (2026-08-25)
 
 Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`,
 `v0.1.1` tags). Workspace version is still **0.1.1**. App crate
@@ -86,14 +86,14 @@ for the *next* `app-v*` tag; that tag is **not** cut. Ask before another
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: this PR landing **#271**. After
+HEAD when this was rewritten: this PR landing **#272**. After
 merge, `master` is that merge commit. Tag **`app-v0.1.2`** (last shipped;
 still unsigned). Epic **#108**, milestone 6, and the Phase 1 CLI milestone
 are **closed**. Phase 2.2 polish (#197 / #219–#222) is **done**. Phase **2.3**
 (epic **#264**): **#265** / PR **#282**, **#266** / PR **#283**,
-**#267** / PR **#285**, **#268** / PR **#286**, **#269** / PR **#287**, and
-**#270** / PR **#288** done. **#271** in flight; next coding **#272**. Re-check
-with `git log -1` / `gh pr list`.
+**#267** / PR **#285**, **#268** / PR **#286**, **#269** / PR **#287**,
+**#270** / PR **#288**, and **#271** / PR **#289** done. **#272** in flight;
+next coding **#273**. Re-check with `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
 
@@ -211,6 +211,7 @@ Phase 2.1 milestone (#6): **closed**.
 | #268 / PR #286 | Local-timezone day headings — display follows the Mac timezone; stored `sent_at` / JSON / FTS stay UTC |
 | #269 / PR #287 | People sidebar undo chrome — name/op label, same undoable set as Review; skip `split_person` |
 | #270 / PR #288 | Search-as-you-type on `#q`; people refresh does not block Search |
+| #271 / PR #289 | Video / PDF / sticker CAS in the timeline — local in-window; no autoplay; stickers stay on the image path |
 
 ## Open — product now (Phase 2.3)
 
@@ -222,7 +223,7 @@ load-bearing (a11y, titlebar, search).
 
 ### Suggested next
 
-1. **#271** in flight (video / PDF / sticker CAS in the timeline). Next coding **#272**.
+1. **#272** in flight (linkify http(s) URLs in timeline bubbles). Next coding **#273**.
 Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*` tag.
 
 Full board: issue **#264**. Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7).
@@ -236,7 +237,7 @@ Full board: issue **#264**. Phase 2.2 archive: [#197](https://github.com/nonamex
 
 ## Recommended next steps
 
-1. **#271** in flight (video / PDF / sticker CAS in the timeline). Next coding **#272**.
+1. **#272** in flight (linkify http(s) URLs in timeline bubbles). Next coding **#273**.
    Do not start 1.1 / P3 / P4.
 2. Last shipped app tag is **`app-v0.1.2`** (unsigned). Workflow can
    Developer ID + notarize the next `app-v*` once Apple secrets exist.
@@ -312,8 +313,8 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
 > Product track: Phase 2.3 (epic #264). Read
-> `docs/design/UI-DESIGN.md`. **#271** in flight; next coding **#272**.
-> #265–#270 done (#270 / PR #288).
+> `docs/design/UI-DESIGN.md`. **#272** in flight; next coding **#273**.
+> #265–#271 done (#271 / PR #289).
 > Orchestrator does not implement product code. Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag (`app-v0.1.2` is current; first notarized tag is not cut). After

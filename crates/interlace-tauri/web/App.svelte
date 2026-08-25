@@ -7,6 +7,8 @@
   import { api, type Identity, type LinkEvent, type Person, type PersonConversation, type Status, type TimelineRow } from "./lib/api";
   import { mergeTargets } from "./lib/utils";
   import { humanTime, localDay, localDayLabel, utcTime } from "./lib/formatTime";
+  import { splitUrls } from "./lib/linkify";
+  import LinkifyBody from "./lib/LinkifyBody.svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Card } from "$lib/components/ui/card/index.js";
@@ -713,6 +715,12 @@
     confirmDesc = description;
     confirmRun = run;
     confirmOpen = true;
+  }
+
+  function openUrl(url: string) {
+    ask("Open this link?", url, async () => {
+      await api.openUrl(url);
+    });
   }
 
   async function refreshPeople() {
@@ -1995,7 +2003,7 @@
                         {@const parts = splitQuotedBody(item.row.body_text || "")}
                         {#if parts.main || !parts.quoted}
                           <p class="whitespace-pre-wrap break-words text-sm leading-normal text-foreground">
-                            {displayBody(parts.main)}
+                            <LinkifyBody text={displayBody(parts.main)} {splitUrls} {openUrl} />
                           </p>
                         {/if}
                         {#if parts.quoted}
@@ -2003,7 +2011,7 @@
                             <p
                               class="mt-1 whitespace-pre-wrap break-words text-sm leading-normal text-muted-foreground"
                             >
-                              {displayBody(parts.quoted)}
+                              <LinkifyBody text={displayBody(parts.quoted)} {splitUrls} {openUrl} />
                             </p>
                             <button
                               type="button"
@@ -2024,7 +2032,11 @@
                         {/if}
                       {:else}
                         <p class="whitespace-pre-wrap break-words text-sm leading-normal text-foreground">
-                          {displayBody(item.row.body_text || item.row.subject || "")}
+                          <LinkifyBody
+                            text={displayBody(item.row.body_text || item.row.subject || "")}
+                            {splitUrls}
+                            {openUrl}
+                          />
                         </p>
                       {/if}
                       </div>
