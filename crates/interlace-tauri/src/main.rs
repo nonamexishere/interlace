@@ -503,6 +503,31 @@ fn reveal_cas(state: tauri::State<AppState>, hash: String) -> Result<(), String>
     Ok(())
 }
 
+/// Reveal the open archive folder in Finder. Root from app state — never a path from the webview.
+#[tauri::command]
+fn reveal_archive(state: tauri::State<AppState>) -> Result<(), String> {
+    let root = state
+        .archive_root
+        .lock()
+        .map_err(err)?
+        .clone()
+        .ok_or_else(|| "no archive open".to_string())?;
+    let expected = root.canonicalize().map_err(err)?;
+    let canon = root.canonicalize().map_err(err)?;
+    if canon != expected {
+        return Err("not the open archive root".into());
+    }
+    let status = std::process::Command::new("/usr/bin/open")
+        .arg("-R")
+        .arg(&canon)
+        .status()
+        .map_err(err)?;
+    if !status.success() {
+        return Err("could not reveal in Finder".into());
+    }
+    Ok(())
+}
+
 /// Open an http(s) URL in the OS browser. Reject every other scheme.
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
@@ -1013,6 +1038,7 @@ fn main() {
             doctor_run_cmd,
             cas_data_url,
             reveal_cas,
+            reveal_archive,
             open_url,
             people,
             person_show,

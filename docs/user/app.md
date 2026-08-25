@@ -241,7 +241,9 @@ There is no Share sheet or AirDrop.
 
 If the archive path looks like iCloud Drive, Dropbox, or Google Drive, a
 banner stays up on every tab. Time Machine of the whole folder is fine after
-you close the window. See [backup.md](backup.md).
+you close the window. Doctor and People can **Reveal archive** folder in Finder
+(the open archive). Backup is still copy that folder after closing the app. See
+[backup.md](backup.md).
 
 ## Encryption
 

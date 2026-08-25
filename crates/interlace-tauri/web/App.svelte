@@ -202,6 +202,14 @@
     }, 2500);
   }
 
+  async function revealArchive() {
+    try {
+      await api.revealArchive();
+    } catch {
+      showToast("Could not reveal");
+    }
+  }
+
   /** Tauri file-drop paths only — reject http(s) and other URL schemes. */
   function isDroppedUrl(path: string): boolean {
     const s = path.trim();
@@ -1648,6 +1656,7 @@
       bind:issues={doctor}
       {friendly}
       onError={showErr}
+      onToast={showToast}
       onDone={async () => {
         await applyStatus(await api.status());
       }}
@@ -1682,6 +1691,15 @@
         </div>
         {#if !sidebarCollapsed}
         <p class="break-all text-xs text-muted-foreground">{st.path}</p>
+        <Button
+          variant="ghost"
+          size="sm"
+          class="mt-1 h-7 px-2 text-xs"
+          data-reveal-archive
+          onclick={revealArchive}
+        >
+          {t("revealInFinder")}
+        </Button>
         <dl class="mt-3 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-sm">
           <dt class="text-muted-foreground">owner</dt>
           <dd class="min-w-0 truncate">{st.owner_display_name || "—"}</dd>
