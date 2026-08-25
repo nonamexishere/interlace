@@ -72,9 +72,10 @@ bundle: `npm run tauri:build` (writes `target/release/bundle/`).
 
 ## Today (UI1 + UI3)
 
-You can **create or open** an archive from the window (folder picker, no URLs).
-`--phone-region` is still required (no silent TR/US default). Status shows
-message / identity / person / review counts.
+First-run is one calm screen: offline / no account, then **Create** or **Open**
+(folder picker, no URLs). `--phone-region` is still required (no silent TR/US
+default). Optional owner fields (name / emails / phones) are not required first.
+Status shows message / identity / person / review counts.
 
 After you pick a folder once (**Open existing…** or **Create archive…**), the
 sandboxed `.app` stores a **local security-scoped bookmark** in Application

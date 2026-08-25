@@ -803,7 +803,7 @@
     doctor = [];
     const r = region.trim();
     if (!r) {
-      err = "phone-region is required (e.g. TR, US)";
+      err = `phone-region is required (e.g. TR, US)`;
       return;
     }
     try {
@@ -1601,21 +1601,30 @@
         Offline archive. No account. No sync. This window never phones home.
       </p>
       <div class="space-y-1.5">
-        <Label for="region">Phone region (ISO 3166-1 alpha-2, required)</Label>
+        <Label for="region">Required phone-region (ISO 3166-1 alpha-2)</Label>
         <Input id="region" bind:value={region} maxlength={2} placeholder="TR" />
       </div>
-      <div class="space-y-1.5">
-        <Label for="name">Your name</Label>
-        <Input id="name" bind:value={name} placeholder="optional" />
-      </div>
-      <div class="space-y-1.5">
-        <Label for="emails">Emails (comma-separated)</Label>
-        <Input id="emails" bind:value={emails} placeholder="optional" />
-      </div>
-      <div class="space-y-1.5">
-        <Label for="phones">Phones (comma-separated)</Label>
-        <Input id="phones" bind:value={phones} placeholder="optional" />
-      </div>
+      <details class="rounded-md border border-border bg-muted/40 px-3 py-2">
+        <summary
+          class="cursor-pointer text-xs font-medium text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          More
+        </summary>
+        <div class="mt-3 space-y-3">
+          <div class="space-y-1.5">
+            <Label for="name">Your name</Label>
+            <Input id="name" bind:value={name} placeholder="optional" />
+          </div>
+          <div class="space-y-1.5">
+            <Label for="emails">Emails (comma-separated)</Label>
+            <Input id="emails" bind:value={emails} placeholder="optional" />
+          </div>
+          <div class="space-y-1.5">
+            <Label for="phones">Phones (comma-separated)</Label>
+            <Input id="phones" bind:value={phones} placeholder="optional" />
+          </div>
+        </div>
+      </details>
       <div class="flex gap-2">
         <Button onclick={createArchive}>{t("createArchive")}</Button>
         <Button variant="outline" onclick={openPicker}>{t("openExisting")}</Button>
