@@ -86,6 +86,8 @@
   let view = $state<"people" | "search" | "review" | "import" | "doctor">("people");
   let commandOpen = $state(false);
   let searchQ = $state("");
+  /** One-shot: bubble → Search prefills the person picker; cleared after mount. */
+  let seedPerson = $state<Person | null>(null);
   let booting = $state(true);
   let opening = $state(false);
   let tlLoading = $state(false);
@@ -252,6 +254,20 @@
     } catch {
       showToast("Could not copy");
     }
+  }
+
+  /** Timeline bubble → Search: open person in the picker, short name in #q. */
+  function searchFromBubble() {
+    closeCopyMenu();
+    const p = personById(selectedId);
+    if (p) {
+      searchQ = p.display_name;
+      seedPerson = p;
+    }
+    void whenSearchPaneReady().then((qEl) => {
+      qEl?.focus();
+      seedPerson = null;
+    });
   }
 
   function onCopyMenuAway(e: MouseEvent) {
@@ -1606,6 +1622,7 @@
       bind:q={searchQ}
       {people}
       {friendly}
+      {seedPerson}
       onError={showErr}
       onToast={showToast}
       onJumpToMessage={jumpToMessage}
@@ -2130,6 +2147,12 @@
       class="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
       role="menuitem"
       onclick={copyText}>{t("copyText")}</button
+    >
+    <button
+      type="button"
+      class="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+      role="menuitem"
+      onclick={searchFromBubble}>{t("search")}</button
     >
   </div>
 {/if}
