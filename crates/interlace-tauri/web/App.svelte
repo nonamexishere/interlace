@@ -81,6 +81,7 @@
   let confirmOpen = $state(false);
   let confirmTitle = $state("");
   let confirmDesc = $state("");
+  let confirmLabel = $state("Confirm");
   let confirmRun = $state<(() => Promise<void>) | null>(null);
   let view = $state<"people" | "search" | "review" | "import" | "doctor">("people");
   let commandOpen = $state(false);
@@ -710,17 +711,28 @@
     scheduleChromeMeasure();
   });
 
-  function ask(title: string, description: string, run: () => Promise<void>) {
+  function ask(
+    title: string,
+    description: string,
+    run: () => Promise<void>,
+    label = "Confirm",
+  ) {
     confirmTitle = title;
     confirmDesc = description;
+    confirmLabel = label;
     confirmRun = run;
     confirmOpen = true;
   }
 
   function openUrl(url: string) {
-    ask("Open this link?", url, async () => {
-      await api.openUrl(url);
-    });
+    ask(
+      "Open this link?",
+      url,
+      async () => {
+        await api.openUrl(url);
+      },
+      "Open link",
+    );
   }
 
   async function refreshPeople() {
@@ -2192,6 +2204,7 @@
   bind:open={confirmOpen}
   title={confirmTitle}
   description={confirmDesc}
+  confirmLabel={confirmLabel}
   onconfirm={async () => {
     if (confirmRun) await confirmRun();
   }}

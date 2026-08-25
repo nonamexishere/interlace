@@ -47,7 +47,7 @@
   <Dialog.Content>
     <Dialog.Header>
       <Dialog.Title>{title}</Dialog.Title>
-      <Dialog.Description>{description}</Dialog.Description>
+      <Dialog.Description class="break-all">{description}</Dialog.Description>
     </Dialog.Header>
     <Dialog.Footer>
       <Button variant="outline" onclick={cancel}>Cancel</Button>

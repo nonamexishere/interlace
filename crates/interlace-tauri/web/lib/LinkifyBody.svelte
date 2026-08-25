@@ -19,7 +19,7 @@
     <a
       href={seg.text}
       data-bubble-link
-      class="break-words underline text-foreground"
+      class="break-all underline text-foreground"
       onclick={(e) => {
         e.preventDefault();
         e.stopPropagation();
