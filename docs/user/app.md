@@ -16,6 +16,8 @@ People preview, platform chips, banners, and search marks stay readable on
 both, and marks stay yellow.
 Timeline and search message bodies are 14–15px (line-height 1.5). People-row
 and bubble-caption meta is 12–13px. System UI font only — no remote font.
+A local Default / Comfortable density control (quiet chrome or the command
+palette) enlarges bubble bodies without a reload.
 The command palette, person inspector, and toasts use a short fade or slide.
 Reduced motion makes them instant. There is no celebration and no auto-playing media.
 

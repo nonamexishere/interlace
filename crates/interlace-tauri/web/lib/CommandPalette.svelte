@@ -11,12 +11,14 @@
     personLabel,
     onView,
     onPerson,
+    onDensity,
     onClose,
   }: {
     people: Person[];
     personLabel: (p: Person) => string;
     onView: (next: "people" | "search" | "review" | "import" | "doctor") => void;
     onPerson: (p: Person) => void;
+    onDensity: (next: "default" | "comfortable") => void;
     onClose: () => void;
   } = $props();
 
@@ -123,6 +125,18 @@
               <Command.Item value="Review" onSelect={() => onView("review")}>Review</Command.Item>
               <Command.Item value="Import" onSelect={() => onView("import")}>Import</Command.Item>
               <Command.Item value="Doctor" onSelect={() => onView("doctor")}>Doctor</Command.Item>
+            </Command.GroupItems>
+          </Command.Group>
+          <Command.Separator />
+          <Command.Group value="density">
+            <Command.GroupHeading>Density</Command.GroupHeading>
+            <Command.GroupItems>
+              <Command.Item value="Density Default" onSelect={() => onDensity("default")}
+                >Default</Command.Item
+              >
+              <Command.Item value="Density Comfortable" onSelect={() => onDensity("comfortable")}
+                >Comfortable</Command.Item
+              >
             </Command.GroupItems>
           </Command.Group>
           <Command.Separator />

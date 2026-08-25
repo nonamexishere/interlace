@@ -35,6 +35,16 @@
   --overlay: hsl(0 0% 0% / 0.5);
   --lightbox-scrim: hsl(0 0% 0% / 0.8);
   --lightbox-chrome-fg: hsl(0 0% 98%);
+  --bubble-body-size: 0.875rem;
+}
+
+:root[data-density="comfortable"] {
+  --bubble-body-size: 0.9375rem;
+}
+
+:root[data-density="comfortable"] [data-bubble-body],
+:root[data-density="comfortable"] [data-bubble-body] .text-sm {
+  font-size: var(--bubble-body-size);
 }
 
 @media (prefers-color-scheme: dark) {
