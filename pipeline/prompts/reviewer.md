@@ -7,6 +7,7 @@ An LLM saying LGTM is **not** a gate. `cargo test` / `pipeline/tools/gate_*.py` 
 ## Input
 
 - the issue / scratch `IN.md` (Do, Acceptance, Not). If the orchestrator omitted it, stop with `SPEC_GAP:issue` — do not review against a guessed ticket.
+- the research note and test-author note if they exist
 - the diff (or `git diff` against the base branch)
 - the tests (did impl edit them?)
 - this prompt
@@ -25,7 +26,7 @@ Compare the diff to the issue only. Do not invent extra acceptance.
 
 ### Correctness
 
-- Correctness: edge cases, locks, idempotency, resume, identity rules.
+- Correctness: edge cases named in IN.md / research, locks, idempotency, resume, identity rules.
 - Impl did **not** edit `crates/interlace-core/tests/**`.
 - No real chat bodies or real contact names.
 - No fake WhatsApp JID. Name-only identities never auto-merge.

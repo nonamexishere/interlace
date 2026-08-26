@@ -8,6 +8,7 @@ Read only:
 
 - the issue / scratch `IN.md` the orchestrator pointed at
 - this prompt
+- the research note’s **Must-IDs** and **Recommendation** if `pipeline/state/<slug>-research.md` exists (public surface only — do not treat cited impl paths as a license to open those bodies)
 - frozen public API: `crates/interlace-core/src/model.rs` and the published functions in `crates/interlace-core/src/lib.rs` (signatures, docs)
 - existing tests under `crates/interlace-core/tests/` for style and helper patterns
 - `interlace-fixtures` generators and locale packs
@@ -23,7 +24,7 @@ Do **not** open impl bodies:
 - `crates/interlace-core/src/identity.rs`
 - `crates/interlace-core/src/search.rs`
 
-If `IN.md` is silent on a policy, fail with `SPEC_GAP:<id>`. Do not invent policy.
+If `IN.md` is silent on a policy, fail with `SPEC_GAP:<id>`. Do not invent policy. Do not “improve” the researcher’s must-IDs into a different design.
 
 Tauri chrome is not blinded the same way: write acceptance from the issue only (empty states, labels, no raw person ids). Still do not implement the UI.
 

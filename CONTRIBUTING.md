@@ -33,7 +33,8 @@ Phase 1 target is macOS. Other OSes may compile; they are unsupported.
 
 ## Agent / pipeline contributors
 
-Product work uses the three-role loop: **test-author → impl → reviewer**.
+Product work uses **researcher → test-author → impl → reviewer**.
+Skip researcher only when the issue already names helpers, files, and must-IDs.
 The human (or the parent chat) sequences them. See
 `docs/hacking/pipeline.md` and `pipeline/prompts/`. Subagents communicate via
 files and those prompts only. Do not give agents a spawn-agent tool.

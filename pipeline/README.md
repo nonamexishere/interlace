@@ -1,6 +1,6 @@
 # Interlace agent pipeline
 
-Living loop: **test-author → impl → reviewer**. Prompts in `pipeline/prompts/`.
+Living loop: **researcher → test-author → impl → reviewer**. Prompts in `pipeline/prompts/`. Skip researcher only when the issue already names helpers, files, and must-IDs.
 The human / parent chat sequences. Do not spawn agents.
 
 `./pipeline/run.sh` only re-checks finished spike stage 01 (does **not** spawn).

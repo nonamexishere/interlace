@@ -1,7 +1,7 @@
 # Roadmap (now → Phase 4)
 
 Canonical in-repo copy of issue **#52**. Work top-down. One issue → one PR
-(`Fixes #N`). How we work: [pipeline.md](pipeline.md) (test-author → impl →
+(`Fixes #N`). How we work: [pipeline.md](pipeline.md) (researcher → test-author → impl →
 reviewer; parent chat sequences those roles as separate agents; CI is the gate).
 
 Do **not** start Phase 1.1 (#57–#69) or Phase 3/4 (#72–#82) unprompted.
@@ -11,7 +11,7 @@ Phase 2.1 is **done**. Phase 2.2 polish is **done**.
 
 | What | Notes |
 | --- | --- |
-| Phase 2.3 | Epic [#264](https://github.com/nonamexishere/interlace/issues/264). **#265** / [PR #282](https://github.com/nonamexishere/interlace/pull/282), **#266** / [PR #283](https://github.com/nonamexishere/interlace/pull/283), **#267** / [PR #285](https://github.com/nonamexishere/interlace/pull/285), **#268** / [PR #286](https://github.com/nonamexishere/interlace/pull/286), **#269** / [PR #287](https://github.com/nonamexishere/interlace/pull/287), **#270** / [PR #288](https://github.com/nonamexishere/interlace/pull/288), **#271** / [PR #289](https://github.com/nonamexishere/interlace/pull/289), **#272** / [PR #290](https://github.com/nonamexishere/interlace/pull/290), **#273** / [PR #291](https://github.com/nonamexishere/interlace/pull/291), **#274** / [PR #292](https://github.com/nonamexishere/interlace/pull/292), **#275** / [PR #293](https://github.com/nonamexishere/interlace/pull/293), **#276** / [PR #294](https://github.com/nonamexishere/interlace/pull/294), and **#277** / [PR #295](https://github.com/nonamexishere/interlace/pull/295) done. **#278** in flight; next coding **#279**. Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*`. |
+| Phase 2.3 | Epic [#264](https://github.com/nonamexishere/interlace/issues/264). **#265** / [PR #282](https://github.com/nonamexishere/interlace/pull/282), **#266** / [PR #283](https://github.com/nonamexishere/interlace/pull/283), **#267** / [PR #285](https://github.com/nonamexishere/interlace/pull/285), **#268** / [PR #286](https://github.com/nonamexishere/interlace/pull/286), **#269** / [PR #287](https://github.com/nonamexishere/interlace/pull/287), **#270** / [PR #288](https://github.com/nonamexishere/interlace/pull/288), **#271** / [PR #289](https://github.com/nonamexishere/interlace/pull/289), **#272** / [PR #290](https://github.com/nonamexishere/interlace/pull/290), **#273** / [PR #291](https://github.com/nonamexishere/interlace/pull/291), **#274** / [PR #292](https://github.com/nonamexishere/interlace/pull/292), **#275** / [PR #293](https://github.com/nonamexishere/interlace/pull/293), **#276** / [PR #294](https://github.com/nonamexishere/interlace/pull/294), **#277** / [PR #295](https://github.com/nonamexishere/interlace/pull/295), and **#278** / [PR #296](https://github.com/nonamexishere/interlace/pull/296) done. **#297** in flight (researcher role); next coding **#279**. Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*`. |
 | Phase 2.2 | Epic [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7). Normative [`UI-DESIGN.md`](../design/UI-DESIGN.md). **Done** (#198–#222 / PRs #225–#262). |
 | Desktop app | **`app-v0.1.2` shipped** ([release](https://github.com/nonamexishere/interlace/releases/tag/app-v0.1.2)). Ask before another `app-v*`. |
 | crates.io | Published **0.1.1**. Do not `cargo publish` / `v*` without asking. |
