@@ -63,6 +63,7 @@ pipeline/state/<slug>-{IN,research,test-author,impl,review}.md
 pipeline/stages/<id>/{IN.md,OUT.json,DONE,logs/}
 pipeline/stages/03-test-author/test_plan.json
 pipeline/tools/*.py
+pipeline/tools/tauri_gate/   # chrome asserts; entry stays gate_tauri.py
 pipeline/contracts/*.schema.json
 pipeline/selftest/run.sh
 ```
@@ -88,7 +89,7 @@ python3 pipeline/tools/gate_impl.py --stage 05d --must I1,I2,I3,I4,I5,I6,I6b
 python3 pipeline/tools/gate_impl.py --stage 05e --must S1,S2,S3
 python3 pipeline/tools/gate_cli.py
 python3 pipeline/tools/gate_bench.py   # 10k only; do not set INTERLACE_BENCH in PR
-python3 pipeline/tools/gate_tauri.py   # Phase 2 shell; separate CI job
+python3 pipeline/tools/gate_tauri.py   # Phase 2 shell; asserts live in tauri_gate/
 bash pipeline/selftest/run.sh
 bash pipeline/run.sh
 ```

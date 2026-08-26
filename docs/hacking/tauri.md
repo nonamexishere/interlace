@@ -59,6 +59,9 @@ Use `crates/interlace-tauri/deny.toml`:
 python3 pipeline/tools/gate_tauri.py
 ```
 
+Chrome asserts live in the `tauri_gate` package (`pipeline/tools/tauri_gate/`).
+The entry command is unchanged.
+
 ## Security
 
 - CSP is the DESIGN string (IPC-only `connect-src`, no general `http`/`https`).
