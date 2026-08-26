@@ -503,6 +503,15 @@
 #     strings. No Theme / Appearance menu. Docs: leftover chrome
 #     readable in system light; dark archival; no Theme menu.
 #     Do not rewrite #198 / #217 / #218 / #219 / #276.
+#278: finish en+tr chrome — Review / Import / Doctor remaining
+#     chrome (empty states, ConfirmDialog titles, undo, pick file,
+#     import Cancel, doctor integrity / rebuild / GC) uses t();
+#     new keys in both packs and tr is not an English copy; no
+#     t(body_text|snippet|display_name|preview); detectLocale stays
+#     OS-first (tr* → tr); no third pack; no fetch of locale files.
+#     Keep #131 Arşiv aç / Doktor. Docs: Review / Import / Doctor
+#     chrome follows OS language (en/tr); bodies stay as imported.
+#     Do not rewrite #131.
 #222: motion — 150–250ms Svelte fade/fly/slide on palette, inspector, toast;
 #     prefers-reduced-motion uses duration 0 (JS matchMedia / MediaQuery;
 #     CSS 0.01ms is not enough). No spring / bounce / lottie / celebration.
@@ -28610,13 +28619,18 @@ def assert_status_tokens(crate: Path) -> None:
 
     # 9) No review-queue chrome rewrite (#221).
     #    Svelte transition durations are #222 (`assert_motion`).
+    #    “Loading review queue” may live in the pane or the en pack (#278).
     review_path = crate / "web" / "lib" / "ReviewPane.svelte"
     review = review_path.read_text() if review_path.is_file() else ""
+    en_pack = _chrome_en_text(crate)
     if (
         not review
         or "Accept" not in review
         or "Reject" not in review
-        or "Loading review queue" not in review
+        or (
+            "Loading review queue" not in review
+            and "Loading review queue" not in en_pack
+        )
         or (
             "identifierLabel" not in review
             and "value_normalized" not in review
@@ -31664,6 +31678,436 @@ def assert_light_chrome(crate: Path) -> None:
         fail("#277: keep #276 local density (`data-density` / fontDensity)")
 
 
+# #278 — finish en+tr chrome (Review / Import / Doctor). Additive;
+# do not rewrite #131 assert_chrome_locale.
+_PANE_CHROME_FILES = (
+    "ReviewPane.svelte",
+    "ImportPane.svelte",
+    "DoctorPane.svelte",
+)
+_PANE_CHROME_PHRASES = (
+    ("ReviewPane.svelte", "Nothing to review", "Review empty-state title"),
+    ("ReviewPane.svelte", "Name-only WhatsApp matches", "Review empty-state body"),
+    ("ReviewPane.svelte", "Loading review queue", "Review loading"),
+    ("ReviewPane.svelte", "Link these people", "Review confirm “Link these people”"),
+    ("ReviewPane.svelte", "Stop suggesting", "Review confirm “Stop suggesting”"),
+    ("ReviewPane.svelte", "Undo last link", "Review undo / confirm “Undo last link”"),
+    ("ReviewPane.svelte", "Undoing", "Review “Undoing…”"),
+    ("ImportPane.svelte", "No file selected", "Import empty-state title"),
+    ("ImportPane.svelte", "Pick a WhatsApp ZIP", "Import empty-state body"),
+    ("ImportPane.svelte", "Pick file", "Import “Pick file”"),
+    ("DoctorPane.svelte", "No doctor issues", "Doctor empty-state title"),
+    ("DoctorPane.svelte", "Unreferenced files still need GC", "Doctor empty-state body"),
+    ("DoctorPane.svelte", "Run integrity check", "Doctor integrity confirm"),
+    ("DoctorPane.svelte", "Rebuild search index", "Doctor rebuild confirm"),
+    ("DoctorPane.svelte", "Garbage-collect unused CAS", "Doctor GC confirm"),
+)
+_PANE_EN_REQUIRED = (
+    "Nothing to review",
+    "Name-only WhatsApp matches",
+    "Loading review queue",
+    "Link these people",
+    "Stop suggesting",
+    "Undo last link",
+    "No file selected",
+    "Pick a WhatsApp ZIP",
+    "Pick file",
+    "No doctor issues",
+    "Unreferenced files still need GC",
+    "Run integrity check",
+    "Rebuild search index",
+    "Garbage-collect unused CAS",
+)
+_PANE_BACKUP_LEFTOVER = (
+    "There is no separate backup command",
+    "Do not keep the",
+    "Time Machine",
+)
+_DOCS_PANE_CHROME_LOCALE = re.compile(
+    r"("
+    r"Review.{0,80}Import.{0,80}Doctor.{0,100}"
+    r"(?:chrome.{0,60})?(?:follows.{0,40}OS|OS language|en\s*/\s*tr)"
+    r"|"
+    r"(?:Review|Import|Doctor).{0,24}(?:/|,).{0,24}"
+    r"(?:Review|Import|Doctor).{0,24}(?:/|,).{0,24}"
+    r"(?:Review|Import|Doctor).{0,100}"
+    r"(?:chrome.{0,60})?(?:follows.{0,40}OS|OS language|en\s*/\s*tr)"
+    r")",
+    re.I | re.S,
+)
+_DOCS_PANE_BODIES_STAY = re.compile(
+    r"("
+    r"bodies stay as imported"
+    r"|message bodies stay as imported"
+    r"|bodies stay as (?:imported|stored)"
+    r"|bodies? (?:are|stay|remain) (?:as )?(?:imported|stored|unchanged)"
+    r")",
+    re.I,
+)
+_LOCALE_FETCH = re.compile(
+    r"\bfetch\s*\(\s*[`'\"`][^`'\"`]{0,160}"
+    r"(?:locale|locales|i18n|l10n|en\.json|tr\.json)",
+    re.I,
+)
+_THIRD_PACK_STEM = re.compile(
+    r"(?:^|[._-])(de|fr|es|it|nl|pt|ru|ja|zh|ar|ko)(?:[-_][A-Za-z]+)?$",
+    re.I,
+)
+
+
+def _pane_file(crate: Path, name: str) -> Path:
+    return crate / "web" / "lib" / name
+
+
+def _svelte_attr_raw(tag: str, name: str) -> str:
+    m = re.search(
+        rf"""\b{re.escape(name)}\s*=\s*(
+            \{{(?:[^{{}}]|\{{[^{{}}]*\}})*\}}
+            |\"[^\"]*\"
+            |'[^']*'
+        )""",
+        tag,
+        re.X | re.S,
+    )
+    return m.group(1) if m else ""
+
+
+def _split_first_arg(args: str) -> str:
+    i = 0
+    n = len(args)
+    depth = 0
+    while i < n:
+        nxt = _js_next(args, i)
+        if nxt != i:
+            i = nxt
+            continue
+        c = args[i]
+        if c in "({[":
+            depth += 1
+        elif c in ")}]":
+            depth -= 1
+        elif c == "," and depth == 0:
+            return args[:i].strip()
+        i += 1
+    return args.strip()
+
+
+def _call_first_args(src: str, name: str) -> list[str]:
+    out: list[str] = []
+    for m in re.finditer(rf"\b{re.escape(name)}\s*\(", src):
+        prefix = src[max(0, m.start() - 80) : m.start()]
+        if re.search(r"(?:async\s+)?function\s+$", prefix):
+            continue
+        if re.search(r"(?:const|let|var)\s+$", prefix):
+            continue
+        args = _call_arg(src, m.end() - 1)
+        if args.strip():
+            out.append(_split_first_arg(args))
+    return out
+
+
+def _chrome_pack_entries(text: str) -> dict[str, str]:
+    """Parse `key: "value"` entries from a chrome pack object."""
+    blob = text
+    m = re.search(
+        r"export\s+const\s+(?:en|tr)\s*(?::\s*\w+\s*)?=\s*\{",
+        text,
+    )
+    if m:
+        brace = text.find("{", m.start())
+        end = _match_closer(text, brace)
+        if end > brace:
+            blob = text[brace + 1 : end]
+    entries: dict[str, str] = {}
+    i = 0
+    n = len(blob)
+    key_rx = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*:")
+    while i < n:
+        km = key_rx.search(blob, i)
+        if not km:
+            break
+        j = km.end()
+        while j < n and blob[j] in " \t\n\r":
+            j += 1
+        if j >= n or blob[j] not in "'\"`":
+            i = km.end()
+            continue
+        end = _js_next(blob, j)
+        raw = blob[j + 1 : end - 1] if end > j + 1 else ""
+        entries[km.group(1)] = (
+            raw.replace("\\n", "\n")
+            .replace("\\t", "\t")
+            .replace('\\"', '"')
+            .replace("\\'", "'")
+            .replace("\\\\", "\\")
+        )
+        i = end
+    return entries
+
+
+def _keys_for_phrase(entries: dict[str, str], phrase: str) -> list[str]:
+    return [k for k, v in entries.items() if phrase in v]
+
+
+def _pane_chrome_phrases(panes: dict[str, str]) -> list[str]:
+    leftover = [
+        label for name, phrase, label in _PANE_CHROME_PHRASES if phrase in panes[name]
+    ]
+    if re.search(r">\s*Cancel\s*<", panes["ImportPane.svelte"]):
+        leftover.append("Import Cancel")
+    return leftover
+
+
+def _pane_chrome_unwired(
+    panes: dict[str, str], helpers: set[str]
+) -> list[str]:
+    """EmptyState / ask() / undo / pick / cancel still not going through t()."""
+    leftover: list[str] = []
+    for name in _PANE_CHROME_FILES:
+        src = panes[name]
+        for block in _empty_state_blocks(src):
+            for attr in ("title", "body", "actionLabel"):
+                val = _svelte_attr_raw(block, attr)
+                if val and not _markup_uses_chrome_helper(val, helpers, src):
+                    leftover.append(f"{name.split('.', 1)[0]} EmptyState {attr}")
+    for name in ("ReviewPane.svelte", "DoctorPane.svelte"):
+        src = panes[name]
+        asks = _call_first_args(src, "ask")
+        if not asks:
+            leftover.append(
+                f"{name.split('.', 1)[0]} ConfirmDialog titles "
+                "(ask() first arg must be t())"
+            )
+            continue
+        for arg in asks:
+            if not _markup_uses_chrome_helper(arg, helpers, src):
+                leftover.append(
+                    f"{name.split('.', 1)[0]} ConfirmDialog title {arg[:48]}"
+                )
+    review = panes["ReviewPane.svelte"]
+    undo_inners = _control_inners(review, re.compile(r"data-review-undo"))
+    if not undo_inners and re.search(r"Undo last link|requestUndo", review):
+        undo_inners = _control_inners(review, re.compile(r"requestUndo"))
+    if undo_inners and not any(
+        _markup_uses_chrome_helper(inner, helpers, review) for inner in undo_inners
+    ):
+        leftover.append("Review undo label")
+    imp = panes["ImportPane.svelte"]
+    pick_inners = _control_inners(imp, re.compile(r"pick\(\s*false\s*\)"))
+    if pick_inners and not any(
+        _markup_uses_chrome_helper(inner, helpers, imp) for inner in pick_inners
+    ):
+        leftover.append("Import Pick file button")
+    cancel_inners = _control_inners(imp, re.compile(r"data-import-cancel"))
+    if not cancel_inners:
+        leftover.append("Import Cancel")
+    elif not any(
+        _markup_uses_chrome_helper(inner, helpers, imp) for inner in cancel_inners
+    ):
+        leftover.append("Import Cancel")
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in leftover:
+        if item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
+
+
+def assert_chrome_locale_panes(crate: Path) -> None:
+    """#278: Review / Import / Doctor remaining chrome uses t().
+
+    Empty states, ConfirmDialog titles (Link these people / Stop suggesting /
+    Undo last link / doctor integrity / rebuild / GC), undo label, Pick file,
+    and Import Cancel go through t(). New keys exist in both packs; tr values
+    are not identical English copies. No t(body_text|snippet|display_name|
+    preview). detectLocale stays OS-first (tr* → tr). No third pack. No fetch
+    of locale files. Keep #131 Arşiv aç / Doktor. Docs: Review / Import /
+    Doctor chrome follows OS language (en/tr); bodies stay as imported.
+    Do not rewrite #131.
+    """
+    root = repo_root()
+    panes: dict[str, str] = {}
+    for name in _PANE_CHROME_FILES:
+        path = _pane_file(crate, name)
+        if not path.is_file():
+            fail(
+                f"#278: {name} required "
+                "(Review / Import / Doctor remaining chrome uses t())"
+            )
+        panes[name] = path.read_text()
+    logic = _web_logic(crate)
+    cleaned = _without_comments(logic)
+    helpers = _chrome_helper_names(logic)
+    en_text = _chrome_en_text(crate)
+    tr_text = _chrome_tr_text(crate)
+    i18n_path = crate / "web" / "lib" / "i18n.ts"
+    i18n = i18n_path.read_text() if i18n_path.is_file() else ""
+
+    # 1) Remaining Review / Import / Doctor chrome uses t() — not hardcoded English.
+    leftover = _pane_chrome_phrases(panes)
+    if leftover:
+        fail(
+            "#278: Review / Import / Doctor remaining chrome must use t() — "
+            "still hardcoded English: " + "; ".join(leftover)
+        )
+    unwired = _pane_chrome_unwired(panes, helpers)
+    if unwired:
+        fail(
+            "#278: Review / Import / Doctor remaining chrome must use t() "
+            "(empty states, ConfirmDialog titles, undo, Pick file, Import Cancel): "
+            + "; ".join(unwired)
+        )
+
+    # 2) Those strings live in the en pack; same keys in tr; tr is not an English copy.
+    if not en_text.strip() or not tr_text.strip():
+        fail("#278: en + tr chrome packs required (do not drop #131 packs)")
+    en_entries = _chrome_pack_entries(en_text)
+    tr_entries = _chrome_pack_entries(tr_text)
+    if not en_entries or not tr_entries:
+        fail("#278: could not parse chrome pack key/value entries from en.ts / tr.ts")
+    missing_en = [p for p in _PANE_EN_REQUIRED if not _keys_for_phrase(en_entries, p)]
+    if "Cancel" not in en_entries.values() and not _keys_for_phrase(en_entries, "Cancel"):
+        missing_en.append("Cancel")
+    if missing_en:
+        fail(
+            "#278: new Review / Import / Doctor chrome keys must exist in the en pack "
+            f"(missing values: {', '.join(missing_en)})"
+        )
+    extra_en = set(en_entries) - set(tr_entries)
+    extra_tr = set(tr_entries) - set(en_entries)
+    if extra_en or extra_tr:
+        bits: list[str] = []
+        if extra_en:
+            bits.append("in en only: " + ", ".join(sorted(extra_en)))
+        if extra_tr:
+            bits.append("in tr only: " + ", ".join(sorted(extra_tr)))
+        fail(
+            "#278: same ChromeKey on both en and tr packs — " + "; ".join(bits)
+        )
+    copied: list[str] = []
+    seen_keys: set[str] = set()
+    for phrase in (*_PANE_EN_REQUIRED, "Cancel"):
+        for key in _keys_for_phrase(en_entries, phrase):
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            ev = en_entries.get(key, "").strip()
+            tv = tr_entries.get(key, "").strip()
+            if not tv:
+                copied.append(f"{key} missing in tr")
+            elif tv == ev:
+                copied.append(key)
+    if copied:
+        fail(
+            "#278: for new Review / Import / Doctor keys, tr values must not be "
+            "identical English copies: " + ", ".join(copied)
+        )
+
+    # 3) Never t(body_text|snippet|display_name|preview).
+    body_blob = logic + "\n" + "\n".join(panes[n] for n in _PANE_CHROME_FILES)
+    if _chrome_helper_on_body(body_blob, helpers):
+        fail(
+            "#278: do not pass body_text / snippet / display_name / preview "
+            "through t() — message bodies stay as imported"
+        )
+
+    # 4) detectLocale still OS-first (tr* → tr). No third pack. No fetch of locale files.
+    detect = _function_body(i18n, "detectLocale") or _function_body(cleaned, "detectLocale")
+    resolver = detect or _locale_resolver_surface(cleaned) or _locale_resolver_surface(logic)
+    if not _OS_LOCALE_READ.search(resolver) and not _OS_LOCALE_READ.search(i18n):
+        fail(
+            "#278: detectLocale must stay OS-first "
+            "(navigator.language / navigator.languages / Intl / Tauri) — "
+            "tr* → tr, else en"
+        )
+    if not _TR_STAR_PICK.search(resolver):
+        fail("#278: detectLocale must still map OS locale tr* → tr")
+    if not _EN_DEFAULT_PICK.search(resolver):
+        fail("#278: detectLocale must still default every non-tr OS locale to en")
+    third: list[str] = []
+    locale_dir = crate / "web" / "lib" / "locales"
+    if locale_dir.is_dir():
+        for p in sorted(locale_dir.iterdir()):
+            if not p.is_file() or p.name.endswith(".d.ts"):
+                continue
+            if p.suffix not in {".ts", ".json", ".toml"}:
+                continue
+            stem = p.stem.lower()
+            if stem in {"en", "tr", "index"}:
+                continue
+            third.append(str(p.relative_to(crate)))
+    for p in _web_pack_candidates(crate):
+        lang = _stem_chrome_lang(p)
+        if lang and lang not in {"en", "tr"}:
+            rel = str(p.relative_to(crate))
+            if rel not in third:
+                third.append(rel)
+        elif _THIRD_PACK_STEM.search(p.stem):
+            rel = str(p.relative_to(crate))
+            if rel not in third:
+                third.append(rel)
+    if third:
+        fail(
+            "#278: no third locale pack — en + tr only. Found: " + ", ".join(third)
+        )
+    fetch_hits: list[str] = []
+    for label, src in (
+        ("i18n.ts", i18n),
+        ("en pack", en_text),
+        ("tr pack", tr_text),
+        ("ReviewPane", panes["ReviewPane.svelte"]),
+        ("ImportPane", panes["ImportPane.svelte"]),
+        ("DoctorPane", panes["DoctorPane.svelte"]),
+    ):
+        surface = _without_comments(src)
+        if _FETCH_CALL.search(surface) and (
+            label in {"i18n.ts", "en pack", "tr pack"} or _LOCALE_FETCH.search(surface)
+        ):
+            fetch_hits.append(label)
+    if _LOCALE_FETCH.search(cleaned):
+        fetch_hits.append("web logic")
+    if fetch_hits:
+        fail(
+            "#278: no fetch( of locale files — chrome packs are bundled. Found in: "
+            + ", ".join(dict.fromkeys(fetch_hits))
+        )
+
+    # 5) Keep #131 Arşiv aç / Doktor.
+    if "Arşiv aç" not in tr_text:
+        fail('#278: keep #131 “Arşiv aç” in the tr pack')
+    if "Doktor" not in tr_text:
+        fail('#278: keep #131 “Doktor” in the tr pack')
+
+    # Leftover Doctor backup sentences (remaining chrome, after the listed panes).
+    doctor = panes["DoctorPane.svelte"]
+    backup_left = [p for p in _PANE_BACKUP_LEFTOVER if p in doctor]
+    if backup_left:
+        fail(
+            "#278: leftover Doctor backup chrome must use t() — still hardcoded: "
+            + ", ".join(backup_left)
+        )
+
+    # 6) Docs: Review / Import / Doctor chrome follows OS language; bodies stay imported.
+    docs = root / "docs" / "user" / "app.md"
+    if not docs.is_file():
+        fail(
+            "#278: docs/user/app.md required — Review / Import / Doctor chrome "
+            "follows OS language (en/tr); bodies stay as imported"
+        )
+    dtxt = docs.read_text()
+    if not _DOCS_PANE_CHROME_LOCALE.search(dtxt):
+        fail(
+            "#278: docs/user/app.md must say Review / Import / Doctor chrome "
+            "follows OS language (en/tr)"
+        )
+    if not _DOCS_PANE_BODIES_STAY.search(dtxt):
+        fail(
+            "#278: docs/user/app.md must say message bodies stay as imported"
+        )
+
+
 def main() -> None:
     root = repo_root()
     crate = root / "crates" / "interlace-tauri"
@@ -31777,6 +32221,7 @@ def main() -> None:
     assert_first_run(crate)
     assert_font_density(crate)
     assert_light_chrome(crate)
+    assert_chrome_locale_panes(crate)
     assert_virtualized_timeline(crate)
     assert_variable_height_timeline(crate)
     assert_search_platform_select(crate)
