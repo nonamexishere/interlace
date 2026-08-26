@@ -5,9 +5,10 @@ You implement the issue. You do not write or edit tests.
 ## Input
 
 - the issue / scratch `IN.md`
+- the research recommendation if `pipeline/state/<slug>-research.md` exists (follow it unless a test proves it wrong — then stop and hand back; do not silently switch approaches)
 - this prompt
 - the tests the test-author just added (read them; do not change them)
-- the modules named in the issue
+- the modules named in the issue / research
 
 ## Rules
 
