@@ -1,35 +1,19 @@
 """Review queue chrome asserts. Imported by gate_tauri.py."""
 from __future__ import annotations
-
 import re
 from pathlib import Path
-
-from common import (
-    fail,
-    repo_root,
-)
-
+from common import fail, repo_root
 from tauri_gate.scan import (
-    CSP,
-    _APPEARANCE_MENU_LABEL,
-    _APPEARANCE_SCRIM_NAMES,
-    _APPEARANCE_THEME_UI,
-    _STATUS_WARNING_NAMES,
-    _ancestor_tags,
-    _contrast_dark_blob,
-    _contrast_light_blob,
-    _css_var,
-    _expand_fn_calls,
-    _function_body,
-    _hue_surface,
-    _js_next,
-    _match_closer,
-    _open_tag_before,
-    _product_svelte,
-    _review_if_return_conds,
-    _svelte_markup,
-    _ts_fn_body,
-    _without_comments,
+    CSP, _APPEARANCE_MENU_LABEL, _APPEARANCE_SCRIM_NAMES, _STATUS_WARNING_NAMES,
+    _ancestor_tags, _contrast_dark_blob, _css_var, _expand_fn_calls,
+    _function_body, _js_next, _match_closer, _open_tag_before,
+    _product_svelte, _svelte_markup, _ts_fn_body, _without_comments,
+)
+from tauri_gate.import_boot import (
+    _contrast_light_blob, _review_if_return_conds,
+)
+from tauri_gate.status_toasts import (
+    _APPEARANCE_THEME_UI, _hue_surface,
 )
 
 
