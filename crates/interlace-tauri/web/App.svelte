@@ -149,7 +149,18 @@
 
   const SIDEBAR_PREF = "interlace.peopleSidebarCollapsed";
   const DENSITY_PREF = "interlace.density";
+  const LAST_VIEW_PREF = "interlace.lastView";
+  const LAST_PERSON_PREF = "interlace.lastPersonId";
+  type LastView = "people" | "search" | "review" | "import" | "doctor";
+  const LAST_VIEWS: readonly LastView[] = [
+    "people",
+    "search",
+    "review",
+    "import",
+    "doctor",
+  ];
   type Density = "default" | "comfortable";
+  let sessionRestored = false;
   let userCollapsed = $state(false);
   let density = $state<Density>("default");
   let narrow = $state(false);
@@ -178,6 +189,34 @@
     // Comfortable changes bubble heights; stale rowHeights jump a virtualized list.
     clearPendingMeasures();
     rowHeights = {};
+  }
+
+  function persistLastView() {
+    localStorage.setItem(LAST_VIEW_PREF, view);
+  }
+
+  function persistLastPerson(id: number) {
+    localStorage.setItem(LAST_PERSON_PREF, String(id));
+  }
+
+  $effect(() => {
+    void view;
+    if (!sessionRestored) return;
+    persistLastView();
+  });
+
+  function restoreLastSession() {
+    if (sessionRestored) return;
+    sessionRestored = true;
+    const rawView = localStorage.getItem(LAST_VIEW_PREF);
+    view = LAST_VIEWS.includes(rawView as LastView)
+      ? (rawView as LastView)
+      : "people";
+    const rawId = localStorage.getItem(LAST_PERSON_PREF);
+    const id = rawId ? Number(rawId) : NaN;
+    if (Number.isFinite(id) && people.some((p) => p.id === id)) {
+      void selectPerson(id);
+    }
   }
 
   function syncNarrow() {
@@ -787,6 +826,7 @@
       const next = await api.people();
       if (gen !== peopleGen) return;
       people = next;
+      restoreLastSession();
     } catch (e) {
       if (gen === peopleGen) showErr(e);
     } finally {
@@ -953,6 +993,7 @@
     // Newest-first API page; `before` is the oldest dated row already on screen.
     const before = append ? oldestSentAt(timeline) : null;
     if (append && !before) return;
+    if (!append) persistLastPerson(id);
 
     if (!append && id !== selectedId) {
       showPersonChrome = false;
