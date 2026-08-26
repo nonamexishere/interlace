@@ -5,13 +5,13 @@ Canonical in-repo copy of issue **#52**. Work top-down. One issue → one PR
 reviewer; parent chat sequences those roles as separate agents; CI is the gate).
 
 Do **not** start Phase 1.1 (#57–#69) or Phase 3/4 (#72–#82) unprompted.
-Phase 2.1 is **done**. Phase 2.2 polish is **done**.
+Phase 2.1 is **done**. Phase 2.2 polish is **done**. Phase 2.3 coding is **done**.
 
 ## Now
 
 | What | Notes |
 | --- | --- |
-| Phase 2.3 | Epic [#264](https://github.com/nonamexishere/interlace/issues/264). **#265** / [PR #282](https://github.com/nonamexishere/interlace/pull/282), **#266** / [PR #283](https://github.com/nonamexishere/interlace/pull/283), **#267** / [PR #285](https://github.com/nonamexishere/interlace/pull/285), **#268** / [PR #286](https://github.com/nonamexishere/interlace/pull/286), **#269** / [PR #287](https://github.com/nonamexishere/interlace/pull/287), **#270** / [PR #288](https://github.com/nonamexishere/interlace/pull/288), **#271** / [PR #289](https://github.com/nonamexishere/interlace/pull/289), **#272** / [PR #290](https://github.com/nonamexishere/interlace/pull/290), **#273** / [PR #291](https://github.com/nonamexishere/interlace/pull/291), **#274** / [PR #292](https://github.com/nonamexishere/interlace/pull/292), **#275** / [PR #293](https://github.com/nonamexishere/interlace/pull/293), **#276** / [PR #294](https://github.com/nonamexishere/interlace/pull/294), **#277** / [PR #295](https://github.com/nonamexishere/interlace/pull/295), **#278** / [PR #296](https://github.com/nonamexishere/interlace/pull/296), **#297** / [PR #298](https://github.com/nonamexishere/interlace/pull/298), and **#279** / [PR #299](https://github.com/nonamexishere/interlace/pull/299) done. **#300** in flight; next coding is whatever remains on **#264**. Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*`. |
+| Phase 2.3 | Epic [#264](https://github.com/nonamexishere/interlace/issues/264) / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8) **closed**. Coding done (#265–#279 / #297 / #300, PRs #282–#301). First notarized `app-v*` is not cut. Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*`. |
 | Phase 2.2 | Epic [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7). Normative [`UI-DESIGN.md`](../design/UI-DESIGN.md). **Done** (#198–#222 / PRs #225–#262). |
 | Desktop app | **`app-v0.1.2` shipped** ([release](https://github.com/nonamexishere/interlace/releases/tag/app-v0.1.2)). Ask before another `app-v*`. |
 | crates.io | Published **0.1.1**. Do not `cargo publish` / `v*` without asking. |
@@ -21,6 +21,7 @@ Phase 2.1 is **done**. Phase 2.2 polish is **done**.
 - Phase 1 epic [#1](https://github.com/nonamexishere/interlace/issues/1) — CLI 0.1.0 / 0.1.1. Phase 1 CLI milestone closed.
 - Phase 2 epic [#37](https://github.com/nonamexishere/interlace/issues/37) — UI0–UI8.
 - Phase 2.1 epic [#108](https://github.com/nonamexishere/interlace/issues/108) and [milestone 6](https://github.com/nonamexishere/interlace/milestone/6) — chat-shaped archive UI (through #136 plus #170 / #184).
+- Phase 2.3 epic [#264](https://github.com/nonamexishere/interlace/issues/264) and [milestone 8](https://github.com/nonamexishere/interlace/milestone/8) — dogfood (perf, cancel, notarize wired, reading). Coding done.
 - Hygiene [#52](https://github.com/nonamexishere/interlace/issues/52) / [#84](https://github.com/nonamexishere/interlace/issues/84) — this roadmap + satellite README redirects ([mirrors.md](mirrors.md)).
 - First unsigned app tag **`app-v0.1.1`**.
 

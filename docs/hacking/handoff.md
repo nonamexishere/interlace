@@ -1,6 +1,6 @@
 # Agent / session handoff
 
-**Date:** 2026-08-26. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
+**Date:** 2026-08-27. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -34,9 +34,10 @@ HTTP client (cargo-deny bans `reqwest`/`hyper`/`tokio` on core+cli; Tauri may
 use `tokio` without `net`). Phase 1 = CLI; Phase 2 = Svelte 5 desktop UI
 (UI0–UI8 done). **Phase 2.1 is closed** (epic #108, milestone 6). First
 unsigned app release is **`app-v0.1.1`**. **Phase 2.2 polish is done.**
-**Active product track: Phase 2.3** (epic **#264**). **#265** / PR **#282**,
-#266 / PR **#283**, **#267** / PR **#285**, **#268** / PR **#286**,
-**#269** / PR **#287**, **#270** / PR **#288**, **#271** / PR **#289**, **#272** / PR **#290**, **#273** / PR **#291**, **#274** / PR **#292**, **#275** / PR **#293**, **#276** / PR **#294**, **#277** / PR **#295**, **#278** / PR **#296**, and **#297** / PR **#298** are **done**. **#279** / PR **#299** done. **#300** in flight; next coding is whatever remains on **#264**.
+**Phase 2.3 coding is done** (epic **#264** / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8) closed).
+Children **#265–#279**, **#297**, **#300** (PRs **#282–#301**) are done.
+No active product track unless Mustafa picks one. Do not start 1.1 / 3 / 4.
+Ask before the first notarized `app-v*` (#267 is wired; that tag is not cut).
 Normative:
 [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md). Do not start 1.1 / 3 / 4.
 
@@ -88,18 +89,12 @@ for the *next* `app-v*` tag; that tag is **not** cut. Ask before another
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: this PR landing **#300**. After
-merge, `master` is that merge commit. Tag **`app-v0.1.2`** (last shipped;
-still unsigned). Epic **#108**, milestone 6, and the Phase 1 CLI milestone
-are **closed**. Phase 2.2 polish (#197 / #219–#222) is **done**. Phase **2.3**
-(epic **#264**): **#265** / PR **#282**, **#266** / PR **#283**,
-**#267** / PR **#285**, **#268** / PR **#286**, **#269** / PR **#287**,
-**#270** / PR **#288**, **#271** / PR **#289**, **#272** / PR **#290**,
-**#273** / PR **#291**, **#274** / PR **#292**, **#275** / PR **#293**,
-**#276** / PR **#294**, **#277** / PR **#295**, **#278** / PR **#296**,
-**#297** / PR **#298**, and **#279** / PR **#299** done. **#300** in flight;
-next coding is whatever remains on **#264**.
-Re-check with `git log -1` / `gh pr list`.
+HEAD when this was rewritten: this PR marking **#264** closed. After
+merge, `master` is that docs commit. Tag **`app-v0.1.2`** (last shipped;
+still unsigned). Epic **#108**, milestone 6, the Phase 1 CLI milestone,
+Phase 2.2 (#197), and Phase **2.3** (epic **#264** / milestone 8) are
+**closed**. #265–#279 / #297 / #300 (PRs #282–#301) done. First notarized
+`app-v*` is not cut. Re-check with `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
 
@@ -226,10 +221,13 @@ Phase 2.1 milestone (#6): **closed**.
 | #277 / PR #295 | Leftover chrome readable in system light; named `--chrome-*` vars; dark archival |
 | #278 / PR #296 | Review / Import / Doctor chrome in en+tr packs; bodies stay as imported |
 | #297 / PR #298 | Researcher role before test-author |
+| #279 / PR #299 | Split `gate_tauri.py` asserts into `tauri_gate/` |
+| #300 / PR #301 | `tauri_gate` buckets under ~1 200 lines |
 
-## Open — product now (Phase 2.3)
+## Open — product now
 
-Epic **#264**. Phase 2.2 polish (#197) is **done**. Normative
+Phase 2.3 coding is **done** (epic **#264** / milestone 8 closed). Phase 2.2
+polish (#197) is **done**. Normative
 [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md).
 Do **not** start Phase 1.1 (#57–#69) or Phase 3/4 (#72–#82). Prefer one
 issue → one PR; thin chrome still uses the loop when load-bearing
@@ -238,11 +236,11 @@ names helpers, files, and must-IDs.
 
 ### Suggested next
 
-1. **#300** in flight (split `tauri_gate/` buckets under ~1k lines).
-Next coding is whatever remains on **#264**.
-Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*` tag.
+1. No open Phase 2.3 product ticket. File from dogfood if something hurts.
+   Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*` tag.
 
-Full board: issue **#264**. Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7).
+Phase 2.3 archive: [#264](https://github.com/nonamexishere/interlace/issues/264) / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8).
+Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7).
 
 ### Open — parked (not product coding)
 
@@ -253,9 +251,7 @@ Full board: issue **#264**. Phase 2.2 archive: [#197](https://github.com/nonamex
 
 ## Recommended next steps
 
-1. **#300** in flight (split `tauri_gate/` buckets under ~1k lines).
-   Next coding is whatever remains on **#264**.
-   Do not start 1.1 / P3 / P4.
+1. Phase 2.3 coding is done. Do not start 1.1 / P3 / P4.
 2. Last shipped app tag is **`app-v0.1.2`** (unsigned). Workflow can
    Developer ID + notarize the next `app-v*` once Apple secrets exist.
    Ask before another `app-v*` / `v*` / crates.io.
@@ -331,9 +327,9 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > load-bearing. Skip researcher only when the issue already names helpers,
 > files, and must-IDs. Do not spawn agents from a child. Ask before
 > commit / push / merge.
-> Product track: Phase 2.3 (epic #264). Read
-> `docs/design/UI-DESIGN.md`. **#300** in flight; next coding is
-> whatever remains on **#264**. #265–#279 and #297 done (#279 / PR #299).
+> Phase 2.3 coding is done (epic #264 / milestone 8 closed). Read
+> `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,
+> #297, #300 done (#300 / PR #301).
 > Orchestrator does not implement product code. Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag (`app-v0.1.2` is current; first notarized tag is not cut). After
