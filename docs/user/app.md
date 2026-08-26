@@ -107,7 +107,8 @@ Review, and Doctor. About states the app is offline and not encrypted at rest
 (FileVault). There is no Check for Updates item.
 
 UI chrome (buttons, nav, empty states, Doctor) follows the OS language
-(`en` / `tr`, first supported preference). A later `tr` fallback does not
+(`en` / `tr`, first supported preference). Review / Import / Doctor chrome
+follows OS language (en/tr). A later `tr` fallback does not
 override an earlier `en`. Message bodies stay as imported.
 
 Opening an archive is **not blocked on hashing `cas/`**. People (status and

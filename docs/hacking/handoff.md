@@ -34,7 +34,7 @@ use `tokio` without `net`). Phase 1 = CLI; Phase 2 = Svelte 5 desktop UI
 unsigned app release is **`app-v0.1.1`**. **Phase 2.2 polish is done.**
 **Active product track: Phase 2.3** (epic **#264**). **#265** / PR **#282**,
 #266 / PR **#283**, **#267** / PR **#285**, **#268** / PR **#286**,
-**#269** / PR **#287**, **#270** / PR **#288**, **#271** / PR **#289**, **#272** / PR **#290**, **#273** / PR **#291**, **#274** / PR **#292**, **#275** / PR **#293**, and **#276** / PR **#294** are **done**. **#277** in flight; next coding **#278**.
+**#269** / PR **#287**, **#270** / PR **#288**, **#271** / PR **#289**, **#272** / PR **#290**, **#273** / PR **#291**, **#274** / PR **#292**, **#275** / PR **#293**, **#276** / PR **#294**, and **#277** / PR **#295** are **done**. **#278** in flight; next coding **#279**.
 Normative:
 [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md). Do not start 1.1 / 3 / 4.
 
@@ -86,15 +86,16 @@ for the *next* `app-v*` tag; that tag is **not** cut. Ask before another
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: this PR landing **#277**. After
+HEAD when this was rewritten: this PR landing **#278**. After
 merge, `master` is that merge commit. Tag **`app-v0.1.2`** (last shipped;
 still unsigned). Epic **#108**, milestone 6, and the Phase 1 CLI milestone
 are **closed**. Phase 2.2 polish (#197 / #219–#222) is **done**. Phase **2.3**
 (epic **#264**): **#265** / PR **#282**, **#266** / PR **#283**,
 **#267** / PR **#285**, **#268** / PR **#286**, **#269** / PR **#287**,
 **#270** / PR **#288**, **#271** / PR **#289**, **#272** / PR **#290**,
-**#273** / PR **#291**, **#274** / PR **#292**, **#275** / PR **#293**, and **#276** / PR **#294** done. **#277** in flight;
-next coding **#278**.
+**#273** / PR **#291**, **#274** / PR **#292**, **#275** / PR **#293**,
+**#276** / PR **#294**, and **#277** / PR **#295** done. **#278** in flight;
+next coding **#279**.
 Re-check with `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
@@ -219,6 +220,7 @@ Phase 2.1 milestone (#6): **closed**.
 | #274 / PR #292 | Reveal archive folder in Finder from Doctor / People |
 | #275 / PR #293 | First-run one screen — offline / no account, required region, Create + Open; optional owner fields behind More |
 | #276 / PR #294 | Local Default / Comfortable density — enlarges bubble bodies without a reload |
+| #277 / PR #295 | Leftover chrome readable in system light; named `--chrome-*` vars; dark archival |
 
 ## Open — product now (Phase 2.3)
 
@@ -230,7 +232,7 @@ load-bearing (a11y, titlebar, search).
 
 ### Suggested next
 
-1. **#277** in flight (leftover chrome readable in system light; named `--chrome-*` vars; dark archival). Next coding **#278**.
+1. **#278** in flight (finish en+tr chrome — Review / Import / Doctor). Next coding **#279**.
 Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*` tag.
 
 Full board: issue **#264**. Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7).
@@ -244,7 +246,7 @@ Full board: issue **#264**. Phase 2.2 archive: [#197](https://github.com/nonamex
 
 ## Recommended next steps
 
-1. **#277** in flight (leftover chrome readable in system light; named `--chrome-*` vars; dark archival). Next coding **#278**.
+1. **#278** in flight (finish en+tr chrome — Review / Import / Doctor). Next coding **#279**.
    Do not start 1.1 / P3 / P4.
 2. Last shipped app tag is **`app-v0.1.2`** (unsigned). Workflow can
    Developer ID + notarize the next `app-v*` once Apple secrets exist.
@@ -320,8 +322,8 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > test-author → impl → reviewer as **separate agents** when load-bearing.
 > Do not spawn agents from a child. Ask before commit / push / merge.
 > Product track: Phase 2.3 (epic #264). Read
-> `docs/design/UI-DESIGN.md`. **#277** in flight; next coding **#278**.
-> #265–#276 done (#276 / PR #294).
+> `docs/design/UI-DESIGN.md`. **#278** in flight; next coding **#279**.
+> #265–#277 done (#277 / PR #295).
 > Orchestrator does not implement product code. Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag (`app-v0.1.2` is current; first notarized tag is not cut). After

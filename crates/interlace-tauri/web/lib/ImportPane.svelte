@@ -5,6 +5,7 @@
   import { Label } from "$lib/components/ui/label/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import EmptyState from "./EmptyState.svelte";
+  import { t } from "./i18n";
 
   let {
     onError,
@@ -100,7 +101,7 @@
 </script>
 
 <ScrollArea class="p-4">
-  <h1 class="mb-3 text-xl font-semibold tracking-tight">Import</h1>
+  <h1 class="mb-3 text-xl font-semibold tracking-tight">{t("import")}</h1>
   <p class="mb-4 text-sm text-muted-foreground">
     Folder/file picker only — no URLs. WhatsApp: pick one .zip <em>or</em> a folder of zips.
     Takeout: pick the Takeout directory. Bodies are not dumped here.
@@ -108,9 +109,9 @@
   {#if !path && progress.status !== "running"}
     <div class="mb-4 max-w-lg">
       <EmptyState
-        title="No file selected"
-        body="Pick a WhatsApp ZIP, Takeout folder, mbox, or contacts file. Folder picker only — no URLs."
-        actionLabel="Pick file"
+        title={t("noFileSelected")}
+        body={t("importEmptyBody")}
+        actionLabel={t("pickFile")}
         onAction={() => pick(false)}
       />
     </div>
@@ -134,9 +135,9 @@
       <Label for="loc">Locale (WhatsApp, optional)</Label>
       <Input id="loc" bind:value={locale} placeholder="tr-TR · leave empty to probe" />
     </div>
-    <p class="break-all text-xs text-muted-foreground">{path || "no file selected"}</p>
+    <p class="break-all text-xs text-muted-foreground">{path || t("noFileSelected")}</p>
     <div class="flex flex-wrap gap-2">
-      <Button variant="outline" onclick={() => pick(false)}>Pick file…</Button>
+      <Button variant="outline" onclick={() => pick(false)}>{t("pickFileEllipsis")}</Button>
       <Button variant="outline" onclick={() => pick(true)}>Pick folder…</Button>
       <Button onclick={start} disabled={progress.status === "running"}>Start import</Button>
       {#if progress.status === "running"}
@@ -147,7 +148,7 @@
           aria-describedby="import-cancel-why"
           onclick={cancel}
         >
-          Cancel
+          {t("cancel")}
         </Button>
       {/if}
     </div>
