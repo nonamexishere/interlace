@@ -107,8 +107,7 @@
 <ScrollArea class="p-4">
   <h1 class="mb-1 text-xl font-semibold tracking-tight">{t("doctor")}</h1>
   <p class="mb-4 text-sm text-muted-foreground">
-    Same checks as <code class="text-xs">interlace doctor</code>. This window already holds the
-    archive lock — close it before running doctor in a terminal.
+    {t("doctorPaneLead")}
   </p>
 
   {#if scanning}
@@ -124,9 +123,9 @@
     </div>
   {:else if issues.length === 0}
     <EmptyState
-      title="No doctor issues"
-      body="SQLite, FTS, and referenced CAS blobs look healthy. Unreferenced files still need GC CAS if you want them gone."
-      actionLabel="People"
+      title={t("noDoctorIssues")}
+      body={t("doctorEmptyBody")}
+      actionLabel={t("people")}
       onAction={onGoPeople}
     />
   {:else}
@@ -153,11 +152,11 @@
       disabled={busy || scanning}
       onclick={() =>
         ask(
-          "Run integrity check?",
-          "Read-only PRAGMA integrity_check plus FTS integrity. Does not change messages.",
-          "Check",
+          t("runIntegrityCheck"),
+          t("runIntegrityCheckDesc"),
+          t("integrityCheck"),
           { integrity: true, rebuildFts: false, gcCas: false },
-          "Integrity check finished.",
+          t("integrityCheckFinished"),
         )}
     >
       Integrity
@@ -168,11 +167,11 @@
       disabled={busy || scanning}
       onclick={() =>
         ask(
-          "Rebuild search index?",
-          "Recreates FTS triggers if missing and rebuilds the index. Messages and CAS stay put.",
-          "Rebuild",
+          t("rebuildSearchIndex"),
+          t("rebuildSearchIndexDesc"),
+          t("rebuild"),
           { integrity: false, rebuildFts: true, gcCas: false },
-          "FTS rebuild finished.",
+          t("ftsRebuildFinished"),
         )}
     >
       Rebuild FTS
@@ -183,11 +182,11 @@
       disabled={busy || scanning}
       onclick={() =>
         ask(
-          "Garbage-collect unused CAS files?",
-          "Deletes blobs not referenced by attachments or contact photos. Cannot undo. Close other writers first.",
-          "Delete unused",
+          t("gcUnusedCas"),
+          t("gcUnusedCasDesc"),
+          t("deleteUnused"),
           { integrity: false, rebuildFts: false, gcCas: true },
-          "CAS GC finished.",
+          t("casGcFinished"),
         )}
     >
       GC CAS
@@ -198,17 +197,16 @@
   <section class="mt-8 max-w-xl space-y-2 text-sm">
     <h2 class="font-medium">Backup</h2>
     <p>
-      The folder is the backup unit. Copy <code class="text-xs">INTERLACE.toml</code>,
+      {t("backupUnit")} Copy <code class="text-xs">INTERLACE.toml</code>,
       <code class="text-xs">archive.sqlite*</code>, <code class="text-xs">cas/</code>, and
-      <code class="text-xs">logs/</code>. There is no separate backup command.
+      <code class="text-xs">logs/</code>. {t("noSeparateBackup")}
     </p>
     <p>
-      Not encrypted at rest. FileVault is your encryption. This app does not use SQLCipher and
+      {t("notEncryptedAtRest")} This app does not use SQLCipher and
       does not claim encryption.
     </p>
     <p>
-      Do not keep the <em>live</em> archive in iCloud Drive, Dropbox, or Google Drive. Time Machine
-      of the whole folder is fine after you close this window. See
+      {t("doNotKeepLive")} {t("timeMachineOk")}
       <code class="text-xs">docs/user/backup.md</code>.
     </p>
     <Button variant="outline" size="sm" data-reveal-archive onclick={revealArchive}>

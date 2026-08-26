@@ -7,6 +7,7 @@
   import { Separator } from "$lib/components/ui/separator/index.js";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import EmptyState from "./EmptyState.svelte";
+  import { t } from "./i18n";
 
   let {
     onError,
@@ -102,18 +103,22 @@
     const id = detail.review.id;
     const ids = [...selected];
     const n = ids.length;
-    ask("Link these people?", `Merge ${n} people into one. Messages stay put.`, async () => {
-      resolving = true;
-      try {
-        await api.reviewAccept(id, ids);
-        await reload();
-        void onChanged();
-      } catch (e) {
-        onError(e);
-      } finally {
-        resolving = false;
-      }
-    });
+    ask(
+      t("linkThesePeople"),
+      t("linkThesePeopleDesc").replace("{n}", String(n)),
+      async () => {
+        resolving = true;
+        try {
+          await api.reviewAccept(id, ids);
+          await reload();
+          void onChanged();
+        } catch (e) {
+          onError(e);
+        } finally {
+          resolving = false;
+        }
+      },
+    );
   }
 
   function toggle(pid: number, on: boolean) {
@@ -138,7 +143,7 @@
   function reject() {
     if (resolving || undoing || !detail) return;
     const id = detail.review.id;
-    ask("Stop suggesting this pair?", "These people will not be suggested again.", async () => {
+    ask(t("stopSuggesting"), t("stopSuggestingDesc"), async () => {
       resolving = true;
       try {
         await api.reviewReject(id);
@@ -156,7 +161,7 @@
     const ev = lastUndoable;
     if (!ev || resolving || undoing) return;
     const id = ev.id;
-    ask("Undo last link?", "Reverses the last identity graph change. Messages stay put.", async () => {
+    ask(t("undoLastLinkConfirm"), t("undoLastLinkDesc"), async () => {
       await runUndo(id);
     });
   }
@@ -212,14 +217,14 @@
 </script>
 
 <ScrollArea class="p-4">
-  <h1 class="mb-3 text-xl font-semibold tracking-tight">Review</h1>
+  <h1 class="mb-3 text-xl font-semibold tracking-tight">{t("review")}</h1>
   {#if loading}
-    <p class="text-sm text-muted-foreground">Loading review queue…</p>
+    <p class="text-sm text-muted-foreground">{t("loadingReviewQueue")}</p>
   {:else if rows.length === 0}
     <EmptyState
-      title="Nothing to review"
-      body="Name-only WhatsApp matches show up here. They never auto-merge. Import Contacts if you expect a queue."
-      actionLabel="Import"
+      title={t("nothingToReview")}
+      body={t("reviewEmptyBody")}
+      actionLabel={t("import")}
       onAction={onGoImport}
     />
   {:else}
@@ -250,7 +255,7 @@
         disabled={undoing || resolving}
         onclick={requestUndo}
       >
-        {undoing ? "Undoing…" : "Undo last link"}
+        {undoing ? t("undoing") : t("undoLastLink")}
       </Button>
     </div>
   {/if}
