@@ -85,7 +85,9 @@ After you pick a folder once (**Open existing…** or **Create archive…**), th
 sandboxed `.app` stores a **local security-scoped bookmark** in Application
 Support (`last-archive.bookmark`, next to `config.toml`). Quit and reopen:
 that folder opens again — no picker. Reopen restores the last view and the
-last person if they still exist (localStorage, not iCloud). The CLI-only `last_archive_path` string
+last person if they still exist (localStorage, not iCloud). Reopen restores
+the last window size and position; off-screen (unplugged display) is clamped
+onto a visible work area. The CLI-only `last_archive_path` string
 is **not** enough under the sandbox. If you first used the CLI, then open
 Interlace.app, macOS blocks the folder and the window shows the setup form
 with: “macOS blocked that folder. Use Open existing… once so Interlace can remember it.” Pick the folder once in the app. The bookmark is local only
