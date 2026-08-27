@@ -36,7 +36,7 @@ use `tokio` without `net`). Phase 1 = CLI; Phase 2 = Svelte 5 desktop UI
 unsigned app release is **`app-v0.1.1`**. **Phase 2.2 polish is done.**
 **Phase 2.3 coding is done** (epic **#264** / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8) closed).
 Children **#265–#279**, **#297**, **#300** (PRs **#282–#301**) are done.
-**#306** is in flight (persist window size + position). #305 is done. #303 later; #304 later.
+**#303** is done (this PR: install + changelog match unsigned 2.3). #305 and #306 are done. #304 later.
 Do not start 1.1 / 3 / 4.
 Ask before the first notarized `app-v*` (#267 is wired; that tag is not cut).
 Normative:
@@ -75,7 +75,7 @@ Workflow: one issue → one PR `Fixes #N` → merge when CI jobs **`check`** +
 App holds exclusive flock. Close `interlace-app` / `tauri:dev` before CLI
 `import` / `doctor --integrity` / wipe.
 
-## Snapshot (2026-08-25)
+## Snapshot (2026-08-27)
 
 Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`,
 `v0.1.1` tags). Workspace version is still **0.1.1**. App crate
@@ -90,13 +90,13 @@ for the *next* `app-v*` tag; that tag is **not** cut. Ask before another
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: this PR marking **#264** closed. After
-merge, `master` is that docs commit. Tag **`app-v0.1.2`** (last shipped;
-still unsigned). Epic **#108**, milestone 6, the Phase 1 CLI milestone,
-Phase 2.2 (#197), and Phase **2.3** (epic **#264** / milestone 8) are
-**closed**. #265–#279 / #297 / #300 (PRs #282–#301) done. **#305** done.
-**#306** in flight. #303 later; #304 later. First notarized
-`app-v*` is not cut. Re-check with `git log -1` / `gh pr list`.
+HEAD when this was rewritten: this PR (#303). After merge, `master` is
+that docs commit. Tag **`app-v0.1.2`** (last shipped; still unsigned).
+Epic **#108**, milestone 6, the Phase 1 CLI milestone, Phase 2.2 (#197),
+and Phase **2.3** (epic **#264** / milestone 8) are **closed**.
+#265–#279 / #297 / #300 / #305 / #306 (PRs #282–#301 / #323 / #324) done.
+**#303** done. #304 later. First notarized `app-v*` is not cut.
+Re-check with `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
 
@@ -225,6 +225,9 @@ Phase 2.1 milestone (#6): **closed**.
 | #297 / PR #298 | Researcher role before test-author |
 | #279 / PR #299 | Split `gate_tauri.py` asserts into `tauri_gate/` |
 | #300 / PR #301 | `tauri_gate` buckets under ~1 200 lines |
+| #305 / PR #323 | Reopen on last view and last person (localStorage, not iCloud) |
+| #306 / PR #324 | Persist window size and position; off-screen clamped; skip zoomed |
+| #303 / this PR | User install docs + changelog match unsigned 2.3 (`app-v0.1.2`) |
 
 ## Open — product now
 
@@ -238,8 +241,8 @@ names helpers, files, and must-IDs.
 
 ### Suggested next
 
-1. **#306** in flight — persist the main window size and position.
-2. #303 later. #304 later.
+1. **#304** later — split every product/gate file over 500 lines.
+2. Do not invent a new 2.3 ticket. Parked dogfood UI (#307–#322) only if asked.
 3. Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*` tag.
 
 Phase 2.3 archive: [#264](https://github.com/nonamexishere/interlace/issues/264) / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8).
@@ -254,9 +257,9 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 
 ## Recommended next steps
 
-1. **#306** in flight (persist window size + position). #305 is done. #303 later; #304 later.
+1. **#304** later (split files over 500 lines). #303 / #305 / #306 are done.
 2. Phase 2.3 coding is done. Do not start 1.1 / P3 / P4.
-2. Last shipped app tag is **`app-v0.1.2`** (unsigned). Workflow can
+3. Last shipped app tag is **`app-v0.1.2`** (unsigned). Workflow can
    Developer ID + notarize the next `app-v*` once Apple secrets exist.
    Ask before another `app-v*` / `v*` / crates.io.
 
@@ -333,7 +336,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > commit / push / merge.
 > Phase 2.3 coding is done (epic #264 / milestone 8 closed). Read
 > `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,
-> #297, #300, #305 done. **#306** in flight; #303 later;
+> #297, #300, #303, #305, #306 done.
 > #304 later.
 > Orchestrator does not implement product code. Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`

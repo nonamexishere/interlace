@@ -40,32 +40,36 @@ cargo install interlace --locked
 The app binary is **not** published on crates.io (`interlace-tauri` is
 `publish = false`). `cargo install interlace` stays the CLI (D3).
 
-## Install the .app (notarized)
+## Install the .app
 
 GitHub Releases for tags `app-v*` attach:
 
 - `Interlace.app.zip`
 - `Interlace_<version>_<arch>.dmg`
 
-No Sparkle, no updater, no `network.server`. After a notarized `app-v*`
-(Developer ID), drag Interlace.app to Applications and open. You do not
-need `xattr`.
-
-Fallback for older ad-hoc tags (`app-v0.1.2` and earlier):
+The last shipped tag is unsigned **`app-v0.1.2`** (ad-hoc). Drag Interlace.app
+to Applications, then clear quarantine:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Interlace.app
 ```
 
-Then open it, pick or create `~/Interlace`, import a WhatsApp ZIP. You do
-**not** need a Rust toolchain.
+That xattr step is also the fallback for older ad-hoc tags (`app-v0.1.2` and
+earlier).
+
+When a Developer ID exists, a later notarized `app-v*` is drag-to-Applications
+and open — you do not need `xattr`. There are no Apple secrets today; `app-v*`
+jobs fail closed without them. That notarized tag is not cut.
+
+No Sparkle, no updater, no `network.server`. Then open it, pick or create
+`~/Interlace`, import a WhatsApp ZIP. You do **not** need a Rust toolchain.
 
 Ship a new build:
 
 ```bash
 git checkout master && git pull
-git tag -a app-v0.1.2 -m "Interlace.app 0.1.2"
-git push origin app-v0.1.2
+git tag -a app-v0.1.3 -m "Interlace.app 0.1.3"
+git push origin app-v0.1.3
 ```
 
 That runs `.github/workflows/app-release.yml` only. It does **not** publish
@@ -74,7 +78,7 @@ crates.io (`v*` tags still do that).
 Dev: `cd crates/interlace-tauri && npm run tauri:dev`. Release-like local
 bundle: `npm run tauri:build` (writes `target/release/bundle/`).
 
-## Today (UI1 + UI3)
+## Today (UI8 + Phase 2.3)
 
 First-run is one calm screen: offline / no account, then **Create** or **Open**
 (folder picker, no URLs). `--phone-region` is still required (no silent TR/US
