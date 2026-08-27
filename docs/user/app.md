@@ -109,7 +109,9 @@ bare `Interlace`. Message text never appears in the title.
 The window uses an overlay titlebar: you can drag the top bar; native close/minimize/zoom stay clickable. There is no second Interlace wordmark — Cmd-tab still follows the view (`Ada — Interlace`, `Search — Interlace`).
 
 The native macOS **menu bar** has **File → Open archive** (same folder picker as
-**Open existing…**) and **File → Import**; **View** switches People, Search,
+**Open existing…**), **File → Import**, and **File → Recent archives** (folders
+you successfully opened, most-recent first). A missing folder does not crash —
+that entry is dropped. **View** switches People, Search,
 Review, and Doctor. About states the app is offline and not encrypted at rest
 (FileVault). There is no Check for Updates item.
 

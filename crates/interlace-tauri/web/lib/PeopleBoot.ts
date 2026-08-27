@@ -22,6 +22,12 @@ export function startPeopleBoot(ctx: PeopleBootCtx): () => void {
   void listen("menu-open-archive", () => {
     void ctx.openPicker();
   }).then(keepMenu);
+  void listen("menu-open-recent", (e) => {
+    const path = e.payload;
+    if (typeof path === "string" && path.length > 0) {
+      void ctx.openPath(path).catch(ctx.showErr);
+    }
+  }).then(keepMenu);
   void listen("menu-import", () => {
     ctx.setView("import");
   }).then(keepMenu);

@@ -84,9 +84,11 @@ The entry command is unchanged.
 
 ## Commands (UI1)
 
-Native macOS menu (`MenuBuilder` in `main.rs`): Interlace About + Quit, File
-Open archive + Import, View (People / Search / Review / Doctor). About copy is
+Native macOS menu (`MenuBuilder` in `menu.rs`): Interlace About + Quit, File
+Open archive + Import + Recent archives (sibling list under `config_dir()`,
+not `last-archive.bookmark`), View (People / Search / Review / Doctor). About copy is
 offline / not encrypted at rest / FileVault. No updater / Check for Updates.
+A missing recent folder is dropped; the menu rebuilds.
 
 `remembered_path` (bookmark first, else last-path pointer), `pick_folder` /
 `pick_import_path` (rfd on the main thread), `init`, `open`, `status`,
