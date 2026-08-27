@@ -272,7 +272,7 @@
       commandOpen,
       setCommandOpen: (v) => { commandOpen = v; },
       view,
-      setView: (v) => { view = v; },
+      setView: (v) => { if (setup) return; view = v; },
       sidebarCollapsed,
       persistSidebar,
       showPersonChrome,
@@ -300,13 +300,13 @@
     window.addEventListener("keydown", onKey);
     const stopBoot = startPeopleBoot({
       openPicker,
-      setView: (v) => { view = v; },
+      setView: (v) => { if (setup) return; view = v; },
       importDroppedPaths,
       openPath,
       showErr,
       setSetup: (v) => {
         setup = v;
-        if (v) { people = []; selectedId = null; events = []; st = null; doctor = []; view = "people"; }
+        if (v) { people = []; selectedId = null; events = []; st = null; doctor = []; filter = ""; searchQ = ""; seedPerson = null; includeGroups = false; identities = []; personTitle = "Select a person"; view = "people"; ++peopleGen; err = ""; }
       },
       setBooting: (v) => { booting = v; },
     });

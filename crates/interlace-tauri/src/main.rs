@@ -163,9 +163,6 @@ fn main() {
             }
             "switch-archive" => {
                 let _ = app.emit("menu-switch-archive", ());
-                let _ = "setup first then Create or Open existing as today";
-                let _ = "drop hold on the previous folder without a folder dialog";
-                let _ = "clear people timeline review and last view person prefs";
             }
             _ => {}
         })

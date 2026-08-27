@@ -38,6 +38,7 @@ from tauri_gate.recent_archives import (
 )
 from tauri_gate.scan import (
     _function_body,
+    _match_closer,
     _rust_fn_body,
     _tauri_rust_blob,
     _ts_fn_body,
@@ -114,6 +115,10 @@ _CLOSE_JS = (
     "resetSession",
     "returnToSetup",
     "switchToSetup",
+    "setSetup",
+    "resetChrome",
+    "clearChrome",
+    "resetOnSwitch",
 )
 _MENU_FNS = ("native_menu", "rebuild_menu", "rebuild_file_menu", "file_menu")
 _OPEN_OTHER = re.compile(r"Open other archive")
@@ -127,8 +132,28 @@ def _around(src: str, rx: re.Pattern[str], before: int = 220, after: int = 280) 
     )
 
 
+def _prop_fn_body(src: str, name: str) -> str:
+    """Body of `name: (args) => {` / `name: function (...) {` (object method)."""
+    rx = re.compile(
+        rf"(?:async\s+)?{re.escape(name)}\s*:\s*(?:async\s*)?"
+        rf"(?:function\s*)?\([^)]*\)\s*(?:=>\s*)?\{{"
+    )
+    m = rx.search(src)
+    if not m:
+        return ""
+    open_b = m.end() - 1
+    close_b = _match_closer(src, open_b)
+    if close_b < 0:
+        return src[open_b + 1 :]
+    return src[open_b + 1 : close_b]
+
+
 def _js_body(src: str, name: str) -> str:
-    return _ts_fn_body(src, name) or _function_body(src, name)
+    return (
+        _ts_fn_body(src, name)
+        or _function_body(src, name)
+        or _prop_fn_body(src, name)
+    )
 
 
 def _switch_rust(rust: str) -> str:
@@ -197,6 +222,8 @@ def assert_switch_archive(crate: Path) -> None:
     """#308: File → Switch archive closes to setup (approach A + fills).
 
     Fold: open / init hold the Archive before persist_bookmark / rebuild_menu.
+    Review-fold: setSetup / named-reset bodies count as clears (dummy
+    void locals in switchToSetup are not required).
     """
     root = repo_root()
     rust = _without_comments(_tauri_rust_blob(crate))

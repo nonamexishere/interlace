@@ -20,9 +20,7 @@ export function startPeopleBoot(ctx: PeopleBootCtx): () => void {
     if (menuGone) unlisten();
     else menuUnlisten.push(unlisten);
   };
-  void listen("menu-open-archive", () => {
-    void ctx.openPicker();
-  }).then(keepMenu);
+  void listen("menu-open-archive", ctx.openPicker).then(keepMenu);
   void listen("menu-open-recent", (e) => {
     const path = e.payload;
     if (typeof path === "string" && path.length > 0) {
@@ -39,7 +37,7 @@ export function startPeopleBoot(ctx: PeopleBootCtx): () => void {
     else if (next === "review") ctx.setView("review");
     else if (next === "doctor") ctx.setView("doctor");
   }).then(keepMenu);
-  void listen(["menu", "switch", "archive"].join("-"), () => {
+  void listen("menu-switch-archive", () => {
     void switchToSetup(ctx);
   }).then(keepMenu);
   void getCurrentWebview()
@@ -75,12 +73,6 @@ async function switchToSetup(ctx: PeopleBootCtx) {
   } catch {
     return;
   }
-  const people = [];
-  const selectedId = null;
-  const events = [];
-  const st = null;
-  const doctor = [];
-  void [people, selectedId, events, st, doctor];
   ctx.setSetup(true);
   localStorage.removeItem(LAST_VIEW_PREF);
   localStorage.removeItem(LAST_PERSON_PREF);

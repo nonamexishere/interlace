@@ -86,6 +86,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_recent_archives",
     "assert_recent_archives_fold",
     "assert_switch_archive",
+    "assert_switch_archive_fold",
 )
 
 # #219 keep-check that #278 folded (pane or en pack).
