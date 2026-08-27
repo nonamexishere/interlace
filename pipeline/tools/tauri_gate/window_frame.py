@@ -4,6 +4,12 @@ Approach B: custom Rust under session::config_dir() (not config.toml /
 last-archive.bookmark). Translate-only work_area clamp. Do not persist
 maximized / fullscreen. Not tauri-plugin-window-state. Not App.svelte
 localStorage for the frame.
+
+PR #324 review fold: save_window_frame returns early when
+is_maximized() / is_fullscreen() is true (no maximized field, no
+set_maximized / set_fullscreen). #306-rerun: on_window_event saves
+from Moved / Resized again (debounced + atomic temp/rename write)
+so a tauri:dev rerun keeps the new frame.
 """
 from __future__ import annotations
 
@@ -17,6 +23,7 @@ from tauri_gate.scan import (
     CSP,
     _CONFIG_TOML,
     _LAST_PATH_API,
+    _call_arg,
     _rust_fn_body,
     _tauri_rust_blob,
     _web_logic,
@@ -109,6 +116,141 @@ _HTTP_PLUGIN = re.compile(r"tauri-plugin-(?:http|updater)\b")
 _FRAME_TOKS = (
     _SET_SIZE, _SET_POSITION, _SIZE_READ, _POS_READ,
     _AVAILABLE, _WORK_AREA, _WINDOW_EVENT, _SETUP, _FRAME_FN_NAME,
+)
+# #306 fold — skip zoomed save (check 10).
+# #306-rerun — live Moved/Resized save, debounce, atomic write (11–13).
+_IS_MAXIMIZED = re.compile(r"\bis_maximized\s*\(")
+_IS_FULLSCREEN = re.compile(r"\bis_fullscreen\s*\(")
+_FRAME_WRITE = re.compile(
+    r"\b(?:write_window_frame|save_window_frame|persist_window_frame)\s*\("
+    r"|\bfs\s*::\s*write\s*\("
+)
+_ON_WINDOW_EVENT_CALL = re.compile(r"\.on_window_event\s*\(")
+_EVENT_VARIANT = re.compile(
+    r"\bWindowEvent\s*::\s*(Moved|Resized|CloseRequested|Destroyed)\b"
+)
+_LIVE_EVENTS = frozenset({"Moved", "Resized"})
+_QUIT_EVENTS = frozenset({"CloseRequested", "Destroyed"})
+_ON_WINDOW_EVENT_NAME = re.compile(r"\bon_window_event\b")
+_HANDLER_NAME = re.compile(r"\b([A-Za-z_][\w]*)\b")
+_HANDLER_SKIP = frozenset(
+    {
+        "window",
+        "event",
+        "match",
+        "move",
+        "if",
+        "let",
+        "ref",
+        "mut",
+        "self",
+        "Some",
+        "None",
+        "Ok",
+        "Err",
+        "true",
+        "false",
+        "tauri",
+        "WindowEvent",
+        "Moved",
+        "Resized",
+        "CloseRequested",
+        "Destroyed",
+        "save_window_frame",
+        "persist_window_frame",
+        "write_window_frame",
+        "window_frame",
+    }
+)
+_DEBOUNCE_TOK = re.compile(r"\btimeout|\bsleep\b|\bInstant\b|\bdebounce(?:d|r)?\b")
+_LIVE_HELPER_NAME = re.compile(
+    r"debounce"
+    r"|(?:schedule|defer|delay|queue|pending).{0,24}(?:save|write|persist|frame)"
+    r"|(?:save|write|persist|frame).{0,24}(?:debounce|later|delayed|scheduled)",
+    re.I,
+)
+_CALL_NAME = re.compile(r"\b(?:[A-Za-z_][\w]*\s*::\s*)*([A-Za-z_][\w]*)\s*\(")
+_CALL_SKIP = frozenset(
+    {
+        "window",
+        "event",
+        "match",
+        "move",
+        "if",
+        "let",
+        "ref",
+        "mut",
+        "self",
+        "Some",
+        "None",
+        "Ok",
+        "Err",
+        "true",
+        "false",
+        "tauri",
+        "WindowEvent",
+        "Moved",
+        "Resized",
+        "CloseRequested",
+        "Destroyed",
+        "for",
+        "while",
+        "loop",
+        "return",
+        "break",
+        "continue",
+        "unsafe",
+        "async",
+        "clone",
+        "ok",
+        "as_ref",
+        "as_mut",
+        "to_string",
+        "to_owned",
+        "into",
+        "from",
+        "new",
+        "lock",
+        "unwrap",
+        "unwrap_or",
+        "unwrap_or_else",
+        "unwrap_or_default",
+        "expect",
+        "map",
+        "and_then",
+        "or_else",
+        "drop",
+        "format",
+        "vec",
+        "String",
+        "thread",
+        "std",
+        "Duration",
+        "from_millis",
+        "from_secs",
+        "elapsed",
+        "spawn",
+        "create_dir_all",
+        "join",
+        "is_err",
+        "is_ok",
+        "label",
+        "is_maximized",
+        "is_fullscreen",
+        "inner_size",
+        "outer_size",
+        "inner_position",
+        "outer_position",
+    }
+)
+_FRAME_DEST = re.compile(r"window-frame\.json|\bFRAME_FILE\b|\bframe_path\s*\(")
+_RENAME = re.compile(r"\brename\s*\(")
+_TEMP_FILE = re.compile(
+    r"\.tmp\b"
+    r"|[\"'][^\"']*tmp[^\"']*[\"']"
+    r"|\btmp_path\b|\btemp_path\b|\btmp_file\b"
+    r"|\bNamedTempFile\b|\btempfile\b",
+    re.I,
 )
 
 
@@ -204,6 +346,350 @@ def _frame_ls_keys(keys: list[str]) -> list[str]:
     return [k for k in keys if _FRAME_LS.search(k) and not _KEEP_LS.search(k)]
 
 
+def _fn_body_named(rust: str, name: str) -> str:
+    """Like _rust_fn_body, but also accepts `fn name<R: Trait>(...)`."""
+    body = _rust_fn_body(rust, name)
+    if body.strip():
+        return body
+    m = re.search(rf"(?:pub\s+)?(?:async\s+)?fn\s+{re.escape(name)}\b", rust)
+    if not m:
+        return ""
+    i = m.end()
+    n = len(rust)
+    while i < n and rust[i].isspace():
+        i += 1
+    if i < n and rust[i] == "<":
+        depth = 0
+        while i < n:
+            if rust[i] == "<":
+                depth += 1
+            elif rust[i] == ">":
+                depth -= 1
+                if depth == 0:
+                    i += 1
+                    break
+            i += 1
+    paren = rust.find("(", i)
+    if paren < 0:
+        return ""
+    close_paren = paren
+    depth = 0
+    j = paren
+    while j < n:
+        if rust[j] == "(":
+            depth += 1
+        elif rust[j] == ")":
+            depth -= 1
+            if depth == 0:
+                close_paren = j
+                break
+        j += 1
+    else:
+        return ""
+    brace = rust.find("{", close_paren)
+    if brace < 0:
+        return ""
+    depth = 0
+    k = brace
+    while k < n:
+        if rust[k] == "{":
+            depth += 1
+        elif rust[k] == "}":
+            depth -= 1
+            if depth == 0:
+                return rust[brace + 1 : k]
+        k += 1
+    return rust[brace + 1 :]
+
+
+def _save_fn_body(rust: str) -> str:
+    body = _fn_body_named(rust, "save_window_frame")
+    if body.strip():
+        return body
+    for name in ("persist_window_frame", "write_window_frame"):
+        body = _fn_body_named(rust, name)
+        if body.strip() and (_SIZE_READ.search(body) or _POS_READ.search(body)):
+            return body
+    return ""
+
+
+def _save_skips_zoomed(body: str) -> bool:
+    """True when both zoomed reads sit before a return that skips the write."""
+    if not body.strip():
+        return False
+    if not _IS_MAXIMIZED.search(body) or not _IS_FULLSCREEN.search(body):
+        return False
+    last_read = max(
+        list(_IS_MAXIMIZED.finditer(body))[-1].end(),
+        list(_IS_FULLSCREEN.finditer(body))[-1].end(),
+    )
+    writes = [m.start() for m in _FRAME_WRITE.finditer(body)]
+    if not writes:
+        return False
+    first_write = min(w for w in writes if w >= last_read) if any(
+        w >= last_read for w in writes
+    ) else min(writes)
+    # is_maximized / is_fullscreen must precede the persist write.
+    if last_read > first_write:
+        return False
+    return any(
+        last_read <= m.start() < first_write
+        for m in re.finditer(r"\breturn\b", body)
+    )
+
+
+def _on_window_event_blob(rust: str) -> str:
+    parts: list[str] = []
+    for m in _ON_WINDOW_EVENT_CALL.finditer(rust):
+        arg = _call_arg(rust, m.end() - 1)
+        if arg.strip():
+            parts.append(arg)
+            for name in _HANDLER_NAME.findall(arg):
+                if name in _HANDLER_SKIP or _ON_WINDOW_EVENT_NAME.fullmatch(name):
+                    continue
+                body = _fn_body_named(rust, name)
+                if body.strip():
+                    parts.append(body)
+    named = _fn_body_named(rust, "on_window_event")
+    if named.strip():
+        parts.append(named)
+    return "\n".join(parts)
+
+
+def _pattern_before_arrow(blob: str, arrow: int) -> str:
+    """Match-arm pattern left of `=>`, ignoring `{ .. }` struct rest patterns."""
+    i = arrow - 1
+    depth_brace = 0
+    depth_paren = 0
+    while i >= 0:
+        c = blob[i]
+        if c == "}":
+            depth_brace += 1
+        elif c == "{":
+            if depth_brace == 0 and depth_paren == 0:
+                return blob[i + 1 : arrow]
+            depth_brace -= 1
+        elif c == ")":
+            depth_paren += 1
+        elif c == "(":
+            if depth_paren == 0 and depth_brace == 0:
+                return blob[i + 1 : arrow]
+            depth_paren -= 1
+        i -= 1
+    return blob[:arrow]
+
+
+def _arm_patterns_that_save(blob: str) -> list[str]:
+    pats: list[str] = []
+    for m in _FRAME_WRITE.finditer(blob):
+        before = blob[: m.start()]
+        arrow = before.rfind("=>")
+        if arrow >= 0:
+            pats.append(_pattern_before_arrow(blob, arrow))
+            continue
+        pats.append(before[-500:])
+    return pats
+
+
+def _save_event_names(blob: str) -> set[str]:
+    names: set[str] = set()
+    for pat in _arm_patterns_that_save(blob):
+        names.update(m.group(1) for m in _EVENT_VARIANT.finditer(pat))
+    return names
+
+
+def _preceded_by_arrow(blob: str, brace: int) -> bool:
+    i = brace - 1
+    while i >= 0 and blob[i].isspace():
+        i -= 1
+    return i >= 1 and blob[i - 1 : i + 1] == "=>"
+
+
+def _this_arm_pattern(blob: str, arrow: int) -> str:
+    """Match-arm pattern for this `=>` only (does not swallow prior arms)."""
+    i = arrow - 1
+    depth_brace = 0
+    depth_paren = 0
+    close_brace: int | None = None
+    while i >= 0:
+        c = blob[i]
+        if c == "}":
+            if depth_brace == 0 and depth_paren == 0:
+                close_brace = i
+            depth_brace += 1
+        elif c == "{":
+            if depth_brace == 0 and depth_paren == 0:
+                return blob[i + 1 : arrow]
+            depth_brace -= 1
+            if (
+                depth_brace == 0
+                and depth_paren == 0
+                and close_brace is not None
+                and _preceded_by_arrow(blob, i)
+            ):
+                return blob[close_brace + 1 : arrow]
+            if depth_brace == 0 and depth_paren == 0:
+                close_brace = None
+        elif c == ")":
+            depth_paren += 1
+        elif c == "(":
+            if depth_paren == 0 and depth_brace == 0:
+                return blob[i + 1 : arrow]
+            depth_paren -= 1
+        elif c == "," and depth_brace == 0 and depth_paren == 0:
+            return blob[i + 1 : arrow]
+        i -= 1
+    return blob[:arrow]
+
+
+def _arrow_arm_body(blob: str, arrow: int) -> str:
+    i = arrow + 2
+    n = len(blob)
+    while i < n and blob[i].isspace():
+        i += 1
+    if i < n and blob[i] == "{":
+        depth = 0
+        j = i
+        while j < n:
+            if blob[j] == "{":
+                depth += 1
+            elif blob[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    return blob[i + 1 : j]
+            j += 1
+        return blob[i + 1 :]
+    j = i
+    depth_paren = 0
+    depth_brace = 0
+    while j < n:
+        c = blob[j]
+        if c == "(":
+            depth_paren += 1
+        elif c == ")":
+            if depth_paren:
+                depth_paren -= 1
+        elif c == "{":
+            depth_brace += 1
+        elif c == "}":
+            if depth_brace:
+                depth_brace -= 1
+            elif depth_paren == 0:
+                return blob[i:j]
+        elif c == "," and depth_paren == 0 and depth_brace == 0:
+            return blob[i:j]
+        j += 1
+    return blob[i:]
+
+
+def _event_arms(blob: str) -> list[tuple[set[str], str]]:
+    arms: list[tuple[set[str], str]] = []
+    for m in re.finditer(r"=>", blob):
+        pat = _this_arm_pattern(blob, m.start())
+        names = {g.group(1) for g in _EVENT_VARIANT.finditer(pat)}
+        if not names:
+            continue
+        arms.append((names, _arrow_arm_body(blob, m.start())))
+    return arms
+
+
+def _called_names(body: str) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for m in _CALL_NAME.finditer(body):
+        name = m.group(1)
+        if name in _CALL_SKIP or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+    return names
+
+
+def _arm_saves_live(rust: str, body: str) -> bool:
+    """True when a Moved/Resized arm writes or calls a named save/debounce helper."""
+    if _FRAME_WRITE.search(body):
+        return True
+    for name in _called_names(body):
+        if _LIVE_HELPER_NAME.search(name):
+            return True
+        fn = _fn_body_named(rust, name)
+        if not fn.strip():
+            continue
+        if _FRAME_WRITE.search(fn):
+            return True
+        for inner in _called_names(fn):
+            if _LIVE_HELPER_NAME.search(inner):
+                return True
+            ib = _fn_body_named(rust, inner)
+            if ib and _FRAME_WRITE.search(ib):
+                return True
+    return False
+
+
+def _live_events_that_save(rust: str, ev: str) -> set[str]:
+    found: set[str] = set()
+    for names, body in _event_arms(ev):
+        live = names & _LIVE_EVENTS
+        if live and _arm_saves_live(rust, body):
+            found.update(live)
+    return found
+
+
+def _surface_debounced(surface: str) -> bool:
+    return bool(surface and _DEBOUNCE_TOK.search(surface))
+
+
+def _live_path_debounced(rust: str, ev: str) -> bool:
+    """True when the Moved/Resized path delays the write (not a bare fs::write)."""
+    for names, body in _event_arms(ev):
+        if not (names & _LIVE_EVENTS):
+            continue
+        if _surface_debounced(body):
+            return True
+        for name in _called_names(body):
+            if re.search(r"debounce", name, re.I):
+                return True
+            fn = _fn_body_named(rust, name)
+            if _surface_debounced(fn):
+                return True
+            for inner in _called_names(fn):
+                if re.search(r"debounce", inner, re.I):
+                    return True
+                if _surface_debounced(_fn_body_named(rust, inner)):
+                    return True
+    return False
+
+
+def _persist_write_surface(rust: str) -> str:
+    parts: list[str] = []
+    seen: set[str] = set()
+    seeds = ("write_window_frame", "save_window_frame", "persist_window_frame")
+    queue: list[str] = list(seeds)
+    while queue:
+        name = queue.pop(0)
+        if name in seen:
+            continue
+        seen.add(name)
+        body = _fn_body_named(rust, name)
+        if not body.strip():
+            continue
+        parts.append(body)
+        if name in seeds:
+            queue.extend(_called_names(body))
+    return "\n".join(parts)
+
+
+def _has_atomic_frame_write(rust: str) -> bool:
+    surface = _persist_write_surface(rust)
+    if not surface.strip():
+        return False
+    return bool(
+        _FRAME_DEST.search(surface)
+        and _RENAME.search(surface)
+        and _TEMP_FILE.search(surface)
+    )
+
+
 def assert_persist_window_frame(crate: Path) -> None:
     """#306: persist + restore the main window frame (approach B).
 
@@ -212,6 +698,14 @@ def assert_persist_window_frame(crate: Path) -> None:
     960×640. Not plugin / webview / config.toml / last-archive.bookmark.
     Do not persist maximized / fullscreen. Keep #212 / #276 / #305,
     Overlay + CSP + entitlements. D24 in docs/user/app.md.
+
+    PR #324 review fold: save_window_frame returns early when
+    is_maximized() or is_fullscreen() is true (do not persist a
+    maximized / fullscreen field; do not set_maximized / set_fullscreen).
+    #306-rerun: on_window_event saves from Moved / Resized (or a named
+    debounce helper those events call). Live write is debounced and
+    atomic (temp + rename over window-frame.json). CloseRequested /
+    Destroyed may still flush immediately.
     """
     main_path = crate / "src" / "main.rs"
     if not main_path.is_file():
@@ -417,3 +911,37 @@ def assert_persist_window_frame(crate: Path) -> None:
         )
     if not _DOCS_CLAMP.search(dtxt):
         fail("#306: docs/user/app.md must say off-screen is clamped")
+
+    # 10) frame-skip-zoomed-save — do not persist a maximized / fullscreen rect.
+    save_fn = _save_fn_body(rust)
+    if not _save_skips_zoomed(save_fn):
+        fail(
+            "#306: save_window_frame must return early when is_maximized() "
+            "or is_fullscreen() is true (do not persist a zoomed / fullscreen "
+            "frame; last normal x/y/w/h stay on disk)"
+        )
+
+    # 11) frame-live-save — Moved / Resized (or a named debounce helper).
+    ev = _on_window_event_blob(rust)
+    live_saving = _live_events_that_save(rust, ev)
+    if not ev.strip() or not _LIVE_EVENTS <= live_saving:
+        fail(
+            "#306: on_window_event must save from Moved / Resized "
+            "(or a named debounce helper those events call) so a "
+            "tauri:dev rerun keeps the new frame"
+        )
+
+    # 12) frame-live-debounce — not a bare fs::write on every pixel.
+    if not _live_path_debounced(rust, ev):
+        fail(
+            "#306: live Moved / Resized save must be debounced "
+            "(timeout / sleep / Instant / named debounce; not a bare "
+            "fs::write on every pixel)"
+        )
+
+    # 13) frame-atomic-write — temp file + rename over window-frame.json.
+    if not _has_atomic_frame_write(rust):
+        fail(
+            "#306: persist window-frame.json via a temp file + rename "
+            "(atomic replace so a kill mid-write cannot leave an empty file)"
+        )

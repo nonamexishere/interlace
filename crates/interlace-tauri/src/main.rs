@@ -1026,9 +1026,10 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| match event {
-            tauri::WindowEvent::Moved(_)
-            | tauri::WindowEvent::Resized(_)
-            | tauri::WindowEvent::CloseRequested { .. }
+            tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
+                window_frame::debounce_save_window_frame(window);
+            }
+            tauri::WindowEvent::CloseRequested { .. }
             | tauri::WindowEvent::Destroyed => {
                 window_frame::save_window_frame(window);
             }

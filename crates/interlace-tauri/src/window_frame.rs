@@ -2,12 +2,18 @@
 
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
+use std::time::Duration;
 
 use interlace_core::session::config_dir;
 use serde::{Deserialize, Serialize};
 use tauri::{Monitor, PhysicalPosition, PhysicalSize, Runtime, WebviewWindow, Window};
 
 const FRAME_FILE: &str = "window-frame.json";
+const DEBOUNCE_MS: u64 = 250;
+
+static DEBOUNCE_GEN: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 struct WindowFrame {
@@ -38,8 +44,13 @@ fn write_window_frame(frame: WindowFrame) {
     if fs::create_dir_all(&dir).is_err() {
         return;
     }
-    if let Ok(body) = serde_json::to_string(&frame) {
-        let _ = fs::write(dir.join(FRAME_FILE), body);
+    let Ok(body) = serde_json::to_string(&frame) else {
+        return;
+    };
+    let dest = dir.join(FRAME_FILE);
+    let tmp = dir.join("window-frame.json.tmp");
+    if fs::write(&tmp, body).is_ok() {
+        let _ = fs::rename(&tmp, dest);
     }
 }
 
@@ -108,8 +119,32 @@ pub fn restore_window_frame<R: Runtime>(window: &WebviewWindow<R>) {
     let _ = window.set_position(PhysicalPosition::new(frame.x, frame.y));
 }
 
-pub fn save_window_frame<R: Runtime>(window: &Window<R>) {
+fn cancel_debounce() {
+    DEBOUNCE_GEN.fetch_add(1, Ordering::Relaxed);
+}
+
+/// Last Moved/Resized wins: a later event increments DEBOUNCE_GEN so this sleep is ignored.
+pub fn debounce_save_window_frame<R: Runtime>(window: &Window<R>) {
     if window.label() != "main" {
+        return;
+    }
+    let gen = DEBOUNCE_GEN.fetch_add(1, Ordering::Relaxed) + 1;
+    let window = window.clone();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(DEBOUNCE_MS));
+        if DEBOUNCE_GEN.load(Ordering::Relaxed) != gen {
+            return;
+        }
+        save_window_frame(&window);
+    });
+}
+
+pub fn save_window_frame<R: Runtime>(window: &Window<R>) {
+    cancel_debounce();
+    if window.label() != "main" {
+        return;
+    }
+    if window.is_maximized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false) {
         return;
     }
     let Ok(size) = window.inner_size() else {
