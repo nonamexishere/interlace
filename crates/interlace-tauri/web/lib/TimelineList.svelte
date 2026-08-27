@@ -1,0 +1,486 @@
+<script lang="ts">
+  import { tick } from "svelte";
+  import type { TimelineRow } from "./api";
+  import { localDay, localDayLabel } from "./formatTime";
+  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import TimelineRows from "./TimelineRows.svelte";
+  import TimelineCopyMenu from "./TimelineCopyMenu.svelte";
+  import TimelineEmpty from "./TimelineEmpty.svelte";
+  import { displayBody, isGroupedFollower as groupedFollower } from "./TimelineMail";
+  import {
+    ESTIMATED_ROW_HEIGHT,
+    computeVisibleRange,
+    heightOf as heightAt,
+    measureTimelineChrome,
+    offsetOf as offsetAt,
+    rowOffsetInPane,
+  } from "./TimelineVirtual";
+
+  let {
+    timeline,
+    filteredTimeline,
+    selectedId,
+    tlIndex = $bindable(0),
+    tlLoading,
+    tlAppending,
+    tlError,
+    includeGroups = $bindable(false),
+    oldestCursor,
+    density,
+    onRetry,
+    onLoadOlder,
+    onImport,
+    onShowAll,
+    onIncludeGroups,
+    openUrl,
+    showToast,
+    onSearchFromBubble,
+    onCopyFail,
+  }: {
+    timeline: TimelineRow[];
+    filteredTimeline: { row: TimelineRow; index: number }[];
+    selectedId: number | null;
+    tlIndex?: number;
+    tlLoading: boolean;
+    tlAppending: boolean;
+    tlError: string;
+    includeGroups?: boolean;
+    oldestCursor: string | null;
+    density: string;
+    onRetry: () => void;
+    onLoadOlder: () => void;
+    onImport: () => void;
+    onShowAll: () => void;
+    onIncludeGroups: () => void;
+    openUrl: (url: string) => void;
+    showToast: (message: string) => void;
+    onSearchFromBubble: () => void;
+    onCopyFail: () => void;
+  } = $props();
+
+  let tlScrollTop = $state(0);
+  let tlViewportHeight = $state(480);
+  let tlChromeHeight = $state(0);
+  let rowHeights = $state<Record<number, number>>({});
+  let userScrolling = false;
+  let userScrollUntil: ReturnType<typeof setTimeout> | null = null;
+  let programmaticScroll = false;
+  let pointerOnTimeline = false;
+  let pinLatestObs: ResizeObserver | null = null;
+  let pinLatestUntil: ReturnType<typeof setTimeout> | null = null;
+  let quotedOpen = $state<Record<number, boolean>>({});
+  let copyMenu = $state<{ x: number; y: number; text: string } | null>(null);
+
+  $effect(() => {
+    void density;
+    void selectedId;
+    clearPendingMeasures();
+    rowHeights = {};
+    quotedOpen = {};
+  });
+
+  function markUserScrolling() {
+    userScrolling = true;
+    if (userScrollUntil != null) clearTimeout(userScrollUntil);
+    userScrollUntil = setTimeout(() => {
+      userScrolling = false;
+      userScrollUntil = null;
+    }, 150);
+  }
+
+  function writeScrollTop(sc: HTMLElement, top: number) {
+    programmaticScroll = true;
+    sc.scrollTop = top;
+    tlScrollTop = sc.scrollTop;
+    tlViewportHeight = sc.clientHeight || tlViewportHeight;
+    programmaticScroll = false;
+  }
+
+  function heightOf(orig: number): number {
+    return heightAt(rowHeights, orig);
+  }
+
+  function offsetOf(filteredPos: number): number {
+    return offsetAt(filteredTimeline, rowHeights, filteredPos);
+  }
+
+  function onTimelineScroll(e: Event) {
+    const el = e.currentTarget as HTMLElement | null;
+    if (!el) return;
+    tlScrollTop = el.scrollTop;
+    tlViewportHeight = el.clientHeight || tlViewportHeight;
+    if (programmaticScroll) return;
+    if (!pointerOnTimeline) return;
+    markUserScrolling();
+    if (pinLatestObs && el.scrollTop + el.clientHeight < el.scrollHeight - 4) {
+      stopPinLatest();
+    }
+  }
+
+  function onTimelineWheel() {
+    stopPinLatest();
+    markUserScrolling();
+  }
+
+  function onTimelinePointerDown() {
+    pointerOnTimeline = true;
+  }
+
+  function onTimelinePointerUp() {
+    pointerOnTimeline = false;
+  }
+
+  const visibleRange = $derived(
+    computeVisibleRange(filteredTimeline.length, tlViewportHeight, tlScrollTop, (i) =>
+      heightOf(filteredTimeline[i].index),
+    ),
+  );
+
+  const spacerTop = $derived(offsetOf(visibleRange.startIndex));
+  const spacerBottom = $derived(
+    Math.max(0, offsetOf(filteredTimeline.length) - offsetOf(visibleRange.endIndex)),
+  );
+
+  const windowedDayGroups = $derived.by(() => {
+    const startIndex = visibleRange.startIndex;
+    const endIndex = visibleRange.endIndex;
+    const rows = filteredTimeline.slice(startIndex, endIndex);
+    const groups: { key: string; label: string; rows: { row: TimelineRow; index: number }[] }[] =
+      [];
+    for (let i = 0; i < rows.length; i++) {
+      const { row, index } = rows[i];
+      const key = localDay(row.sent_at, row.platform);
+      const dayChanged =
+        i === 0 ||
+        key !== localDay(rows[i - 1]?.row.sent_at, rows[i - 1]?.row.platform);
+      const last = groups[groups.length - 1];
+      if (!last || dayChanged) {
+        groups.push({
+          key,
+          label: key ? localDayLabel(row.sent_at, row.platform) : "",
+          rows: [{ row, index }],
+        });
+      } else {
+        last.rows.push({ row, index });
+      }
+    }
+    return groups;
+  });
+
+  export function ensureTlIndexVisible(index: number) {
+    const pos = filteredTimeline.findIndex((item) => item.index === index);
+    if (pos < 0) return;
+    const sc = document.getElementById("person-timeline");
+    if (!sc) return;
+    const mounted = sc.querySelector(`[data-tl-index="${index}"]`);
+    const rowTop =
+      mounted instanceof HTMLElement
+        ? rowOffsetInPane(sc, mounted)
+        : tlChromeHeight + offsetOf(pos);
+    const rowH =
+      mounted instanceof HTMLElement
+        ? mounted.getBoundingClientRect().height
+        : heightOf(filteredTimeline[pos]?.index ?? index);
+    const rowBottom = rowTop + rowH;
+    const viewTop = sc.scrollTop;
+    const viewBottom = viewTop + sc.clientHeight;
+    if (rowTop < viewTop) {
+      writeScrollTop(sc, Math.max(0, rowTop - ESTIMATED_ROW_HEIGHT));
+    } else if (rowBottom > viewBottom) {
+      writeScrollTop(sc, rowBottom - sc.clientHeight + ESTIMATED_ROW_HEIGHT);
+    }
+  }
+
+  let pendingMeasures: Record<number, number> = {};
+  let pendingChrome = false;
+  let measureRaf = 0;
+
+  function scheduleMeasureFlush() {
+    if (measureRaf) return;
+    measureRaf = requestAnimationFrame(flushRowMeasures);
+  }
+
+  function clearPendingMeasures() {
+    pendingMeasures = {};
+    if (measureRaf) {
+      cancelAnimationFrame(measureRaf);
+      measureRaf = 0;
+    }
+  }
+
+  function scheduleChromeMeasure() {
+    pendingChrome = true;
+    scheduleMeasureFlush();
+  }
+
+  function applyRowMeasure(orig: number, h: number) {
+    if (!(h > 0) || !Number.isFinite(h)) return;
+    if ((pendingMeasures[orig] ?? rowHeights[orig]) === h) return;
+    pendingMeasures[orig] = h;
+    scheduleMeasureFlush();
+  }
+
+  function flushRowMeasures() {
+    measureRaf = 0;
+    const sc = document.getElementById("person-timeline");
+    if (pendingChrome) {
+      pendingChrome = false;
+      if (sc) {
+        const chrome = measureTimelineChrome(sc);
+        if (chrome !== tlChromeHeight) tlChromeHeight = chrome;
+      }
+    }
+    const pending = pendingMeasures;
+    pendingMeasures = {};
+    const next: Record<number, number> = { ...rowHeights };
+    let changed = false;
+    for (const key of Object.keys(pending)) {
+      const orig = Number(key);
+      const h = pending[orig];
+      if (!(h > 0) || !Number.isFinite(h)) continue;
+      if (rowHeights[orig] === h) continue;
+      next[orig] = h;
+      changed = true;
+    }
+    if (changed) rowHeights = next;
+  }
+
+  function measureTlRow(node: HTMLElement, orig: number) {
+    const read = () => {
+      const raw = node.getAttribute("data-tl-index");
+      const idx = raw != null ? Number(raw) : orig;
+      if (!Number.isFinite(idx)) return;
+      const h = Math.round(node.getBoundingClientRect().height);
+      applyRowMeasure(idx, h);
+      scheduleChromeMeasure();
+    };
+    const obs = new ResizeObserver(read);
+    obs.observe(node);
+    read();
+    return {
+      update(nextOrig: number) {
+        orig = nextOrig;
+        read();
+      },
+      destroy() {
+        obs.disconnect();
+      },
+    };
+  }
+
+  $effect(() => {
+    void selectedId;
+    void timeline.length;
+    void filteredTimeline.length;
+    scheduleChromeMeasure();
+  });
+
+  function stopPinLatest() {
+    pinLatestObs?.disconnect();
+    pinLatestObs = null;
+    if (pinLatestUntil != null) {
+      clearTimeout(pinLatestUntil);
+      pinLatestUntil = null;
+    }
+  }
+
+  function pinTimelineLatest(sc: HTMLElement) {
+    writeScrollTop(sc, sc.scrollHeight);
+  }
+
+  function syncOpenPersonScroll(sc: HTMLElement) {
+    tlViewportHeight = sc.clientHeight || tlViewportHeight;
+    const keep = tlScrollTop;
+    pinTimelineLatest(sc);
+    if (sc.scrollTop + sc.clientHeight < sc.scrollHeight - 4) {
+      pinTimelineLatest(sc);
+    }
+    if (sc.scrollTop <= 4 && keep > (sc.clientHeight || 0)) {
+      tlScrollTop = keep;
+      return;
+    }
+    if (sc.scrollTop !== tlScrollTop) tlScrollTop = sc.scrollTop;
+  }
+
+  function watchPinLatest(sc: HTMLElement) {
+    stopPinLatest();
+    syncOpenPersonScroll(sc);
+    const ol = sc.querySelector("ol");
+    pinLatestObs = new ResizeObserver(() => {
+      tlViewportHeight = sc.clientHeight || tlViewportHeight;
+      const keep = tlScrollTop;
+      writeScrollTop(sc, sc.scrollHeight);
+      if (sc.scrollTop <= 4 && keep > (sc.clientHeight || 0)) {
+        tlScrollTop = keep;
+      }
+    });
+    pinLatestObs.observe(sc);
+    if (ol) pinLatestObs.observe(ol);
+    pinLatestUntil = setTimeout(stopPinLatest, 600);
+  }
+
+  export function applyOpenPersonWindow(gen: number, currentGen: () => number) {
+    const sc0 = document.getElementById("person-timeline");
+    if (sc0) tlViewportHeight = sc0.clientHeight || tlViewportHeight;
+    const estTotal = Math.max(offsetOf(filteredTimeline.length), ESTIMATED_ROW_HEIGHT);
+    tlScrollTop = estTotal;
+    void tick().then(() => {
+      if (gen !== currentGen()) return;
+      const sc = document.getElementById("person-timeline");
+      if (!sc) return;
+      tlViewportHeight = sc.clientHeight || tlViewportHeight;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (gen !== currentGen()) return;
+          tlViewportHeight = sc.clientHeight || tlViewportHeight;
+          const keep = tlScrollTop;
+          programmaticScroll = true;
+          sc.scrollTop = sc.scrollHeight;
+          tlScrollTop = sc.scrollTop;
+          programmaticScroll = false;
+          if (sc.scrollTop <= 4 && keep > (sc.clientHeight || 0)) {
+            tlScrollTop = keep;
+          } else if (sc.scrollTop !== tlScrollTop) {
+            tlScrollTop = sc.scrollTop;
+          }
+          watchPinLatest(sc);
+        });
+      });
+    });
+  }
+
+  export function shiftHeightsForPrepend(n: number) {
+    const next: Record<number, number> = {};
+    for (const [k, v] of Object.entries(rowHeights)) {
+      next[Number(k) + n] = v;
+    }
+    clearPendingMeasures();
+    rowHeights = next;
+  }
+
+  export function resetHeights() {
+    clearPendingMeasures();
+    rowHeights = {};
+  }
+
+  export function preserveScrollAfterPrepend(prevHeight: number) {
+    const sc = document.getElementById("person-timeline");
+    if (sc) {
+      writeScrollTop(sc, sc.scrollTop + (sc.scrollHeight - prevHeight));
+    }
+  }
+
+  export function stopPin() {
+    stopPinLatest();
+  }
+
+  export function estimateScrollToIndex(index: number) {
+    const hitPos = filteredTimeline.findIndex((item) => item.index === index);
+    const estTop = Math.max(
+      0,
+      offsetOf(hitPos >= 0 ? hitPos : index) - ESTIMATED_ROW_HEIGHT * 2,
+    );
+    tlScrollTop = estTop;
+  }
+
+  function isGroupedFollower(i: number): boolean {
+    return groupedFollower(filteredTimeline, i, localDay);
+  }
+
+  function toggleQuoted(messageId: number, e: Event) {
+    e.stopPropagation();
+    e.preventDefault();
+    quotedOpen = { ...quotedOpen, [messageId]: !quotedOpen[messageId] };
+  }
+
+  function openCopyMenu(e: MouseEvent, row: TimelineRow) {
+    e.preventDefault();
+    copyMenu = { x: e.clientX, y: e.clientY, text: row.body_text || row.subject || "" };
+  }
+
+  function closeCopyMenu() {
+    copyMenu = null;
+  }
+
+  async function copyText() {
+    if (!copyMenu) return;
+    const text = displayBody(copyMenu.text);
+    copyMenu = null;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      onCopyFail();
+    }
+  }
+
+  function searchFromBubble() {
+    closeCopyMenu();
+    onSearchFromBubble();
+  }
+
+  function onCopyMenuAway(e: MouseEvent) {
+    if (!copyMenu) return;
+    const el = e.target as HTMLElement | null;
+    if (el?.closest("[data-copy-menu]")) return;
+    closeCopyMenu();
+  }
+
+  $effect(() => {
+    window.addEventListener("mousedown", onCopyMenuAway);
+    window.addEventListener("pointerup", onTimelinePointerUp);
+    return () => {
+      window.removeEventListener("mousedown", onCopyMenuAway);
+      window.removeEventListener("pointerup", onTimelinePointerUp);
+      stopPinLatest();
+    };
+  });
+
+  export function closeCopy() {
+    closeCopyMenu();
+  }
+</script>
+
+<ScrollArea
+  id="person-timeline"
+  class="min-h-0 min-w-0 flex-1 px-4 pb-8"
+  aria-busy={tlLoading}
+  onscroll={onTimelineScroll}
+  onwheel={onTimelineWheel}
+  onpointerdown={onTimelinePointerDown}
+>
+  <TimelineEmpty
+    {tlLoading}
+    {tlAppending}
+    {selectedId}
+    {tlError}
+    {timeline}
+    {filteredTimeline}
+    {includeGroups}
+    {onRetry}
+    {onShowAll}
+    {onIncludeGroups}
+    {onImport}
+  />
+  <TimelineRows
+    {windowedDayGroups}
+    {spacerTop}
+    {spacerBottom}
+    {tlIndex}
+    {quotedOpen}
+    {measureTlRow}
+    {isGroupedFollower}
+    onSelectIndex={(index) => (tlIndex = index)}
+    onContextMenu={openCopyMenu}
+    {toggleQuoted}
+    {openUrl}
+    {showToast}
+    showLoadOlder={!!(timeline.length && oldestCursor && filteredTimeline.length > 0)}
+    {tlLoading}
+    {onLoadOlder}
+  />
+  <div id="timeline-end"></div>
+</ScrollArea>
+
+{#if copyMenu}
+  <TimelineCopyMenu x={copyMenu.x} y={copyMenu.y} onCopy={copyText} onSearch={searchFromBubble} />
+{/if}

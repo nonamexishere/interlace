@@ -10,19 +10,21 @@ from common import (
 )
 
 from tauri_gate.scan import (
-    CSP,
-    _INSPECTOR_HOOK,
-    _PALETTE_HOOK,
-    _STATUS_WARNING_NAMES,
     _contrast_dark_blob,
     _css_var,
     _css_without_comments,
+    _INSPECTOR_HOOK,
     _open_tag_around,
     _open_tag_before,
+    _PALETTE_HOOK,
     _product_svelte,
+    _search_pane_blob,
+    _STATUS_WARNING_NAMES,
+    _web_logic,
+    CSP,
 )
 
-from tauri_gate.a11y import (
+from tauri_gate.a11y_lib import (
     _A11Y_ANIM_NONE,
     _A11Y_MOTION_REDUCE_TW,
     _A11Y_TRANS_NONE,
@@ -30,14 +32,14 @@ from tauri_gate.a11y import (
     _css_prefers_reduced_blocks,
 )
 
-from tauri_gate.import_boot import _contrast_light_blob
+from tauri_gate.import_boot_guards import _contrast_light_blob
 
-from tauri_gate.status_toasts import (
+from tauri_gate.status_toasts_chrome import (
     _MOTION_DURATION_ZERO,
     _MOTION_JS_REDUCE,
     _hue_surface,
-    _motion_js_blob,
 )
+from tauri_gate.status_toasts_toast import _motion_js_blob
 
 
 
@@ -161,7 +163,7 @@ def assert_motion(crate: Path) -> None:
         fail("#222: crates/interlace-tauri/web/**/*.svelte required (motion)")
 
     app_path = crate / "web" / "App.svelte"
-    app = app_path.read_text() if app_path.is_file() else ""
+    app = _web_logic(crate) if app_path.is_file() else ""
     pal_path = crate / "web" / "lib" / "CommandPalette.svelte"
     pal = pal_path.read_text() if pal_path.is_file() else ""
     toast_path = crate / "web" / "lib" / "components" / "ui" / "toast" / "toast.svelte"
@@ -329,7 +331,7 @@ def assert_motion(crate: Path) -> None:
     # 9) Do not soften #q, sidebar, overlay, inspector hook, CSP,
     #    #219 tokens, #220 data-import-cancel, #221 data-review-card / undo.
     search_path = crate / "web" / "lib" / "SearchPane.svelte"
-    search = search_path.read_text() if search_path.is_file() else ""
+    search = _search_pane_blob(crate) if search_path.is_file() else ""
     conf = (crate / "tauri.conf.json").read_text()
     light_blob = _contrast_light_blob(css)
     dark_blob = _contrast_dark_blob(css)

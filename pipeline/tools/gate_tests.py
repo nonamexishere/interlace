@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import fail, repo_root, run  # noqa: E402
+from tauri_gate.product_split import assert_product_split  # noqa: E402
 
 MUST = [
     "CAS1", "CAS2", "CAS3",
@@ -19,6 +20,7 @@ MUST = [
 
 def main() -> None:
     root = repo_root()
+    assert_product_split(root / "crates" / "interlace-tauri")
     plan = root / "crates" / "interlace-core" / "test_plan.json"
     if not plan.is_file():
         plan = root / "pipeline" / "stages" / "03-test-author" / "test_plan.json"
