@@ -11,7 +11,7 @@ Phase 2.1 is **done**. Phase 2.2 polish is **done**. Phase 2.3 coding is **done*
 
 | What | Notes |
 | --- | --- |
-| Phase 2.3 | Epic [#264](https://github.com/nonamexishere/interlace/issues/264) / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8) **closed**. Coding done (#265–#279 / #297 / #300, PRs #282–#301). **#305** done. **#306** in flight; #303 later; #304 later. First notarized `app-v*` is not cut. Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*`. |
+| Phase 2.3 | Epic [#264](https://github.com/nonamexishere/interlace/issues/264) / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8) **closed**. Coding done (#265–#279 / #297 / #300 / #305 / #306, PRs #282–#301 / #323 / #324). **#303** done. #304 later. First notarized `app-v*` is not cut. Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*`. |
 | Phase 2.2 | Epic [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7). Normative [`UI-DESIGN.md`](../design/UI-DESIGN.md). **Done** (#198–#222 / PRs #225–#262). |
 | Desktop app | **`app-v0.1.2` shipped** ([release](https://github.com/nonamexishere/interlace/releases/tag/app-v0.1.2)). Ask before another `app-v*`. |
 | crates.io | Published **0.1.1**. Do not `cargo publish` / `v*` without asking. |
