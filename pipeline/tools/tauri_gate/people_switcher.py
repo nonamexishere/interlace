@@ -20,7 +20,7 @@ from tauri_gate.scan import (
     _web_sources,
 )
 
-from tauri_gate.people_switcher_label import (
+from tauri_gate.people_switcher_pretty import (
     _CONV_ALL_LABEL,
     _CONV_CREATE,
     _CONV_EACH,
@@ -42,25 +42,27 @@ from tauri_gate.people_switcher_label import (
     _always_expanded_conversation_list,
     _chrome_hidden_by_default,
     _chrome_toggled_by_title,
-    _conversation_chooser_helpers,
     _conversation_switcher_blocks,
     _flag_default_open,
     _groups_ctrl_pos,
+    _identity_title_toggle,
+    _person_pane_markups,
+    _visible_switcher_text,
+    _without_calls,
+)
+from tauri_gate.people_switcher_markup import (
+    _conversation_chooser_helpers,
     _heading_exprs,
     _headings_use_label_helper,
-    _identity_title_toggle,
-    _label_helper_falls_back_to_id,
     _people_list_hidden_on_select,
-    _person_pane_markups,
     _pretty_platform_helpers,
     _switcher_above_day_heading,
     _switcher_row_markup,
     _switcher_summary_markup,
-    _visible_switcher_text,
-    _without_calls,
 )
+from tauri_gate.people_switcher_label_extra2 import _label_helper_falls_back_to_id
 
-from tauri_gate.status_toasts import _person_detail_markup
+from tauri_gate.status_toasts_toast import _person_detail_markup
 
 
 
@@ -77,7 +79,7 @@ def assert_conversation_switcher(crate: Path) -> None:
     the pretty platform (WhatsApp, Gmail), not the repeated person name;
     distinct titles stay. Not in scope: create / mute / pin. Keep #111–#113.
     """
-    app = (crate / "web" / "App.svelte").read_text()
+    app = _web_logic(crate)
     logic = _web_logic(crate)
     api_src = (crate / "web" / "lib" / "api.ts").read_text()
     docs = repo_root() / "docs" / "user" / "app.md"

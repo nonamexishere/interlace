@@ -36,7 +36,7 @@ use `tokio` without `net`). Phase 1 = CLI; Phase 2 = Svelte 5 desktop UI
 unsigned app release is **`app-v0.1.1`**. **Phase 2.2 polish is done.**
 **Phase 2.3 coding is done** (epic **#264** / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8) closed).
 Children **#265–#279**, **#297**, **#300** (PRs **#282–#301**) are done.
-**#303** is done (this PR: install + changelog match unsigned 2.3). #305 and #306 are done. #304 later.
+**#303**, **#304**, **#305**, and **#306** are done. #304 (this PR) splits product + gate files under 500.
 Do not start 1.1 / 3 / 4.
 Ask before the first notarized `app-v*` (#267 is wired; that tag is not cut).
 Normative:
@@ -90,12 +90,12 @@ for the *next* `app-v*` tag; that tag is **not** cut. Ask before another
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: this PR (#303). After merge, `master` is
-that docs commit. Tag **`app-v0.1.2`** (last shipped; still unsigned).
+HEAD when this was rewritten: this PR (#304). After merge, `master` is
+that commit. Tag **`app-v0.1.2`** (last shipped; still unsigned).
 Epic **#108**, milestone 6, the Phase 1 CLI milestone, Phase 2.2 (#197),
 and Phase **2.3** (epic **#264** / milestone 8) are **closed**.
-#265–#279 / #297 / #300 / #305 / #306 (PRs #282–#301 / #323 / #324) done.
-**#303** done. #304 later. First notarized `app-v*` is not cut.
+#265–#279 / #297 / #300 / #303 / #305 / #306 (PRs #282–#301 / #323–#325) done.
+**#304** done. First notarized `app-v*` is not cut.
 Re-check with `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
@@ -227,7 +227,8 @@ Phase 2.1 milestone (#6): **closed**.
 | #300 / PR #301 | `tauri_gate` buckets under ~1 200 lines |
 | #305 / PR #323 | Reopen on last view and last person (localStorage, not iCloud) |
 | #306 / PR #324 | Persist window size and position; off-screen clamped; skip zoomed |
-| #303 / this PR | User install docs + changelog match unsigned 2.3 (`app-v0.1.2`) |
+| #303 / PR #325 | User install docs + changelog match unsigned 2.3 (`app-v0.1.2`) |
+| #304 / this PR | Split product + gate files under 500 (`_SPLIT_MAX_LINES` 500) |
 
 ## Open — product now
 
@@ -241,9 +242,8 @@ names helpers, files, and must-IDs.
 
 ### Suggested next
 
-1. **#304** later — split every product/gate file over 500 lines.
-2. Do not invent a new 2.3 ticket. Parked dogfood UI (#307–#322) only if asked.
-3. Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*` tag.
+1. Do not invent a new 2.3 ticket. Parked dogfood UI (#307–#322) only if asked.
+2. Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*` tag.
 
 Phase 2.3 archive: [#264](https://github.com/nonamexishere/interlace/issues/264) / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8).
 Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7).
@@ -257,7 +257,7 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 
 ## Recommended next steps
 
-1. **#304** later (split files over 500 lines). #303 / #305 / #306 are done.
+1. #303 / #304 / #305 / #306 are done. Parked dogfood UI (#307–#322) only if asked.
 2. Phase 2.3 coding is done. Do not start 1.1 / P3 / P4.
 3. Last shipped app tag is **`app-v0.1.2`** (unsigned). Workflow can
    Developer ID + notarize the next `app-v*` once Apple secrets exist.
@@ -336,8 +336,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > commit / push / merge.
 > Phase 2.3 coding is done (epic #264 / milestone 8 closed). Read
 > `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,
-> #297, #300, #303, #305, #306 done.
-> #304 later.
+> #297, #300, #303, #304, #305, #306 done.
 > Orchestrator does not implement product code. Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag (`app-v0.1.2` is current; first notarized tag is not cut). After
