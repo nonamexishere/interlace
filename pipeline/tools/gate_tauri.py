@@ -126,6 +126,7 @@ from tauri_gate.density import (  # noqa: E402
     assert_light_chrome,
 )
 from tauri_gate.reopen_last import assert_reopen_last_session  # noqa: E402
+from tauri_gate.window_frame import assert_persist_window_frame  # noqa: E402
 from tauri_gate.a11y import (  # noqa: E402
     assert_a11y_listbox_focus_motion,
     assert_focus_aria_audit,
@@ -209,6 +210,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_first_run",
     "assert_font_density",
     "assert_reopen_last_session",
+    "assert_persist_window_frame",
     "assert_light_chrome",
     "assert_chrome_locale_panes",
     "assert_virtualized_timeline",
@@ -957,6 +959,7 @@ def main() -> None:
     assert_first_run(crate)
     assert_font_density(crate)
     assert_reopen_last_session(crate)
+    assert_persist_window_frame(crate)
     assert_light_chrome(crate)
     assert_chrome_locale_panes(crate)
     assert_gate_tauri_split(crate)

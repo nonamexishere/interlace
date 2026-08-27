@@ -28,7 +28,7 @@ use interlace_core::{
 use rusqlite::{Connection, OpenFlags};
 use tauri::http::{header, StatusCode};
 use tauri::menu::{AboutMetadata, Menu, MenuBuilder, MenuItem, SubmenuBuilder};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Clone, Default, serde::Serialize)]
 struct ImportProgress {
@@ -982,6 +982,8 @@ fn native_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .build()
 }
 
+mod window_frame;
+
 fn main() {
     let archive_root: Arc<Mutex<Option<PathBuf>>> = Arc::new(Mutex::new(None));
     let proto_root = Arc::clone(&archive_root);
@@ -1014,6 +1016,21 @@ fn main() {
             }
             "view-doctor" => {
                 let _ = app.emit("menu-view", "doctor");
+            }
+            _ => {}
+        })
+        .setup(|app| {
+            if let Some(win) = app.get_webview_window("main") {
+                window_frame::restore_window_frame(&win);
+            }
+            Ok(())
+        })
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
+                window_frame::debounce_save_window_frame(window);
+            }
+            tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
+                window_frame::save_window_frame(window);
             }
             _ => {}
         })
