@@ -83,6 +83,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_timeline_bubble_hierarchy",
     "assert_timeline_attach_slot",
     "assert_product_split",
+    "assert_recent_archives",
 )
 
 # #219 keep-check that #278 folded (pane or en pack).

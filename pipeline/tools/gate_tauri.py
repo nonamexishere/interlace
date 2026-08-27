@@ -197,6 +197,7 @@ def main() -> None:
     assert_timeline_bubble_hierarchy(crate)
     assert_timeline_attach_slot(crate)
     assert_product_split(crate)
+    assert_recent_archives(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")

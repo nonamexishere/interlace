@@ -4,6 +4,8 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
+
 use crate::db::{init_archive, Archive};
 use crate::import::{normalize_email, parse_phone};
 use crate::model::CoreError;
@@ -64,6 +66,65 @@ pub fn sandbox_denied_message(err: &std::io::Error) -> Option<&'static str> {
     } else {
         None
     }
+}
+
+/// Sibling list under `config_dir()`.
+const RECENTS_FILE: &str = "recent-archives.json";
+const MAX_RECENTS: usize = 5;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentArchive {
+    pub display: String,
+    pub bookmark: Vec<u8>,
+    pub path: String,
+}
+
+pub fn read_recents() -> Vec<RecentArchive> {
+    let raw = match fs::read(config_dir().join(RECENTS_FILE)) {
+        Ok(b) => b,
+        Err(_) => return Vec::new(),
+    };
+    serde_json::from_slice(&raw).unwrap_or_default()
+}
+
+pub fn write_recents(entries: &[RecentArchive]) -> Result<(), CoreError> {
+    let dir = config_dir();
+    fs::create_dir_all(&dir)?;
+    let body = serde_json::to_vec(entries).map_err(|e| CoreError::Config(e.to_string()))?;
+    fs::write(dir.join(RECENTS_FILE), body)?;
+    Ok(())
+}
+
+pub fn record_recent(path: &Path, bookmark: &[u8]) -> Result<(), CoreError> {
+    let abs = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let display = abs
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| abs.display().to_string());
+    let key = abs.to_string_lossy().into_owned();
+    let mut recents = read_recents();
+    recents.retain(|e| e.path != key);
+    recents.insert(
+        0,
+        RecentArchive {
+            display,
+            bookmark: bookmark.to_vec(),
+            path: key,
+        },
+    );
+    if recents.len() > MAX_RECENTS {
+        recents.truncate(MAX_RECENTS);
+    }
+    write_recents(&recents)
+}
+
+pub fn drop_recent(index: usize) -> Result<(), CoreError> {
+    let mut recents = read_recents();
+    if index < recents.len() {
+        recents.remove(index);
+        write_recents(&recents)?;
+    }
+    Ok(())
 }
 
 pub fn validate_phone_region(cc: &str) -> Result<String, CoreError> {

@@ -158,6 +158,9 @@ fn main() {
             "view-doctor" => {
                 let _ = app.emit("menu-view", "doctor");
             }
+            id if id.starts_with("recent-") => {
+                menu::open_recent(app, id);
+            }
             _ => {}
         })
         .setup(|app| {

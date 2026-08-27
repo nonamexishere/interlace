@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use interlace_core::people::{attachments_for, complete_attachments};
 use interlace_core::session::{
-    init_owner_archive, read_last_bookmark, read_last_path, sandbox_denied_message,
+    init_owner_archive, read_last_bookmark, read_last_path, record_recent, sandbox_denied_message,
     write_last_bookmark, write_last_path,
 };
 use interlace_core::{
@@ -45,19 +45,26 @@ fn ensure_archive_readable(p: &Path) -> Result<(), String> {
 
 /// After a successful rfd pick / open we have access: store the bookmark.
 /// Unsandboxed `tauri:dev` may fail create — path pointer is enough there.
-fn persist_bookmark(path: &Path) {
-    match crate::bookmark::create_security_scoped_bookmark(path) {
+/// Also record a recent (path + optional bookmark bytes) and rebuild File.
+fn persist_bookmark(app: &AppHandle, path: &Path) {
+    let bytes = match crate::bookmark::create_security_scoped_bookmark(path) {
         Ok(bytes) => {
             if let Err(e) = write_last_bookmark(&bytes) {
                 eprintln!("interlace: write_last_bookmark failed: {e}");
             }
+            bytes
         }
         Err(e) => {
             eprintln!(
                 "interlace: security-scoped bookmark not stored ({e}); path pointer is enough outside the sandbox"
             );
+            Vec::new()
         }
+    };
+    if let Err(e) = record_recent(path, &bytes) {
+        eprintln!("interlace: record_recent failed: {e}");
     }
+    crate::menu::rebuild_menu(app);
 }
 
 fn hold(state: &AppState, arch: Archive) -> Result<serde_json::Value, String> {
@@ -128,6 +135,7 @@ pub(crate) fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
 
 #[tauri::command]
 pub(crate) fn init(
+    app: AppHandle,
     state: tauri::State<AppState>,
     path: String,
     phone_region: String,
@@ -141,12 +149,13 @@ pub(crate) fn init(
         return Err("init requires a folder".into());
     }
     let arch = init_owner_archive(&p, &phone_region, name, emails, phones).map_err(err_open)?;
-    persist_bookmark(&p);
+    persist_bookmark(&app, &p);
     hold(&state, arch)
 }
 
 #[tauri::command]
 pub(crate) fn open(
+    app: AppHandle,
     state: tauri::State<AppState>,
     path: String,
 ) -> Result<serde_json::Value, String> {
@@ -155,7 +164,7 @@ pub(crate) fn open(
     ensure_archive_readable(&p)?;
     let arch = open_archive(&p, LockMode::Exclusive).map_err(err_open)?;
     write_last_path(&p).map_err(err_open)?;
-    persist_bookmark(&p);
+    persist_bookmark(&app, &p);
     hold(&state, arch)
 }
 
