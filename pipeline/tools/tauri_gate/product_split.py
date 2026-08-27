@@ -5,8 +5,7 @@ from pathlib import Path
 
 from common import fail, repo_root
 
-# Same style as gate_tauri._split_line_count / #300. Do not share
-# _SPLIT_MAX_LINES (that cap stays 1_200 for tauri_gate modules).
+# Product files and tauri_gate modules are both capped at 500.
 _PRODUCT_MAX_LINES = 500
 
 _REQUIRED = (
