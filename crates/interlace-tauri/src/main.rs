@@ -1029,8 +1029,7 @@ fn main() {
             tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
                 window_frame::debounce_save_window_frame(window);
             }
-            tauri::WindowEvent::CloseRequested { .. }
-            | tauri::WindowEvent::Destroyed => {
+            tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
                 window_frame::save_window_frame(window);
             }
             _ => {}
