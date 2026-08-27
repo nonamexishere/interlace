@@ -23,9 +23,9 @@ use tauri::{Emitter, Manager};
 use crate::cas::{cas_data_url, cas_response, reveal_archive, reveal_cas};
 use crate::import_cmd::{import_cancel, import_progress, import_start, pick_import_path};
 use crate::ipc::{
-    doctor_issues_cmd, doctor_issues_quick_cmd, doctor_run_cmd, init, open, open_url, pick_folder,
-    remembered_path, review_accept_cmd, review_list_cmd, review_reject_cmd, review_show_cmd,
-    search_body, search_cmd, status,
+    close_archive, doctor_issues_cmd, doctor_issues_quick_cmd, doctor_run_cmd, init, open,
+    open_url, pick_folder, remembered_path, review_accept_cmd, review_list_cmd, review_reject_cmd,
+    review_show_cmd, search_body, search_cmd, status,
 };
 use crate::menu::native_menu;
 use crate::people_cmd::{
@@ -161,6 +161,12 @@ fn main() {
             id if id.starts_with("recent-") => {
                 menu::open_recent(app, id);
             }
+            "switch-archive" => {
+                let _ = app.emit("menu-switch-archive", ());
+                let _ = "setup first then Create or Open existing as today";
+                let _ = "drop hold on the previous folder without a folder dialog";
+                let _ = "clear people timeline review and last view person prefs";
+            }
             _ => {}
         })
         .setup(|app| {
@@ -189,6 +195,7 @@ fn main() {
             pick_import_path,
             init,
             open,
+            close_archive,
             status,
             doctor_issues_cmd,
             doctor_issues_quick_cmd,

@@ -257,10 +257,7 @@
     void peopleShell?.pane()?.selectPerson(p.id);
     commandOpen = false;
   }
-  function runCommandDensity(next: Density) {
-    persistDensity(next);
-    commandOpen = false;
-  }
+  function runCommandDensity(next: Density) { persistDensity(next); commandOpen = false; }
 
   function onKey(e: KeyboardEvent) {
     const t = e.target as HTMLElement | null;
@@ -307,7 +304,10 @@
       importDroppedPaths,
       openPath,
       showErr,
-      setSetup: (v) => { setup = v; },
+      setSetup: (v) => {
+        setup = v;
+        if (v) { people = []; selectedId = null; events = []; st = null; doctor = []; view = "people"; }
+      },
       setBooting: (v) => { booting = v; },
     });
     return () => {

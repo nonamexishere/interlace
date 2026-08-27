@@ -100,7 +100,8 @@ bookmark create fails outside the sandbox.
 
 The app holds an **exclusive flock** on the archive for the session. A second
 Interlace window or a CLI writer (`import`, `doctor --gc-cas`) fails with the
-holder pid — close this window first.
+holder pid. **File → Switch archive** closes to setup **without quitting** —
+the exclusive flock drops so CLI can write that folder — or close this window.
 
 The native **window title** (Cmd-tab) follows the open view or person — e.g.
 `Ada — Interlace`, `Search — Interlace`; setup / People with no selection stays
@@ -109,11 +110,12 @@ bare `Interlace`. Message text never appears in the title.
 The window uses an overlay titlebar: you can drag the top bar; native close/minimize/zoom stay clickable. There is no second Interlace wordmark — Cmd-tab still follows the view (`Ada — Interlace`, `Search — Interlace`).
 
 The native macOS **menu bar** has **File → Open archive** (same folder picker as
-**Open existing…**), **File → Import**, and **File → Recent archives** (folders
-you successfully opened, most-recent first). A missing folder does not crash —
-that entry is dropped. **View** switches People, Search,
-Review, and Doctor. About states the app is offline and not encrypted at rest
-(FileVault). There is no Check for Updates item.
+**Open existing…**), **File → Switch archive** (setup without quitting; flock
+drops so CLI can write the previous folder), **File → Import**, and **File →
+Recent archives** (folders you successfully opened, most-recent first). A
+missing folder does not crash — that entry is dropped. **View** switches People,
+Search, Review, and Doctor. About states the app is offline and not encrypted
+at rest (FileVault). There is no Check for Updates item.
 
 UI chrome (buttons, nav, empty states, Doctor) follows the OS language
 (`en` / `tr`, first supported preference). Review / Import / Doctor chrome
