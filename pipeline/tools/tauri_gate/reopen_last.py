@@ -1,4 +1,9 @@
-"""#305 — reopen last view + last person. Imported by gate_tauri.py."""
+"""#305 — reopen last view + last person. Imported by gate_tauri.py.
+
+PR #323 review fold: view restore at onMount (not after people =);
+do not overwrite a user tab / taken person; persist last person from
+the Search-jump path.
+"""
 from __future__ import annotations
 
 import re
@@ -12,6 +17,7 @@ from tauri_gate.scan import (
     _LAST_PATH_API,
     _LS_BRACKET,
     _function_body,
+    _match_closer,
     _rust_fn_body,
     _ts_fn_body,
     _ts_function_body,
@@ -91,6 +97,54 @@ _DOCS_REOPEN = re.compile(
     re.I | re.S,
 )
 _OTHER_PREF = ("sidebar", "collapsed", "density", "comfortable")
+# #305 fold — view restore at onMount; no late view =; skip a taken person.
+_VIEW_ASSIGN = re.compile(r"(?<![\w.$])view\s*=(?!=)")
+_LAST_VIEW_TOKEN = re.compile(
+    r"("
+    r"\bLAST_VIEW(?:_PREF|_KEY)?\b"
+    r"|\blastView\b"
+    r"|\blast_view\b"
+    r"|\blast-view\b"
+    r"|interlace\.lastView"
+    r"|\bLAST_SESSION(?:_PREF|_KEY)?\b"
+    r"|\blastSession\b"
+    r"|\blast_session\b"
+    r")",
+    re.I,
+)
+_VIEW_RESTORE_CALLEE = re.compile(
+    r"(?i)restore|last(?:view|session)|readLast|applyLast"
+)
+_RESTORE_LAST_VIEW_NAME = re.compile(
+    r"\b(?:restoreLastView|readLastView|applyLastView)\b"
+)
+_SELECT_PERSON_ONLY = re.compile(r"\bselectPerson\s*\(")
+_PERSIST_LAST_PERSON_CALL = re.compile(
+    r"\bpersistLast(?:Person|Session)\w*\s*\("
+)
+_PERSON_TAKEN_GUARD = re.compile(
+    r"("
+    r"if\s*\(\s*selectedId\s*(?:!=|!==)\s*(?:null|undefined)\s*\)"
+    r"\s*(?:return\b|\{[^}]{0,120}return\b)"
+    r"|if\s*\(\s*selectedId\s*\)\s*(?:return\b|\{[^}]{0,120}return\b)"
+    r"|if\s*\(\s*!\s*selectedId\b"
+    r"|if\s*\(\s*selectedId\s*==\s*null"
+    r"|if\s*\(\s*selectedId\s*===\s*null"
+    r"|selectedId\s*==\s*null"
+    r"|selectedId\s*===\s*null"
+    r"|selectedId\s*!=\s*(?:null|undefined)"
+    r"|selectedId\s*!==\s*(?:null|undefined)"
+    r"|!\s*selectedId\b"
+    r")"
+)
+_ONMOUNT_PEOPLE_GATE = re.compile(
+    r"("
+    r"\bawait\b"
+    r"|\bpeople\s*="
+    r"|\brefreshPeople\s*\("
+    r"|\bapi\s*\.\s*people\s*\("
+    r")"
+)
 _REOPEN_EXPAND_SKIP = frozenset(
     {
         "if",
@@ -260,6 +314,92 @@ def _unknown_view_falls_back(blob: str) -> bool:
     )
 
 
+def _onmount_body(src: str) -> str:
+    """Callback body of `onMount(() => { … })` (sidebar / density moment)."""
+    m = re.search(r"\bonMount\s*\(", src)
+    if not m:
+        return ""
+    open_p = m.end() - 1
+    close = _match_closer(src, open_p)
+    if close < 0:
+        return ""
+    arg = src[open_p + 1 : close]
+    brace = arg.find("{")
+    if brace < 0:
+        return arg.strip()
+    close_b = _match_closer(arg, brace)
+    if close_b < 0:
+        return arg[brace + 1 :]
+    return arg[brace + 1 : close_b]
+
+
+def _onmount_sync_prefix(mount: str) -> str:
+    """onMount body before the first await / people rebuild (sync prefs)."""
+    m = _ONMOUNT_PEOPLE_GATE.search(mount)
+    return mount[: m.start()] if m else mount
+
+
+def _expand_view_restore_callees(src: str, body: str) -> str:
+    """Expand restoreLastView / readLastView only — never openPath."""
+    chunks = [body]
+    seen: set[str] = set()
+    for name in re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
+        if name in seen or name in _REOPEN_EXPAND_SKIP:
+            continue
+        if not _VIEW_RESTORE_CALLEE.search(name):
+            continue
+        seen.add(name)
+        inner = _fn_body(src, name)
+        if inner:
+            chunks.append(inner)
+    return "\n".join(chunks)
+
+
+def _restores_last_view(blob: str) -> bool:
+    """getItem / restoreLastView of last view — not sidebar / density."""
+    if _RESTORE_LAST_VIEW_NAME.search(blob):
+        return True
+    has_read = bool(_GETITEM.search(blob) or _LS_BRACKET.search(blob))
+    return bool(has_read and _LAST_VIEW_TOKEN.search(blob))
+
+
+def _person_restore_blobs(app: str, refresh: str) -> str:
+    """Restore helpers that selectPerson, plus the post-`people =` tail."""
+    parts: list[str] = []
+    for name in dict.fromkeys(_RESTORE_FN_NAME.findall(app)):
+        body = _fn_body(app, name)
+        if body and _SELECT_PERSON.search(body):
+            parts.append(body)
+    tail = _refresh_after_people(refresh)
+    if tail.strip():
+        parts.append(tail)
+        parts.append(_expand_skip(app, tail))
+    return "\n".join(parts)
+
+
+def _person_restore_skips_taken(blob: str) -> bool:
+    return bool(_PERSON_TAKEN_GUARD.search(blob))
+
+
+def _jump_path_bodies(app: str) -> str:
+    open_fn = _fn_body(app, "openPersonAtMessage")
+    jump_fn = _fn_body(app, "jumpToMessage")
+    return "\n".join(b for b in (open_fn, jump_fn) if b.strip())
+
+
+def _jump_persists_last_person(app: str, reopen_keys: list[str]) -> bool:
+    """Search-jump writes last person like non-append selectPerson."""
+    blob = _jump_path_bodies(app)
+    if not blob.strip():
+        return False
+    if _PERSIST_LAST_PERSON_CALL.search(blob) or _SELECT_PERSON_ONLY.search(blob):
+        return True
+    blob_x = _expand_skip(app, blob)
+    return _writes_last_pref(blob_x, reopen_keys) or _writes_last_pref(
+        blob, reopen_keys
+    )
+
+
 def assert_reopen_last_session(crate: Path) -> None:
     """#305: reopen on last view + last person (localStorage only).
 
@@ -272,6 +412,13 @@ def assert_reopen_last_session(crate: Path) -> None:
     Unknown stored view → people. First run → today’s empty People.
     Missing person must not set a raw `person ${id}` title. Keep #212
     sidebar and #276 density keys. Docs: reopen last view + last person.
+
+    PR #323 review fold: view restore is getItem / restoreLastView at
+    onMount (sidebar/density moment), not after people =. A user tab
+    taken before the list arrives is kept (no view = after people =).
+    Person restore still waits on people = + people.some; skip if
+    selectedId is already taken. openPersonAtMessage / Search-jump
+    persists last person the same way a non-append selectPerson does.
     """
     app_path = crate / "web" / "App.svelte"
     if not app_path.is_file():
@@ -482,3 +629,48 @@ def assert_reopen_last_session(crate: Path) -> None:
         )
     if not _fn_body(app_clean, "persistSidebar") or not _fn_body(app_clean, "persistDensity"):
         fail("#305: keep persistSidebar / persistDensity (#212 / #276)")
+
+    # 13) View restore is getItem / restoreLastView at onMount — not after
+    #     refreshPeople / people = (PR #323 review fold).
+    mount = _onmount_body(app_clean)
+    if not mount.strip():
+        fail(
+            "#305: restore last view at onMount (same moment as sidebar/density) "
+            "— getItem / restoreLastView must not wait on refreshPeople / people ="
+        )
+    mount_sync = _onmount_sync_prefix(mount)
+    mount_x = _expand_view_restore_callees(app_clean, mount_sync)
+    if not _restores_last_view(mount_x):
+        fail(
+            "#305: restore last view at onMount (same moment as sidebar/density) "
+            "— getItem / restoreLastView must not wait on refreshPeople / people ="
+        )
+
+    # 14) A user tab taken before the list arrives is kept (A never assigns
+    #     view after people =).
+    people_tail = _refresh_after_people(refresh_x)
+    people_tail_x = _expand_skip(app_clean, people_tail)
+    if _VIEW_ASSIGN.search(people_tail) or _VIEW_ASSIGN.search(people_tail_x):
+        fail(
+            "#305: if view changed before the people list arrives, restore "
+            "must not overwrite that tab — do not assign view after people ="
+        )
+
+    # 15) Person restore must not overwrite a person already taken.
+    person_restore = _person_restore_blobs(app_clean, refresh_x)
+    if _SELECT_PERSON.search(person_restore) and not _person_restore_skips_taken(
+        person_restore
+    ):
+        fail(
+            "#305: person restore must not overwrite a person already taken "
+            "(selectedId already set) — skip selectPerson when the user "
+            "jumped or clicked first"
+        )
+
+    # 16) Search-jump / openPersonAtMessage writes last person like
+    #     non-append selectPerson.
+    if not _jump_persists_last_person(app_clean, reopen_keys):
+        fail(
+            "#305: openPersonAtMessage / Search-jump must persist last person "
+            "the same way a non-append selectPerson does"
+        )

@@ -160,7 +160,8 @@
     "doctor",
   ];
   type Density = "default" | "comfortable";
-  let sessionRestored = false;
+  let viewRestored = false;
+  let personRestored = false;
   let userCollapsed = $state(false);
   let density = $state<Density>("default");
   let narrow = $state(false);
@@ -201,17 +202,23 @@
 
   $effect(() => {
     void view;
-    if (!sessionRestored) return;
+    if (!viewRestored) return;
     persistLastView();
   });
 
-  function restoreLastSession() {
-    if (sessionRestored) return;
-    sessionRestored = true;
+  function restoreLastView() {
+    if (viewRestored) return;
     const rawView = localStorage.getItem(LAST_VIEW_PREF);
     view = LAST_VIEWS.includes(rawView as LastView)
       ? (rawView as LastView)
       : "people";
+    viewRestored = true;
+  }
+
+  function restoreLastPerson() {
+    if (personRestored) return;
+    personRestored = true;
+    if (selectedId != null) return;
     const rawId = localStorage.getItem(LAST_PERSON_PREF);
     const id = rawId ? Number(rawId) : NaN;
     if (Number.isFinite(id) && people.some((p) => p.id === id)) {
@@ -826,7 +833,7 @@
       const next = await api.people();
       if (gen !== peopleGen) return;
       people = next;
-      restoreLastSession();
+      restoreLastPerson();
     } catch (e) {
       if (gen === peopleGen) showErr(e);
     } finally {
@@ -1112,6 +1119,7 @@
     kindFilter = "all";
     quotedOpen = {};
     selectedId = personId;
+    persistLastPerson(personId);
     selectedConversationId = null;
     const gen = ++tlGen;
     tlAppending = false;
@@ -1468,6 +1476,7 @@
   onMount(() => {
     userCollapsed = readSidebarPref();
     density = readDensityPref();
+    restoreLastView();
     syncNarrow();
     window.addEventListener("resize", syncNarrow);
     window.addEventListener("keydown", onKey);
