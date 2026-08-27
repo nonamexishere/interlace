@@ -1,8 +1,10 @@
 //! Native application menu (About / File / View). No website URL.
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
-use interlace_core::session::{drop_recent, read_recents};
+use interlace_core::session::{drop_recent, read_last_bookmark, read_recents};
 use tauri::menu::{AboutMetadata, Menu, MenuBuilder, MenuItem, SubmenuBuilder};
 use tauri::{AppHandle, Emitter};
 
@@ -22,8 +24,11 @@ fn file_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Submenu<tauri::Wry>>
     let recents = read_recents();
     if !recents.is_empty() {
         let mut recent = SubmenuBuilder::new(app, "Recent archives");
-        for (i, entry) in recents.iter().enumerate() {
-            recent = recent.text(format!("recent-{i}"), &entry.display);
+        for entry in recents.iter() {
+            recent = recent.text(
+                recent_menu_id(&entry.path),
+                entry.display.replace('&', "&&"),
+            );
         }
         file = file.separator().item(&recent.build()?);
     }
@@ -63,16 +68,16 @@ pub(crate) fn rebuild_menu(app: &AppHandle) {
     }
 }
 
+fn recent_menu_id(path: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    format!("recent-{:016x}", hasher.finish())
+}
+
 /// Resolve that one bookmark and emit the path. Missing / fail: drop + rebuild.
 pub(crate) fn open_recent(app: &AppHandle, id: &str) {
-    let Some(idx) = id
-        .strip_prefix("recent-")
-        .and_then(|s| s.parse::<usize>().ok())
-    else {
-        return;
-    };
     let recents = read_recents();
-    let Some(entry) = recents.get(idx) else {
+    let Some(entry) = recents.iter().find(|e| recent_menu_id(&e.path) == id) else {
         return;
     };
     let resolved = if entry.bookmark.is_empty() {
@@ -85,9 +90,13 @@ pub(crate) fn open_recent(app: &AppHandle, id: &str) {
         crate::bookmark::resolve_security_scoped_bookmark(&entry.bookmark).ok()
     };
     let Some(path) = resolved.filter(|p| p.is_dir()) else {
-        let _ = drop_recent(idx);
+        if let Some(bytes) = read_last_bookmark() {
+            let _ = crate::bookmark::resolve_security_scoped_bookmark(&bytes);
+        }
+        let _ = drop_recent(&entry.path);
         rebuild_menu(app);
         return;
     };
+    let _ = drop_recent(&entry.path);
     let _ = app.emit("menu-open-recent", path.to_string_lossy().into_owned());
 }

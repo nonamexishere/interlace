@@ -107,6 +107,7 @@ from tauri_gate.density import (  # noqa: E402
 from tauri_gate.reopen_last import assert_reopen_last_session  # noqa: E402
 from tauri_gate.window_frame import assert_persist_window_frame  # noqa: E402
 from tauri_gate.recent_archives import assert_recent_archives  # noqa: E402
+from tauri_gate.recent_archives_fold import assert_recent_archives_fold  # noqa: E402
 from tauri_gate.a11y import (  # noqa: E402
     assert_a11y_listbox_focus_motion,
     assert_focus_aria_audit,

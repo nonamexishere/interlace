@@ -68,7 +68,7 @@ pub fn sandbox_denied_message(err: &std::io::Error) -> Option<&'static str> {
     }
 }
 
-/// Sibling list under `config_dir()`.
+/// Separate from `last-archive.bookmark` / `config.toml` so recents writes cannot clobber them.
 const RECENTS_FILE: &str = "recent-archives.json";
 const MAX_RECENTS: usize = 5;
 
@@ -103,12 +103,18 @@ pub fn record_recent(path: &Path, bookmark: &[u8]) -> Result<(), CoreError> {
         .unwrap_or_else(|| abs.display().to_string());
     let key = abs.to_string_lossy().into_owned();
     let mut recents = read_recents();
+    let bytes = match recents.iter().find(|e| e.path == key) {
+        Some(existing) if bookmark.is_empty() && !existing.bookmark.is_empty() => {
+            existing.bookmark.clone()
+        }
+        _ => bookmark.to_vec(),
+    };
     recents.retain(|e| e.path != key);
     recents.insert(
         0,
         RecentArchive {
             display,
-            bookmark: bookmark.to_vec(),
+            bookmark: bytes,
             path: key,
         },
     );
@@ -118,10 +124,11 @@ pub fn record_recent(path: &Path, bookmark: &[u8]) -> Result<(), CoreError> {
     write_recents(&recents)
 }
 
-pub fn drop_recent(index: usize) -> Result<(), CoreError> {
+pub fn drop_recent(path: &str) -> Result<(), CoreError> {
     let mut recents = read_recents();
-    if index < recents.len() {
-        recents.remove(index);
+    let n = recents.len();
+    recents.retain(|e| e.path != path);
+    if recents.len() < n {
         write_recents(&recents)?;
     }
     Ok(())

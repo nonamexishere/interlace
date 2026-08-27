@@ -45,7 +45,6 @@ fn ensure_archive_readable(p: &Path) -> Result<(), String> {
 
 /// After a successful rfd pick / open we have access: store the bookmark.
 /// Unsandboxed `tauri:dev` may fail create — path pointer is enough there.
-/// Also record a recent (path + optional bookmark bytes) and rebuild File.
 fn persist_bookmark(app: &AppHandle, path: &Path) {
     let bytes = match crate::bookmark::create_security_scoped_bookmark(path) {
         Ok(bytes) => {
