@@ -110,6 +110,7 @@ from tauri_gate.recent_archives import assert_recent_archives  # noqa: E402
 from tauri_gate.recent_archives_fold import assert_recent_archives_fold  # noqa: E402
 from tauri_gate.switch_archive import assert_switch_archive  # noqa: E402
 from tauri_gate.switch_archive_fold import assert_switch_archive_fold  # noqa: E402
+from tauri_gate.switch_archive_err import assert_switch_archive_err  # noqa: E402
 from tauri_gate.a11y import (  # noqa: E402
     assert_a11y_listbox_focus_motion,
     assert_focus_aria_audit,

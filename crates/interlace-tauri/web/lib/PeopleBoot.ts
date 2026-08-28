@@ -11,6 +11,7 @@ export type PeopleBootCtx = {
   showErr: (e: unknown) => void;
   setSetup: (v: boolean) => void;
   setBooting: (v: boolean) => void;
+  err: string;
 };
 
 export function startPeopleBoot(ctx: PeopleBootCtx): () => void {
@@ -73,6 +74,7 @@ async function switchToSetup(ctx: PeopleBootCtx) {
   } catch {
     return;
   }
+  ctx.err = "";
   ctx.setSetup(true);
   localStorage.removeItem(LAST_VIEW_PREF);
   localStorage.removeItem(LAST_PERSON_PREF);
