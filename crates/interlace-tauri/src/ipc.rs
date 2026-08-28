@@ -148,8 +148,9 @@ pub(crate) fn init(
         return Err("init requires a folder".into());
     }
     let arch = init_owner_archive(&p, &phone_region, name, emails, phones).map_err(err_open)?;
+    let st = hold(&state, arch)?;
     persist_bookmark(&app, &p);
-    hold(&state, arch)
+    Ok(st)
 }
 
 #[tauri::command]
@@ -163,8 +164,21 @@ pub(crate) fn open(
     ensure_archive_readable(&p)?;
     let arch = open_archive(&p, LockMode::Exclusive).map_err(err_open)?;
     write_last_path(&p).map_err(err_open)?;
+    let st = hold(&state, arch)?;
     persist_bookmark(&app, &p);
-    hold(&state, arch)
+    Ok(st)
+}
+
+#[tauri::command]
+pub(crate) fn close_archive(app: AppHandle, state: tauri::State<AppState>) -> Result<(), String> {
+    let import_status = state.import.lock().map_err(err)?.status.clone();
+    if import_status == "running" {
+        return Err("import running".into());
+    }
+    *state.archive.lock().map_err(err)? = None;
+    *state.archive_root.lock().map_err(err)? = None;
+    crate::menu::rebuild_menu(&app);
+    Ok(())
 }
 
 #[tauri::command]

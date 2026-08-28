@@ -135,20 +135,15 @@
     try { await api.revealArchive(); } catch { showToast("Could not reveal"); }
   }
   async function importDroppedPaths(paths: string[]) {
+    if (setup) return;
     const local = paths.find((p) => p && p.trim() && !isDroppedUrl(p));
     if (!local) {
-      if (paths.some((p) => (p ?? "").trim())) {
-        showToast("Drop a local ZIP or mbox — URLs are not imported.");
-      }
+      if (paths.some((p) => (p ?? "").trim())) showToast("Drop a local ZIP or mbox — URLs are not imported.");
       return;
     }
     err = "";
     view = "import";
-    try {
-      await api.importStart({ path: local });
-    } catch (e) {
-      showErr(e);
-    }
+    try { await api.importStart({ path: local }); } catch (e) { showErr(e); }
   }
 
   function ask(title: string, description: string, run: () => Promise<void>, label = "Confirm") {
@@ -233,6 +228,7 @@
   }
 
   async function whenSearchPaneReady(): Promise<HTMLInputElement | null> {
+    if (setup) return null;
     view = "search";
     for (let i = 0; i < 40; i++) {
       await tick();
@@ -248,6 +244,7 @@
     void whenSearchPaneReady().then((qEl) => { qEl?.focus(); qEl?.form?.requestSubmit(); });
   }
   function runCommandView(next: "people" | "search" | "review" | "import" | "doctor") {
+    if (setup) return;
     commandOpen = false;
     if (next === "search") void whenSearchPaneReady().then((qEl) => qEl?.focus());
     else view = next;
@@ -257,10 +254,7 @@
     void peopleShell?.pane()?.selectPerson(p.id);
     commandOpen = false;
   }
-  function runCommandDensity(next: Density) {
-    persistDensity(next);
-    commandOpen = false;
-  }
+  function runCommandDensity(next: Density) { persistDensity(next); commandOpen = false; }
 
   function onKey(e: KeyboardEvent) {
     const t = e.target as HTMLElement | null;
@@ -275,7 +269,7 @@
       commandOpen,
       setCommandOpen: (v) => { commandOpen = v; },
       view,
-      setView: (v) => { view = v; },
+      setView: (v) => { if (setup) return; view = v; },
       sidebarCollapsed,
       persistSidebar,
       showPersonChrome,
@@ -303,11 +297,14 @@
     window.addEventListener("keydown", onKey);
     const stopBoot = startPeopleBoot({
       openPicker,
-      setView: (v) => { view = v; },
+      setView: (v) => { if (setup) return; view = v; },
       importDroppedPaths,
       openPath,
-      showErr,
-      setSetup: (v) => { setup = v; },
+      showErr, get err() { return err; }, set err(v) { err = v; },
+      setSetup: (v) => {
+        setup = v;
+        if (v) { people = []; selectedId = null; events = []; st = null; doctor = []; filter = ""; searchQ = ""; seedPerson = null; includeGroups = false; identities = []; personTitle = "Select a person"; view = "people"; ++peopleGen; confirmOpen = false; confirmRun = null; }
+      },
       setBooting: (v) => { booting = v; },
     });
     return () => {

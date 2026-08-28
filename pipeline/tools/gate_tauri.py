@@ -199,6 +199,9 @@ def main() -> None:
     assert_product_split(crate)
     assert_recent_archives(crate)
     assert_recent_archives_fold(crate)
+    assert_switch_archive(crate)
+    assert_switch_archive_fold(crate)
+    assert_switch_archive_err(crate)
     cas = (crate / "web" / "lib" / "CasAttach.svelte").read_text()
     if "casDataUrl" not in cas:
         fail("CAS viewer must load bytes via casDataUrl (data: URL; Vite cannot fetch cas://)")

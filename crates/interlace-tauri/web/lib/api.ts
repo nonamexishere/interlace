@@ -157,6 +157,7 @@ export const api = {
     phones: string[];
   }) => invoke<Status>("init", args),
   open: (path: string) => invoke<Status>("open", { path }),
+  closeArchive: () => invoke<void>("close_archive"),
   status: () => invoke<Status>("status"),
   doctorIssues: () => invoke<string[]>("doctor_issues_cmd"),
   doctorIssuesQuick: () => invoke<string[]>("doctor_issues_quick_cmd"),

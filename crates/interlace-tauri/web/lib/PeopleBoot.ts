@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api } from "./api";
+import { LAST_PERSON_PREF, LAST_VIEW_PREF } from "./PeoplePrefs";
 
 export type PeopleBootCtx = {
   openPicker: () => Promise<void>;
@@ -10,6 +11,7 @@ export type PeopleBootCtx = {
   showErr: (e: unknown) => void;
   setSetup: (v: boolean) => void;
   setBooting: (v: boolean) => void;
+  err: string;
 };
 
 export function startPeopleBoot(ctx: PeopleBootCtx): () => void {
@@ -19,9 +21,7 @@ export function startPeopleBoot(ctx: PeopleBootCtx): () => void {
     if (menuGone) unlisten();
     else menuUnlisten.push(unlisten);
   };
-  void listen("menu-open-archive", () => {
-    void ctx.openPicker();
-  }).then(keepMenu);
+  void listen("menu-open-archive", ctx.openPicker).then(keepMenu);
   void listen("menu-open-recent", (e) => {
     const path = e.payload;
     if (typeof path === "string" && path.length > 0) {
@@ -37,6 +37,9 @@ export function startPeopleBoot(ctx: PeopleBootCtx): () => void {
     else if (next === "search") ctx.setView("search");
     else if (next === "review") ctx.setView("review");
     else if (next === "doctor") ctx.setView("doctor");
+  }).then(keepMenu);
+  void listen("menu-switch-archive", () => {
+    void switchToSetup(ctx);
   }).then(keepMenu);
   void getCurrentWebview()
     .onDragDropEvent((event) => {
@@ -63,4 +66,16 @@ export function startPeopleBoot(ctx: PeopleBootCtx): () => void {
     menuGone = true;
     for (const unlisten of menuUnlisten) unlisten();
   };
+}
+
+async function switchToSetup(ctx: PeopleBootCtx) {
+  try {
+    await api.closeArchive();
+  } catch {
+    return;
+  }
+  ctx.err = "";
+  ctx.setSetup(true);
+  localStorage.removeItem(LAST_VIEW_PREF);
+  localStorage.removeItem(LAST_PERSON_PREF);
 }

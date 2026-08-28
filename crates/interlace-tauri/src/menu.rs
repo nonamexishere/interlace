@@ -6,12 +6,21 @@ use std::path::PathBuf;
 
 use interlace_core::session::{drop_recent, read_last_bookmark, read_recents};
 use tauri::menu::{AboutMetadata, Menu, MenuBuilder, MenuItem, SubmenuBuilder};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// About box copy: same honesty as Doctor / the cloud-path banner. No website URL.
 const ABOUT_COPY: &str = "Offline. Not encrypted at rest — FileVault is your encryption.";
 
 fn file_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Submenu<tauri::Wry>> {
+    let switch_on = app.try_state::<crate::AppState>().is_some_and(|state| {
+        let open = state.archive.lock().ok().is_some_and(|g| g.is_some());
+        let running = state
+            .import
+            .lock()
+            .ok()
+            .is_some_and(|g| g.status == "running");
+        open && !running
+    });
     let mut file = SubmenuBuilder::new(app, "File")
         .item(&MenuItem::with_id(
             app,
@@ -19,6 +28,13 @@ fn file_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Submenu<tauri::Wry>>
             "Open archive",
             true,
             Some("CmdOrCtrl+O"),
+        )?)
+        .item(&MenuItem::with_id(
+            app,
+            "switch-archive",
+            "Switch archive",
+            switch_on,
+            None::<&str>,
         )?)
         .text("menu-import", "Import");
     let recents = read_recents();
