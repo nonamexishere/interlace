@@ -2,7 +2,7 @@
   import { tick } from "svelte";
   import type { TimelineRow } from "./api";
   import { localDay, localDayLabel } from "./formatTime";
-  import { cancelDayHeadingPin, scrollDayHeadingToTop } from "./jumpDay";
+  import { cancelDayHeadingPin, dayHeadingOffset, scrollDayHeadingToTop } from "./jumpDay";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import TimelineRows from "./TimelineRows.svelte";
   import TimelineCopyMenu from "./TimelineCopyMenu.svelte";
@@ -373,9 +373,7 @@
     }
   }
 
-  export function stopPin() {
-    stopPinLatest();
-  }
+  export function stopPin() { stopPinLatest(); cancelDayHeadingPin(); }
 
   export function estimateScrollToIndex(index: number) {
     const hitPos = filteredTimeline.findIndex((item) => item.index === index);
@@ -389,7 +387,7 @@
   export function pinDayAtTop(filteredPos: number) {
     const item = filteredTimeline[filteredPos];
     if (!item) return;
-    const estimateTop = Math.max(0, tlChromeHeight + offsetOf(filteredPos));
+    const estimateTop = Math.max(0, tlChromeHeight + offsetOf(filteredPos) + dayHeadingOffset(filteredTimeline, filteredPos));
     tlScrollTop = estimateTop; scrollDayHeadingToTop(item.index, estimateTop, writeScrollTop);
   }
 

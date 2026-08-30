@@ -19,6 +19,7 @@ from tauri_gate.jump_day_heading_stutter2 import assert_jump_day_heading_stutter
 from tauri_gate.jump_day_heading_image import assert_jump_day_heading_image  # noqa: E402
 from tauri_gate.jump_day_heading_fold import assert_jump_day_heading_fold  # noqa: E402
 from tauri_gate.jump_day_heading_fold2 import assert_jump_day_heading_fold2  # noqa: E402
+from tauri_gate.jump_day_heading_fold3 import assert_jump_day_heading_fold3  # noqa: E402
 from tauri_gate.timeline_scroll import (  # noqa: E402
     assert_timeline_latest,
     assert_virtualized_timeline,

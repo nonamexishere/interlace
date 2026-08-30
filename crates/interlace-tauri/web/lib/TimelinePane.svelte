@@ -446,7 +446,7 @@
         bind:kindFilter
       />
       <div class="mb-3 flex items-center gap-2">
-        <Input id="tl-find" data-tl-find type="search" bind:value={findQ} placeholder={t("findInThread")} aria-label={t("findInThread")} autocomplete="off" class="h-8 min-w-0 flex-1" oninput={() => (dayPin = false)} onkeydown={onPaneFindKey} />
+        <Input id="tl-find" data-tl-find type="search" bind:value={findQ} placeholder={t("findInThread")} aria-label={t("findInThread")} autocomplete="off" class="h-8 min-w-0 flex-1" oninput={() => (dayPin = false, jumpGen++)} onkeydown={onPaneFindKey} />
         <Input type={"date"} bind:value={jumpDay} aria-label={t("jumpToDay")} class="h-8 w-auto shrink-0" onchange={goToJumpDay} />
         {#if findQ}
           <span data-tl-hit-count class="shrink-0 text-xs tabular-nums text-muted-foreground">{findCount(filteredTimeline, findQ, tlIndex, quotedOpen)}</span>
@@ -487,7 +487,7 @@
     {onSearchFromBubble}
     {onCopyFail}
     {findQ}
-    onClearDayPin={() => (dayPin = false)}
+    onClearDayPin={() => (dayPin = false, jumpGen++)}
   />
   <p class="shrink-0 bg-background px-4 pb-4 pt-2 text-xs text-muted-foreground">
     Bodies are text only. Day headings follow the Mac timezone. <kbd class="rounded border border-border px-1">j</kbd>/<kbd

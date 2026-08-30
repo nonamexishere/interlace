@@ -147,6 +147,17 @@ export function shouldLoadOlderForJump(
   return key < range.oldest;
 }
 
+export const DAY_HEADING_HEIGHT = 28;
+export function dayHeadingOffset(items: JumpDayItem[], pos: number): number {
+  let n = 0, prev = "";
+  const end = Math.max(0, Math.min(pos, items.length));
+  for (let i = 0; i < end; i++) {
+    const d = localDay(items[i].row.sent_at, items[i].row.platform);
+    if (d && d !== prev) { n++; prev = d; }
+  }
+  return n * DAY_HEADING_HEIGHT;
+}
+
 let dayPinToken = 0;
 export function cancelDayHeadingPin(): void {
   dayPinToken++;
