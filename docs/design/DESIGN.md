@@ -164,7 +164,7 @@ Users observe ~40k recent messages on text-only export, less with media. We cann
 | D15 | Import order / person auto-merge | Import order is **not** constrained. After every import run, resolver auto-**merges persons** when two live persons share an exact phone or email (confidence 0.99) unless the two-card name conflict check fires. Contacts-first is faster to a clean graph but not required. | Refuse WA/Gmail until Contacts imported; or send all cross-person identifier collisions to review | Contacts-as-bridge must work WA-first and Contacts-first; review-on-collision silently breaks unification | Review-on-collision wins if the user treats distinct vCards as sacred even when phones collide (wrong merge is worse than missed merge — but exact phone/email *is* the high-confidence rule we already accepted) |
 | D16 | WhatsApp sender identity keying | DM counterpart = `kind=phone` iff chat title **or** sender token parses as E.164 with the archive’s required `default_phone_region`; else `kind=display_name`. Group senders = `display_name` unless the token itself is a number. **Never invent `whatsapp_jid` from ZIP** (`whatsapp_jid` is reserved, unused in v1 CHECK kept for wave-2). Name-only WA is review-queue-first by design. | Invent fake JIDs; parse all titles as phones; auto-merge on folded display name | ZIP has names, not JIDs; auto-merge stays phone/email only | Fake JIDs would win if we later ingest `msgstore.db` (out of scope) |
 | D17 | FTS during import | **Do not DROP triggers.** Import writes `messages` (and attachments) **without** writing `search_doc` per row. After messages commit: one bulk `INSERT INTO search_doc SELECT … FROM messages WHERE import_run_id=?` then `INSERT INTO messages_fts(messages_fts) VALUES('rebuild')`. Triggers stay installed for interactive delete/update. `open_archive` / `migrate` / `doctor --rebuild-fts` run `CREATE TRIGGER IF NOT EXISTS` for ai/ad/au. Never `PRAGMA synchronous=OFF`. No `--fast-import`. | DROP TRIGGER around import; per-row FTS during 10 M import; sync=OFF | DROP is DB-global and not crash-safe (kill -9 after DROP desyncs every future open). Bulk insert+rebuild keeps the 10 M perf win | Per-row triggers win for tiny archives (<50k) where rebuild latency is more annoying than import time |
-| D18 | Person timeline vs groups | Default timeline = messages where person is **sender** OR conversation is `dm`/`email_thread` and person is a participant. Groups included only with `--include-groups`. **Same predicate for FTS `--person`** (`SearchQuery.include_groups`; pick **(b)** not sender-only). Group detection: (a) ≥2 non-self senders OR (b) any group system template OR (c) locale title prefix indicates group; else DM. **C (#33):** if (a) alone would fire, exactly 2 human senders, one folded-equals `archive_meta.owner_display_name` or a self identity display_name (exact `name_fold_join`, no fuzzy), title/ZIP stem matches `title_prefixes_dm` (including iOS `WhatsApp Chat - `), and (b)(c) are false → `dm`; that sender is self (`role=me`, `self_identities` + `is_self` person via `self_declared`/`system`). Peer names still never auto-merge (D16). | ≥3 non-self senders; always include group traffic; FTS sender-only (a); treat every owner-name hit as self without the DM-title guard | Off-by-one classified me+2 as DM; dumping whole groups is not “talk with X”; FTS sender-only would miss “mail with X”; iOS 1:1 exports omit `you_tokens` and would hide from default timeline | Always-include-groups wins for forensic mode; sender-only FTS wins if join p95 blows the 200 ms budget (Spike 1 / nightly — then fall back to (a) and document); B (no title guard) wins if 2-person groups without system lines are rarer than false groups |
+| D18 | Person timeline vs groups | Default timeline = messages where (person is **sender** OR participant) **and** conversation is `dm`/`email_thread` (kind filter on the whole WHERE, including that person’s own sends). Groups included only with `--include-groups`. **Same predicate for FTS `--person`** (`SearchQuery.include_groups`; pick **(b)** not sender-only). Group detection: (a) ≥2 non-self senders OR (b) any group system template OR (c) locale title prefix indicates group; else DM. **C (#33):** if (a) alone would fire, exactly 2 human senders, one folded-equals `archive_meta.owner_display_name` or a self identity display_name (exact `name_fold_join`, no fuzzy), title/ZIP stem matches `title_prefixes_dm` (including iOS `WhatsApp Chat - `), and (b)(c) are false → `dm`; that sender is self (`role=me`, `self_identities` + `is_self` person via `self_declared`/`system`). Peer names still never auto-merge (D16). | ≥3 non-self senders; always include group traffic; FTS sender-only (a); treat every owner-name hit as self without the DM-title guard | Off-by-one classified me+2 as DM; dumping whole groups is not “talk with X”; FTS sender-only would miss “mail with X”; iOS 1:1 exports omit `you_tokens` and would hide from default timeline | Always-include-groups wins for forensic mode; sender-only FTS wins if join p95 blows the 200 ms budget (Spike 1 / nightly — then fall back to (a) and document); B (no title guard) wins if 2-person groups without system lines are rarer than false groups |
 | D19 | Archive lock | Exclusive `flock` on `$ARCHIVE/INTERLACE.lock` for writers (`import`, `person merge/unlink/undo`, `review accept`, `doctor --gc-cas/--rebuild-fts`). Shared lock for `search`/`status`/`person list|show`/`review list|show`. Second writer exits 1 with pid. | Single-process assumption; rely on `busy_timeout` | Two imports or import+gc will corrupt checkpoints/CAS tmp | Single-process wins only if we later wrap everything in a daemon (Phase 2 Tauri can hold the lock for the session) |
 | D20 | Default phone region | **Required at `interlace init`; no implicit default.** Stored in `settings.default_phone_region`. National-format numbers cannot auto-merge until it is set. | Silent default `TR` or `US` | Defaulting a country invents product geography; contradicts OQ1 | Default `TR` wins if the owner confirms this is a TR-first personal tool and never wants the prompt |
 | D21 | Phase 1 must-pass scope | Happy-path CLI in ≤ 2 weeks: must-pass matrix **CAS1–CAS3, W1–W4, M1–M3, C1, I1–I6, I6b, S1–S3** + doctor smoke. Locale/corrupt/resume polish (W5–W9, M4–M6, C2–C3, S4) is **Phase 1.1**, same CLI, not a new product. PR CI uses 10k search proxy; 1 M / 10 M benches are **nightly**, not PR. | All W1–S4 + 1 M in PR CI as Phase 1 | 13 PRs × full matrix + 1 M index in PR is not one engineer × 10 days | Full matrix in Phase 1 wins if calendar expands to ~4 weeks |
@@ -1649,6 +1649,7 @@ SELECT
 FROM messages_fts
 JOIN search_doc d ON d.message_id = messages_fts.rowid
 JOIN messages m   ON m.id = d.message_id
+JOIN conversations c ON c.id = m.conversation_id
 WHERE messages_fts MATCH $query
   AND d.sent_at BETWEEN $from AND $to          -- optional
   AND d.platform = $platform                   -- optional
@@ -1661,11 +1662,10 @@ WHERE messages_fts MATCH $query
             SELECT cp.conversation_id
             FROM conversation_participants cp
             JOIN person_identities pi ON pi.identity_id = cp.identity_id
-            JOIN conversations c2 ON c2.id = cp.conversation_id
             WHERE pi.person_id = $person
-              AND ($include_groups = 1 OR c2.kind IN ('dm','email_thread'))
         )
       )
+  AND ($person IS NULL OR $include_groups = 1 OR c.kind IN ('dm','email_thread'))
 ORDER BY score, m.sent_at DESC
 LIMIT 50;
 ```
@@ -1681,16 +1681,14 @@ FROM messages m
 JOIN conversations c ON c.id = m.conversation_id
 WHERE (
         m.sender_identity_id IN (SELECT identity_id FROM person_identities WHERE person_id = ?)
-     OR (
-            c.kind IN ('dm','email_thread')
-        AND m.conversation_id IN (
+     OR m.conversation_id IN (
               SELECT cp.conversation_id
               FROM conversation_participants cp
               JOIN person_identities pi ON pi.identity_id = cp.identity_id
               WHERE pi.person_id = ?
             )
-        )
       )
+  AND c.kind IN ('dm','email_thread')
 ORDER BY m.sent_at DESC
 LIMIT 100;
 ```

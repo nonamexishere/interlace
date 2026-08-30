@@ -60,8 +60,8 @@ not MIME-type taxonomy:
 ## `--person` and `--include-groups` (D18)
 
 `--person` is **not** sender-only. A hit counts if the person is the sender **or**
-is a participant of a `dm` / `email_thread`. Groups stay out unless you pass
-`--include-groups`.
+a participant, **and** the conversation is `dm` / `email_thread`. Groups stay
+out unless you pass `--include-groups` (including that person’s own group sends).
 
 The same predicate is used by `person_timeline` (no FTS, ordered by `sent_at`).
 

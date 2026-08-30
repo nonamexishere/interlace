@@ -89,7 +89,6 @@ pub fn search(archive: &Archive, q: &SearchQuery) -> Result<Vec<SearchHit>, Core
     if match_q.is_empty() {
         return Ok(Vec::new());
     }
-    let include_groups = if q.include_groups { 1i64 } else { 0 };
     let plat = q.platform.map(platform_sql);
     let mut sql = String::from(
         "SELECT
@@ -157,12 +156,13 @@ pub fn search(archive: &Archive, q: &SearchQuery) -> Result<Vec<SearchHit>, Core
                     SELECT cp.conversation_id
                     FROM conversation_participants cp
                     JOIN person_identities pi ON pi.identity_id = cp.identity_id
-                    JOIN conversations c2 ON c2.id = cp.conversation_id
                     WHERE pi.person_id = ?
-                      AND (? = 1 OR c2.kind IN ('dm','email_thread'))
                 )
               )",
         );
+        if !q.include_groups {
+            sql.push_str(" AND c.kind IN ('dm','email_thread')");
+        }
     }
     sql.push_str(" ORDER BY score, m.sent_at IS NULL, m.sent_at DESC LIMIT ?");
 
@@ -186,7 +186,6 @@ pub fn search(archive: &Archive, q: &SearchQuery) -> Result<Vec<SearchHit>, Core
     if let Some(pid) = q.person_id {
         vals.push(pid.into());
         vals.push(pid.into());
-        vals.push(include_groups.into());
     }
     vals.push((limit as i64).into());
 
@@ -232,16 +231,14 @@ pub fn person_timeline(
                 m.sender_identity_id IN (
                     SELECT identity_id FROM person_identities WHERE person_id = ?1
                 )
-             OR (
-                    m.conversation_id IN (
-                      SELECT cp.conversation_id
-                      FROM conversation_participants cp
-                      JOIN person_identities pi ON pi.identity_id = cp.identity_id
-                      WHERE pi.person_id = ?1
-                    )
-                    {group_sql}
+             OR m.conversation_id IN (
+                    SELECT cp.conversation_id
+                    FROM conversation_participants cp
+                    JOIN person_identities pi ON pi.identity_id = cp.identity_id
+                    WHERE pi.person_id = ?1
                 )
               )
+           {group_sql}
          ORDER BY m.sent_at IS NULL, m.sent_at DESC
          LIMIT ?2"
     );

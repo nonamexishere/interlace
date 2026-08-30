@@ -5,6 +5,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { t } from "$lib/i18n";
   import { chromeMotionMs } from "$lib/motion";
+  import { writeIncludeGroupsPref } from "./PeoplePrefs";
 
   let {
     showPersonChrome = $bindable(false),
@@ -27,7 +28,7 @@
     personById: (id: number | null) => Person | undefined;
     onMerge: () => void;
     onUnlink: (id: number) => void;
-    onReloadPerson: () => void;
+    onReloadPerson: (includeGroups: boolean) => void;
   } = $props();
 </script>
 
@@ -57,7 +58,7 @@
         type="checkbox"
         class="focus-visible:ring-2 focus-visible:ring-ring"
         bind:checked={includeGroups}
-        onchange={onReloadPerson}
+        onchange={() => { writeIncludeGroupsPref(includeGroups); onReloadPerson(includeGroups); }}
       />
       include groups
     </label>

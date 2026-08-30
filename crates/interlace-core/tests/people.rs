@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use interlace_core::db::init_archive;
 use interlace_core::people::{person_list, person_timeline_rows};
-use interlace_core::{person_merge, person_undo, PersonMergeOpts};
+use interlace_core::{person_merge, person_timeline, person_undo, PersonMergeOpts};
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -121,6 +121,109 @@ fn plant(arch: &interlace_core::db::Archive) -> (i64, i64, i64) {
         )
         .unwrap();
     (pid, dm_msg, arch.conn.last_insert_rowid())
+}
+
+/// Ada is the sender in a DM and a `kind=group` chat (D18 sender-branch hole).
+fn plant_ada_sender(arch: &interlace_core::db::Archive) -> (i64, i64, i64) {
+    arch.conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('whatsapp_android_zip', 't', '/t.zip')",
+            [],
+        )
+        .unwrap();
+    let src = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO import_runs(source_id, status) VALUES (?1, 'done')",
+            [src],
+        )
+        .unwrap();
+    let run = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('whatsapp', 'display_name', 'Ada', 'ada', 'Ada')",
+            [],
+        )
+        .unwrap();
+    let ada_iid = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO persons(display_name, is_self) VALUES ('Ada', 0)",
+            [],
+        )
+        .unwrap();
+    let ada_id = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
+             VALUES (?1, ?2, 'auto_email', 0.99, 'system')",
+            rusqlite::params![ada_id, ada_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('whatsapp', 'dm', 'whatsapp:ada', 'Ada')",
+            [],
+        )
+        .unwrap();
+    let dm = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![dm, ada_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('whatsapp', 'group', 'whatsapp:g-ada', 'Project')",
+            [],
+        )
+        .unwrap();
+    let grp = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![grp, ada_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('whatsapp', 'display_name', 'Other', 'other', 'Other')",
+            [],
+        )
+        .unwrap();
+    let other = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![grp, other],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO messages(conversation_id, source_id, import_run_id, sender_identity_id,
+                sent_at, sent_at_precision, kind, body_text, idempotency_key)
+             VALUES (?1, ?2, ?3, ?4, '2024-03-15T14:32:00Z', 'second', 'text', 'ada dm', 'k-ada-dm')",
+            rusqlite::params![dm, src, run, ada_iid],
+        )
+        .unwrap();
+    let dm_msg = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO messages(conversation_id, source_id, import_run_id, sender_identity_id,
+                sent_at, sent_at_precision, kind, body_text, idempotency_key)
+             VALUES (?1, ?2, ?3, ?4, '2024-03-16T10:00:00Z', 'second', 'text', 'ada group', 'k-ada-g')",
+            rusqlite::params![grp, src, run, ada_iid],
+        )
+        .unwrap();
+    (ada_id, dm_msg, arch.conn.last_insert_rowid())
 }
 
 /// Self + Ada (newer DM) + Ali (older DM + newer group-only) + Cemre (no messages).
@@ -355,6 +458,46 @@ fn timeline_hides_groups_by_default() {
             .any(|a| a.filename.as_deref() == Some("orphan-photo.jpg") && a.missing),
         "{:?}",
         dm2.attachments
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn timeline_hides_ada_group_sends_by_default() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let (ada, dm_msg, grp_msg) = plant_ada_sender(&arch);
+    let rows = person_timeline_rows(&arch, ada, false, 50, None).unwrap();
+    let ids: Vec<i64> = rows.iter().map(|r| r.message_id).collect();
+    assert!(ids.contains(&dm_msg), "{ids:?}");
+    assert!(!ids.contains(&grp_msg), "Ada group send leaked: {ids:?}");
+    assert!(
+        rows.iter().all(|r| r.conversation_kind != "group"),
+        "group-kind row leaked: {ids:?}"
+    );
+    let with_g = person_timeline_rows(&arch, ada, true, 50, None).unwrap();
+    assert!(
+        with_g.iter().any(|r| r.message_id == grp_msg),
+        "include_groups=true must return Ada's group send, got {:?}",
+        with_g.iter().map(|r| r.message_id).collect::<Vec<_>>()
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn cli_person_timeline_hides_ada_group_sends_by_default() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let (ada, dm_msg, grp_msg) = plant_ada_sender(&arch);
+    let tl = person_timeline(&arch, ada, false, 50).unwrap();
+    let ids: Vec<i64> = tl.iter().map(|h| h.message_id).collect();
+    assert!(ids.contains(&dm_msg), "{ids:?}");
+    assert!(!ids.contains(&grp_msg), "Ada group send leaked: {ids:?}");
+    let tl_g = person_timeline(&arch, ada, true, 50).unwrap();
+    assert!(
+        tl_g.iter().any(|h| h.message_id == grp_msg),
+        "include_groups=true must return Ada's group send, got {:?}",
+        tl_g.iter().map(|h| h.message_id).collect::<Vec<_>>()
     );
     let _ = std::fs::remove_dir_all(&root);
 }

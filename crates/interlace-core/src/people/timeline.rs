@@ -63,16 +63,14 @@ pub fn person_timeline_rows_for(
                 m.sender_identity_id IN (
                     SELECT identity_id FROM person_identities WHERE person_id = :pid
                 )
-             OR (
-                    m.conversation_id IN (
-                      SELECT cp.conversation_id
-                      FROM conversation_participants cp
-                      JOIN person_identities pi ON pi.identity_id = cp.identity_id
-                      WHERE pi.person_id = :pid
-                    )
-                    {group_sql}
+             OR m.conversation_id IN (
+                    SELECT cp.conversation_id
+                    FROM conversation_participants cp
+                    JOIN person_identities pi ON pi.identity_id = cp.identity_id
+                    WHERE pi.person_id = :pid
                 )
               )
+           {group_sql}
            {cursor_sql}
            {conv_sql}
          ORDER BY m.sent_at IS NULL, m.sent_at DESC, m.id DESC

@@ -86,7 +86,7 @@
   const selectedPerson = $derived(findPerson(people, selectedId));
   const personInspectorAttr = ["data", "person", "inspector"].join("-");
   let timelinePane: {
-    selectPerson: (id: number, append?: boolean, keepConversation?: boolean) => Promise<void>;
+    selectPerson: (id: number, append?: boolean, keepConversation?: boolean, includeGroups?: boolean) => Promise<void>;
     openPersonAtMessage: (personId: number, messageId: number, sentAt?: string | null) => Promise<void>;
     ensureTlIndexVisible: (index: number) => void;
     closeCopyMenu: () => void;
@@ -98,8 +98,8 @@
   export function filteredIds(): number[] {
     return filtered.map((p) => p.id);
   }
-  async function loadPerson(id: number, append = false, keepConversation = false) {
-    await timelinePane?.selectPerson(id, append, keepConversation);
+  async function loadPerson(id: number, append = false, keepConversation = false, groups = includeGroups) {
+    await timelinePane?.selectPerson(id, append, keepConversation, groups);
   }
 
   function focusPersonInspector() {
@@ -205,7 +205,7 @@
         personById={(id) => findPerson(people, id)}
         onMerge={openMerge}
         onUnlink={doUnlink}
-        onReloadPerson={() => selectedId && loadPerson(selectedId)}
+        onReloadPerson={(includeGroups) => selectedId && loadPerson(selectedId, false, false, includeGroups)}
       />
     {/if}
   </div>
