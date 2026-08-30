@@ -46,6 +46,8 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_macos_menu",
     "assert_chrome_locale",
     "assert_keyboard_map",
+    "assert_find_in_conversation",
+    "assert_find_in_conversation_count",
     "assert_chrome_search_field",
     "assert_search_as_you_type",
     "assert_custom_titlebar",

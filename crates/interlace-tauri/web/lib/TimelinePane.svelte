@@ -5,6 +5,9 @@
   import TimelineList from "./TimelineList.svelte";
   import { platformLabel } from "./TimelineMail";
   import { writeIncludeGroupsPref } from "./PeoplePrefs";
+  import { findCount, findHitIndices, onFindKey, stepFindIndex } from "./findHighlight";
+  import { Input } from "$lib/components/ui/input/index.js";
+  import { t } from "$lib/i18n";
 
   let {
     selectedId = $bindable<number | null>(null),
@@ -53,6 +56,8 @@
   let tlAppending = $state(false);
   let tlError = $state("");
   let tlGen = 0;
+  let findQ = $state("");
+  let lastFindQ = "";
   let list: {
     ensureTlIndexVisible: (index: number) => void;
     applyOpenPersonWindow: (gen: number, currentGen: () => number) => void;
@@ -186,6 +191,7 @@
       showPersonChrome = false;
       platformFilter = "all";
       kindFilter = "all";
+      findQ = "";
     }
     selectedId = id;
     if (!append && !keepConversation) {
@@ -264,6 +270,7 @@
     showPersonChrome = false;
     platformFilter = "all";
     kindFilter = "all";
+    findQ = "";
     selectedId = personId;
     persistLastPerson(personId);
     selectedConversationId = null;
@@ -340,11 +347,28 @@
   async function pickConversation(conversationId: number | null) {
     if (!selectedId) return;
     selectedConversationId = conversationId;
-    await selectPerson(selectedId, false, true);
+    const keepConversation = true;
+    await selectPerson(selectedId, false, keepConversation);
   }
 
   export function ensureTlIndexVisible(index: number) {
     list?.ensureTlIndexVisible(index);
+  }
+
+  function stepFind(dir: 1 | -1) {
+    const next = stepFindIndex(filteredTimeline, findQ, tlIndex, dir);
+    if (next != null) { tlIndex = next; list?.ensureTlIndexVisible(next); }
+  }
+
+  $effect(() => {
+    if (findQ === lastFindQ) return;
+    lastFindQ = findQ;
+    const hits = findHitIndices(filteredTimeline, findQ);
+    if (hits.length) { tlIndex = hits[0]; list?.ensureTlIndexVisible(hits[0]); }
+  });
+
+  function onPaneFindKey(e: KeyboardEvent) {
+    onFindKey(e, findQ, (q) => (findQ = q), stepFind);
   }
 
   export function closeCopyMenu() {
@@ -423,6 +447,12 @@
         bind:platformFilter
         bind:kindFilter
       />
+      <div class="mb-3 flex items-center gap-2">
+        <Input id="tl-find" data-tl-find type="search" bind:value={findQ} placeholder={t("findInThread")} aria-label={t("findInThread")} autocomplete="off" class="h-8 min-w-0 flex-1" onkeydown={onPaneFindKey} />
+        {#if findQ}
+          <span data-tl-hit-count class="shrink-0 text-xs tabular-nums text-muted-foreground">{findCount(filteredTimeline, findQ, tlIndex)}</span>
+        {/if}
+      </div>
     {/if}
   </div>
   <TimelineList
@@ -438,7 +468,10 @@
     {oldestCursor}
     {density}
     onRetry={() => selectedId && selectPerson(selectedId)}
-    onLoadOlder={() => selectedId && selectPerson(selectedId, true)}
+    onPrepend={() => {
+      const append = !!selectedId;
+      if (append) void selectPerson(selectedId, append);
+    }}
     {onImport}
     onShowAll={() => {
       platformFilter = "all";
@@ -454,6 +487,7 @@
     {showToast}
     {onSearchFromBubble}
     {onCopyFail}
+    {findQ}
   />
   <p class="shrink-0 bg-background px-4 pb-4 pt-2 text-xs text-muted-foreground">
     Bodies are text only. Day headings follow the Mac timezone. <kbd class="rounded border border-border px-1">j</kbd>/<kbd

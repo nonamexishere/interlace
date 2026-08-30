@@ -28,7 +28,7 @@
     oldestCursor,
     density,
     onRetry,
-    onLoadOlder,
+    onPrepend,
     onImport,
     onShowAll,
     onIncludeGroups,
@@ -36,6 +36,7 @@
     showToast,
     onSearchFromBubble,
     onCopyFail,
+    findQ = "",
   }: {
     timeline: TimelineRow[];
     filteredTimeline: { row: TimelineRow; index: number }[];
@@ -48,7 +49,7 @@
     oldestCursor: string | null;
     density: string;
     onRetry: () => void;
-    onLoadOlder: () => void;
+    onPrepend: () => void;
     onImport: () => void;
     onShowAll: () => void;
     onIncludeGroups: () => void;
@@ -56,6 +57,7 @@
     showToast: (message: string) => void;
     onSearchFromBubble: () => void;
     onCopyFail: () => void;
+    findQ?: string;
   } = $props();
 
   let tlScrollTop = $state(0);
@@ -476,7 +478,8 @@
     {showToast}
     showLoadOlder={!!(timeline.length && oldestCursor && filteredTimeline.length > 0)}
     {tlLoading}
-    {onLoadOlder}
+    {onPrepend}
+    {findQ}
   />
   <div id="timeline-end"></div>
 </ScrollArea>

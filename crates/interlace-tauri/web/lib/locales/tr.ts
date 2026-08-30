@@ -79,4 +79,5 @@ export const tr: ChromePack = {
   inspector: "İnceleyici",
   identities: "Kimlikler",
   lastActivity: "Son etkinlik",
+  findInThread: "Sohbette bul",
 };

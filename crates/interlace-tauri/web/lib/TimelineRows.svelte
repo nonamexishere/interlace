@@ -23,7 +23,8 @@
     showToast,
     showLoadOlder = false,
     tlLoading = false,
-    onLoadOlder,
+    onPrepend,
+    findQ = "",
   }: {
     windowedDayGroups: {
       key: string;
@@ -43,7 +44,8 @@
     showToast: (message: string) => void;
     showLoadOlder?: boolean;
     tlLoading?: boolean;
-    onLoadOlder?: () => void;
+    onPrepend?: () => void;
+    findQ?: string;
   } = $props();
 </script>
 
@@ -54,7 +56,7 @@
     class="mb-4 mt-4"
     data-load-older
     disabled={tlLoading}
-    onclick={() => !tlLoading && onLoadOlder?.()}
+    onclick={() => !tlLoading && onPrepend?.()}
     >Load older</Button
   >
 {/if}
@@ -108,19 +110,19 @@
                 {#if isMailRow(item.row)}
                   {#if (item.row.subject ?? "").trim()}
                     <p class="mail-subject text-sm font-medium text-foreground">
-                      {item.row.subject}
+                      <LinkifyBody text={item.row.subject ?? ""} {splitUrls} {openUrl} {findQ} />
                     </p>
                   {/if}
                   {@const parts = splitQuotedBody(item.row.body_text || "")}
                   {#if parts.main || !parts.quoted}
                     <p class="whitespace-pre-wrap break-words text-sm leading-normal text-foreground">
-                      <LinkifyBody text={displayBody(parts.main)} {splitUrls} {openUrl} />
+                      <LinkifyBody text={displayBody(parts.main)} {splitUrls} {openUrl} {findQ} />
                     </p>
                   {/if}
                   {#if parts.quoted}
                     {#if quotedOpen[item.row.message_id]}
                       <p class="mt-1 whitespace-pre-wrap break-words text-sm leading-normal text-muted-foreground">
-                        <LinkifyBody text={displayBody(parts.quoted)} {splitUrls} {openUrl} />
+                        <LinkifyBody text={displayBody(parts.quoted)} {splitUrls} {openUrl} {findQ} />
                       </p>
                       <button
                         type="button"
@@ -145,6 +147,7 @@
                       text={displayBody(item.row.body_text || item.row.subject || "")}
                       {splitUrls}
                       {openUrl}
+                      {findQ}
                     />
                   </p>
                 {/if}
