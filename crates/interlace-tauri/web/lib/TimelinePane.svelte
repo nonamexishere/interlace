@@ -6,7 +6,7 @@
   import { platformLabel } from "./TimelineMail";
   import { writeIncludeGroupsPref } from "./PeoplePrefs";
   import { findCount, findHitIndices, onFindKey, snapFindHit, stepFindIndex } from "./findHighlight";
-  import { dayPinTlIndex, jumpToLocalDay, nearestVisibleTlIndex } from "./jumpDay";
+  import { applyJumpScrollPos, jumpToLocalDay, nearestVisibleTlIndex, TIMELINE_PAGE_LIMIT } from "./jumpDay";
   import { Input } from "$lib/components/ui/input/index.js";
   import { t } from "$lib/i18n";
 
@@ -201,7 +201,7 @@
       const page = await api.personTimeline({
         id,
         includeGroups: groups,
-        limit: 80,
+        limit: TIMELINE_PAGE_LIMIT,
         before,
         conversationId: selectedConversationId,
       });
@@ -365,8 +365,8 @@
       currentSelectedId: () => selectedId, currentJumpDay: () => jumpDay, currentGen: () => jumpGen,
       tlLoading: () => tlLoading, oldestCursor: () => oldestCursor, timelineLength: () => timeline.length,
       selectPerson: async (pid, append) => { if (selectedId !== id || jumpDay !== key || jumpGen !== gen) return; return selectPerson(pid, append); },
-      scrollToPos: (pos) => { if (selectedId !== id || jumpDay !== key || jumpGen !== gen) return; const item = filteredTimeline[pos]; const next = dayPinTlIndex(item, findHitIndices(filteredTimeline, findQ, quotedOpen), filteredTimeline, key, findQ); if (next != null) tlIndex = next; list?.stopPin(); list?.pinDayAtTop(pos); },
-    });
+      scrollToPos: (pos) => applyJumpScrollPos(pos, filteredTimeline, findQ, quotedOpen, key, findHitIndices, () => selectedId === id && jumpDay === key && jumpGen === gen, (n) => (tlIndex = n), () => list?.stopPin(), (p) => list?.pinDayAtTop(p)),
+    }).then((scrolled) => { if (jumpGen === gen && !scrolled) dayPin = false; });
   }
 
   export function closeCopyMenu() {
@@ -487,6 +487,7 @@
     {onSearchFromBubble}
     {onCopyFail}
     {findQ}
+    onClearDayPin={() => (dayPin = false)}
   />
   <p class="shrink-0 bg-background px-4 pb-4 pt-2 text-xs text-muted-foreground">
     Bodies are text only. Day headings follow the Mac timezone. <kbd class="rounded border border-border px-1">j</kbd>/<kbd

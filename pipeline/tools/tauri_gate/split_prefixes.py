@@ -13,6 +13,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_jump_day_heading_stutter",
     "assert_jump_day_heading_stutter2",
     "assert_jump_day_heading_image",
+    "assert_jump_day_heading_fold",
     "assert_timeline_latest",
     "assert_conversation_switcher",
     "assert_timeline_platform_chips",

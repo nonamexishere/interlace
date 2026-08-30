@@ -89,6 +89,40 @@ export function firstLocalDayIndex(
 /** Max prepend pages a day jump may request before a quiet miss. */
 export const JUMP_DAY_PAGE_CAP = 80;
 
+/** Page size for personTimeline loads and jump short-page checks. */
+export const TIMELINE_PAGE_LIMIT = 80;
+
+/** Apply day-jump scroll: tlIndex pin + stopPin + pinDayAtTop (no-op if !alive). */
+export function applyJumpScrollPos(
+  pos: number,
+  filteredTimeline: JumpDayItem[],
+  findQ: string,
+  quotedOpen: Record<number, boolean> | undefined,
+  key: string,
+  findHitIndices: (
+    tl: JumpDayItem[],
+    q: string,
+    quoted: Record<number, boolean> | undefined,
+  ) => number[],
+  alive: () => boolean,
+  setTlIndex: (n: number) => void,
+  stopPin: () => void,
+  pinDayAtTop: (pos: number) => void,
+): void {
+  if (!alive()) return;
+  const item = filteredTimeline[pos];
+  const next = dayPinTlIndex(
+    item,
+    findHitIndices(filteredTimeline, findQ, quotedOpen),
+    filteredTimeline,
+    key,
+    findQ,
+  );
+  if (next != null) setTlIndex(next);
+  stopPin();
+  pinDayAtTop(pos);
+}
+
 /** Min/max host-calendar localDay over dated filtered rows. */
 export function loadedDayRange(
   items: JumpDayItem[],
@@ -159,43 +193,44 @@ export function scrollDayHeadingToTop(
  * Already loaded → scroll. Older than loaded window → selectPerson(..., true)
  * prepend until the heading exists, empty/short page, range gap, or page cap.
  * Newer day or in-range gap → quiet miss (no prepend walk).
+ * @returns true if scrollToPos ran; false on quiet miss / stale / empty / cap.
  */
-export async function jumpToLocalDay(ctx: JumpDayCtx): Promise<void> {
+export async function jumpToLocalDay(ctx: JumpDayCtx): Promise<boolean> {
   const key = (ctx.key ?? "").trim();
-  if (!key) return;
-  if (jumpStale(ctx)) return;
+  if (!key) return false;
+  if (jumpStale(ctx)) return false;
   const hit = () => firstLocalDayIndex(ctx.filteredTimeline(), key);
   let pos = hit();
   if (pos >= 0) {
-    if (jumpStale(ctx)) return;
+    if (jumpStale(ctx)) return false;
     ctx.scrollToPos(pos);
-    return;
+    return true;
   }
   const id = ctx.selectedId;
-  if (!id) return;
+  if (!id) return false;
   let range = loadedDayRange(ctx.filteredTimeline());
-  if (!shouldLoadOlderForJump(key, range)) return;
-  const limit = 80;
+  if (!shouldLoadOlderForJump(key, range)) return false;
   let pages = 0;
   while (pages < JUMP_DAY_PAGE_CAP) {
     while (ctx.tlLoading()) await tick();
-    if (jumpStale(ctx)) return;
+    if (jumpStale(ctx)) return false;
     if (!ctx.oldestCursor()) break;
     range = loadedDayRange(ctx.filteredTimeline());
-    if (!shouldLoadOlderForJump(key, range)) return;
+    if (!shouldLoadOlderForJump(key, range)) return false;
     const beforeLen = ctx.timelineLength();
-    if (jumpStale(ctx)) return;
+    if (jumpStale(ctx)) return false;
     await ctx.selectPerson(id, true);
     await tick();
-    if (jumpStale(ctx)) return;
+    if (jumpStale(ctx)) return false;
     const page = { length: ctx.timelineLength() - beforeLen };
     pos = hit();
     if (pos >= 0) {
-      if (jumpStale(ctx)) return;
+      if (jumpStale(ctx)) return false;
       ctx.scrollToPos(pos);
-      return;
+      return true;
     }
-    if (page.length === 0 || page.length < limit) break;
+    if (page.length === 0 || page.length < TIMELINE_PAGE_LIMIT) break;
     pages++;
   }
+  return false;
 }

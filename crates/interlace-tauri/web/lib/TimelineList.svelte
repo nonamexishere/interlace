@@ -41,6 +41,7 @@
     onCopyFail,
     findQ = "",
     quotedOpen = $bindable<Record<number, boolean>>({}),
+    onClearDayPin,
   }: {
     timeline: TimelineRow[];
     filteredTimeline: { row: TimelineRow; index: number }[];
@@ -63,6 +64,7 @@
     onCopyFail: () => void;
     findQ?: string;
     quotedOpen?: Record<number, boolean>;
+    onClearDayPin?: () => void;
   } = $props();
 
   let tlScrollTop = $state(0);
@@ -124,9 +126,7 @@
   }
 
   function onTimelineWheel() {
-    cancelDayHeadingPin();
-    stopPinLatest();
-    markUserScrolling();
+    cancelDayHeadingPin(); stopPinLatest(); markUserScrolling(); onClearDayPin?.();
   }
 
   function onTimelinePointerDown() {
@@ -201,6 +201,7 @@
   let pendingMeasures: Record<number, number> = {};
   let pendingChrome = false;
   let measureRaf = 0;
+  let measureEpoch = 0;
 
   function scheduleMeasureFlush() {
     if (measureRaf) return;
@@ -208,11 +209,8 @@
   }
 
   function clearPendingMeasures() {
-    pendingMeasures = {};
-    if (measureRaf) {
-      cancelAnimationFrame(measureRaf);
-      measureRaf = 0;
-    }
+    pendingMeasures = {}; measureEpoch++;
+    if (measureRaf) { cancelAnimationFrame(measureRaf); measureRaf = 0; }
   }
 
   function scheduleChromeMeasure() {
@@ -245,7 +243,8 @@
       filteredTimeline, rowHeights, pending, listScroll,
     );
     if (changed) rowHeights = next;
-    if (windowed && adj !== 0 && sc && !pinLatestObs) void tick().then(() => { if (!pinLatestObs) writeScrollTop(sc, sc.scrollTop + adj); });
+    const epoch = measureEpoch;
+    if (windowed && adj !== 0 && sc && !pinLatestObs) void tick().then(() => { if (epoch !== measureEpoch || pinLatestObs) return; writeScrollTop(sc, sc.scrollTop + adj); });
   }
 
   function measureTlRow(node: HTMLElement, orig: number) {
