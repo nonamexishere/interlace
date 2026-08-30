@@ -1,6 +1,6 @@
 # Agent / session handoff
 
-**Date:** 2026-08-28. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
+**Date:** 2026-08-30. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -38,8 +38,8 @@ use `tokio` without `net`). Phase 1 = CLI; Phase 2 = Svelte 5 desktop UI
 unsigned app release is **`app-v0.1.1`**. **Phase 2.2 polish is done.**
 **Phase 2.3 coding is done** (epic **#264** / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8) closed).
 Children **#265–#279**, **#297**, **#300** (PRs **#282–#301**) are done.
-**#303**, **#304**, **#305**, **#306**, **#307**, and **#308** are done
-(PRs **#323–#328**). **#310** is in flight. Next coding **#311** only if
+**#303**, **#304**, **#305**, **#306**, **#307**, **#308**, **#309**, and
+**#310** are done (PRs **#323–#332**). Next coding **#311** only if
 asked. Do not start 1.1 / 3 / 4.
 Ask before the first notarized `app-v*` (#267 is wired; that tag is not cut).
 Normative:
@@ -79,7 +79,7 @@ App holds exclusive flock. **File → Switch archive** drops the flock
 without quitting (returns to setup). Or close `interlace-app` /
 `tauri:dev` before CLI `import` / `doctor --integrity` / wipe.
 
-## Snapshot (2026-08-28)
+## Snapshot (2026-08-30)
 
 Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`,
 `v0.1.1` tags). Workspace version is still **0.1.1**. App crate
@@ -94,11 +94,11 @@ for the *next* `app-v*` tag; that tag is **not** cut. Ask before another
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `90ca98e` (merge of PR **#328** / #308).
+HEAD when this was rewritten: `33421ea` (merge of PR **#332** / #310).
 Tag **`app-v0.1.2`** (last shipped; still unsigned).
 Epic **#108**, milestone 6, the Phase 1 CLI milestone, Phase 2.2 (#197),
 and Phase **2.3** (epic **#264** / milestone 8) are **closed**.
-#265–#279 / #297 / #300 / #303–#308 (PRs #282–#301 / #323–#328) done.
+#265–#279 / #297 / #300 / #303–#310 (PRs #282–#301 / #323–#332) done.
 First notarized `app-v*` is not cut.
 Re-check with `git log -1` / `gh pr list`.
 
@@ -235,6 +235,8 @@ Phase 2.1 milestone (#6): **closed**.
 | #304 / PR #326 | Split product + gate files under 500 (`_SPLIT_MAX_LINES` 500) |
 | #307 / PR #327 | File → Recent archives (sibling App Support list, cap 5, drop-on-pick) |
 | #308 / PR #328 | File → Switch archive closes to setup; exclusive flock drops without quitting |
+| #309 / PR #330 | Remember include-groups locally; off hides every group-kind row |
+| #310 / PR #332 | Find in this conversation (⌘F stays on the thread; quiet `1/N`) |
 
 ## Open — product now
 
@@ -248,9 +250,9 @@ names helpers, files, and must-IDs.
 
 ### Suggested next
 
-1. **#310** is in flight (find in this conversation). Next coding
-   **#311** only if asked. Do not invent a new 2.3 ticket. Remaining
-   parked dogfood UI (**#311–#322**) only if asked.
+1. #303–#310 are done (PRs #323–#332). Next coding **#311** only if
+   asked. Do not invent a new 2.3 ticket. Remaining parked dogfood UI
+   (**#311–#322**) only if asked.
 2. Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*` tag.
 
 Phase 2.3 archive: [#264](https://github.com/nonamexishere/interlace/issues/264) / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8).
@@ -265,9 +267,8 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 
 ## Recommended next steps
 
-1. #303–#309 are done (PRs #323–#328). **#310** is in flight (find in
-   this conversation). Next coding **#311** only if asked. Remaining
-   parked dogfood UI (**#311–#322**) only if asked.
+1. #303–#310 are done (PRs #323–#332). Next coding **#311** only if
+   asked. Remaining parked dogfood UI (**#311–#322**) only if asked.
 2. Phase 2.3 coding is done. Do not start 1.1 / P3 / P4.
 3. Last shipped app tag is **`app-v0.1.2`** (unsigned). Workflow can
    Developer ID + notarize the next `app-v*` once Apple secrets exist.
@@ -347,8 +348,8 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > does not implement product code. Ask before commit / push / merge.
 > Phase 2.3 coding is done (epic #264 / milestone 8 closed). Read
 > `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,
-> #297, #300, #303–#309 done (PRs #323–#328). **#310** in flight; next
-> coding **#311** only if asked. Parked dogfood #311–#322 only if asked.
+> #297, #300, #303–#310 done (PRs #323–#332). Next coding **#311** only
+> if asked. Parked dogfood #311–#322 only if asked.
 > Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag (`app-v0.1.2` is current; first notarized tag is not cut). After
