@@ -127,6 +127,7 @@ def main() -> None:
     assert_jump_day_heading_stutter2(crate)
     assert_jump_day_heading_image(crate)
     assert_jump_day_heading_fold(crate)
+    assert_jump_day_heading_fold2(crate)
     assert_timeline_latest(crate)
     assert_conversation_switcher(crate)
     assert_timeline_platform_chips(crate)

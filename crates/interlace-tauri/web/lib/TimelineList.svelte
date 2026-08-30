@@ -118,6 +118,7 @@
     tlScrollTop = el.scrollTop;
     tlViewportHeight = el.clientHeight || tlViewportHeight;
     if (programmaticScroll) return;
+    cancelDayHeadingPin(); onClearDayPin?.();
     if (!pointerOnTimeline) return;
     markUserScrolling();
     if (pinLatestObs && el.scrollTop + el.clientHeight < el.scrollHeight - 4) {

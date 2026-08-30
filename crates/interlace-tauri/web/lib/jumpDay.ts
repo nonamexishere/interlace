@@ -32,11 +32,7 @@ export function jumpStale(ctx: JumpDayCtx): boolean {
   );
 }
 
-/**
- * tlIndex after a day pin. Empty Find → that day's first row.
- * Find on: only the day's first row if it is already a hit, or a hit
- * on that local day. No hit on that day → null (leave tlIndex).
- */
+/** Find-on: no hit on that day → leave tlIndex. */
 export function dayPinTlIndex(
   item: JumpDayItem | undefined,
   hits: number[],
@@ -165,6 +161,21 @@ export function scrollDayHeadingToTop(
   const sc = document.getElementById("person-timeline");
   if (!sc) return;
   const token = ++dayPinToken;
+  const tryPin = () => {
+    if (token !== dayPinToken) return false;
+    const row = sc.querySelector(`[data-tl-index="${origIndex}"]`);
+    const heading =
+      row instanceof Element
+        ? row.closest(".day-group")?.querySelector(".day-heading")
+        : null;
+    if (!(heading instanceof HTMLElement)) return false;
+    const top =
+      heading.getBoundingClientRect().top -
+      sc.getBoundingClientRect().top +
+      sc.scrollTop;
+    writeScrollTop(sc, Math.max(0, top));
+    return true;
+  };
   writeScrollTop(sc, Math.max(0, estimateTop));
   void tick().then(() => {
     if (token !== dayPinToken) return;
@@ -172,29 +183,18 @@ export function scrollDayHeadingToTop(
       if (token !== dayPinToken) return;
       requestAnimationFrame(() => {
         if (token !== dayPinToken) return;
-        const row = sc.querySelector(`[data-tl-index="${origIndex}"]`);
-        const heading =
-          row instanceof Element
-            ? row.closest(".day-group")?.querySelector(".day-heading")
-            : null;
-        if (!(heading instanceof HTMLElement)) return;
-        const top =
-          heading.getBoundingClientRect().top -
-          sc.getBoundingClientRect().top +
-          sc.scrollTop;
-        writeScrollTop(sc, Math.max(0, top));
+        if (tryPin()) return;
+        const retryPin = () => {
+          if (token !== dayPinToken) return;
+          tryPin();
+        };
+        requestAnimationFrame(retryPin);
       });
     });
   });
 }
 
-/**
- * Jump to the first sticky day heading for YYYY-MM-DD.
- * Already loaded → scroll. Older than loaded window → selectPerson(..., true)
- * prepend until the heading exists, empty/short page, range gap, or page cap.
- * Newer day or in-range gap → quiet miss (no prepend walk).
- * @returns true if scrollToPos ran; false on quiet miss / stale / empty / cap.
- */
+/** Quiet miss / stale / empty / cap → false. */
 export async function jumpToLocalDay(ctx: JumpDayCtx): Promise<boolean> {
   const key = (ctx.key ?? "").trim();
   if (!key) return false;
