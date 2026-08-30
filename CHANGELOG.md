@@ -29,6 +29,9 @@ unsigned **`app-v0.1.2`**.
 - Review / Import / Doctor chrome in en+tr packs; bodies stay as imported.
 - Reopen restores the last view and last person if they still exist.
 - Reopen restores the last window size and position; off-screen is clamped.
+- Person timeline date control jumps to that day’s sticky heading.
+- Find in this conversation (`1/N` count; Enter / Shift+Enter).
+- Remember include-groups locally.
 
 ### Fixed
 
