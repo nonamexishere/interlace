@@ -33,10 +33,17 @@ Producer ≠ verifier. The agent that writes tests is not the one that writes th
 ### How to run a product issue
 
 1. Copy the GitHub issue into a scratch `IN.md`. No real chat bodies, no real contact names.
-2. Run **researcher** with `pipeline/prompts/researcher.md`. Confirm the recommended approach before anyone writes tests. If the note files `SPEC_GAP`, fill it in the IN.md first. Skip this step only when the issue already names helpers, files, and must-IDs.
+2. Run **researcher** with `pipeline/prompts/researcher.md`. Then present
+   **each** approach and each `SPEC_GAP` (what A does, what B does, what
+   you recommend). Ask with the recommended mix first. The human may pick
+   that mix, a whole letter, or type `take X from A, Y from B`. Write the
+   mix into `IN.md` before anyone writes tests. Skip researcher only when
+   the issue already names helpers, files, and must-IDs.
 3. Run **test-author** with `pipeline/prompts/test-author.md`.
 4. Confirm new tests exist. For new behavior they should fail for the right reason (not compile errors).
-5. Run **impl** with `pipeline/prompts/impl.md`. Follow the research recommendation; do not silently switch approaches.
+5. Run **impl** with `pipeline/prompts/impl.md`. Follow the confirmed
+   `IN.md` mix; do not silently switch back to the researcher’s single
+   letter.
 6. Run the matching `gate_*.py` (see CI block below). Red → impl retries, max 3, then stop.
 7. Run **reviewer** with `pipeline/prompts/reviewer.md` and the same `IN.md`. It must fill **Scope** (in / out / extra).
 8. Merge when jobs **`check`** + **`tauri`** are green and the review has no open bugs (including scope: missing / out). `Fixes #N`. Ask before commit / push / merge.
