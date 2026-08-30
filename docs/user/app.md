@@ -170,7 +170,7 @@ the viewport. Large threads **virtualize**: only the rows in (and near) the view
 inserted when the host calendar day of `sent_at` changes and **sticks**
 to the top of the message list until the next day replaces it. WhatsApp
 export times display as wall-clock; Gmail / zoned times follow the Mac
-timezone. Display follows the host / Mac timezone; storage / archive JSON stay UTC. A row with no `sent_at` gets no heading. Bodies stay visible plain-text
+timezone. Display follows the host / Mac timezone; storage / archive JSON stay UTC. A row with no `sent_at` gets no heading. A date control next to Find jumps to the sticky day heading. Jumping to an older day runs Load older until the heading exists or the thread starts. Bodies stay visible plain-text
 nodes (`whitespace-pre-wrap`) so a screen reader still hears them — never
 HTML. **Gmail / email-thread** bubbles show the subject as a title when present
 and fold quoted reply tails (`On … wrote:`, lines starting with `>`) behind

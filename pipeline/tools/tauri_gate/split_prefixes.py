@@ -7,6 +7,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_chat_bubbles",
     "assert_day_separators",
     "assert_local_tz_display",
+    "assert_jump_day_heading",
     "assert_timeline_latest",
     "assert_conversation_switcher",
     "assert_timeline_platform_chips",

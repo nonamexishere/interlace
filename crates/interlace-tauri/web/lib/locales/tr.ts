@@ -80,4 +80,5 @@ export const tr: ChromePack = {
   identities: "Kimlikler",
   lastActivity: "Son etkinlik",
   findInThread: "Sohbette bul",
+  jumpToDay: "Güne git",
 };

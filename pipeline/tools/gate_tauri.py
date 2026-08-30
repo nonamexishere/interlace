@@ -120,6 +120,7 @@ def main() -> None:
     assert_chat_bubbles(crate)
     assert_day_separators(crate)
     assert_local_tz_display(crate)
+    assert_jump_day_heading(crate)
     assert_timeline_latest(crate)
     assert_conversation_switcher(crate)
     assert_timeline_platform_chips(crate)

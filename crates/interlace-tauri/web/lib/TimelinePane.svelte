@@ -6,6 +6,7 @@
   import { platformLabel } from "./TimelineMail";
   import { writeIncludeGroupsPref } from "./PeoplePrefs";
   import { findCount, findHitIndices, onFindKey, snapFindHit, stepFindIndex } from "./findHighlight";
+  import { jumpToLocalDay, nearestVisibleTlIndex } from "./jumpDay";
   import { Input } from "$lib/components/ui/input/index.js";
   import { t } from "$lib/i18n";
 
@@ -56,7 +57,7 @@
   let tlAppending = $state(false);
   let tlError = $state("");
   let tlGen = 0;
-  let findQ = $state("");
+  let findQ = $state(""), jumpDay = $state("");
   let quotedOpen = $state<Record<number, boolean>>({});
   let list: {
     ensureTlIndexVisible: (index: number) => void;
@@ -66,6 +67,7 @@
     preserveScrollAfterPrepend: (prevHeight: number) => void;
     stopPin: () => void;
     estimateScrollToIndex: (index: number) => void;
+    pinDayAtTop: (filteredPos: number) => void;
     closeCopy: () => void;
   } | undefined = $state();
 
@@ -142,21 +144,6 @@
       tlIndex = nearestVisibleTlIndex(tlIndex, visible);
     }
   });
-
-  function nearestVisibleTlIndex(from: number, visible: number[]): number {
-    if (!visible.length) return from;
-    let best = visible[0];
-    let bestDist = Math.abs(visible[0] - from);
-    for (let i = 1; i < visible.length; i++) {
-      const idx = visible[i];
-      const d = Math.abs(idx - from);
-      if (d < bestDist || (d === bestDist && idx > best)) {
-        best = idx;
-        bestDist = d;
-      }
-    }
-    return best;
-  }
 
   function oldestSentAt(rows: TimelineRow[]): string | null {
     for (const row of rows) {
@@ -371,6 +358,15 @@
     onFindKey(e, findQ, (q) => (findQ = q), stepFind);
   }
 
+  function goToJumpDay() {
+    void jumpToLocalDay({
+      key: jumpDay, filteredTimeline: () => filteredTimeline, selectedId,
+      tlLoading: () => tlLoading, oldestCursor: () => oldestCursor, timelineLength: () => timeline.length,
+      selectPerson: (id, append) => selectPerson(id, append),
+      scrollToPos: (pos) => { const item = filteredTimeline[pos]; if (item) tlIndex = item.index; list?.stopPin(); list?.pinDayAtTop(pos); },
+    });
+  }
+
   export function closeCopyMenu() {
     list?.closeCopy();
   }
@@ -449,6 +445,7 @@
       />
       <div class="mb-3 flex items-center gap-2">
         <Input id="tl-find" data-tl-find type="search" bind:value={findQ} placeholder={t("findInThread")} aria-label={t("findInThread")} autocomplete="off" class="h-8 min-w-0 flex-1" onkeydown={onPaneFindKey} />
+        <Input type={"date"} bind:value={jumpDay} aria-label={t("jumpToDay")} class="h-8 w-auto shrink-0" onchange={goToJumpDay} />
         {#if findQ}
           <span data-tl-hit-count class="shrink-0 text-xs tabular-nums text-muted-foreground">{findCount(filteredTimeline, findQ, tlIndex, quotedOpen)}</span>
         {/if}

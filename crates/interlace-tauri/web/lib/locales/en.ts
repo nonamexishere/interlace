@@ -78,6 +78,7 @@ export const en = {
   identities: "Identities",
   lastActivity: "Last activity",
   findInThread: "Find in conversation",
+  jumpToDay: "Jump to day",
 } as const;
 
 export type ChromeKey = keyof typeof en;

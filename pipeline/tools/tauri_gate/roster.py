@@ -11,6 +11,7 @@ from tauri_gate.timeline_rows import (  # noqa: E402
     assert_local_tz_display,
     assert_gmail_timeline_rows,
 )
+from tauri_gate.jump_day_heading import assert_jump_day_heading  # noqa: E402
 from tauri_gate.timeline_scroll import (  # noqa: E402
     assert_timeline_latest,
     assert_virtualized_timeline,
