@@ -48,6 +48,11 @@ export function handleAppKey(e: KeyboardEvent, ctx: PeopleKeyCtx) {
   }
   if (mod && (e.key === "f" || e.key === "F")) {
     e.preventDefault();
+    if (ctx.view === "people" && ctx.selectedId) {
+      const el = document.querySelector("[data-tl-find]") as HTMLInputElement | null;
+      el?.focus();
+      return;
+    }
     void ctx.whenSearchPaneReady().then((qEl) => qEl?.focus());
     return;
   }

@@ -5,12 +5,13 @@ from tauri_gate.keyboard_lib import *
 
 
 def assert_keyboard_map(crate: Path) -> None:
-    """#132: ⌘F Search #q from every view, Esc back to People, ⌘1–5 tabs.
+    """#132: Find map, Esc back to People, ⌘1–5 tabs. #310 Find-on-People.
 
-    Find (⌘F / ctrl+F) switches to Search and focuses #q — including from
-    People (#208). `/` still focuses #person-filter. Keyboard-only can open
-    Ada, search, return. Static: App key handler must accept metaKey or
-    ctrlKey. Do not steal letters from INPUT/TEXTAREA/SELECT.
+    Find (⌘F / ctrl+F) on People with a person selected stays on People
+    (#310). Search-tab / no person / Review / Import / Doctor still focus
+    Search #q. `/` still focuses #person-filter. Static: App key handler
+    must accept metaKey or ctrlKey. Do not steal letters from
+    INPUT/TEXTAREA/SELECT.
     """
     app_path = crate / "web" / "App.svelte"
     if not app_path.is_file():
@@ -36,7 +37,8 @@ def assert_keyboard_map(crate: Path) -> None:
     if prefix_x == prefix:
         prefix_x = _expand_fn_calls(app, prefix) if prefix.strip() else body
 
-    # 1) ⌘F / ctrl+F from every view including People → Search + #q.
+    # 1) ⌘F / ctrl+F: People + open person stays (#310). Search-tab / no
+    #    person / Review / Import / Doctor still archive Search #q.
     #    Must run off People (not after `if (view !== "people") return`).
     #    Do not send Find to #person-filter — that stays `/` only (#208).
     f_surface = _windows_around(prefix_x, _KEY_F)
@@ -49,7 +51,7 @@ def assert_keyboard_map(crate: Path) -> None:
             )
         fail(
             "#132: App key handler must treat metaKey/ctrlKey + f/F as Find "
-            "(from every view including People, switch to Search and focus #q)"
+            "(Search-tab / other views still #q; People + person stays — #310)"
         )
     if not _has_mod_combo(f_surface) and not _has_mod_combo(prefix_x):
         fail(
@@ -60,19 +62,34 @@ def assert_keyboard_map(crate: Path) -> None:
         fail("#132: f/F Find must be a metaKey/ctrlKey combo, not a bare letter")
     if _FOCUS_PERSON_FILTER.search(f_surface):
         fail(
-            "#132: ⌘F / ctrl+F from People must switch to Search and focus #q "
-            "(do not send Find to #person-filter — `/` still focuses the people filter)"
+            "#132: ⌘F / ctrl+F must not go to #person-filter "
+            "(`/` still focuses the people filter; People + person is pane find)"
         )
     q_focus = bool(_FOCUS_SEARCH_Q.search(f_surface) or _FOCUS_SEARCH_Q.search(prefix_x))
     if not q_focus:
         fail(
-            "#132: ⌘F / ctrl+F from every view including People must focus "
-            "the Search query (getElementById(\"q\") / #q)"
+            "#132: Search-tab / no person / Review / Import / Doctor ⌘F "
+            "must still focus the Search query (getElementById(\"q\") / #q)"
         )
     if not _VIEW_SEARCH_ASSIGN.search(f_surface) and not _VIEW_SEARCH_ASSIGN.search(prefix_x):
         fail(
-            "#132: ⌘F / ctrl+F from every view including People must switch "
-            "to Search (view = \"search\") then focus #q"
+            "#132: Search-tab / no person / Review / Import / Doctor ⌘F "
+            "must still switch to Search (view = \"search\") then focus #q"
+        )
+    if not re.search(
+        r"("
+        r"if\s*\([^)]{0,240}\bselectedId\b"
+        r"|view\s*===?\s*[\"']people[\"'][\s\S]{0,160}\bselectedId\b"
+        r"|\bselectedId\b[\s\S]{0,160}view\s*===?\s*[\"']people[\"']"
+        r"|(?:ctx\.)?selectedId\s*(?:&&|!=|!==)"
+        r"|(?:&&\s*(?:ctx\.)?selectedId\b)"
+        r")",
+        f_surface,
+    ):
+        fail(
+            "#310: ⌘F / Ctrl+F on People with a person selected must stay "
+            "on People (branch on view === \"people\" && selectedId; "
+            "do not always whenSearchPaneReady → Search #q)"
         )
     if not _PREVENT_DEFAULT.search(f_surface) and not _PREVENT_DEFAULT.search(prefix_x):
         fail(
@@ -80,7 +97,7 @@ def assert_keyboard_map(crate: Path) -> None:
             "(webview/browser must not take Find)"
         )
     if search and not re.search(r"id=[\"']q[\"']", search):
-        fail("#132: SearchPane must keep id=\"q\" so ⌘F can focus the query")
+        fail("#132: SearchPane must keep id=\"q\" so Search-tab ⌘F can focus the query")
 
     # 2) `/` still focuses the people filter on People (existing).
     slash_src = tail if tail and _KEY_SLASH.search(tail) else body
@@ -237,10 +254,7 @@ def assert_keyboard_map(crate: Path) -> None:
         dtxt,
         re.I,
     ):
-        fail(
-            "#132: docs/user/app.md must document ⌘F / Ctrl+F "
-            "(from every view including People, switch to Search and focus #q)"
-        )
+        fail("#132: docs/user/app.md must document ⌘F / Ctrl+F")
     if re.search(
         r"("
         r"⌘\s*F.{0,100}people filter"
@@ -252,23 +266,37 @@ def assert_keyboard_map(crate: Path) -> None:
         re.I | re.S,
     ):
         fail(
-            "#132: docs/user/app.md must say ⌘F / Ctrl+F from every view "
-            "including People switches to Search and focuses #q "
-            "(not the people filter — `/` still focuses #person-filter)"
+            "#132: docs/user/app.md must not send ⌘F / Ctrl+F to the people "
+            "filter (`/` still focuses #person-filter)"
         )
     if not re.search(
         r"("
-        r"(?:⌘\s*F|Ctrl\+F|Ctrl-F).{0,160}(?:every view|including People|from People)"
-        r".{0,80}(?:#q|Search)"
-        r"|(?:every view|including People).{0,80}(?:⌘\s*F|Ctrl\+F|Ctrl-F)"
-        r".{0,80}(?:#q|Search)"
+        r"(?:⌘\s*F|Ctrl\+F|Ctrl-F|find).{0,180}"
+        r"(?:People|timeline|thread|conversation).{0,140}"
+        r"(?:stay|stays|staying|does not leave|without leaving|on the thread|on People)"
+        r"|(?:People|timeline|thread|conversation).{0,100}"
+        r"(?:find|⌘\s*F|Ctrl\+F).{0,140}"
+        r"(?:stay|stays|on the thread|on People|does not (?:switch|leave))"
         r")",
         dtxt,
         re.I | re.S,
     ):
         fail(
-            "#132: docs/user/app.md must say ⌘F / Ctrl+F from every view "
-            "including People focuses Search #q"
+            "#310: docs/user/app.md must say People timeline find stays "
+            "on the thread"
+        )
+    if not re.search(
+        r"("
+        r"(?:Search tab|Search view|from Search|on Search).{0,100}"
+        r"(?:⌘\s*F|Ctrl\+F|Ctrl-F).{0,80}(?:#q|query)"
+        r"|(?:⌘\s*F|Ctrl\+F|Ctrl-F).{0,100}"
+        r"(?:Search tab|Search view|from Search).{0,80}(?:#q|query)"
+        r")",
+        dtxt,
+        re.I | re.S,
+    ):
+        fail(
+            "#310: docs/user/app.md must say Search-tab ⌘F still focuses #q"
         )
     if not re.search(
         r"("
