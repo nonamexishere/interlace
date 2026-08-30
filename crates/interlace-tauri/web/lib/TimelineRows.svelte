@@ -64,7 +64,7 @@
   {#if spacerTop > 0}
     <li class="timeline-spacer-top pointer-events-none" style="height: {spacerTop}px" aria-hidden="true"></li>
   {/if}
-  {#each windowedDayGroups as group}
+  {#each windowedDayGroups as group (group.rows[0]?.index ?? group.key)}
     <li class="day-group min-w-0">
       {#if group.rows[0]?.row.sent_at && localDay(group.rows[0].row.sent_at, group.rows[0].row.platform)}
         <h3 class="day-heading mb-2 text-center text-xs font-medium text-muted-foreground">
@@ -72,7 +72,7 @@
         </h3>
       {/if}
       <div>
-        {#each group.rows as item}
+        {#each group.rows as item (item.index)}
           <div class="flex min-w-0 pb-2" data-tl-index={item.index} use:measureTlRow={item.index}>
             <article
               class="flex min-w-0 max-w-[94%] cursor-pointer flex-col gap-2 rounded-2xl px-3 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring {item.index ===

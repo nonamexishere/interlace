@@ -170,7 +170,7 @@ the viewport. Large threads **virtualize**: only the rows in (and near) the view
 inserted when the host calendar day of `sent_at` changes and **sticks**
 to the top of the message list until the next day replaces it. WhatsApp
 export times display as wall-clock; Gmail / zoned times follow the Mac
-timezone. Display follows the host / Mac timezone; storage / archive JSON stay UTC. A row with no `sent_at` gets no heading. Bodies stay visible plain-text
+timezone. Display follows the host / Mac timezone; storage / archive JSON stay UTC. A row with no `sent_at` gets no heading. A date control next to Find jumps to the sticky day heading. Jumping to an older day runs Load older until the heading exists or the thread starts. A newer day or a gap in the already-loaded days stays put (does not walk the thread). A later date pick or person switch cancels an in-flight jump. Find leaves that heading at the top when the day has no hit. Bodies stay visible plain-text
 nodes (`whitespace-pre-wrap`) so a screen reader still hears them — never
 HTML. **Gmail / email-thread** bubbles show the subject as a title when present
 and fold quoted reply tails (`On … wrote:`, lines starting with `>`) behind
@@ -239,7 +239,8 @@ Platform chips and banners use owned Badge and Card primitives, not one-off chro
 Photos, stickers, voice notes, videos, and PDFs stored in the archive
 `cas/` folder open in the timeline (and search). Click a photo thumbnail
 for a full-size in-window lightbox (Esc or backdrop to close; arrow keys
-when a message has several images). Stickers that are images still
+when a message has several images). A photo thumbnail reserves its slot so
+the timeline does not jump. Stickers that are images still
 lightbox. Voice notes play in-app with play/pause, elapsed/duration, and a
 progress track you can scrub; audio is loaded only from local CAS bytes
 (`data:`), never a remote stream. Videos play in-window from the same

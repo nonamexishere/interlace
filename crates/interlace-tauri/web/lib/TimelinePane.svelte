@@ -6,6 +6,7 @@
   import { platformLabel } from "./TimelineMail";
   import { writeIncludeGroupsPref } from "./PeoplePrefs";
   import { findCount, findHitIndices, onFindKey, snapFindHit, stepFindIndex } from "./findHighlight";
+  import { applyJumpScrollPos, jumpToLocalDay, nearestVisibleTlIndex, TIMELINE_PAGE_LIMIT } from "./jumpDay";
   import { Input } from "$lib/components/ui/input/index.js";
   import { t } from "$lib/i18n";
 
@@ -56,7 +57,7 @@
   let tlAppending = $state(false);
   let tlError = $state("");
   let tlGen = 0;
-  let findQ = $state("");
+  let findQ = $state(""), jumpDay = $state(""), jumpGen = 0, dayPin = false;
   let quotedOpen = $state<Record<number, boolean>>({});
   let list: {
     ensureTlIndexVisible: (index: number) => void;
@@ -66,6 +67,7 @@
     preserveScrollAfterPrepend: (prevHeight: number) => void;
     stopPin: () => void;
     estimateScrollToIndex: (index: number) => void;
+    pinDayAtTop: (filteredPos: number) => void;
     closeCopy: () => void;
   } | undefined = $state();
 
@@ -143,21 +145,6 @@
     }
   });
 
-  function nearestVisibleTlIndex(from: number, visible: number[]): number {
-    if (!visible.length) return from;
-    let best = visible[0];
-    let bestDist = Math.abs(visible[0] - from);
-    for (let i = 1; i < visible.length; i++) {
-      const idx = visible[i];
-      const d = Math.abs(idx - from);
-      if (d < bestDist || (d === bestDist && idx > best)) {
-        best = idx;
-        bestDist = d;
-      }
-    }
-    return best;
-  }
-
   function oldestSentAt(rows: TimelineRow[]): string | null {
     for (const row of rows) {
       if (row.sent_at) return row.sent_at;
@@ -185,7 +172,7 @@
     if (append && tlLoading) return;
     const before = append ? oldestSentAt(timeline) : null;
     if (append && !before) return;
-    if (!append) persistLastPerson(id);
+    if (!append) { dayPin = false; jumpGen++; persistLastPerson(id); }
 
     if (!append && id !== selectedId) {
       showPersonChrome = false;
@@ -214,7 +201,7 @@
       const page = await api.personTimeline({
         id,
         includeGroups: groups,
-        limit: 80,
+        limit: TIMELINE_PAGE_LIMIT,
         before,
         conversationId: selectedConversationId,
       });
@@ -271,7 +258,7 @@
     showPersonChrome = false;
     platformFilter = "all";
     kindFilter = "all";
-    findQ = "";
+    findQ = ""; dayPin = false; jumpGen++;
     selectedId = personId;
     persistLastPerson(personId);
     selectedConversationId = null;
@@ -363,12 +350,23 @@
 
   $effect(() => {
     const hits = findHitIndices(filteredTimeline, findQ, quotedOpen);
-    const snap = snapFindHit(hits, tlIndex);
+    const snap = dayPin ? null : snapFindHit(hits, tlIndex);
     if (snap != null) { tlIndex = snap; list?.ensureTlIndexVisible(snap); }
   });
 
   function onPaneFindKey(e: KeyboardEvent) {
     onFindKey(e, findQ, (q) => (findQ = q), stepFind);
+  }
+
+  function goToJumpDay() {
+    const gen = ++jumpGen, id = selectedId, key = jumpDay; dayPin = true;
+    void jumpToLocalDay({
+      key, gen, selectedId: id, filteredTimeline: () => filteredTimeline,
+      currentSelectedId: () => selectedId, currentJumpDay: () => jumpDay, currentGen: () => jumpGen,
+      tlLoading: () => tlLoading, oldestCursor: () => oldestCursor, timelineLength: () => timeline.length,
+      selectPerson: async (pid, append) => { if (selectedId !== id || jumpDay !== key || jumpGen !== gen) return; return selectPerson(pid, append); },
+      scrollToPos: (pos) => applyJumpScrollPos(pos, filteredTimeline, findQ, quotedOpen, key, findHitIndices, () => selectedId === id && jumpDay === key && jumpGen === gen, (n) => (tlIndex = n), () => list?.stopPin(), (p) => list?.pinDayAtTop(p)),
+    }).then((scrolled) => { if (jumpGen === gen && !scrolled) dayPin = false; });
   }
 
   export function closeCopyMenu() {
@@ -448,7 +446,8 @@
         bind:kindFilter
       />
       <div class="mb-3 flex items-center gap-2">
-        <Input id="tl-find" data-tl-find type="search" bind:value={findQ} placeholder={t("findInThread")} aria-label={t("findInThread")} autocomplete="off" class="h-8 min-w-0 flex-1" onkeydown={onPaneFindKey} />
+        <Input id="tl-find" data-tl-find type="search" bind:value={findQ} placeholder={t("findInThread")} aria-label={t("findInThread")} autocomplete="off" class="h-8 min-w-0 flex-1" oninput={() => (dayPin = false, jumpGen++)} onkeydown={onPaneFindKey} />
+        <Input type={"date"} bind:value={jumpDay} aria-label={t("jumpToDay")} class="h-8 w-auto shrink-0" onchange={goToJumpDay} />
         {#if findQ}
           <span data-tl-hit-count class="shrink-0 text-xs tabular-nums text-muted-foreground">{findCount(filteredTimeline, findQ, tlIndex, quotedOpen)}</span>
         {/if}
@@ -488,6 +487,7 @@
     {onSearchFromBubble}
     {onCopyFail}
     {findQ}
+    onClearDayPin={() => (dayPin = false, jumpGen++)}
   />
   <p class="shrink-0 bg-background px-4 pb-4 pt-2 text-xs text-muted-foreground">
     Bodies are text only. Day headings follow the Mac timezone. <kbd class="rounded border border-border px-1">j</kbd>/<kbd

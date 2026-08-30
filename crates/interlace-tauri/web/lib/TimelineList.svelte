@@ -2,6 +2,7 @@
   import { tick } from "svelte";
   import type { TimelineRow } from "./api";
   import { localDay, localDayLabel } from "./formatTime";
+  import { cancelDayHeadingPin, dayHeadingOffset, scrollDayHeadingToTop } from "./jumpDay";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import TimelineRows from "./TimelineRows.svelte";
   import TimelineCopyMenu from "./TimelineCopyMenu.svelte";
@@ -9,11 +10,13 @@
   import { displayBody, isGroupedFollower as groupedFollower } from "./TimelineMail";
   import {
     ESTIMATED_ROW_HEIGHT,
+    VIRTUALIZE_AFTER,
     computeVisibleRange,
     heightOf as heightAt,
     measureTimelineChrome,
     offsetOf as offsetAt,
     rowOffsetInPane,
+    scrollAdjForHeightChanges,
   } from "./TimelineVirtual";
 
   let {
@@ -38,6 +41,7 @@
     onCopyFail,
     findQ = "",
     quotedOpen = $bindable<Record<number, boolean>>({}),
+    onClearDayPin,
   }: {
     timeline: TimelineRow[];
     filteredTimeline: { row: TimelineRow; index: number }[];
@@ -60,6 +64,7 @@
     onCopyFail: () => void;
     findQ?: string;
     quotedOpen?: Record<number, boolean>;
+    onClearDayPin?: () => void;
   } = $props();
 
   let tlScrollTop = $state(0);
@@ -113,6 +118,7 @@
     tlScrollTop = el.scrollTop;
     tlViewportHeight = el.clientHeight || tlViewportHeight;
     if (programmaticScroll) return;
+    cancelDayHeadingPin(); onClearDayPin?.();
     if (!pointerOnTimeline) return;
     markUserScrolling();
     if (pinLatestObs && el.scrollTop + el.clientHeight < el.scrollHeight - 4) {
@@ -121,8 +127,7 @@
   }
 
   function onTimelineWheel() {
-    stopPinLatest();
-    markUserScrolling();
+    cancelDayHeadingPin(); stopPinLatest(); markUserScrolling(); onClearDayPin?.();
   }
 
   function onTimelinePointerDown() {
@@ -197,6 +202,7 @@
   let pendingMeasures: Record<number, number> = {};
   let pendingChrome = false;
   let measureRaf = 0;
+  let measureEpoch = 0;
 
   function scheduleMeasureFlush() {
     if (measureRaf) return;
@@ -204,11 +210,8 @@
   }
 
   function clearPendingMeasures() {
-    pendingMeasures = {};
-    if (measureRaf) {
-      cancelAnimationFrame(measureRaf);
-      measureRaf = 0;
-    }
+    pendingMeasures = {}; measureEpoch++;
+    if (measureRaf) { cancelAnimationFrame(measureRaf); measureRaf = 0; }
   }
 
   function scheduleChromeMeasure() {
@@ -235,17 +238,14 @@
     }
     const pending = pendingMeasures;
     pendingMeasures = {};
-    const next: Record<number, number> = { ...rowHeights };
-    let changed = false;
-    for (const key of Object.keys(pending)) {
-      const orig = Number(key);
-      const h = pending[orig];
-      if (!(h > 0) || !Number.isFinite(h)) continue;
-      if (rowHeights[orig] === h) continue;
-      next[orig] = h;
-      changed = true;
-    }
+    const listScroll = Math.max(0, (sc?.scrollTop ?? tlScrollTop) - tlChromeHeight);
+    const windowed = filteredTimeline.length > VIRTUALIZE_AFTER;
+    const { next, adj, changed } = scrollAdjForHeightChanges(
+      filteredTimeline, rowHeights, pending, listScroll,
+    );
     if (changed) rowHeights = next;
+    const epoch = measureEpoch;
+    if (windowed && adj !== 0 && sc && !pinLatestObs) void tick().then(() => { if (epoch !== measureEpoch || pinLatestObs) return; writeScrollTop(sc, sc.scrollTop + adj); });
   }
 
   function measureTlRow(node: HTMLElement, orig: number) {
@@ -373,9 +373,7 @@
     }
   }
 
-  export function stopPin() {
-    stopPinLatest();
-  }
+  export function stopPin() { stopPinLatest(); cancelDayHeadingPin(); }
 
   export function estimateScrollToIndex(index: number) {
     const hitPos = filteredTimeline.findIndex((item) => item.index === index);
@@ -384,6 +382,13 @@
       offsetOf(hitPos >= 0 ? hitPos : index) - ESTIMATED_ROW_HEIGHT * 2,
     );
     tlScrollTop = estTop;
+  }
+
+  export function pinDayAtTop(filteredPos: number) {
+    const item = filteredTimeline[filteredPos];
+    if (!item) return;
+    const estimateTop = Math.max(0, tlChromeHeight + offsetOf(filteredPos) + dayHeadingOffset(filteredTimeline, filteredPos));
+    tlScrollTop = estimateTop; scrollDayHeadingToTop(item.index, estimateTop, writeScrollTop);
   }
 
   function isGroupedFollower(i: number): boolean {
@@ -445,7 +450,7 @@
 
 <ScrollArea
   id="person-timeline"
-  class="min-h-0 min-w-0 flex-1 px-4 pb-8"
+  class="min-h-0 min-w-0 flex-1 px-4 pb-8{filteredTimeline.length > VIRTUALIZE_AFTER ? ' tl-windowed' : ''}"
   aria-busy={tlLoading}
   onscroll={onTimelineScroll}
   onwheel={onTimelineWheel}

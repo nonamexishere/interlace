@@ -76,3 +76,35 @@ export function measureTimelineChrome(sc: HTMLElement): number {
   if (heading instanceof HTMLElement) h += measureOuterHeight(heading);
   return h;
 }
+
+export type ScrollHeightAdj = {
+  next: Record<number, number>;
+  adj: number;
+  changed: boolean;
+};
+
+export function scrollAdjForHeightChanges(
+  filteredTimeline: { index: number }[],
+  rowHeights: Record<number, number>,
+  pending: Record<number, number>,
+  listScroll: number,
+): ScrollHeightAdj {
+  const next: Record<number, number> = { ...rowHeights };
+  let adj = 0;
+  let changed = false;
+  for (const key of Object.keys(pending)) {
+    const orig = Number(key);
+    const h = pending[orig];
+    if (!(h > 0) || !Number.isFinite(h)) continue;
+    if (rowHeights[orig] === h) continue;
+    const prev = rowHeights[orig] ?? ESTIMATED_ROW_HEIGHT;
+    const pos = filteredTimeline.findIndex((it) => it.index === orig);
+    if (pos >= 0) {
+      const oldTop = offsetOf(filteredTimeline, rowHeights, pos);
+      if (oldTop < listScroll) adj += h - prev;
+    }
+    next[orig] = h;
+    changed = true;
+  }
+  return { next, adj, changed };
+}
