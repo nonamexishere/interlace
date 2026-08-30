@@ -9,7 +9,8 @@ How we work: [`docs/hacking/pipeline.md`](pipeline.md) — researcher →
 test-author → impl → reviewer. Skip researcher only when the issue already
 names helpers, files, and must-IDs. The parent chat sequences those roles as
 **separate agents**. Children do not spawn children. After researcher,
-confirm the approach and fill any `SPEC_GAP` with Mustafa **before**
+present each research finding and recommended mix; Mustafa may type
+`take X from A, Y from B`. Fill that mix into `IN.md` **before**
 test-author. The orchestrator does **not** implement product code.
 Ask before commit / push / merge.
 
@@ -342,8 +343,9 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > Read `docs/hacking/handoff.md` and `docs/hacking/pipeline.md`. Sequence
 > researcher → test-author → impl → reviewer as **separate agents** when
 > load-bearing. Skip researcher only when the issue already names helpers,
-> files, and must-IDs. After researcher, confirm approach / SPEC_GAP with
-> Mustafa before test-author. Do not spawn agents from a child. Orchestrator
+> files, and must-IDs. After researcher, present each finding and a
+> recommended mix; Mustafa may type take X from A, Y from B. Write the
+> mix into IN.md before test-author. Do not spawn agents from a child. Orchestrator
 > does not implement product code. Ask before commit / push / merge.
 > Phase 2.3 coding is done (epic #264 / milestone 8 closed). Read
 > `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,

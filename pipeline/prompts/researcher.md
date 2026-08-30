@@ -31,7 +31,8 @@ the point. Test-author later must not (parser / identity / search blindness).
 3. For each approach: files touched, how it would be tested, identity / parser /
    search / sandbox / locale risk, what it does **not** solve.
 4. Recommend **one**. Say why the others lose. Do not hedge with “either is fine”
-   unless they are truly equivalent — then pick the smaller one.
+   unless they are truly equivalent — then pick the smaller one. The human may
+   later take pieces from more than one letter; you still name a default mix.
 5. Name must-IDs test-author should lock (id, file, what fails today).
 6. If IN.md is silent on a policy that the impl would have to invent, file
    `SPEC_GAP:<id>` and do not pretend the gap is resolved.
