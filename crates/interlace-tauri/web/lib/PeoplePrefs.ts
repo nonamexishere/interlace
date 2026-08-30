@@ -2,6 +2,7 @@ export const SIDEBAR_PREF = "interlace.peopleSidebarCollapsed";
 export const DENSITY_PREF = "interlace.density";
 export const LAST_VIEW_PREF = "interlace.lastView";
 export const LAST_PERSON_PREF = "interlace.lastPersonId";
+export const INCLUDE_GROUPS_PREF = "interlace.includeGroups";
 export type LastView = "people" | "search" | "review" | "import" | "doctor";
 export const LAST_VIEWS: readonly LastView[] = [
   "people",
@@ -18,6 +19,14 @@ export function readSidebarPref(): boolean {
 
 export function writeSidebarPref(next: boolean) {
   localStorage.setItem(SIDEBAR_PREF, next ? "1" : "0");
+}
+
+export function readIncludeGroupsPref(): boolean {
+  return localStorage.getItem(INCLUDE_GROUPS_PREF) === "1";
+}
+
+export function writeIncludeGroupsPref(next: boolean) {
+  localStorage.setItem(INCLUDE_GROUPS_PREF, next ? "1" : "0");
 }
 
 export function readDensityPref(): Density {

@@ -139,6 +139,8 @@ def main() -> None:
     assert_first_run(crate)
     assert_font_density(crate)
     assert_reopen_last_session(crate)
+    assert_remember_include_groups(crate)
+    assert_remember_include_groups_fold(crate)
     assert_persist_window_frame(crate)
     assert_light_chrome(crate)
     assert_chrome_locale_panes(crate)

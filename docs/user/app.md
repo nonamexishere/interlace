@@ -89,7 +89,8 @@ After you pick a folder once (**Open existing…** or **Create archive…**), th
 sandboxed `.app` stores a **local security-scoped bookmark** in Application
 Support (`last-archive.bookmark`, next to `config.toml`). Quit and reopen:
 that folder opens again — no picker. Reopen restores the last view and the
-last person if they still exist (localStorage, not iCloud). Reopen restores
+last person if they still exist (localStorage, not iCloud). Include groups
+is remembered locally (localStorage, not iCloud). Reopen restores
 the last window size and position; off-screen (unplugged display) is clamped
 onto a visible work area. The CLI-only `last_archive_path` string
 is **not** enough under the sandbox. If you first used the CLI, then open

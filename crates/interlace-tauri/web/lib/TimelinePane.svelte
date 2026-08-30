@@ -4,6 +4,7 @@
   import TimelineFilters from "./TimelineFilters.svelte";
   import TimelineList from "./TimelineList.svelte";
   import { platformLabel } from "./TimelineMail";
+  import { writeIncludeGroupsPref } from "./PeoplePrefs";
 
   let {
     selectedId = $bindable<number | null>(null),
@@ -174,7 +175,8 @@
     return title;
   }
 
-  export async function selectPerson(id: number, append = false, keepConversation = false) {
+  export async function selectPerson(id: number, append = false, keepConversation = false, groups = includeGroups) {
+    includeGroups = groups;
     if (append && tlLoading) return;
     const before = append ? oldestSentAt(timeline) : null;
     if (append && !before) return;
@@ -200,12 +202,12 @@
       personTitle = show.display_name || `person ${id}`;
       identities = show.identities || [];
       if (!append && !keepConversation) {
-        conversations = await api.personConversations({ id, includeGroups });
+        conversations = await api.personConversations({ id, includeGroups: groups });
         if (gen !== tlGen) return;
       }
       const page = await api.personTimeline({
         id,
-        includeGroups,
+        includeGroups: groups,
         limit: 80,
         before,
         conversationId: selectedConversationId,
@@ -445,6 +447,7 @@
     onIncludeGroups={() => {
       if (!selectedId) return;
       includeGroups = true;
+      writeIncludeGroupsPref(true);
       void selectPerson(selectedId);
     }}
     {openUrl}

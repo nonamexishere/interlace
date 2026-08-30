@@ -17,7 +17,7 @@
   import { handleAppKey } from "./lib/PeopleKeys";
   import { startPeopleBoot } from "./lib/PeopleBoot";
   import {
-    type Density, readDensityPref, readLastPersonId, readLastView, readSidebarPref,
+    type Density, readDensityPref, readIncludeGroupsPref, readLastPersonId, readLastView, readSidebarPref,
     writeDensityPref, writeLastPerson, writeLastView, writeSidebarPref,
   } from "./lib/PeoplePrefs";
   import { personLabel } from "./lib/PeopleUndo";
@@ -178,6 +178,7 @@
   async function applyStatus(next: Status) {
     st = next;
     setup = false;
+    includeGroups = readIncludeGroupsPref();
     void refreshPeople().catch(showErr);
     await refreshEvents();
   }
@@ -291,6 +292,7 @@
   onMount(() => {
     userCollapsed = readSidebarPref();
     density = readDensityPref();
+    includeGroups = readIncludeGroupsPref();
     restoreLastView();
     syncNarrow();
     window.addEventListener("resize", syncNarrow);

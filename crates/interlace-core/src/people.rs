@@ -106,8 +106,8 @@ pub fn person_list_on(conn: &Connection) -> Result<Vec<PersonSummary>, CoreError
 }
 
 /// Live persons with last D18 activity + preview.
-/// `include_groups = false` (the `person_list` default): sender, or participant
-/// of `dm` / `email_thread`. Sort: self first, `sent_at` desc, nulls last, `id`.
+/// `include_groups = false` (the `person_list` default): sender or participant
+/// of `dm` / `email_thread` only. Sort: self first, `sent_at` desc, nulls last, `id`.
 pub fn person_list_with_groups(
     archive: &Archive,
     include_groups: bool,
@@ -142,15 +142,15 @@ fn person_list_on_with_groups(
              FROM messages m
              JOIN conversations c ON c.id = m.conversation_id
              JOIN person_identities pi ON (
+                    (
                     pi.identity_id = m.sender_identity_id
-                 OR (
-                        m.conversation_id IN (
-                          SELECT cp.conversation_id
-                          FROM conversation_participants cp
-                          WHERE cp.identity_id = pi.identity_id
-                        )
-                        {group_sql}
+                 OR m.conversation_id IN (
+                        SELECT cp.conversation_id
+                        FROM conversation_participants cp
+                        WHERE cp.identity_id = pi.identity_id
                     )
+                    )
+                    {group_sql}
              )
            ) ranked
            WHERE rn = 1
