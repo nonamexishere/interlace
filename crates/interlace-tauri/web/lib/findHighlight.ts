@@ -1,9 +1,32 @@
-import { displayBody, splitQuotedBody } from "./TimelineMail";
+import { displayBody, isMailRow, splitQuotedBody } from "./TimelineMail";
 
 /** Segment of an in-conversation find: plain text or a substring mark. */
 export type FindSegment =
   | { kind: "text"; text: string }
   | { kind: "mark"; text: string };
+
+type FindRow = {
+  body_text?: string | null;
+  subject?: string | null;
+  platform?: string | null;
+  conversation_kind?: string | null;
+  message_id?: number;
+};
+
+/** Visible fields only — per-field includes, never a joined "subject body" phrase. */
+function visibleFindFields(
+  row: FindRow,
+  quotedOpen: Record<number, boolean> = {},
+): string[] {
+  const subject = row.subject ?? "";
+  if (!isMailRow(row)) {
+    return [displayBody(row.body_text || subject)];
+  }
+  const parts = splitQuotedBody(row.body_text || "");
+  const fields = [subject, displayBody(parts.main)];
+  if (quotedOpen[row.message_id ?? 0]) fields.push(displayBody(parts.quoted));
+  return fields;
+}
 
 /**
  * Split visible text on a client substring (case-insensitive).
@@ -32,51 +55,40 @@ export function splitFind(text: string, findQ: string): FindSegment[] {
   return segments.length ? segments : [{ kind: "text", text: raw }];
 }
 
-/** Visible haystack: displayBody(body_text) + subject. Not folded quoted. */
-export function findHaystack(row: {
-  body_text?: string | null;
-  subject?: string | null;
-}): string {
-  const subject = row.subject ?? "";
-  const parts = splitQuotedBody(row.body_text || "");
-  return `${subject} ${displayBody(parts.main)}`;
-}
-
 export function rowMatchesFind(
-  row: { body_text?: string | null; subject?: string | null },
+  row: FindRow,
   findQ: string,
+  quotedOpen: Record<number, boolean> = {},
 ): boolean {
   const q = (findQ ?? "").trim().toLowerCase();
   if (!q) return false;
-  return findHaystack(row).toLowerCase().includes(q);
+  return visibleFindFields(row, quotedOpen).some((field) =>
+    field.toLowerCase().includes(q),
+  );
 }
 
 export function findHitIndices(
-  filteredTimeline: {
-    row: { body_text?: string | null; subject?: string | null };
-    index: number;
-  }[],
+  filteredTimeline: { row: FindRow; index: number }[],
   findQ: string,
+  quotedOpen: Record<number, boolean> = {},
 ): number[] {
   const q = (findQ ?? "").trim();
   if (!q) return [];
   const hits: number[] = [];
   for (const item of filteredTimeline) {
-    if (rowMatchesFind(item.row, q)) hits.push(item.index);
+    if (rowMatchesFind(item.row, q, quotedOpen)) hits.push(item.index);
   }
   return hits;
 }
 
 export function stepFindIndex(
-  filteredTimeline: {
-    row: { body_text?: string | null; subject?: string | null };
-    index: number;
-  }[],
+  filteredTimeline: { row: FindRow; index: number }[],
   findQ: string,
   tlIndex: number,
   dir: 1 | -1,
+  quotedOpen: Record<number, boolean> = {},
 ): number | null {
-  const hits = findHitIndices(filteredTimeline, findQ);
+  const hits = findHitIndices(filteredTimeline, findQ, quotedOpen);
   if (!hits.length) return null;
   const cur = hits.indexOf(tlIndex);
   if (cur < 0) return dir > 0 ? hits[0] : hits[hits.length - 1];
@@ -85,20 +97,25 @@ export function stepFindIndex(
 
 /** Quiet `current/total` (1-based). Empty query hides; zero hits is `0/0`. */
 export function findCount(
-  filteredTimeline: {
-    row: { body_text?: string | null; subject?: string | null };
-    index: number;
-  }[],
+  filteredTimeline: { row: FindRow; index: number }[],
   findQ: string,
   tlIndex: number,
+  quotedOpen: Record<number, boolean> = {},
 ): string {
   const q = (findQ ?? "").trim();
   if (!q) return "";
-  const hits = findHitIndices(filteredTimeline, findQ);
+  const hits = findHitIndices(filteredTimeline, findQ, quotedOpen);
   if (!hits.length) return "0/0";
   const i = hits.indexOf(tlIndex);
   const current = i < 0 ? 1 : i + 1;
   return `${current}/${hits.length}`;
+}
+
+/** Snap to hits[0] only when there are hits and tlIndex is not one of them. */
+export function snapFindHit(hits: number[], tlIndex: number): number | null {
+  if (!hits.length) return null;
+  if (hits.includes(tlIndex)) return null;
+  return hits[0];
 }
 
 export function onFindKey(

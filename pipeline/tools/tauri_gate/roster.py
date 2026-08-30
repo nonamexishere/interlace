@@ -96,6 +96,7 @@ from tauri_gate.keyboard import (  # noqa: E402
 )
 from tauri_gate.find_in_conversation import assert_find_in_conversation  # noqa: E402
 from tauri_gate.find_in_conversation_count import assert_find_in_conversation_count  # noqa: E402
+from tauri_gate.find_in_conversation_review import assert_find_in_conversation_review  # noqa: E402
 from tauri_gate.palette import (  # noqa: E402
     assert_command_palette,
     assert_command_palette_people_cap,

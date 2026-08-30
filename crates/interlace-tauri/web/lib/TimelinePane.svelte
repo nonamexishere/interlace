@@ -5,7 +5,7 @@
   import TimelineList from "./TimelineList.svelte";
   import { platformLabel } from "./TimelineMail";
   import { writeIncludeGroupsPref } from "./PeoplePrefs";
-  import { findCount, findHitIndices, onFindKey, stepFindIndex } from "./findHighlight";
+  import { findCount, findHitIndices, onFindKey, snapFindHit, stepFindIndex } from "./findHighlight";
   import { Input } from "$lib/components/ui/input/index.js";
   import { t } from "$lib/i18n";
 
@@ -57,7 +57,7 @@
   let tlError = $state("");
   let tlGen = 0;
   let findQ = $state("");
-  let lastFindQ = "";
+  let quotedOpen = $state<Record<number, boolean>>({});
   let list: {
     ensureTlIndexVisible: (index: number) => void;
     applyOpenPersonWindow: (gen: number, currentGen: () => number) => void;
@@ -243,6 +243,7 @@
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
               if (gen !== tlGen) return;
+              if (findQ) { list?.ensureTlIndexVisible(tlIndex); return; }
               sc.scrollTop = sc.scrollHeight;
               list?.applyOpenPersonWindow(gen, () => tlGen);
             });
@@ -356,15 +357,14 @@
   }
 
   function stepFind(dir: 1 | -1) {
-    const next = stepFindIndex(filteredTimeline, findQ, tlIndex, dir);
+    const next = stepFindIndex(filteredTimeline, findQ, tlIndex, dir, quotedOpen);
     if (next != null) { tlIndex = next; list?.ensureTlIndexVisible(next); }
   }
 
   $effect(() => {
-    if (findQ === lastFindQ) return;
-    lastFindQ = findQ;
-    const hits = findHitIndices(filteredTimeline, findQ);
-    if (hits.length) { tlIndex = hits[0]; list?.ensureTlIndexVisible(hits[0]); }
+    const hits = findHitIndices(filteredTimeline, findQ, quotedOpen);
+    const snap = snapFindHit(hits, tlIndex);
+    if (snap != null) { tlIndex = snap; list?.ensureTlIndexVisible(snap); }
   });
 
   function onPaneFindKey(e: KeyboardEvent) {
@@ -450,7 +450,7 @@
       <div class="mb-3 flex items-center gap-2">
         <Input id="tl-find" data-tl-find type="search" bind:value={findQ} placeholder={t("findInThread")} aria-label={t("findInThread")} autocomplete="off" class="h-8 min-w-0 flex-1" onkeydown={onPaneFindKey} />
         {#if findQ}
-          <span data-tl-hit-count class="shrink-0 text-xs tabular-nums text-muted-foreground">{findCount(filteredTimeline, findQ, tlIndex)}</span>
+          <span data-tl-hit-count class="shrink-0 text-xs tabular-nums text-muted-foreground">{findCount(filteredTimeline, findQ, tlIndex, quotedOpen)}</span>
         {/if}
       </div>
     {/if}
@@ -460,7 +460,7 @@
     {timeline}
     {filteredTimeline}
     {selectedId}
-    bind:tlIndex
+    bind:tlIndex bind:quotedOpen
     {tlLoading}
     {tlAppending}
     {tlError}

@@ -37,6 +37,7 @@
     onSearchFromBubble,
     onCopyFail,
     findQ = "",
+    quotedOpen = $bindable<Record<number, boolean>>({}),
   }: {
     timeline: TimelineRow[];
     filteredTimeline: { row: TimelineRow; index: number }[];
@@ -58,6 +59,7 @@
     onSearchFromBubble: () => void;
     onCopyFail: () => void;
     findQ?: string;
+    quotedOpen?: Record<number, boolean>;
   } = $props();
 
   let tlScrollTop = $state(0);
@@ -70,7 +72,6 @@
   let pointerOnTimeline = false;
   let pinLatestObs: ResizeObserver | null = null;
   let pinLatestUntil: ReturnType<typeof setTimeout> | null = null;
-  let quotedOpen = $state<Record<number, boolean>>({});
   let copyMenu = $state<{ x: number; y: number; text: string } | null>(null);
 
   $effect(() => {

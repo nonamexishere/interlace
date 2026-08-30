@@ -162,6 +162,7 @@ def main() -> None:
     assert_keyboard_map(crate)
     assert_find_in_conversation(crate)
     assert_find_in_conversation_count(crate)
+    assert_find_in_conversation_review(crate)
     assert_chrome_search_field(crate)
     assert_search_as_you_type(crate)
     assert_custom_titlebar(crate)

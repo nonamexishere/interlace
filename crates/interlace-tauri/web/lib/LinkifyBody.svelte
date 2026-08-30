@@ -27,7 +27,7 @@
         e.preventDefault();
         e.stopPropagation();
         openUrl(seg.text);
-      }}>{seg.text}</a>
+      }}>{#each splitFind(seg.text, findQ) as part}{#if part.kind === "mark"}<mark class="search-mark">{part.text}</mark>{:else}{part.text}{/if}{/each}</a>
   {:else}
     {#each splitFind(seg.text, findQ) as part}
       {#if part.kind === "mark"}
