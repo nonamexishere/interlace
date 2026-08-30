@@ -280,7 +280,7 @@
             Photo/file not stored ({a.filename || "attachment"}). Re-import the WhatsApp ZIP from the
             Import tab (old messages stay, missing files are added).
           </p>
-        {:else if isImage(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
+        {:else if isImage(a) && !broken[keyOf(a)]}
           <button
             type="button"
             class="block cursor-pointer border-0 bg-transparent p-0 text-left focus-visible:ring-2 focus-visible:ring-ring"
@@ -290,14 +290,18 @@
             }}
             aria-label={`Open ${a.filename || "image"} full size`}
           >
-            <img
-              src={srcs[keyOf(a)]}
-              alt={a.filename || "image"}
-              class="max-h-64 max-w-full rounded-md border border-border"
-              onerror={() => {
-                broken = { ...broken, [keyOf(a)]: true };
-              }}
-            />
+            <span data-cas-image-slot class="cas-image-slot max-h-64">
+              {#if srcs[keyOf(a)]}
+                <img
+                  src={srcs[keyOf(a)]}
+                  alt={a.filename || "image"}
+                  class="max-h-64 max-w-full object-contain"
+                  onerror={() => {
+                    broken = { ...broken, [keyOf(a)]: true };
+                  }}
+                />
+              {/if}
+            </span>
           </button>
         {:else if isVideo(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
           <CasVideo

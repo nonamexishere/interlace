@@ -6,7 +6,7 @@
   import { platformLabel } from "./TimelineMail";
   import { writeIncludeGroupsPref } from "./PeoplePrefs";
   import { findCount, findHitIndices, onFindKey, snapFindHit, stepFindIndex } from "./findHighlight";
-  import { jumpToLocalDay, nearestVisibleTlIndex } from "./jumpDay";
+  import { dayPinTlIndex, jumpToLocalDay, nearestVisibleTlIndex } from "./jumpDay";
   import { Input } from "$lib/components/ui/input/index.js";
   import { t } from "$lib/i18n";
 
@@ -57,7 +57,7 @@
   let tlAppending = $state(false);
   let tlError = $state("");
   let tlGen = 0;
-  let findQ = $state(""), jumpDay = $state("");
+  let findQ = $state(""), jumpDay = $state(""), jumpGen = 0, dayPin = false;
   let quotedOpen = $state<Record<number, boolean>>({});
   let list: {
     ensureTlIndexVisible: (index: number) => void;
@@ -172,7 +172,7 @@
     if (append && tlLoading) return;
     const before = append ? oldestSentAt(timeline) : null;
     if (append && !before) return;
-    if (!append) persistLastPerson(id);
+    if (!append) { dayPin = false; jumpGen++; persistLastPerson(id); }
 
     if (!append && id !== selectedId) {
       showPersonChrome = false;
@@ -258,7 +258,7 @@
     showPersonChrome = false;
     platformFilter = "all";
     kindFilter = "all";
-    findQ = "";
+    findQ = ""; dayPin = false; jumpGen++;
     selectedId = personId;
     persistLastPerson(personId);
     selectedConversationId = null;
@@ -350,7 +350,7 @@
 
   $effect(() => {
     const hits = findHitIndices(filteredTimeline, findQ, quotedOpen);
-    const snap = snapFindHit(hits, tlIndex);
+    const snap = dayPin ? null : snapFindHit(hits, tlIndex);
     if (snap != null) { tlIndex = snap; list?.ensureTlIndexVisible(snap); }
   });
 
@@ -359,11 +359,13 @@
   }
 
   function goToJumpDay() {
+    const gen = ++jumpGen, id = selectedId, key = jumpDay; dayPin = true;
     void jumpToLocalDay({
-      key: jumpDay, filteredTimeline: () => filteredTimeline, selectedId,
+      key, gen, selectedId: id, filteredTimeline: () => filteredTimeline,
+      currentSelectedId: () => selectedId, currentJumpDay: () => jumpDay, currentGen: () => jumpGen,
       tlLoading: () => tlLoading, oldestCursor: () => oldestCursor, timelineLength: () => timeline.length,
-      selectPerson: (id, append) => selectPerson(id, append),
-      scrollToPos: (pos) => { const item = filteredTimeline[pos]; if (item) tlIndex = item.index; list?.stopPin(); list?.pinDayAtTop(pos); },
+      selectPerson: async (pid, append) => { if (selectedId !== id || jumpDay !== key || jumpGen !== gen) return; return selectPerson(pid, append); },
+      scrollToPos: (pos) => { if (selectedId !== id || jumpDay !== key || jumpGen !== gen) return; const item = filteredTimeline[pos]; const next = dayPinTlIndex(item, findHitIndices(filteredTimeline, findQ, quotedOpen), filteredTimeline, key, findQ); if (next != null) tlIndex = next; list?.stopPin(); list?.pinDayAtTop(pos); },
     });
   }
 
@@ -444,7 +446,7 @@
         bind:kindFilter
       />
       <div class="mb-3 flex items-center gap-2">
-        <Input id="tl-find" data-tl-find type="search" bind:value={findQ} placeholder={t("findInThread")} aria-label={t("findInThread")} autocomplete="off" class="h-8 min-w-0 flex-1" onkeydown={onPaneFindKey} />
+        <Input id="tl-find" data-tl-find type="search" bind:value={findQ} placeholder={t("findInThread")} aria-label={t("findInThread")} autocomplete="off" class="h-8 min-w-0 flex-1" oninput={() => (dayPin = false)} onkeydown={onPaneFindKey} />
         <Input type={"date"} bind:value={jumpDay} aria-label={t("jumpToDay")} class="h-8 w-auto shrink-0" onchange={goToJumpDay} />
         {#if findQ}
           <span data-tl-hit-count class="shrink-0 text-xs tabular-nums text-muted-foreground">{findCount(filteredTimeline, findQ, tlIndex, quotedOpen)}</span>

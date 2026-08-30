@@ -10,14 +10,50 @@ export type JumpDayItem = { row: JumpDayRow; index: number };
 
 export type JumpDayCtx = {
   key: string;
-  filteredTimeline: () => JumpDayItem[];
+  gen: number;
   selectedId: number | null;
+  currentSelectedId: () => number | null;
+  currentJumpDay: () => string;
+  currentGen: () => number;
+  filteredTimeline: () => JumpDayItem[];
   tlLoading: () => boolean;
   oldestCursor: () => string | null;
   timelineLength: () => number;
   selectPerson: (id: number, append: true) => Promise<unknown>;
   scrollToPos: (filteredPos: number) => void;
 };
+
+/** True when selectedId / jumpDay / jumpGen no longer match the captured jump. */
+export function jumpStale(ctx: JumpDayCtx): boolean {
+  return (
+    ctx.currentSelectedId() !== ctx.selectedId ||
+    ctx.key !== ctx.currentJumpDay() ||
+    ctx.currentGen() !== ctx.gen
+  );
+}
+
+/**
+ * tlIndex after a day pin. Empty Find → that day's first row.
+ * Find on: only the day's first row if it is already a hit, or a hit
+ * on that local day. No hit on that day → null (leave tlIndex).
+ */
+export function dayPinTlIndex(
+  item: JumpDayItem | undefined,
+  hits: number[],
+  filteredTimeline: JumpDayItem[],
+  key: string,
+  findQ: string,
+): number | null {
+  if (!item) return null;
+  if (!(findQ ?? "").trim()) return item.index;
+  if (hits.includes(item.index)) return item.index;
+  for (const h of hits) {
+    const hit = filteredTimeline.find((it) => it.index === h);
+    if (!hit) continue;
+    if (localDay(hit.row.sent_at, hit.row.platform) === key) return h;
+  }
+  return null;
+}
 
 /** Closest visible timeline index (same rule as the chip-filter snap). */
 export function nearestVisibleTlIndex(from: number, visible: number[]): number {
@@ -50,6 +86,42 @@ export function firstLocalDayIndex(
   return -1;
 }
 
+/** Max prepend pages a day jump may request before a quiet miss. */
+export const JUMP_DAY_PAGE_CAP = 80;
+
+/** Min/max host-calendar localDay over dated filtered rows. */
+export function loadedDayRange(
+  items: JumpDayItem[],
+): { oldest: string; newest: string } | null {
+  let oldest = "";
+  let newest = "";
+  for (const it of items) {
+    const day = localDay(it.row.sent_at, it.row.platform);
+    if (day === "") continue;
+    if (!oldest || day < oldest) oldest = day;
+    if (!newest || day > newest) newest = day;
+  }
+  if (!oldest) return null;
+  return { oldest, newest };
+}
+
+/**
+ * Prepend earlier pages only when the target is older than the loaded window.
+ * No dated rows → true (first page can be undated). Newer / in-range → false.
+ */
+export function shouldLoadOlderForJump(
+  key: string,
+  range: { oldest: string; newest: string } | null,
+): boolean {
+  if (!range) return true;
+  return key < range.oldest;
+}
+
+let dayPinToken = 0;
+export function cancelDayHeadingPin(): void {
+  dayPinToken++;
+}
+
 /** Pin that day's first .day-heading to the top of #person-timeline. */
 export function scrollDayHeadingToTop(
   origIndex: number,
@@ -58,10 +130,14 @@ export function scrollDayHeadingToTop(
 ): void {
   const sc = document.getElementById("person-timeline");
   if (!sc) return;
+  const token = ++dayPinToken;
   writeScrollTop(sc, Math.max(0, estimateTop));
   void tick().then(() => {
+    if (token !== dayPinToken) return;
     requestAnimationFrame(() => {
+      if (token !== dayPinToken) return;
       requestAnimationFrame(() => {
+        if (token !== dayPinToken) return;
         const row = sc.querySelector(`[data-tl-index="${origIndex}"]`);
         const heading =
           row instanceof Element
@@ -80,32 +156,46 @@ export function scrollDayHeadingToTop(
 
 /**
  * Jump to the first sticky day heading for YYYY-MM-DD.
- * Already loaded → scroll. Older → selectPerson(..., true) prepend
- * until the heading exists or the page is empty/short.
+ * Already loaded → scroll. Older than loaded window → selectPerson(..., true)
+ * prepend until the heading exists, empty/short page, range gap, or page cap.
+ * Newer day or in-range gap → quiet miss (no prepend walk).
  */
 export async function jumpToLocalDay(ctx: JumpDayCtx): Promise<void> {
   const key = (ctx.key ?? "").trim();
   if (!key) return;
+  if (jumpStale(ctx)) return;
   const hit = () => firstLocalDayIndex(ctx.filteredTimeline(), key);
   let pos = hit();
   if (pos >= 0) {
+    if (jumpStale(ctx)) return;
     ctx.scrollToPos(pos);
     return;
   }
   const id = ctx.selectedId;
   if (!id) return;
+  let range = loadedDayRange(ctx.filteredTimeline());
+  if (!shouldLoadOlderForJump(key, range)) return;
   const limit = 80;
-  while (true) {
+  let pages = 0;
+  while (pages < JUMP_DAY_PAGE_CAP) {
     while (ctx.tlLoading()) await tick();
+    if (jumpStale(ctx)) return;
     if (!ctx.oldestCursor()) break;
+    range = loadedDayRange(ctx.filteredTimeline());
+    if (!shouldLoadOlderForJump(key, range)) return;
     const beforeLen = ctx.timelineLength();
+    if (jumpStale(ctx)) return;
     await ctx.selectPerson(id, true);
+    await tick();
+    if (jumpStale(ctx)) return;
     const page = { length: ctx.timelineLength() - beforeLen };
     pos = hit();
     if (pos >= 0) {
+      if (jumpStale(ctx)) return;
       ctx.scrollToPos(pos);
       return;
     }
     if (page.length === 0 || page.length < limit) break;
+    pages++;
   }
 }
