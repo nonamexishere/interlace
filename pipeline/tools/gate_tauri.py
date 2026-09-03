@@ -150,6 +150,8 @@ def main() -> None:
     assert_reopen_last_session(crate)
     assert_remember_include_groups(crate)
     assert_remember_include_groups_fold(crate)
+    assert_people_sort(crate)
+    assert_people_sort_fold(crate)
     assert_persist_window_frame(crate)
     assert_light_chrome(crate)
     assert_chrome_locale_panes(crate)

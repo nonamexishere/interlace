@@ -3,6 +3,8 @@ export const DENSITY_PREF = "interlace.density";
 export const LAST_VIEW_PREF = "interlace.lastView";
 export const LAST_PERSON_PREF = "interlace.lastPersonId";
 export const INCLUDE_GROUPS_PREF = "interlace.includeGroups";
+export const PEOPLE_SORT_PREF = "interlace.peopleSort";
+export type PeopleSort = "recent" | "az";
 export type LastView = "people" | "search" | "review" | "import" | "doctor";
 export const LAST_VIEWS: readonly LastView[] = [
   "people",
@@ -27,6 +29,14 @@ export function readIncludeGroupsPref(): boolean {
 
 export function writeIncludeGroupsPref(next: boolean) {
   localStorage.setItem(INCLUDE_GROUPS_PREF, next ? "1" : "0");
+}
+
+export function readPeopleSortPref(): PeopleSort {
+  return localStorage.getItem(PEOPLE_SORT_PREF) === "az" ? "az" : "recent";
+}
+
+export function writePeopleSortPref(next: PeopleSort) {
+  localStorage.setItem(PEOPLE_SORT_PREF, next);
 }
 
 export function readDensityPref(): Density {

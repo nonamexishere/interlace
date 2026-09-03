@@ -37,6 +37,8 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_reopen_last_session",
     "assert_remember_include_groups",
     "assert_remember_include_groups_fold",
+    "assert_people_sort",
+    "assert_people_sort_fold",
     "assert_persist_window_frame",
     "assert_light_chrome",
     "assert_chrome_locale_panes",

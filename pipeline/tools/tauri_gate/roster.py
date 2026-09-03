@@ -119,6 +119,8 @@ from tauri_gate.density import (  # noqa: E402
 from tauri_gate.reopen_last import assert_reopen_last_session  # noqa: E402
 from tauri_gate.include_groups import assert_remember_include_groups  # noqa: E402
 from tauri_gate.include_groups_fold import assert_remember_include_groups_fold  # noqa: E402
+from tauri_gate.people_sort import assert_people_sort  # noqa: E402
+from tauri_gate.people_sort_fold import assert_people_sort_fold  # noqa: E402
 from tauri_gate.window_frame import assert_persist_window_frame  # noqa: E402
 from tauri_gate.recent_archives import assert_recent_archives  # noqa: E402
 from tauri_gate.recent_archives_fold import assert_recent_archives_fold  # noqa: E402
