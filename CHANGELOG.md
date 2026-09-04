@@ -33,6 +33,7 @@ unsigned **`app-v0.1.2`**.
 - Find in this conversation (`1/N` count; Enter / Shift+Enter).
 - Remember include-groups locally.
 - People list Recent | A–Z; the choice is remembered locally.
+- Latest on a long thread returns you to the newest bubble.
 
 ### Fixed
 

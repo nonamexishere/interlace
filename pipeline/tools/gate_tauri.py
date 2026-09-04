@@ -130,6 +130,8 @@ def main() -> None:
     assert_jump_day_heading_fold2(crate)
     assert_jump_day_heading_fold3(crate)
     assert_timeline_latest(crate)
+    assert_scroll_to_latest(crate)
+    assert_scroll_to_latest_fold(crate)
     assert_conversation_switcher(crate)
     assert_timeline_platform_chips(crate)
     assert_timeline_kind_filter(crate)

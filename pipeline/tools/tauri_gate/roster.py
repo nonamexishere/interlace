@@ -25,6 +25,8 @@ from tauri_gate.timeline_scroll import (  # noqa: E402
     assert_virtualized_timeline,
     assert_variable_height_timeline,
 )
+from tauri_gate.scroll_to_latest import assert_scroll_to_latest  # noqa: E402
+from tauri_gate.scroll_to_latest_fold import assert_scroll_to_latest_fold  # noqa: E402
 from tauri_gate.timeline_filters import (  # noqa: E402
     assert_timeline_platform_chips,
     assert_timeline_kind_filter,

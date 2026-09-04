@@ -7,6 +7,8 @@
   import TimelineRows from "./TimelineRows.svelte";
   import TimelineCopyMenu from "./TimelineCopyMenu.svelte";
   import TimelineEmpty from "./TimelineEmpty.svelte";
+  import TimelineLatest from "./TimelineLatest.svelte";
+  import { t } from "$lib/i18n";
   import { displayBody, isGroupedFollower as groupedFollower } from "./TimelineMail";
   import {
     ESTIMATED_ROW_HEIGHT,
@@ -78,6 +80,7 @@
   let pinLatestObs: ResizeObserver | null = null;
   let pinLatestUntil: ReturnType<typeof setTimeout> | null = null;
   let copyMenu = $state<{ x: number; y: number; text: string } | null>(null);
+  let showLatest = $state(false);
 
   $effect(() => {
     void density;
@@ -99,8 +102,8 @@
   function writeScrollTop(sc: HTMLElement, top: number) {
     programmaticScroll = true;
     sc.scrollTop = top;
-    tlScrollTop = sc.scrollTop;
-    tlViewportHeight = sc.clientHeight || tlViewportHeight;
+    tlScrollTop = sc.scrollTop; tlViewportHeight = sc.clientHeight || tlViewportHeight;
+    showLatest = sc.scrollTop + sc.clientHeight < sc.scrollHeight - 4;
     programmaticScroll = false;
   }
 
@@ -115,8 +118,8 @@
   function onTimelineScroll(e: Event) {
     const el = e.currentTarget as HTMLElement | null;
     if (!el) return;
-    tlScrollTop = el.scrollTop;
-    tlViewportHeight = el.clientHeight || tlViewportHeight;
+    tlScrollTop = el.scrollTop; tlViewportHeight = el.clientHeight || tlViewportHeight;
+    showLatest = el.scrollTop + el.clientHeight < el.scrollHeight - 4;
     if (programmaticScroll) return;
     cancelDayHeadingPin(); onClearDayPin?.();
     if (!pointerOnTimeline) return;
@@ -130,13 +133,8 @@
     cancelDayHeadingPin(); stopPinLatest(); markUserScrolling(); onClearDayPin?.();
   }
 
-  function onTimelinePointerDown() {
-    pointerOnTimeline = true;
-  }
-
-  function onTimelinePointerUp() {
-    pointerOnTimeline = false;
-  }
+  function onTimelinePointerDown() { pointerOnTimeline = true; }
+  function onTimelinePointerUp() { pointerOnTimeline = false; }
 
   const visibleRange = $derived(
     computeVisibleRange(filteredTimeline.length, tlViewportHeight, tlScrollTop, (i) =>
@@ -396,8 +394,7 @@
   }
 
   function toggleQuoted(messageId: number, e: Event) {
-    e.stopPropagation();
-    e.preventDefault();
+    e.stopPropagation(); e.preventDefault();
     quotedOpen = { ...quotedOpen, [messageId]: !quotedOpen[messageId] };
   }
 
@@ -406,8 +403,13 @@
     copyMenu = { x: e.clientX, y: e.clientY, text: row.body_text || row.subject || "" };
   }
 
-  function closeCopyMenu() {
-    copyMenu = null;
+  function closeCopyMenu() { copyMenu = null; }
+
+  export function scrollToLatest() {
+    const sc = document.getElementById("person-timeline");
+    if (!sc) return;
+    cancelDayHeadingPin(); onClearDayPin?.();
+    watchPinLatest(sc);
   }
 
   async function copyText() {
@@ -421,10 +423,7 @@
     }
   }
 
-  function searchFromBubble() {
-    closeCopyMenu();
-    onSearchFromBubble();
-  }
+  function searchFromBubble() { closeCopyMenu(); onSearchFromBubble(); }
 
   function onCopyMenuAway(e: MouseEvent) {
     if (!copyMenu) return;
@@ -443,11 +442,10 @@
     };
   });
 
-  export function closeCopy() {
-    closeCopyMenu();
-  }
+  export function closeCopy() { closeCopyMenu(); }
 </script>
 
+<div class="relative min-h-0 flex-1 flex min-w-0 flex-col">
 <ScrollArea
   id="person-timeline"
   class="min-h-0 min-w-0 flex-1 px-4 pb-8{filteredTimeline.length > VIRTUALIZE_AFTER ? ' tl-windowed' : ''}"
@@ -489,7 +487,10 @@
   />
   <div id="timeline-end"></div>
 </ScrollArea>
-
+{#if showLatest}
+  <TimelineLatest class="absolute end-3 bottom-3 z-10" onclick={scrollToLatest} aria-label={t("latest")}>{t("latest")}</TimelineLatest>
+{/if}
 {#if copyMenu}
   <TimelineCopyMenu x={copyMenu.x} y={copyMenu.y} onCopy={copyText} onSearch={searchFromBubble} />
 {/if}
+</div>

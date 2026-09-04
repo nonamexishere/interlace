@@ -20,6 +20,7 @@ export type PeopleKeyCtx = {
   tlIndex: number;
   setTlIndex: (n: number) => void;
   ensureTlIndexVisible: (n: number) => void;
+  scrollToLatest: () => void;
 };
 
 export function handleAppKey(e: KeyboardEvent, ctx: PeopleKeyCtx) {
@@ -95,6 +96,11 @@ export function handleAppKey(e: KeyboardEvent, ctx: PeopleKeyCtx) {
     (t?.closest?.("[role='listbox']") || t?.getAttribute?.("role") === "option") &&
     t?.id !== "person-filter" &&
     t?.tagName !== "INPUT";
+  if (e.key === "End" && ctx.selectedId && !inPeopleList) {
+    e.preventDefault();
+    ctx.scrollToLatest();
+    return;
+  }
   if (inPeopleList && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
     e.preventDefault();
     const filtered = ctx.filteredIds;

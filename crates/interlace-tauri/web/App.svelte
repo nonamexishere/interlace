@@ -285,6 +285,7 @@
       tlIndex,
       setTlIndex: (n) => { tlIndex = n; },
       ensureTlIndexVisible: (n) => peopleShell?.pane()?.ensureTlIndexVisible(n),
+      scrollToLatest: () => peopleShell?.pane()?.scrollToLatest(),
     });
     void (e.key === "j" || e.key === "k");
   }

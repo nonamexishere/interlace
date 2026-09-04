@@ -68,7 +68,7 @@
     stopPin: () => void;
     estimateScrollToIndex: (index: number) => void;
     pinDayAtTop: (filteredPos: number) => void;
-    closeCopy: () => void;
+    closeCopy: () => void; scrollToLatest: () => void;
   } | undefined = $state();
 
   const KIND_ORDER = ["dm", "email_thread", "group"] as const;
@@ -369,9 +369,8 @@
     }).then((scrolled) => { if (jumpGen === gen && !scrolled) dayPin = false; });
   }
 
-  export function closeCopyMenu() {
-    list?.closeCopy();
-  }
+  export function closeCopyMenu() { list?.closeCopy(); }
+  export function scrollToLatest() { list?.scrollToLatest(); }
 </script>
 
 <div class="flex min-h-0 min-w-0 flex-1 flex-col">
