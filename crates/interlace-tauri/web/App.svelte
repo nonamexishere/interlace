@@ -56,7 +56,7 @@
   let visibleTlIndices = $state<number[]>([]);
   const personInspectorAttr = ["data", "person", "inspector"].join("-");
   let peopleShell: {
-    pane: () => { selectPerson: (id: number, append?: boolean, keepConversation?: boolean) => Promise<void>; openPersonAtMessage: (a: number, b: number, c?: string | null) => Promise<void>; ensureTlIndexVisible: (n: number) => void; closeCopyMenu: () => void; scrollToLatest: () => void } | undefined;
+    pane: () => { selectPerson: (id: number, append?: boolean, keepConversation?: boolean) => Promise<void>; openPersonAtMessage: (a: number, b: number, c?: string | null) => Promise<void>; ensureTlIndexVisible: (n: number) => void; closeCopyMenu: () => void; scrollToLatest: () => void; copySelected: () => void } | undefined;
     filteredIds: () => number[];
   } | undefined = $state();
 
@@ -286,7 +286,7 @@
       tlIndex,
       setTlIndex: (n) => { tlIndex = n; },
       ensureTlIndexVisible: (n) => peopleShell?.pane()?.ensureTlIndexVisible(n),
-      scrollToLatest: () => peopleShell?.pane()?.scrollToLatest(),
+      scrollToLatest: () => peopleShell?.pane()?.scrollToLatest(), copySelected: () => peopleShell?.pane()?.copySelected(),
     });
     void (e.key === "j" || e.key === "k");
   }

@@ -440,6 +440,11 @@
   });
 
   export function closeCopy() { closeCopyMenu(); }
+  export function copySelected() {
+    const row = tlIndex < 0 ? null : filteredTimeline.find((item) => item.index === tlIndex)?.row ?? timeline[tlIndex];
+    if (!row) return;
+    navigator.clipboard.writeText(displayBody(row.body_text || row.subject || "")).catch(() => onCopyFail());
+  }
 </script>
 
 <div class="relative min-h-0 flex-1 flex min-w-0 flex-col">

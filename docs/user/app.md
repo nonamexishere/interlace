@@ -249,7 +249,7 @@ local CAS bytes (`data:`); autoplay is off. A stored video can be opened
 full-size in-window. PDFs open in-window from
 local CAS. Video and PDF are never a remote stream (no remote viewer).
 Nothing is fetched from the network. Exports that omitted media show a
-placeholder. Right-click a timeline bubble to **Copy text** to the clipboard.
+placeholder. Right-click a timeline bubble to **Copy text** to the clipboard. A highlighted bubble, ⌘C (Ctrl+C) copies that body's plain text; `#q` / people filter keep native copy.
 The same context menu has **Search**: from a timeline bubble you can open Search
 with that person (Ada — the name, not a raw id); hits load. **⌘F** still
 focuses `#q`.

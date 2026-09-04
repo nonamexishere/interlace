@@ -97,7 +97,7 @@
     openPersonAtMessage: (personId: number, messageId: number, sentAt?: string | null) => Promise<void>;
     ensureTlIndexVisible: (index: number) => void;
     closeCopyMenu: () => void;
-    scrollToLatest: () => void;
+    scrollToLatest: () => void; copySelected: () => void;
   } | undefined = $state();
 
   export function pane() {
