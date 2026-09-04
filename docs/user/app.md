@@ -244,7 +244,8 @@ when a message has several images). A photo thumbnail reserves its slot so
 the timeline does not jump. Stickers that are images still
 lightbox. Voice notes play in-app with play/pause, elapsed/duration, and a
 progress track you can scrub; audio is loaded only from local CAS bytes
-(`data:`), never a remote stream. Videos play in-window from the same
+(`data:`), never a remote stream. A selected / highlighted voice bubble,
+Space play/pause; `#q` still types a space. Videos play in-window from the same
 local CAS bytes (`data:`); autoplay is off. A stored video can be opened
 full-size in-window. PDFs open in-window from
 local CAS. Video and PDF are never a remote stream (no remote viewer).

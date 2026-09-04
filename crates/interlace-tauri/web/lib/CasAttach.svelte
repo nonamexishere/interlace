@@ -4,6 +4,7 @@
   import X from "@lucide/svelte/icons/x";
   import { api } from "./api";
   import { t } from "./i18n";
+  import { togglePlay } from "./CasVoice";
   import CasPdf from "./CasPdf.svelte";
   import CasVideo from "./CasVideo.svelte";
 
@@ -231,24 +232,13 @@
     return (wrap?.querySelector("audio") as HTMLAudioElement | null) ?? null;
   }
 
-  function togglePlay(e: MouseEvent, key: string) {
+  function onVoicePlay(e: MouseEvent, key: string) {
     e.stopPropagation();
     const el = voiceAudioFrom(e.currentTarget as HTMLElement);
     if (!el) return;
-    if (el.paused) {
-      // One voice note at a time (document-wide so multiple CasAttach instances share).
-      document.querySelectorAll<HTMLAudioElement>("[data-voice-note] audio").forEach((other) => {
-        if (other !== el && !other.paused) other.pause();
-      });
-      void el.play().catch((err: unknown) => {
-        // pause() / switching notes aborts a pending play(); not a bad file.
-        const name = err && typeof err === "object" && "name" in err ? String((err as { name: string }).name) : "";
-        if (name === "AbortError" || name === "NotAllowedError") return;
-        broken = { ...broken, [key]: true };
-      });
-    } else {
-      el.pause();
-    }
+    togglePlay(el, () => {
+      broken = { ...broken, [key]: true };
+    });
   }
 
   function seekVoice(e: Event, key: string) {
@@ -363,7 +353,7 @@
               class="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={playing[key] ? "Pause voice note" : "Play voice note"}
               data-voice-play
-              onclick={(e) => togglePlay(e, key)}
+              onclick={(e) => onVoicePlay(e, key)}
             >
               {#if playing[key]}
                 <Pause class="size-4" />

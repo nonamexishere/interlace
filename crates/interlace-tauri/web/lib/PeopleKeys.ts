@@ -1,4 +1,5 @@
 import { tick } from "svelte";
+import { togglePlay } from "./CasVoice";
 import { nearestVisibleTlIndex } from "./PeopleUndo";
 
 export type PeopleKeyCtx = {
@@ -97,6 +98,13 @@ export function handleAppKey(e: KeyboardEvent, ctx: PeopleKeyCtx) {
     (t?.closest?.("[role='listbox']") || t?.getAttribute?.("role") === "option") &&
     t?.id !== "person-filter" &&
     t?.tagName !== "INPUT";
+  if ((e.key === " " || e.code === "Space") && !(e.metaKey || e.ctrlKey || e.altKey) && ctx.selectedId && !inPeopleList) {
+    if (t?.tagName === "BUTTON" || t?.tagName === "VIDEO") return;
+    if (document.querySelector("[data-photo-lightbox],[data-cas-video-overlay]")) return;
+    const audio = document.querySelector(`#person-timeline [data-tl-index="${ctx.tlIndex}"] [data-voice-note] audio`);
+    if (audio) { e.preventDefault(); if (!e.repeat) togglePlay(audio); }
+    return;
+  }
   if (e.key === "End" && ctx.selectedId && !inPeopleList) {
     e.preventDefault();
     ctx.scrollToLatest();

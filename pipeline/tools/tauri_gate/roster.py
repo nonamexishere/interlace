@@ -30,6 +30,7 @@ from tauri_gate.scroll_to_latest_fold import assert_scroll_to_latest_fold  # noq
 from tauri_gate.keyboard_load_older import assert_keyboard_load_older  # noqa: E402
 from tauri_gate.keyboard_load_older_fold import assert_keyboard_load_older_fold  # noqa: E402
 from tauri_gate.copy_selected_bubble import assert_copy_selected_bubble  # noqa: E402
+from tauri_gate.space_voice_note import assert_space_voice_note  # noqa: E402
 from tauri_gate.timeline_filters import (  # noqa: E402
     assert_timeline_platform_chips,
     assert_timeline_kind_filter,

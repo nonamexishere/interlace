@@ -135,6 +135,7 @@ def main() -> None:
     assert_keyboard_load_older(crate)
     assert_keyboard_load_older_fold(crate)
     assert_copy_selected_bubble(crate)
+    assert_space_voice_note(crate)
     assert_conversation_switcher(crate)
     assert_timeline_platform_chips(crate)
     assert_timeline_kind_filter(crate)
