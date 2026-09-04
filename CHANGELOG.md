@@ -35,6 +35,7 @@ unsigned **`app-v0.1.2`**.
 - People list Recent | A–Z; the choice is remembered locally.
 - Latest on a long thread returns you to the newest bubble.
 - ⌘↑ / Home at the top of a long thread loads older messages.
+- ⌘C copies the highlighted bubble’s plain text; fields keep native copy.
 
 ### Fixed
 

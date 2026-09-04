@@ -11,7 +11,7 @@ export type PeopleKeyCtx = {
   showPersonChrome: boolean;
   setShowPersonChrome: (v: boolean) => void;
   personInspectorAttr: string;
-  closeCopyMenu: () => void;
+  closeCopyMenu: () => void; copySelected: () => void;
   whenSearchPaneReady: () => Promise<HTMLInputElement | null>;
   filteredIds: number[];
   selectedId: number | null;
@@ -128,6 +128,9 @@ export function handleAppKey(e: KeyboardEvent, ctx: PeopleKeyCtx) {
     const oldest = first ? Number(first.getAttribute("data-tl-index")) : NaN;
     if (atBtn || ctx.tlIndex === oldest) ctx.prependOlder();
     return;
+  }
+  if (mod && (e.key === "c" || e.key === "C") && ctx.selectedId && !inPeopleList) {
+    e.preventDefault(); ctx.copySelected(); return;
   }
   const visible = ctx.visibleTlIndices;
   if (!visible.length) return;
