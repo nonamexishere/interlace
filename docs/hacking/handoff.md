@@ -1,7 +1,7 @@
 # Agent / session handoff
 
 **Date:** 2026-09-04. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
-HEAD `81d2b6d` (merge #343).
+HEAD `def774c` (merge #345).
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -41,9 +41,10 @@ unsigned app release is **`app-v0.1.1`**. **Phase 2.2 polish is done.**
 **Phase 2.3 coding is done** (epic **#264** / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8) closed).
 Children **#265–#279**, **#297**, **#300** (PRs **#282–#301**) are done.
 **#303**, **#304**, **#305**, **#306**, **#307**, **#308**, **#309**,
-**#310**, **#311**, **#312**, **#313**, and **#314** are done (PRs
-**#323–#328**, **#330**, **#332**, **#336**, **#338**, **#340**,
-**#343**). Next coding **#315** only if asked. Do not start 1.1 / 3 / 4.
+**#310**, **#311**, **#312**, **#313**, **#314**, and **#315** are done
+(PRs **#323–#328**, **#330**, **#332**, **#336**, **#338**, **#340**,
+**#343**, **#345**). Next coding **#316** only if asked. Do not start
+1.1 / 3 / 4.
 Ask before the first notarized `app-v*` (#267 is wired; that tag is not cut).
 Normative:
 [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md). Do not start 1.1 / 3 / 4.
@@ -97,12 +98,12 @@ for the *next* `app-v*` tag; that tag is **not** cut. Ask before another
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `81d2b6d` (merge of PR **#343** / #314).
+HEAD when this was rewritten: `def774c` (merge of PR **#345** / #315).
 Tag **`app-v0.1.2`** (last shipped; still unsigned).
 Epic **#108**, milestone 6, the Phase 1 CLI milestone, Phase 2.2 (#197),
 and Phase **2.3** (epic **#264** / milestone 8) are **closed**.
-#265–#279 / #297 / #300 / #303–#314 (PRs #282–#301 / #323–#328 / #330 /
-#332 / #336 / #338 / #340 / #343) done.
+#265–#279 / #297 / #300 / #303–#315 (PRs #282–#301 / #323–#328 / #330 /
+#332 / #336 / #338 / #340 / #343 / #345) done.
 First notarized `app-v*` is not cut.
 Re-check with `git log -1` / `gh pr list`.
 
@@ -245,6 +246,7 @@ Phase 2.1 milestone (#6): **closed**.
 | #312 / PR #338 | People list Recent | A–Z; choice remembered locally |
 | #313 / PR #340 | Latest on a long thread (overlay + End / Fn+→) |
 | #314 / PR #343 | Keyboard Load older (⌘↑ / Home at oldest bubble) |
+| #315 / PR #345 | ⌘C copies the highlighted bubble’s plain text |
 
 ## Open — product now
 
@@ -258,9 +260,9 @@ names helpers, files, and must-IDs.
 
 ### Suggested next
 
-1. **#314** is done (PR **#343**). Next coding **#315** only if asked
-   (⌘C copies the selected bubble). Do not invent a new 2.3 ticket.
-   Remaining parked dogfood UI (**#315–#322**) only if asked.
+1. **#315** is done (PR **#345**). Next coding **#316** only if asked
+   (Space play/pause a focused voice note). Do not invent a new 2.3
+   ticket. Remaining parked dogfood UI (**#316–#322**) only if asked.
    **#342** (why Review is quiet; do not auto-merge names) stays
    parked until picked.
 2. Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*` tag.
@@ -277,9 +279,9 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 
 ## Recommended next steps
 
-1. #303–#314 are done (PRs #323–#328, #330, #332, #336, #338, #340,
-   #343). Next coding **#315** only if asked. Remaining parked
-   dogfood UI (**#315–#322**) only if asked. **#342** stays parked
+1. #303–#315 are done (PRs #323–#328, #330, #332, #336, #338, #340,
+   #343, #345). Next coding **#316** only if asked. Remaining parked
+   dogfood UI (**#316–#322**) only if asked. **#342** stays parked
    until picked.
 2. Phase 2.3 coding is done. Do not start 1.1 / P3 / P4.
 3. Last shipped app tag is **`app-v0.1.2`** (unsigned). Workflow can
@@ -361,9 +363,9 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > does not implement product code. Ask before commit / push / merge.
 > Phase 2.3 coding is done (epic #264 / milestone 8 closed). Read
 > `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,
-> #297, #300, #303–#314 done (PRs #323–#328, #330, #332, #336, #338, #340,
-> #343). Next coding **#315** only if asked. Parked dogfood #315–#322
-> only if asked. #342 stays parked until picked.
+> #297, #300, #303–#315 done (PRs #323–#328, #330, #332, #336, #338, #340,
+> #343, #345). Next coding **#316** only if asked. Parked dogfood
+> #316–#322 only if asked. #342 stays parked until picked.
 > Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag (`app-v0.1.2` is current; first notarized tag is not cut). After
