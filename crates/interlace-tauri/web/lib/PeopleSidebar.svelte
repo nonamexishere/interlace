@@ -49,6 +49,11 @@
     persistSidebar: (next: boolean) => void;
     undoRowLabel: (e: LinkEvent) => string;
   } = $props();
+
+  function setSort(next: "recent" | "az") {
+    peopleSort = next;
+    writePeopleSortPref(next);
+  }
 </script>
 
 <div
@@ -118,8 +123,8 @@
     <Label for="person-filter">Filter people</Label>
     <div class="flex min-w-0 items-center gap-1">
       <Input id="person-filter" type="search" bind:value={filter} placeholder="name" class="min-w-0" />
-      <Button variant="ghost" size="sm" class="h-7 px-2 text-xs" aria-pressed={peopleSort === "recent"} onclick={() => { peopleSort = "recent"; writePeopleSortPref("recent"); }}>Recent</Button>
-      <Button variant="ghost" size="sm" class="h-7 px-2 text-xs" aria-pressed={peopleSort === "az"} onclick={() => { peopleSort = "az"; writePeopleSortPref("az"); }}>A–Z</Button>
+      <Button variant={peopleSort === "recent" ? "secondary" : "ghost"} size="sm" class="h-7 px-2 text-xs" aria-pressed={peopleSort === "recent"} onclick={() => setSort("recent")}>Recent</Button>
+      <Button variant={peopleSort === "az" ? "secondary" : "ghost"} size="sm" class="h-7 px-2 text-xs" aria-pressed={peopleSort === "az"} onclick={() => setSort("az")}>A–Z</Button>
     </div>
   </div>
   <ul class="mt-2 min-w-0 space-y-0.5" role="listbox" aria-label="People" aria-busy={peopleLoading}>

@@ -81,7 +81,7 @@
         return hay.includes(q);
       });
       return peopleSort === "az"
-        ? rows.toSorted((a, b) => a.display_name.localeCompare(b.display_name, undefined, { sensitivity: "base" }) || a.id - b.id)
+        ? [...rows].sort((a, b) => a.display_name.localeCompare(b.display_name, undefined, { sensitivity: "base" }) || a.id - b.id)
         : rows;
     })(),
   );
