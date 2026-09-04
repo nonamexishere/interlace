@@ -281,6 +281,7 @@
       filteredIds: peopleShell?.filteredIds() ?? [],
       selectedId,
       selectPerson: (id) => { void peopleShell?.pane()?.selectPerson(id); },
+      prependOlder: () => { const append = true; if (selectedId != null) void peopleShell?.pane()?.selectPerson(selectedId, append); },
       visibleTlIndices,
       tlIndex,
       setTlIndex: (n) => { tlIndex = n; },
@@ -297,7 +298,7 @@
     restoreLastView();
     syncNarrow();
     window.addEventListener("resize", syncNarrow);
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
     const stopBoot = startPeopleBoot({
       openPicker,
       setView: (v) => { if (setup) return; view = v; },
@@ -313,7 +314,7 @@
     return () => {
       stopBoot();
       window.removeEventListener("resize", syncNarrow);
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
     };
   });
 </script>

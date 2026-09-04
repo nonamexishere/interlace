@@ -16,6 +16,7 @@ export type PeopleKeyCtx = {
   filteredIds: number[];
   selectedId: number | null;
   selectPerson: (id: number) => void;
+  prependOlder: () => void;
   visibleTlIndices: number[];
   tlIndex: number;
   setTlIndex: (n: number) => void;
@@ -120,6 +121,14 @@ export function handleAppKey(e: KeyboardEvent, ctx: PeopleKeyCtx) {
     });
     return;
   }
+  if (ctx.selectedId && !inPeopleList && (e.code === "Home" || (mod && e.key === "ArrowUp"))) {
+    e.preventDefault(); e.stopPropagation();
+    const atBtn = !!t?.closest?.("[data-load-older]");
+    const first = document.querySelector("#person-timeline [data-tl-index]");
+    const oldest = first ? Number(first.getAttribute("data-tl-index")) : NaN;
+    if (atBtn || ctx.tlIndex === oldest) ctx.prependOlder();
+    return;
+  }
   const visible = ctx.visibleTlIndices;
   if (!visible.length) return;
   let pos = visible.indexOf(ctx.tlIndex);
@@ -136,7 +145,7 @@ export function handleAppKey(e: KeyboardEvent, ctx: PeopleKeyCtx) {
     }
     e.preventDefault();
   }
-  if (e.key === "k" || (!inPeopleList && e.key === "ArrowUp")) {
+  if (e.key === "k" || (!inPeopleList && !e.metaKey && e.key === "ArrowUp")) {
     if (pos > 0) {
       const next = visible[pos - 1];
       ctx.setTlIndex(next);

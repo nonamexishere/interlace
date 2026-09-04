@@ -34,6 +34,7 @@ unsigned **`app-v0.1.2`**.
 - Remember include-groups locally.
 - People list Recent | A–Z; the choice is remembered locally.
 - Latest on a long thread returns you to the newest bubble.
+- ⌘↑ / Home at the top of a long thread loads older messages.
 
 ### Fixed
 
