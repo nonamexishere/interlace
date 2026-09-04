@@ -81,4 +81,5 @@ export const tr: ChromePack = {
   lastActivity: "Son etkinlik",
   findInThread: "Sohbette bul",
   jumpToDay: "Güne git",
+  latest: "En yeni",
 };

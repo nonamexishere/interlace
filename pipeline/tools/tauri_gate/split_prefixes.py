@@ -17,6 +17,8 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_jump_day_heading_fold2",
     "assert_jump_day_heading_fold3",
     "assert_timeline_latest",
+    "assert_scroll_to_latest",
+    "assert_scroll_to_latest_fold",
     "assert_conversation_switcher",
     "assert_timeline_platform_chips",
     "assert_timeline_kind_filter",

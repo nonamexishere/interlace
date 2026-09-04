@@ -7,6 +7,8 @@
   import TimelineRows from "./TimelineRows.svelte";
   import TimelineCopyMenu from "./TimelineCopyMenu.svelte";
   import TimelineEmpty from "./TimelineEmpty.svelte";
+  import TimelineLatest from "./TimelineLatest.svelte";
+  import { t } from "$lib/i18n";
   import { displayBody, isGroupedFollower as groupedFollower } from "./TimelineMail";
   import {
     ESTIMATED_ROW_HEIGHT,
@@ -69,6 +71,7 @@
 
   let tlScrollTop = $state(0);
   let tlViewportHeight = $state(480);
+  let tlScrollHeight = $state(0);
   let tlChromeHeight = $state(0);
   let rowHeights = $state<Record<number, number>>({});
   let userScrolling = false;
@@ -78,13 +81,11 @@
   let pinLatestObs: ResizeObserver | null = null;
   let pinLatestUntil: ReturnType<typeof setTimeout> | null = null;
   let copyMenu = $state<{ x: number; y: number; text: string } | null>(null);
+  const showLatest = $derived((() => { void tlScrollTop; void tlViewportHeight; void tlScrollHeight; const sc = document.getElementById("person-timeline"); return !!(sc && sc.scrollTop + sc.clientHeight < sc.scrollHeight - 4); })());
 
   $effect(() => {
-    void density;
-    void selectedId;
-    clearPendingMeasures();
-    rowHeights = {};
-    quotedOpen = {};
+    void density; void selectedId;
+    clearPendingMeasures(); rowHeights = {}; quotedOpen = {};
   });
 
   function markUserScrolling() {
@@ -99,8 +100,7 @@
   function writeScrollTop(sc: HTMLElement, top: number) {
     programmaticScroll = true;
     sc.scrollTop = top;
-    tlScrollTop = sc.scrollTop;
-    tlViewportHeight = sc.clientHeight || tlViewportHeight;
+    tlScrollTop = sc.scrollTop; tlViewportHeight = sc.clientHeight || tlViewportHeight; tlScrollHeight = sc.scrollHeight;
     programmaticScroll = false;
   }
 
@@ -115,8 +115,7 @@
   function onTimelineScroll(e: Event) {
     const el = e.currentTarget as HTMLElement | null;
     if (!el) return;
-    tlScrollTop = el.scrollTop;
-    tlViewportHeight = el.clientHeight || tlViewportHeight;
+    tlScrollTop = el.scrollTop; tlViewportHeight = el.clientHeight || tlViewportHeight; tlScrollHeight = el.scrollHeight;
     if (programmaticScroll) return;
     cancelDayHeadingPin(); onClearDayPin?.();
     if (!pointerOnTimeline) return;
@@ -130,13 +129,8 @@
     cancelDayHeadingPin(); stopPinLatest(); markUserScrolling(); onClearDayPin?.();
   }
 
-  function onTimelinePointerDown() {
-    pointerOnTimeline = true;
-  }
-
-  function onTimelinePointerUp() {
-    pointerOnTimeline = false;
-  }
+  function onTimelinePointerDown() { pointerOnTimeline = true; }
+  function onTimelinePointerUp() { pointerOnTimeline = false; }
 
   const visibleRange = $derived(
     computeVisibleRange(filteredTimeline.length, tlViewportHeight, tlScrollTop, (i) =>
@@ -276,6 +270,7 @@
     void timeline.length;
     void filteredTimeline.length;
     scheduleChromeMeasure();
+    void tick().then(() => { const sc = document.getElementById("person-timeline"); if (sc) { tlScrollTop = sc.scrollTop; tlViewportHeight = sc.clientHeight || tlViewportHeight; tlScrollHeight = sc.scrollHeight; } });
   });
 
   function stopPinLatest() {
@@ -396,8 +391,7 @@
   }
 
   function toggleQuoted(messageId: number, e: Event) {
-    e.stopPropagation();
-    e.preventDefault();
+    e.stopPropagation(); e.preventDefault();
     quotedOpen = { ...quotedOpen, [messageId]: !quotedOpen[messageId] };
   }
 
@@ -406,8 +400,13 @@
     copyMenu = { x: e.clientX, y: e.clientY, text: row.body_text || row.subject || "" };
   }
 
-  function closeCopyMenu() {
-    copyMenu = null;
+  function closeCopyMenu() { copyMenu = null; }
+
+  export function scrollToLatest() {
+    const sc = document.getElementById("person-timeline");
+    if (!sc) return;
+    cancelDayHeadingPin(); onClearDayPin?.();
+    watchPinLatest(sc);
   }
 
   async function copyText() {
@@ -421,10 +420,7 @@
     }
   }
 
-  function searchFromBubble() {
-    closeCopyMenu();
-    onSearchFromBubble();
-  }
+  function searchFromBubble() { closeCopyMenu(); onSearchFromBubble(); }
 
   function onCopyMenuAway(e: MouseEvent) {
     if (!copyMenu) return;
@@ -434,20 +430,17 @@
   }
 
   $effect(() => {
+    const sync = () => { const sc = document.getElementById("person-timeline"); if (sc) { tlScrollTop = sc.scrollTop; tlViewportHeight = sc.clientHeight || tlViewportHeight; tlScrollHeight = sc.scrollHeight; } };
     window.addEventListener("mousedown", onCopyMenuAway);
     window.addEventListener("pointerup", onTimelinePointerUp);
-    return () => {
-      window.removeEventListener("mousedown", onCopyMenuAway);
-      window.removeEventListener("pointerup", onTimelinePointerUp);
-      stopPinLatest();
-    };
+    window.addEventListener("resize", sync);
+    return () => { window.removeEventListener("mousedown", onCopyMenuAway); window.removeEventListener("pointerup", onTimelinePointerUp); window.removeEventListener("resize", sync); stopPinLatest(); };
   });
 
-  export function closeCopy() {
-    closeCopyMenu();
-  }
+  export function closeCopy() { closeCopyMenu(); }
 </script>
 
+<div class="relative min-h-0 flex-1 flex min-w-0 flex-col">
 <ScrollArea
   id="person-timeline"
   class="min-h-0 min-w-0 flex-1 px-4 pb-8{filteredTimeline.length > VIRTUALIZE_AFTER ? ' tl-windowed' : ''}"
@@ -489,7 +482,10 @@
   />
   <div id="timeline-end"></div>
 </ScrollArea>
-
+{#if showLatest}
+  <TimelineLatest onclick={scrollToLatest}>{t("latest")}</TimelineLatest>
+{/if}
 {#if copyMenu}
   <TimelineCopyMenu x={copyMenu.x} y={copyMenu.y} onCopy={copyText} onSearch={searchFromBubble} />
 {/if}
+</div>
