@@ -36,6 +36,7 @@ unsigned **`app-v0.1.2`**.
 - Latest on a long thread returns you to the newest bubble.
 - ⌘↑ / Home at the top of a long thread loads older messages.
 - ⌘C copies the highlighted bubble’s plain text; fields keep native copy.
+- Space play/pause the highlighted voice note; `#q` still types a space.
 
 ### Fixed
 

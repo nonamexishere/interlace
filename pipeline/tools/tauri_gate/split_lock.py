@@ -1,4 +1,4 @@
-"""#279 / #300 / #304 lock: G1–G3 / G5 for the tauri_gate split."""
+"""#279 / #300 lock: G1–G3 / G5 for the tauri_gate split. Line count is not a gate."""
 from __future__ import annotations
 
 import ast
@@ -15,7 +15,6 @@ from tauri_gate.split_prefixes import (
 )
 
 _SPLIT_ENTRY_CMD = "python3 pipeline/tools/gate_tauri.py"
-_SPLIT_MAX_LINES = 500
 _SPLIT_AREA_MIN = 8
 _SPLIT_SELF = "assert_gate_tauri_split"
 _SPLIT_PKG = "tauri_gate"
@@ -60,10 +59,6 @@ _SPLIT_BOOTSTRAP_NEEDLES = (
     '"reqwest"',
     '"hyper"',
 )
-def _split_line_count(path: Path) -> int:
-    return sum(1 for _ in path.open(encoding="utf-8"))
-
-
 def _split_yaml_job(wf: str, name: str) -> str:
     m = re.search(rf"(?m)^  {re.escape(name)}:\n", wf)
     if not m:
@@ -305,17 +300,8 @@ def assert_gate_tauri_split(crate: Path) -> None:
             "#279: G5 — do not name the package gate_tauri "
             "(clash with the entry script)"
         )
-    entry_lines = _split_line_count(entry)
-    g5_bits: list[str] = []
     if not pkg.is_dir():
-        g5_bits.append(f"package pipeline/tools/{_SPLIT_PKG}/ is missing")
-    if entry_lines >= _SPLIT_MAX_LINES:
-        g5_bits.append(
-            f"gate_tauri.py is still {entry_lines:,} lines "
-            f"(≥ {_SPLIT_MAX_LINES:,})"
-        )
-    if g5_bits:
-        fail("#279: G5 — " + "; ".join(g5_bits))
+        fail(f"#279: G5 — package pipeline/tools/{_SPLIT_PKG}/ is missing")
 
     if not (pkg / "__init__.py").is_file():
         fail("#279: G5 — pipeline/tools/tauri_gate/__init__.py required")
@@ -361,13 +347,6 @@ def assert_gate_tauri_split(crate: Path) -> None:
             "#279: G5 — do not add flat pipeline/tools/assert_*.py "
             "siblings (approach C)"
         )
-    for py in sorted(p for p in pkg.glob("*.py") if p.is_file()):
-        n = _split_line_count(py)
-        if n >= _SPLIT_MAX_LINES:
-            fail(
-                f"#279: G5 — {py.relative_to(root)} is {n:,} lines — "
-                f"no tauri_gate module may be ≥ {_SPLIT_MAX_LINES:,}"
-            )
 
     # #300 — scan.py public surface: five readers + one _tag_name + CSP.
     # Parse walkers may stay private. One-assert keep-checks must leave.

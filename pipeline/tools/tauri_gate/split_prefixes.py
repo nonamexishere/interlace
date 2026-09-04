@@ -22,6 +22,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_keyboard_load_older",
     "assert_keyboard_load_older_fold",
     "assert_copy_selected_bubble",
+    "assert_space_voice_note",
     "assert_conversation_switcher",
     "assert_timeline_platform_chips",
     "assert_timeline_kind_filter",
