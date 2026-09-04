@@ -154,3 +154,12 @@ export function handleAppKey(e: KeyboardEvent, ctx: PeopleKeyCtx) {
     e.preventDefault();
   }
 }
+
+/** Capture-only: block WKWebView Home / ⌘↑ scroll-to-top. No stopPropagation. */
+export function preventNativeHomeScroll(e: KeyboardEvent, selectedId?: number | null) {
+  const t = e.target as HTMLElement | null;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.closest?.("[data-command-palette]"))) return;
+  if (selectedId == null && !document.getElementById("person-timeline")) return;
+  const mod = e.metaKey || (e.ctrlKey && !e.altKey);
+  if (e.code === "Home" || (mod && e.key === "ArrowUp")) e.preventDefault();
+}
