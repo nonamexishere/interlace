@@ -102,7 +102,7 @@ export function handleAppKey(e: KeyboardEvent, ctx: PeopleKeyCtx) {
     if (t?.tagName === "BUTTON" || t?.tagName === "VIDEO") return;
     if (document.querySelector("[data-photo-lightbox],[data-cas-video-overlay]")) return;
     const audio = document.querySelector(`#person-timeline [data-tl-index="${ctx.tlIndex}"] [data-voice-note] audio`);
-    if (audio) { e.preventDefault(); togglePlay(audio); }
+    if (audio) { e.preventDefault(); if (!e.repeat) togglePlay(audio); }
     return;
   }
   if (e.key === "End" && ctx.selectedId && !inPeopleList) {
