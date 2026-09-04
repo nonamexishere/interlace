@@ -167,7 +167,7 @@ visible above the text-only footer even on a narrow pane or a long
 calendar day). Older rows sit above; newest at
 the bottom. **Load older**
 is at the top of the list and prepends earlier pages without jumping
-the viewport. After you scroll up a long thread, a quiet Latest returns you to the newest bubble above the footer; it hides at the bottom; reduced motion is instant; not unread; not auto-stick. Large threads **virtualize**: only the rows in (and near) the viewport are in the DOM, so a long DM stays scrollable. The person timeline virtualizes with **measured row heights** so two-sided DMs scroll without jumping. A **day heading** (`15/03/2024`, day/month/year) is
+the viewport. ⌘↑ / Home at the top of a long thread prepends without jumping; no older page is a no-op; j/k and End are unchanged. After you scroll up a long thread, a quiet Latest returns you to the newest bubble above the footer; it hides at the bottom; reduced motion is instant; not unread; not auto-stick. Large threads **virtualize**: only the rows in (and near) the viewport are in the DOM, so a long DM stays scrollable. The person timeline virtualizes with **measured row heights** so two-sided DMs scroll without jumping. A **day heading** (`15/03/2024`, day/month/year) is
 inserted when the host calendar day of `sent_at` changes and **sticks**
 to the top of the message list until the next day replaces it. WhatsApp
 export times display as wall-clock; Gmail / zoned times follow the Mac

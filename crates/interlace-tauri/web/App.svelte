@@ -14,7 +14,7 @@
   import PeopleShell from "$lib/PeopleShell.svelte";
   import PeopleNav from "$lib/PeopleNav.svelte";
   import { friendly, isDroppedUrl } from "./lib/PeopleFriendly";
-  import { handleAppKey } from "./lib/PeopleKeys";
+  import { handleAppKey, preventNativeHomeScroll } from "./lib/PeopleKeys";
   import { startPeopleBoot } from "./lib/PeopleBoot";
   import {
     type Density, readDensityPref, readIncludeGroupsPref, readLastPersonId, readLastView, readPeopleSortPref, readSidebarPref,
@@ -281,6 +281,7 @@
       filteredIds: peopleShell?.filteredIds() ?? [],
       selectedId,
       selectPerson: (id) => { void peopleShell?.pane()?.selectPerson(id); },
+      prependOlder: () => { const append = true; if (selectedId != null) void peopleShell?.pane()?.selectPerson(selectedId, append); },
       visibleTlIndices,
       tlIndex,
       setTlIndex: (n) => { tlIndex = n; },
@@ -296,8 +297,8 @@
     includeGroups = readIncludeGroupsPref(); peopleSort = readPeopleSortPref();
     restoreLastView();
     syncNarrow();
-    window.addEventListener("resize", syncNarrow);
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", syncNarrow); window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", preventNativeHomeScroll, true);
     const stopBoot = startPeopleBoot({
       openPicker,
       setView: (v) => { if (setup) return; view = v; },
@@ -312,8 +313,8 @@
     });
     return () => {
       stopBoot();
-      window.removeEventListener("resize", syncNarrow);
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", syncNarrow); window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", preventNativeHomeScroll, true);
     };
   });
 </script>

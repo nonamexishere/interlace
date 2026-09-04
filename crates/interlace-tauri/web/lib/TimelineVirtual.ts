@@ -108,3 +108,29 @@ export function scrollAdjForHeightChanges(
   }
   return { next, adj, changed };
 }
+
+export function capturePrependAnchor(
+  sc: HTMLElement | null,
+  tlIndex: number,
+): { index: number; viewOffset: number } | null {
+  if (!sc) return null;
+  const hit =
+    sc.querySelector(`[data-tl-index="${tlIndex}"]`) ?? sc.querySelector("[data-tl-index]");
+  if (!(hit instanceof HTMLElement)) return null;
+  const raw = hit.getAttribute("data-tl-index");
+  const index = raw != null ? Number(raw) : tlIndex;
+  if (!Number.isFinite(index)) return null;
+  return { index, viewOffset: rowOffsetInPane(sc, hit) - sc.scrollTop };
+}
+
+export function prependPinScrollTop(
+  sc: HTMLElement,
+  index: number,
+  viewOffset: number,
+  prevHeight: number,
+): number {
+  const el = sc.querySelector(`[data-tl-index="${index}"]`);
+  return el instanceof HTMLElement
+    ? rowOffsetInPane(sc, el) - viewOffset
+    : sc.scrollTop + (sc.scrollHeight - prevHeight);
+}

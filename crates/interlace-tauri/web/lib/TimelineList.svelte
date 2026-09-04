@@ -17,8 +17,7 @@
     heightOf as heightAt,
     measureTimelineChrome,
     offsetOf as offsetAt,
-    rowOffsetInPane,
-    scrollAdjForHeightChanges,
+    rowOffsetInPane, scrollAdjForHeightChanges, capturePrependAnchor, prependPinScrollTop,
   } from "./TimelineVirtual";
 
   let {
@@ -80,6 +79,7 @@
   let pointerOnTimeline = false;
   let pinLatestObs: ResizeObserver | null = null;
   let pinLatestUntil: ReturnType<typeof setTimeout> | null = null;
+  let prependN = $state(0), prependIdx = -1, prependViewOff = 0;
   let copyMenu = $state<{ x: number; y: number; text: string } | null>(null);
   const showLatest = $derived((() => { void tlScrollTop; void tlViewportHeight; void tlScrollHeight; const sc = document.getElementById("person-timeline"); return !!(sc && sc.scrollTop + sc.clientHeight < sc.scrollHeight - 4); })());
 
@@ -133,7 +133,7 @@
   function onTimelinePointerUp() { pointerOnTimeline = false; }
 
   const visibleRange = $derived(
-    computeVisibleRange(filteredTimeline.length, tlViewportHeight, tlScrollTop, (i) =>
+    computeVisibleRange(filteredTimeline.length, tlViewportHeight, tlScrollTop + prependN * ESTIMATED_ROW_HEIGHT, (i) =>
       heightOf(filteredTimeline[i].index),
     ),
   );
@@ -352,6 +352,8 @@
     for (const [k, v] of Object.entries(rowHeights)) {
       next[Number(k) + n] = v;
     }
+    const a = capturePrependAnchor(document.getElementById("person-timeline"), tlIndex);
+    prependN = n; prependIdx = a ? a.index + n : -1; prependViewOff = a ? a.viewOffset : 0;
     clearPendingMeasures();
     rowHeights = next;
   }
@@ -363,9 +365,9 @@
 
   export function preserveScrollAfterPrepend(prevHeight: number) {
     const sc = document.getElementById("person-timeline");
-    if (sc) {
-      writeScrollTop(sc, sc.scrollTop + (sc.scrollHeight - prevHeight));
-    }
+    const idx = prependIdx >= 0 ? prependIdx : tlIndex, off = prependViewOff;
+    prependN = 0; prependIdx = -1; prependViewOff = 0;
+    if (sc) writeScrollTop(sc, prependPinScrollTop(sc, idx, off, prevHeight));
   }
 
   export function stopPin() { stopPinLatest(); cancelDayHeadingPin(); }
@@ -482,7 +484,7 @@
   />
   <div id="timeline-end"></div>
 </ScrollArea>
-{#if showLatest}
+{#if showLatest || tlAppending}
   <TimelineLatest onclick={scrollToLatest}>{t("latest")}</TimelineLatest>
 {/if}
 {#if copyMenu}
