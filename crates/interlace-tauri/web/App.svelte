@@ -56,7 +56,7 @@
   let visibleTlIndices = $state<number[]>([]);
   const personInspectorAttr = ["data", "person", "inspector"].join("-");
   let peopleShell: {
-    pane: () => { selectPerson: (id: number, append?: boolean, keepConversation?: boolean) => Promise<void>; openPersonAtMessage: (a: number, b: number, c?: string | null) => Promise<void>; ensureTlIndexVisible: (n: number) => void; closeCopyMenu: () => void } | undefined;
+    pane: () => { selectPerson: (id: number, append?: boolean, keepConversation?: boolean) => Promise<void>; openPersonAtMessage: (a: number, b: number, c?: string | null) => Promise<void>; ensureTlIndexVisible: (n: number) => void; closeCopyMenu: () => void; scrollToLatest: () => void } | undefined;
     filteredIds: () => number[];
   } | undefined = $state();
 

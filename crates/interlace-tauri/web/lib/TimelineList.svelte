@@ -71,6 +71,7 @@
 
   let tlScrollTop = $state(0);
   let tlViewportHeight = $state(480);
+  let tlScrollHeight = $state(0);
   let tlChromeHeight = $state(0);
   let rowHeights = $state<Record<number, number>>({});
   let userScrolling = false;
@@ -80,14 +81,12 @@
   let pinLatestObs: ResizeObserver | null = null;
   let pinLatestUntil: ReturnType<typeof setTimeout> | null = null;
   let copyMenu = $state<{ x: number; y: number; text: string } | null>(null);
-  let showLatest = $state(false);
+  const showLatest = $derived((() => { void tlScrollTop; void tlViewportHeight; void tlScrollHeight; const sc = document.getElementById("person-timeline"); return !!(sc && sc.scrollTop + sc.clientHeight < sc.scrollHeight - 4); })());
 
   $effect(() => {
-    void density;
-    void selectedId;
-    clearPendingMeasures();
-    rowHeights = {};
-    quotedOpen = {};
+    void density; void selectedId; void filteredTimeline.length;
+    clearPendingMeasures(); rowHeights = {}; quotedOpen = {};
+    void tick().then(() => { const sc = document.getElementById("person-timeline"); if (sc) { tlScrollTop = sc.scrollTop; tlViewportHeight = sc.clientHeight || tlViewportHeight; tlScrollHeight = sc.scrollHeight; } });
   });
 
   function markUserScrolling() {
@@ -102,8 +101,7 @@
   function writeScrollTop(sc: HTMLElement, top: number) {
     programmaticScroll = true;
     sc.scrollTop = top;
-    tlScrollTop = sc.scrollTop; tlViewportHeight = sc.clientHeight || tlViewportHeight;
-    showLatest = sc.scrollTop + sc.clientHeight < sc.scrollHeight - 4;
+    tlScrollTop = sc.scrollTop; tlViewportHeight = sc.clientHeight || tlViewportHeight; tlScrollHeight = sc.scrollHeight;
     programmaticScroll = false;
   }
 
@@ -118,8 +116,7 @@
   function onTimelineScroll(e: Event) {
     const el = e.currentTarget as HTMLElement | null;
     if (!el) return;
-    tlScrollTop = el.scrollTop; tlViewportHeight = el.clientHeight || tlViewportHeight;
-    showLatest = el.scrollTop + el.clientHeight < el.scrollHeight - 4;
+    tlScrollTop = el.scrollTop; tlViewportHeight = el.clientHeight || tlViewportHeight; tlScrollHeight = el.scrollHeight;
     if (programmaticScroll) return;
     cancelDayHeadingPin(); onClearDayPin?.();
     if (!pointerOnTimeline) return;
@@ -433,13 +430,11 @@
   }
 
   $effect(() => {
+    const sync = () => { const sc = document.getElementById("person-timeline"); if (sc) { tlScrollTop = sc.scrollTop; tlViewportHeight = sc.clientHeight || tlViewportHeight; tlScrollHeight = sc.scrollHeight; } };
     window.addEventListener("mousedown", onCopyMenuAway);
     window.addEventListener("pointerup", onTimelinePointerUp);
-    return () => {
-      window.removeEventListener("mousedown", onCopyMenuAway);
-      window.removeEventListener("pointerup", onTimelinePointerUp);
-      stopPinLatest();
-    };
+    window.addEventListener("resize", sync);
+    return () => { window.removeEventListener("mousedown", onCopyMenuAway); window.removeEventListener("pointerup", onTimelinePointerUp); window.removeEventListener("resize", sync); stopPinLatest(); };
   });
 
   export function closeCopy() { closeCopyMenu(); }
@@ -488,7 +483,7 @@
   <div id="timeline-end"></div>
 </ScrollArea>
 {#if showLatest}
-  <TimelineLatest class="absolute end-3 bottom-3 z-10" onclick={scrollToLatest} aria-label={t("latest")}>{t("latest")}</TimelineLatest>
+  <TimelineLatest onclick={scrollToLatest}>{t("latest")}</TimelineLatest>
 {/if}
 {#if copyMenu}
   <TimelineCopyMenu x={copyMenu.x} y={copyMenu.y} onCopy={copyText} onSearch={searchFromBubble} />
