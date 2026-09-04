@@ -17,7 +17,7 @@
   import { handleAppKey } from "./lib/PeopleKeys";
   import { startPeopleBoot } from "./lib/PeopleBoot";
   import {
-    type Density, readDensityPref, readIncludeGroupsPref, readLastPersonId, readLastView, readSidebarPref,
+    type Density, readDensityPref, readIncludeGroupsPref, readLastPersonId, readLastView, readPeopleSortPref, readSidebarPref,
     writeDensityPref, writeLastPerson, writeLastView, writeSidebarPref,
   } from "./lib/PeoplePrefs";
   import { personLabel } from "./lib/PeopleUndo";
@@ -35,7 +35,7 @@
   let personTitle = $state("Select a person");
   let identities = $state<Identity[]>([]);
   let tlIndex = $state(0);
-  let includeGroups = $state(false);
+  let includeGroups = $state(false); let peopleSort = $state("recent");
   let showPersonChrome = $state(false);
   let events = $state<LinkEvent[]>([]);
 
@@ -178,7 +178,7 @@
   async function applyStatus(next: Status) {
     st = next;
     setup = false;
-    includeGroups = readIncludeGroupsPref();
+    includeGroups = readIncludeGroupsPref(); peopleSort = readPeopleSortPref();
     void refreshPeople().catch(showErr);
     await refreshEvents();
   }
@@ -292,7 +292,7 @@
   onMount(() => {
     userCollapsed = readSidebarPref();
     density = readDensityPref();
-    includeGroups = readIncludeGroupsPref();
+    includeGroups = readIncludeGroupsPref(); peopleSort = readPeopleSortPref();
     restoreLastView();
     syncNarrow();
     window.addEventListener("resize", syncNarrow);
@@ -441,7 +441,7 @@
       bind:selectedId
       bind:personTitle
       bind:identities
-      bind:includeGroups
+      bind:includeGroups bind:peopleSort
       bind:tlIndex
       bind:visibleTlIndices
       bind:showPersonChrome

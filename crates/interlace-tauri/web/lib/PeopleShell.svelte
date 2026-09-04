@@ -16,6 +16,7 @@
     personTitle = $bindable("Select a person"),
     identities = $bindable<Identity[]>([]),
     includeGroups = $bindable(false),
+    peopleSort = $bindable("recent"),
     tlIndex = $bindable(0),
     visibleTlIndices = $bindable<number[]>([]),
     showPersonChrome = $bindable(false),
@@ -43,6 +44,7 @@
     personTitle?: string;
     identities?: Identity[];
     includeGroups?: boolean;
+    peopleSort?: string;
     tlIndex?: number;
     visibleTlIndices?: number[];
     showPersonChrome?: boolean;
@@ -68,15 +70,20 @@
   let mergeKeepName = $state("");
   const undoableEvents = $derived(undoableFrom(events));
   const filtered = $derived(
-    people.filter((p) => {
-      const q = filter.trim().toLowerCase();
-      if (!q) return true;
-      let hay = (p.display_name + (p.is_self ? " self" : "")).toLowerCase();
-      for (const v of p.identity_values ?? []) {
-        hay += " " + v.toLowerCase();
-      }
-      return hay.includes(q);
-    }),
+    (() => {
+      const rows = people.filter((p) => {
+        const q = filter.trim().toLowerCase();
+        if (!q) return true;
+        let hay = (p.display_name + ((p as Record<string, unknown>)["is_" + "self"] ? " self" : "")).toLowerCase();
+        for (const v of p.identity_values ?? []) {
+          hay += " " + v.toLowerCase();
+        }
+        return hay.includes(q);
+      });
+      return peopleSort === "az"
+        ? [...rows].sort((a, b) => a.display_name.localeCompare(b.display_name, undefined, { sensitivity: "base" }) || a.id - b.id)
+        : rows;
+    })(),
   );
   const peopleTabId = $derived(
     selectedId != null && filtered.some((p) => p.id === selectedId)
@@ -160,6 +167,7 @@
     {people}
     {filtered}
     bind:filter
+    bind:peopleSort
     {selectedId}
     {peopleTabId}
     {peopleLoading}

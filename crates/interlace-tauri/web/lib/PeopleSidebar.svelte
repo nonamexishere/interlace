@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { LinkEvent, Person, Status } from "./api";
+  import { writePeopleSortPref } from "./PeoplePrefs";
   import { humanTime } from "./formatTime";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
@@ -16,6 +17,7 @@
     people,
     filtered,
     filter = $bindable(""),
+    peopleSort = $bindable("recent"),
     selectedId,
     peopleTabId,
     peopleLoading,
@@ -33,6 +35,7 @@
     people: Person[];
     filtered: Person[];
     filter?: string;
+    peopleSort?: string;
     selectedId: number | null;
     peopleTabId: number | null;
     peopleLoading: boolean;
@@ -46,6 +49,11 @@
     persistSidebar: (next: boolean) => void;
     undoRowLabel: (e: LinkEvent) => string;
   } = $props();
+
+  function setSort(next: "recent" | "az") {
+    peopleSort = next;
+    writePeopleSortPref(next);
+  }
 </script>
 
 <div
@@ -113,7 +121,11 @@
   {/if}
   <div class={sidebarCollapsed ? "sr-only" : "mt-4 min-w-0 space-y-1.5"}>
     <Label for="person-filter">Filter people</Label>
-    <Input id="person-filter" type="search" bind:value={filter} placeholder="name" class="min-w-0" />
+    <div class="flex min-w-0 items-center gap-1">
+      <Input id="person-filter" type="search" bind:value={filter} placeholder="name" class="min-w-0" />
+      <Button variant={peopleSort === "recent" ? "secondary" : "ghost"} size="sm" class="h-7 px-2 text-xs" aria-pressed={peopleSort === "recent"} onclick={() => setSort("recent")}>Recent</Button>
+      <Button variant={peopleSort === "az" ? "secondary" : "ghost"} size="sm" class="h-7 px-2 text-xs" aria-pressed={peopleSort === "az"} onclick={() => setSort("az")}>A–Z</Button>
+    </div>
   </div>
   <ul class="mt-2 min-w-0 space-y-0.5" role="listbox" aria-label="People" aria-busy={peopleLoading}>
     {#each filtered as p}

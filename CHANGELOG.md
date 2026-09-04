@@ -32,6 +32,7 @@ unsigned **`app-v0.1.2`**.
 - Person timeline date control jumps to that day’s sticky heading.
 - Find in this conversation (`1/N` count; Enter / Shift+Enter).
 - Remember include-groups locally.
+- People list Recent | A–Z; the choice is remembered locally.
 
 ### Fixed
 
