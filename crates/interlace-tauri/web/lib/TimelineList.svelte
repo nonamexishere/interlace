@@ -84,9 +84,8 @@
   const showLatest = $derived((() => { void tlScrollTop; void tlViewportHeight; void tlScrollHeight; const sc = document.getElementById("person-timeline"); return !!(sc && sc.scrollTop + sc.clientHeight < sc.scrollHeight - 4); })());
 
   $effect(() => {
-    void density; void selectedId; void filteredTimeline.length;
+    void density; void selectedId;
     clearPendingMeasures(); rowHeights = {}; quotedOpen = {};
-    void tick().then(() => { const sc = document.getElementById("person-timeline"); if (sc) { tlScrollTop = sc.scrollTop; tlViewportHeight = sc.clientHeight || tlViewportHeight; tlScrollHeight = sc.scrollHeight; } });
   });
 
   function markUserScrolling() {
@@ -271,6 +270,7 @@
     void timeline.length;
     void filteredTimeline.length;
     scheduleChromeMeasure();
+    void tick().then(() => { const sc = document.getElementById("person-timeline"); if (sc) { tlScrollTop = sc.scrollTop; tlViewportHeight = sc.clientHeight || tlViewportHeight; tlScrollHeight = sc.scrollHeight; } });
   });
 
   function stopPinLatest() {
