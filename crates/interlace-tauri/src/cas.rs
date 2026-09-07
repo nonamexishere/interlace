@@ -26,18 +26,7 @@ pub(crate) fn sniff_mime(bytes: &[u8]) -> &'static str {
         return "audio/wav";
     }
     if bytes.len() >= 12 && bytes[4..8] == *b"ftyp" {
-        let brands = &bytes[8..];
-        let has = |tag: &[u8; 4]| brands.windows(4).any(|w| w == tag);
-        if has(b"heic") || has(b"heix") || has(b"mif1") || has(b"msf1") || has(b"hevc") {
-            return "image/heic";
-        }
-        if has(b"M4A ") || has(b"M4B ") {
-            return "audio/mp4";
-        }
-        if has(b"qt  ") {
-            return "video/quicktime";
-        }
-        return "video/mp4";
+        return sniff_ftyp(bytes);
     }
     if bytes.starts_with(b"%PDF") {
         return "application/pdf";
@@ -55,6 +44,32 @@ pub(crate) fn sniff_mime(bytes: &[u8]) -> &'static str {
         return "video/webm";
     }
     "application/octet-stream"
+}
+
+fn sniff_ftyp(bytes: &[u8]) -> &'static str {
+    if bytes.len() < 12 {
+        return "video/mp4";
+    }
+    let mut size_buf = [0u8; 4];
+    size_buf.copy_from_slice(&bytes[0..4]);
+    let size = u32::from_be_bytes(size_buf) as usize;
+    let end = size.min(bytes.len()).min(256);
+    let has = |tag: &[u8; 4]| {
+        if end >= 12 && &bytes[8..12] == tag {
+            return true;
+        }
+        end > 16 && bytes[16..end].chunks_exact(4).any(|c| c == tag)
+    };
+    if has(b"heic") || has(b"heix") || has(b"mif1") || has(b"msf1") || has(b"hevc") {
+        return "image/heic";
+    }
+    if has(b"M4A ") || has(b"M4B ") {
+        return "audio/mp4";
+    }
+    if has(b"qt  ") {
+        return "video/quicktime";
+    }
+    "video/mp4"
 }
 
 fn mime_safe_ext(mime: &str) -> &'static str {

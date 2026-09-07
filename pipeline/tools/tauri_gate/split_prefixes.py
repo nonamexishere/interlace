@@ -25,6 +25,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_space_voice_note",
     "assert_open_cas_attachment",
     "assert_open_cas_menu_clamp",
+    "assert_open_cas_ftyp",
     "assert_conversation_switcher",
     "assert_timeline_platform_chips",
     "assert_timeline_kind_filter",
