@@ -1,6 +1,7 @@
 //! CAS protocol + in-window preview + Finder reveal. Hash only from the webview.
 
 use std::fs;
+use std::io::Read;
 use std::path::PathBuf;
 
 use data_encoding::BASE64;
@@ -21,7 +22,21 @@ pub(crate) fn sniff_mime(bytes: &[u8]) -> &'static str {
     if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
         return "image/webp";
     }
+    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WAVE" {
+        return "audio/wav";
+    }
     if bytes.len() >= 12 && bytes[4..8] == *b"ftyp" {
+        let brands = &bytes[8..];
+        let has = |tag: &[u8; 4]| brands.windows(4).any(|w| w == tag);
+        if has(b"heic") || has(b"heix") || has(b"mif1") || has(b"msf1") || has(b"hevc") {
+            return "image/heic";
+        }
+        if has(b"M4A ") || has(b"M4B ") {
+            return "audio/mp4";
+        }
+        if has(b"qt  ") {
+            return "video/quicktime";
+        }
         return "video/mp4";
     }
     if bytes.starts_with(b"%PDF") {
@@ -36,7 +51,29 @@ pub(crate) fn sniff_mime(bytes: &[u8]) -> &'static str {
     if bytes.len() >= 4 && bytes.starts_with(b"OggS") {
         return "audio/ogg";
     }
+    if bytes.len() >= 4 && bytes.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]) {
+        return "video/webm";
+    }
     "application/octet-stream"
+}
+
+fn mime_safe_ext(mime: &str) -> &'static str {
+    match mime {
+        "image/jpeg" => "jpg",
+        "image/png" => "png",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        "image/heic" => "heic",
+        "video/mp4" => "mp4",
+        "video/quicktime" => "mov",
+        "application/pdf" => "pdf",
+        "audio/mpeg" => "mp3",
+        "audio/ogg" => "ogg",
+        "audio/mp4" => "m4a",
+        "audio/wav" => "wav",
+        "video/webm" => "webm",
+        _ => "bin",
+    }
 }
 
 pub(crate) fn cas_response(
@@ -152,8 +189,16 @@ pub(crate) fn open_cas(state: tauri::State<AppState>, hash: String) -> Result<()
     if !canon.starts_with(&cas_root) {
         return Err("path outside cas".into());
     }
+    let mut head = [0u8; 32];
+    let n = {
+        let mut f = fs::File::open(&canon).map_err(err)?;
+        f.read(&mut head).map_err(err)?
+    };
+    let ext = mime_safe_ext(sniff_mime(&head[..n]));
+    let tmp = std::env::temp_dir().join(format!("interlace-{hash}.{ext}"));
+    fs::copy(&canon, &tmp).map_err(err)?;
     let status = std::process::Command::new("/usr/bin/open")
-        .arg(&canon)
+        .arg(&tmp)
         .status()
         .map_err(err)?;
     if !status.success() {

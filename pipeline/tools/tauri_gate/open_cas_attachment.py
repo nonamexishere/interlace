@@ -4,9 +4,13 @@ Open menuitem on CasAttach data-reveal-menu (same gate as Reveal).
 New hash-only open_cas (not open_url / reveal_cas). ConfirmDialog
 before invoke. /usr/bin/open without -R.
 
+Fold: sniff_mime + fs::copy to temp_dir as interlace-<hash>.<ext>.
+Do not rename the CAS blob. Menu clamp lives in the sibling fold.
+
 Must-IDs: open-cas-menu, open-cas-omitted, open-cas-cmd,
-open-cas-resolve, open-cas-open, open-cas-confirm, open-cas-keep-135,
-open-cas-keep-272, open-cas-toast, open-cas-locale, open-cas-d24.
+open-cas-resolve, open-cas-open, open-cas-typed-temp,
+open-cas-confirm, open-cas-keep-135, open-cas-keep-272,
+open-cas-toast, open-cas-locale, open-cas-d24.
 """
 from __future__ import annotations
 
@@ -120,16 +124,22 @@ _TOAST_LEAK = re.compile(
     r"|[\"'][^\"']{0,40}(?:\$\{|\+)"
     r")"
 )
-_TEMP_COPY = re.compile(
+_SNIFF_MIME = re.compile(r"\bsniff_mime\s*\(")
+_FS_COPY = re.compile(r"(?:std::)?fs::copy\s*\(")
+_TEMP_DIR = re.compile(r"(?:std::env::)?temp_dir\s*\(")
+_INTERLACE_PREFIX = re.compile(r"interlace-")
+_SAFE_EXT = re.compile(
+    r"""["'](?:jpg|jpeg|png|gif|webp|heic|heif|mp4|mov|pdf|mp3|ogg|oga|m4a|wav|webm|bin)["']"""
+)
+_FORMAT_TEMP = re.compile(
+    r"format!\s*\(\s*[\"'][^\"']*interlace-"
+    r"|format!\s*\(\s*[\"'][^\"']*\{\}[^\"']*\.\{"
+)
+_CAS_MUTATE = re.compile(
     r"("
-    r"fs::copy"
-    r"|std::fs::copy"
-    r"|temp_dir"
-    r"|tempfile"
-    r"|with_extension"
-    r"|set_extension"
-    r"|\.rename\s*\("
-    r")",
+    r"\bcanon\s*\.\s*(?:set_extension|with_extension|rename)\s*\("
+    r"|(?:std::)?fs::rename\s*\(\s*&?canon"
+    r")"
 )
 _HTTP_CLIENT = re.compile(r"\b(?:reqwest|ureq|hyper::Client|tauri-plugin-http)\b")
 _FILE_CSP = re.compile(r"(?:^|[;\s])file:", re.I)
@@ -283,8 +293,66 @@ def _outside_cas(body: str) -> bool:
     )
 
 
+def _sniffs_blob(own: str, body: str) -> bool:
+    blob = own + "\n" + body
+    if not _SNIFF_MIME.search(blob):
+        return False
+    if re.search(r"sniff_mime\s*\(\s*[\"']", blob):
+        return False
+    return bool(
+        re.search(
+            r"fs::read\s*\(|File::open\s*\(|read_exact\s*\("
+            r"|sniff_mime\s*\(\s*&",
+            blob,
+        )
+    )
+
+
+def _typed_temp_name(blob: str) -> bool:
+    has_hash = bool(re.search(r"\bhash\b", blob))
+    has_interlace = bool(_INTERLACE_PREFIX.search(blob))
+    has_ext = bool(_SAFE_EXT.search(blob))
+    has_fmt = bool(
+        _FORMAT_TEMP.search(blob)
+        or re.search(
+            r"format!\s*\([^;]{0,200}\bhash\b[^;]{0,80}\bext\b"
+            r"|format!\s*\([^;]{0,200}\bext\b[^;]{0,80}\bhash\b",
+            blob,
+        )
+    )
+    if has_interlace and has_hash and (has_ext or has_fmt):
+        return True
+    return bool(has_fmt and has_hash and has_ext)
+
+
+def _open_target_args(launch: str) -> list[str]:
+    out: list[str] = []
+    for m in re.finditer(r"\.arg\s*\(", launch):
+        arg = _rust_call_arg(launch, m.end() - 1).strip()
+        if re.search(r"""["']-R["']""", arg):
+            continue
+        if "/usr/bin/open" in arg:
+            continue
+        out.append(arg)
+    return out
+
+
+def _opens_only_cas_canon(launch: str) -> bool:
+    args = _open_target_args(launch)
+    if not args:
+        return True
+    return all(
+        re.search(r"\bcanon\b", a)
+        and not re.search(r"temp_dir|tempfile|\btmp\b|\bdest\b|\bnamed\b", a, re.I)
+        for a in args
+    )
+
+
 def assert_open_cas_attachment(crate: Path) -> None:
-    """#317: Open stored CAS in the default app after confirm."""
+    """#317: Open stored CAS in the default app after confirm.
+
+    Fold: sniff_mime + temp copy `interlace-<hash>.<ext>`; do not rename cas/.
+    """
     cas_path = crate / "web" / "lib" / "CasAttach.svelte"
     if not cas_path.is_file():
         fail(f"{_ISSUE}: CasAttach.svelte required (Open on data-reveal-menu)")
@@ -491,10 +559,44 @@ def assert_open_cas_attachment(crate: Path) -> None:
             f"{_ISSUE}: do not reuse open_url for a local file "
             "(#272 stays http(s) only)"
         )
-    if _TEMP_COPY.search(own) or _TEMP_COPY.search(body):
+
+    # 5b) open-cas-typed-temp — sniff + copy to temp; do not rename cas/.
+    if not _sniffs_blob(own, body):
         fail(
-            f"{_ISSUE}: do not rename or temp-copy the blob "
-            "(OS-open the same path Reveal uses)"
+            f"{_ISSUE}: {cmd} must sniff_mime the blob bytes (or a short "
+            "header) so the temp name gets a safe extension — do not "
+            "/usr/bin/open the extensionless CAS path"
+        )
+    if not _FS_COPY.search(own) and not _FS_COPY.search(body):
+        fail(
+            f"{_ISSUE}: {cmd} must fs::copy (or std::fs::copy) the blob "
+            "to std::env::temp_dir() as interlace-<hash>.<ext>"
+        )
+    if not _TEMP_DIR.search(own) and not _TEMP_DIR.search(body):
+        fail(
+            f"{_ISSUE}: {cmd} must copy into std::env::temp_dir() "
+            "(interlace-<hash>.<safe-ext> — not the cas/ blob)"
+        )
+    if not _typed_temp_name(own) and not _typed_temp_name(body):
+        fail(
+            f"{_ISSUE}: temp name must be interlace-<hash>.<ext> "
+            "(or format! with the hash + sniffed ext) — ext from "
+            "sniffed MIME, not a webview filename"
+        )
+    if not _SAFE_EXT.search(own) and not _SAFE_EXT.search(body):
+        fail(
+            f"{_ISSUE}: safe ext from sniffed MIME only "
+            "(jpg/png/gif/webp/heic/mp4/mov/pdf/mp3/ogg/m4a/wav/webm/bin)"
+        )
+    if _opens_only_cas_canon(launch):
+        fail(
+            f"{_ISSUE}: /usr/bin/open without -R must run on the temp "
+            "copy, not only the CAS canon blob"
+        )
+    if _CAS_MUTATE.search(own) or _CAS_MUTATE.search(body):
+        fail(
+            f"{_ISSUE}: do not rename or set_extension the CAS blob "
+            "(canon / cas_blob_path stays hash-named; copy to temp)"
         )
 
     # 6) open-cas-confirm — ConfirmDialog in CasAttach before invoke.

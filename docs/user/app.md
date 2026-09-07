@@ -254,7 +254,7 @@ placeholder. Right-click a timeline bubble to **Copy text** to the clipboard. A 
 The same context menu has **Search**: from a timeline bubble you can open Search
 with that person (Ada — the name, not a raw id); hits load. **⌘F** still
 focuses `#q`.
-Right-click a stored attachment to **Open** it with the default app after confirm (local CAS), or **Reveal in Finder**. Omitted / missing stay placeholders; still no http(s) / Share.
+Right-click a stored attachment to **Open** it with the default app after confirm (local CAS: a typed temp copy so Preview/QuickTime can see the type; the archive CAS blob stays hash-named), or **Reveal in Finder** (selects that hash-named blob). Omitted / missing stay placeholders; still no http(s) / Share.
 Copy and Reveal failures toast (chrome copy only — “Could not copy”).
 Sandbox-denied, archive lock, and not-an-archive stay in-page on the
 setup form / err banner.
