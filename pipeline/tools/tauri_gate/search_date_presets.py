@@ -12,7 +12,8 @@ same ChromeKeys. Keep #209 / #268 / #270 / #318. D24. Not a calendar.
 Must-IDs: preset-chrome, preset-clear, preset-fill-local, preset-7d,
 preset-30d, preset-year, preset-send, preset-invalid, preset-custom,
 preset-empty-q, preset-pressed, preset-i18n, preset-keep-209,
-preset-keep-268, preset-keep-270, preset-keep-318, preset-d24.
+preset-keep-268, preset-keep-270, preset-keep-318, preset-d24,
+preset-share-window.
 """
 from __future__ import annotations
 
@@ -343,6 +344,27 @@ _DATES_SURVIVE = re.compile(
 _CALENDAR_WORD = re.compile(r"\bcalendar\b", re.I)
 _SPOTLIGHT = re.compile(r"\bSpotlight\b")
 _MULTI_TAB = re.compile(r"\bmulti[- ]tab\b", re.I)
+_DATE_PRESET_WINDOW_KIND = re.compile(r"\bdatePresetWindow\s*\(\s*kind\s*\)")
+_NEW_DATE_YMD_MINUS = re.compile(
+    r"new\s+Date\s*\(\s*[A-Za-z_$][\w$]*\s*,\s*[A-Za-z_$][\w$]*\s*,"
+    r"\s*[A-Za-z_$][\w$]*\s*-\s*\d+"
+)
+_APPLY_WINDOW_DOT = re.compile(
+    r"\bfrom\s*=\s*datePresetWindow\s*\(\s*kind\s*\)\s*\.\s*from\b"
+    r"[\s\S]{0,160}\bto\s*=\s*datePresetWindow\s*\(\s*kind\s*\)\s*\.\s*to\b"
+    r"|\bto\s*=\s*datePresetWindow\s*\(\s*kind\s*\)\s*\.\s*to\b"
+    r"[\s\S]{0,160}\bfrom\s*=\s*datePresetWindow\s*\(\s*kind\s*\)\s*\.\s*from\b"
+)
+_APPLY_WINDOW_DESTRUCTURE = re.compile(
+    r"\(\s*\{\s*from\s*,\s*to\s*\}\s*=\s*datePresetWindow\s*\(\s*kind\s*\)"
+)
+_APPLY_WINDOW_BIND = re.compile(
+    r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*datePresetWindow\s*\(\s*kind\s*\)"
+)
+_APPLY_WINDOW_RENAME = re.compile(
+    r"(?:const|let|var)\s*\{\s*from\s*:\s*([A-Za-z_$][\w$]*)\s*,"
+    r"\s*to\s*:\s*([A-Za-z_$][\w$]*)\s*\}\s*=\s*datePresetWindow\s*\(\s*kind\s*\)"
+)
 
 
 def _read(path: Path) -> str:
@@ -636,12 +658,38 @@ def _t_keys(blob: str) -> list[str]:
     return _T_CALL.findall(blob)
 
 
+def _named_body(src: str, name: str) -> str:
+    return _ts_fn_body(src, name) or _function_body(src, name) or ""
+
+
+def _apply_assigns_window(body: str) -> bool:
+    """True when applyDatePreset assigns from/to from datePresetWindow(kind)."""
+    if _APPLY_WINDOW_DOT.search(body) or _APPLY_WINDOW_DESTRUCTURE.search(body):
+        return True
+    bind = _APPLY_WINDOW_BIND.search(body)
+    if bind:
+        ident = re.escape(bind.group(1))
+        if re.search(rf"\bfrom\s*=\s*{ident}\s*\.\s*from\b", body) and re.search(
+            rf"\bto\s*=\s*{ident}\s*\.\s*to\b", body
+        ):
+            return True
+    dest = _APPLY_WINDOW_RENAME.search(body)
+    if dest:
+        a, b = re.escape(dest.group(1)), re.escape(dest.group(2))
+        if re.search(rf"\bfrom\s*=\s*{a}\b", body) and re.search(
+            rf"\bto\s*=\s*{b}\b", body
+        ):
+            return True
+    return False
+
+
 def assert_search_date_presets(crate: Path) -> None:
     """#319: compact 7d / 30d / this year / Any fill `#from` / `#to` locally.
 
     Click fills host-local YYYY-MM-DD then run() (cancelDebounce). Date-only
     `to` is sent inclusive. Highlight is derived. Empty `#q` still idles.
     Keep #209 / #268 / #270 / #318. D24. Not a calendar. Ada only.
+    applyDatePreset assigns from/to from datePresetWindow(kind) only.
     """
     search_path = crate / "web" / "lib" / "SearchPane.svelte"
     if not search_path.is_file():
@@ -1131,3 +1179,28 @@ def assert_search_date_presets(crate: Path) -> None:
         dtxt
     ):
         fail(f"{_ISSUE}: not a calendar product")
+
+    # 19) preset-share-window — fill + highlight share datePresetWindow.
+    apply_body = _named_body(search_clean, "applyDatePreset")
+    pressed_body = _named_body(search_clean, "isPresetPressed")
+    if not _DATE_PRESET_WINDOW_KIND.search(pressed_body):
+        fail(
+            f"{_ISSUE}: isPresetPressed must keep using datePresetWindow(kind) "
+            "(fill and highlight share one window)"
+        )
+    if not apply_body or not _DATE_PRESET_WINDOW_KIND.search(apply_body):
+        fail(
+            f"{_ISSUE}: applyDatePreset must call datePresetWindow(kind) "
+            "and assign from / to from that window — do not rebuild "
+            "7d / 30d / year with new Date(y, m, day - N)"
+        )
+    if not _apply_assigns_window(apply_body):
+        fail(
+            f"{_ISSUE}: applyDatePreset must assign from / to from "
+            "datePresetWindow(kind) (Any already returns \"\" / \"\")"
+        )
+    if _NEW_DATE_YMD_MINUS.search(apply_body):
+        fail(
+            f"{_ISSUE}: applyDatePreset must not rebuild 7d / 30d / year "
+            "with new Date(y, m, day - N) — one window helper only"
+        )

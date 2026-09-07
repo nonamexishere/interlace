@@ -61,8 +61,12 @@
     return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   }
 
-  function datePresetWindow(kind: DatePresetKind): { from: string; to: string } {
-    if (kind === "any") return { from: "", to: "" };
+  function datePresetWindow(kind: DatePresetKind) {
+    if (kind === "any") {
+      const from = "";
+      const to = "";
+      return { from, to };
+    }
     const d = new Date();
     const today = localYmd(d);
     if (kind === "7d") {
@@ -84,27 +88,9 @@
   }
 
   function applyDatePreset(kind: DatePresetKind) {
-    if (kind === "any") {
-      from = "";
-      to = "";
-    } else {
-      const d = new Date();
-      const y = d.getFullYear();
-      const m = d.getMonth();
-      const day = d.getDate();
-      if (kind === "7d") {
-        const start = new Date(y, m, day - 6);
-        from = localYmd(start);
-        to = localYmd(d);
-      } else if (kind === "30d") {
-        const start = new Date(y, m, day - 29);
-        from = localYmd(start);
-        to = localYmd(d);
-      } else {
-        from = `${y}-01-01`;
-        to = localYmd(d);
-      }
-    }
+    const w = datePresetWindow(kind);
+    from = w.from;
+    to = w.to;
     cancelDebounce();
     if (!q.trim()) {
       clearHitsIdle();
