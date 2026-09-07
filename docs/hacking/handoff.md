@@ -1,7 +1,7 @@
 # Agent / session handoff
 
 **Date:** 2026-09-07. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
-HEAD `9ff2e1e` (merge #349).
+HEAD `0e12b93` (merge #351).
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -42,10 +42,11 @@ unsigned app release is **`app-v0.1.1`**. **Phase 2.2 polish is done.**
 Children **#265–#279**, **#297**, **#300** (PRs **#282–#301**) are done.
 **#303**, **#304**, **#305**, **#306**, **#307**, **#308**, **#309**,
 **#310**, **#311**, **#312**, **#313**, **#314**, **#315**, **#316**,
-and **#317** are done (PRs **#323–#328**, **#330**, **#332**, **#336**,
-**#338**, **#340**, **#343**, **#345**, **#347**, **#349**). Next coding
-**#318** only if asked. Do not start 1.1 / 3 / 4. Line count is
-**not** a CI gate (dropped in #316); split later if a file gets messy.
+**#317**, and **#318** are done (PRs **#323–#328**, **#330**, **#332**,
+**#336**, **#338**, **#340**, **#343**, **#345**, **#347**, **#349**,
+**#351**). Next coding **#319** only if asked. Do not start 1.1 / 3 / 4.
+Line count is **not** a CI gate (dropped in #316); split later if a
+file gets messy.
 Ask before the first notarized `app-v*` (#267 is wired; that tag is not cut).
 Normative:
 [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md). Do not start 1.1 / 3 / 4.
@@ -99,12 +100,12 @@ for the *next* `app-v*` tag; that tag is **not** cut. Ask before another
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `9ff2e1e` (merge of PR **#349** / #317).
+HEAD when this was rewritten: `0e12b93` (merge of PR **#351** / #318).
 Tag **`app-v0.1.2`** (last shipped; still unsigned).
 Epic **#108**, milestone 6, the Phase 1 CLI milestone, Phase 2.2 (#197),
 and Phase **2.3** (epic **#264** / milestone 8) are **closed**.
-#265–#279 / #297 / #300 / #303–#317 (PRs #282–#301 / #323–#328 / #330 /
-#332 / #336 / #338 / #340 / #343 / #345 / #347 / #349) done.
+#265–#279 / #297 / #300 / #303–#318 (PRs #282–#301 / #323–#328 / #330 /
+#332 / #336 / #338 / #340 / #343 / #345 / #347 / #349 / #351) done.
 First notarized `app-v*` is not cut.
 Re-check with `git log -1` / `gh pr list`.
 
@@ -250,6 +251,7 @@ Phase 2.1 milestone (#6): **closed**.
 | #315 / PR #345 | ⌘C copies the highlighted bubble’s plain text |
 | #316 / PR #347 | Space play/pause the highlighted voice note; drop 500-line cap |
 | #317 / PR #349 | Open a stored CAS attachment with the default app (typed temp copy; menu clamp) |
+| #318 / PR #351 | Keep last Search query when leaving the tab (session-only; hits refresh once) |
 
 ## Open — product now
 
@@ -263,9 +265,9 @@ names helpers, files, and must-IDs.
 
 ### Suggested next
 
-1. **#317** is done (PR **#349**). Next coding **#318** only if asked
-   (keep last Search query when leaving the tab). Do not invent a new
-   2.3 ticket. Remaining parked dogfood UI (**#318–#322**) only if
+1. **#318** is done (PR **#351**). Next coding **#319** only if asked
+   (Search date presets: 7d / 30d / this year). Do not invent a new
+   2.3 ticket. Remaining parked dogfood UI (**#319–#322**) only if
    asked. **#342** (why Review is quiet; do not auto-merge names)
    stays parked until picked.
 2. Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*` tag.
@@ -282,9 +284,9 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 
 ## Recommended next steps
 
-1. #303–#317 are done (PRs #323–#328, #330, #332, #336, #338, #340,
-   #343, #345, #347, #349). Next coding **#318** only if asked.
-   Remaining parked dogfood UI (**#318–#322**) only if asked. **#342**
+1. #303–#318 are done (PRs #323–#328, #330, #332, #336, #338, #340,
+   #343, #345, #347, #349, #351). Next coding **#319** only if asked.
+   Remaining parked dogfood UI (**#319–#322**) only if asked. **#342**
    stays parked until picked.
 2. Phase 2.3 coding is done. Do not start 1.1 / P3 / P4.
 3. Last shipped app tag is **`app-v0.1.2`** (unsigned). Workflow can
@@ -366,10 +368,10 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > does not implement product code. Ask before commit / push / merge.
 > Phase 2.3 coding is done (epic #264 / milestone 8 closed). Read
 > `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,
-> #297, #300, #303–#317 done (PRs #323–#328, #330, #332, #336, #338, #340,
-> #343, #345, #347, #349). Next coding **#318** only if asked. Parked
-> dogfood #318–#322 only if asked. #342 stays parked until picked. Line
-> count is not a CI gate.
+> #297, #300, #303–#318 done (PRs #323–#328, #330, #332, #336, #338, #340,
+> #343, #345, #347, #349, #351). Next coding **#319** only if asked.
+> Parked dogfood #319–#322 only if asked. #342 stays parked until picked.
+> Line count is not a CI gate.
 > Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag (`app-v0.1.2` is current; first notarized tag is not cut). After
