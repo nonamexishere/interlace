@@ -71,6 +71,7 @@ export const en = {
   deleteUnused: "Delete unused",
   casGcFinished: "CAS GC finished.",
   copyText: "Copy text",
+  open: "Open",
   revealInFinder: "Reveal in Finder",
   collapseSidebar: "Collapse people sidebar",
   expandSidebar: "Expand people sidebar",

@@ -165,6 +165,7 @@ export const api = {
     invoke<string[]>("doctor_run_cmd", args),
   casDataUrl: (hash: string) => invoke<string>("cas_data_url", { hash }),
   revealCas: (hash: string) => invoke<void>("reveal_cas", { hash }),
+  openCas: (hash: string) => invoke<void>("open_cas", { hash }),
   revealArchive: () => invoke<void>("reveal_archive"),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   people: () => invoke<Person[]>("people"),

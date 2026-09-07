@@ -137,6 +137,31 @@ pub(crate) fn reveal_cas(state: tauri::State<AppState>, hash: String) -> Result<
     Ok(())
 }
 
+/// Open a local CAS blob with the default app. Hash only — never a path from the webview.
+#[tauri::command]
+pub(crate) fn open_cas(state: tauri::State<AppState>, hash: String) -> Result<(), String> {
+    let root = state
+        .archive_root
+        .lock()
+        .map_err(err)?
+        .clone()
+        .ok_or_else(|| "no archive open".to_string())?;
+    let path = interlace_core::cas::cas_blob_path(&root, &hash).map_err(err)?;
+    let cas_root = root.join("cas").canonicalize().map_err(err)?;
+    let canon = path.canonicalize().map_err(err)?;
+    if !canon.starts_with(&cas_root) {
+        return Err("path outside cas".into());
+    }
+    let status = std::process::Command::new("/usr/bin/open")
+        .arg(&canon)
+        .status()
+        .map_err(err)?;
+    if !status.success() {
+        return Err("could not open".into());
+    }
+    Ok(())
+}
+
 /// Reveal the open archive folder in Finder. Root from app state — never a path from the webview.
 #[tauri::command]
 pub(crate) fn reveal_archive(state: tauri::State<AppState>) -> Result<(), String> {

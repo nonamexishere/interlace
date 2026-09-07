@@ -7,6 +7,7 @@
   import { togglePlay } from "./CasVoice";
   import CasPdf from "./CasPdf.svelte";
   import CasVideo from "./CasVideo.svelte";
+  import ConfirmDialog from "$lib/ConfirmDialog.svelte";
 
   export type Attachment = {
     id: number;
@@ -173,6 +174,27 @@
       await api.revealCas(hash);
     } catch {
       if (showToast) showToast("Could not reveal");
+    }
+  }
+
+  let fileOpenConfirm = $state(false);
+  let fileOpenHash = $state<string | null>(null);
+
+  function requestOpen() {
+    if (!revealMenu) return;
+    fileOpenHash = revealMenu.hash;
+    revealMenu = null;
+    fileOpenConfirm = true;
+  }
+
+  async function confirmOpen() {
+    const hash = fileOpenHash;
+    fileOpenHash = null;
+    if (!hash) return;
+    try {
+      await api.openCas(hash);
+    } catch {
+      if (showToast) showToast("Could not open");
     }
   }
 
@@ -476,7 +498,21 @@
       type="button"
       class="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
       role="menuitem"
+      onclick={requestOpen}>{t("open")}</button
+    >
+    <button
+      type="button"
+      class="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+      role="menuitem"
       onclick={revealInFinder}>{t("revealInFinder")}</button
     >
   </div>
 {/if}
+
+<ConfirmDialog
+  bind:open={fileOpenConfirm}
+  title="Open this file?"
+  description="Open this stored file with the default app."
+  confirmLabel={t("open")}
+  onconfirm={confirmOpen}
+/>

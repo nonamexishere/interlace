@@ -37,6 +37,7 @@ unsigned **`app-v0.1.2`**.
 - ⌘↑ / Home at the top of a long thread loads older messages.
 - ⌘C copies the highlighted bubble’s plain text; fields keep native copy.
 - Space play/pause the highlighted voice note; `#q` still types a space.
+- Right-click a stored attachment to Open it with the default app (after confirm).
 
 ### Fixed
 
