@@ -37,6 +37,10 @@ export const tr: ChromePack = {
   searchTo: "Bitiş",
   searchDateInvalid:
     "Tarih aralığını kontrol edin. Başlangıç ve bitiş geçerli olmalı; başlangıç bitişten sonra olamaz.",
+  searchLast7Days: "7 gün",
+  searchLast30Days: "30 gün",
+  searchThisYear: "Bu yıl",
+  searchAnyDate: "Tümü",
   openingLastArchive: "Son arşiv açılıyor",
   noFileSelected: "Dosya seçilmedi",
   importEmptyBody:

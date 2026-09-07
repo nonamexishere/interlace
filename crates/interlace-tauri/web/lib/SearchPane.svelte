@@ -52,6 +52,67 @@
   let searchError = $state("");
   let searchGen = 0;
 
+  type DatePresetKind = "7d" | "30d" | "year" | "any";
+
+  function localYmd(d: Date): string {
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const day = d.getDate();
+    return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+
+  function datePresetWindow(kind: DatePresetKind): { from: string; to: string } {
+    if (kind === "any") return { from: "", to: "" };
+    const d = new Date();
+    const today = localYmd(d);
+    if (kind === "7d") {
+      const start = new Date();
+      start.setDate(start.getDate() - 6);
+      return { from: localYmd(start), to: today };
+    }
+    if (kind === "30d") {
+      const start = new Date();
+      start.setDate(start.getDate() - 29);
+      return { from: localYmd(start), to: today };
+    }
+    return { from: `${d.getFullYear()}-01-01`, to: today };
+  }
+
+  function isPresetPressed(kind: DatePresetKind): boolean {
+    const w = datePresetWindow(kind);
+    return from === w.from && to === w.to;
+  }
+
+  function applyDatePreset(kind: DatePresetKind) {
+    if (kind === "any") {
+      from = "";
+      to = "";
+    } else {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const day = d.getDate();
+      if (kind === "7d") {
+        const start = new Date(y, m, day - 6);
+        from = localYmd(start);
+        to = localYmd(d);
+      } else if (kind === "30d") {
+        const start = new Date(y, m, day - 29);
+        from = localYmd(start);
+        to = localYmd(d);
+      } else {
+        from = `${y}-01-01`;
+        to = localYmd(d);
+      }
+    }
+    cancelDebounce();
+    if (!q.trim()) {
+      clearHitsIdle();
+      return;
+    }
+    void run();
+  }
+
   function personLabel(p: Person) {
     return p.is_self ? `${p.display_name} (self)` : p.display_name;
   }
@@ -184,7 +245,7 @@
         q: q.trim(),
         personId: personId != null ? personId : null,
         from: from.trim() || null,
-        to: to.trim() || null,
+        to: !to.trim() ? null : to.trim() + "T23:59:59",
         platform: platform || null,
         conversationKind: conversationKind || null,
         attachmentFilter: attachmentFilter || null,
@@ -456,6 +517,12 @@
         <div class="space-y-1.5">
           <Label for="to">{t("searchTo")}</Label>
           <Input id="to" type={"date"} bind:value={to} />
+        </div>
+        <div class="flex flex-wrap gap-1.5 sm:col-span-2">
+          <Button type="button" size="sm" variant={isPresetPressed("7d") ? "secondary" : "outline"} aria-pressed={isPresetPressed("7d")} onclick={() => applyDatePreset("7d")}>{t("searchLast7Days")}</Button>
+          <Button type="button" size="sm" variant={isPresetPressed("30d") ? "secondary" : "outline"} aria-pressed={isPresetPressed("30d")} onclick={() => applyDatePreset("30d")}>{t("searchLast30Days")}</Button>
+          <Button type="button" size="sm" variant={isPresetPressed("year") ? "secondary" : "outline"} aria-pressed={isPresetPressed("year")} onclick={() => applyDatePreset("year")}>{t("searchThisYear")}</Button>
+          <Button type="button" size="sm" variant={isPresetPressed("any") ? "secondary" : "outline"} aria-pressed={isPresetPressed("any")} onclick={() => applyDatePreset("any")}>{t("searchAnyDate")}</Button>
         </div>
         <label class="flex items-center gap-2 text-sm sm:col-span-2">
           <input type="checkbox" class="focus-visible:ring-2 focus-visible:ring-ring" bind:checked={includeGroups} />

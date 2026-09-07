@@ -73,6 +73,7 @@ from tauri_gate.search_field import (  # noqa: E402
     assert_search_as_you_type,
 )
 from tauri_gate.keep_search_query import assert_keep_search_query  # noqa: E402
+from tauri_gate.search_date_presets import assert_search_date_presets  # noqa: E402
 from tauri_gate.search_hits import (  # noqa: E402
     assert_search_jump_to_message,
     assert_search_safe_highlight,
