@@ -13,6 +13,7 @@ unsigned **`app-v0.1.2`**.
 
 ### Added
 
+- Leave Search and come back in the same session keeps the last query; hits refresh once.
 - Import Cancel stops the run (`interrupted`); committed rows stay.
 - Developer ID + notarize workflow for the next `app-v*` (fail-closed without
   Apple secrets; first notarized tag is not cut).

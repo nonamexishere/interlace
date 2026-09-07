@@ -185,6 +185,7 @@ def main() -> None:
     assert_find_in_conversation_review(crate)
     assert_chrome_search_field(crate)
     assert_search_as_you_type(crate)
+    assert_keep_search_query(crate)
     assert_custom_titlebar(crate)
     assert_people_sidebar_collapse(crate)
     assert_person_inspector(crate)

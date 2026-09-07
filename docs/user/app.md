@@ -190,8 +190,10 @@ Chrome and dialogs show visible focus rings; keyboard can open Merge, confirm, a
 
 Tabs: **Search** (same FTS as CLI). The query is the first control; filters
 are secondary (person, platform, kind, attachment, optional date range,
-include groups). Typing in `#q` searches as you type (a short debounce is
-fine); it does not wait for the people list. The first search shows a quiet
+include groups). Leave Search and come back in the same session: the last
+query is still there; hits refresh once. Not Spotlight. Not multi-tab
+history. Not “survives quit.” Typing in `#q` searches as you type (a short
+debounce is fine); it does not wait for the people list. The first search shows a quiet
 skeleton; later keystrokes keep the previous hits until the new list applies.
 The date range is optional (empty = any). Invalid dates do
 not search. **Person** is

@@ -14,7 +14,7 @@
     onToast,
     onJumpToMessage,
     friendly,
-    q = $bindable(""),
+    q = $bindable(),
     seedPerson = null,
   }: {
     people: Person[];
