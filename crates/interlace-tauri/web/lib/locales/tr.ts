@@ -73,6 +73,7 @@ export const tr: ChromePack = {
   deleteUnused: "Kullanılmayanı sil",
   casGcFinished: "CAS GC bitti.",
   copyText: "Metni kopyala",
+  open: "Aç",
   revealInFinder: "Finder'da göster",
   collapseSidebar: "Kişi kenar çubuğunu daralt",
   expandSidebar: "Kişi kenar çubuğunu genişlet",

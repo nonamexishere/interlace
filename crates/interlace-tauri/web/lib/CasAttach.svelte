@@ -2,11 +2,13 @@
   import Play from "@lucide/svelte/icons/play";
   import Pause from "@lucide/svelte/icons/pause";
   import X from "@lucide/svelte/icons/x";
+  import { tick } from "svelte";
   import { api } from "./api";
   import { t } from "./i18n";
   import { togglePlay } from "./CasVoice";
   import CasPdf from "./CasPdf.svelte";
   import CasVideo from "./CasVideo.svelte";
+  import ConfirmDialog from "$lib/ConfirmDialog.svelte";
 
   export type Attachment = {
     id: number;
@@ -155,10 +157,42 @@
 
   let revealMenu = $state<{ x: number; y: number; hash: string } | null>(null);
 
-  function openRevealMenu(e: MouseEvent, hash: string) {
+  function clampRevealMenu() {
+    if (!revealMenu) return;
+    const el = document.querySelector("[data-reveal-menu]");
+    if (!el) return;
+    const box = el.getBoundingClientRect();
+    const pad = 8;
+    let x = revealMenu.x;
+    let y = revealMenu.y;
+    if (x + box.width > window.innerWidth - pad) {
+      x = Math.max(pad, window.innerWidth - box.width - pad);
+    }
+    if (y + box.height > window.innerHeight - pad) {
+      y = Math.max(pad, window.innerHeight - box.height - pad);
+    }
+    if (x !== revealMenu.x || y !== revealMenu.y) {
+      revealMenu = { ...revealMenu, x, y };
+    }
+  }
+
+  async function openRevealMenu(e: MouseEvent, hash: string) {
     e.preventDefault();
     e.stopPropagation();
-    revealMenu = { x: e.clientX, y: e.clientY, hash };
+    const pad = 8;
+    const guessW = 240;
+    const guessH = 88;
+    let x = e.clientX;
+    let y = e.clientY;
+    if (x + guessW > window.innerWidth - pad) {
+      x = Math.max(pad, window.innerWidth - guessW - pad);
+    }
+    if (y + guessH > window.innerHeight - pad) {
+      y = Math.max(pad, window.innerHeight - guessH - pad);
+    }
+    revealMenu = { x, y, hash };
+    await tick();
+    clampRevealMenu();
   }
 
   function closeRevealMenu() {
@@ -173,6 +207,27 @@
       await api.revealCas(hash);
     } catch {
       if (showToast) showToast("Could not reveal");
+    }
+  }
+
+  let fileOpenConfirm = $state(false);
+  let fileOpenHash = $state<string | null>(null);
+
+  function requestOpen() {
+    if (!revealMenu) return;
+    fileOpenHash = revealMenu.hash;
+    revealMenu = null;
+    fileOpenConfirm = true;
+  }
+
+  async function confirmOpen() {
+    const hash = fileOpenHash;
+    fileOpenHash = null;
+    if (!hash) return;
+    try {
+      await api.openCas(hash);
+    } catch {
+      if (showToast) showToast("Could not open");
     }
   }
 
@@ -476,7 +531,21 @@
       type="button"
       class="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
       role="menuitem"
+      onclick={requestOpen}>{t("open")}</button
+    >
+    <button
+      type="button"
+      class="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+      role="menuitem"
       onclick={revealInFinder}>{t("revealInFinder")}</button
     >
   </div>
 {/if}
+
+<ConfirmDialog
+  bind:open={fileOpenConfirm}
+  title="Open this file?"
+  description="Open this stored file with the default app."
+  confirmLabel={t("open")}
+  onconfirm={confirmOpen}
+/>
