@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api } from "./api";
+import { t } from "./i18n";
 import { LAST_PERSON_PREF, LAST_VIEW_PREF } from "./PeoplePrefs";
 
 export type PeopleBootCtx = {
@@ -9,6 +10,7 @@ export type PeopleBootCtx = {
   importDroppedPaths: (paths: string[]) => Promise<void>;
   openPath: (path: string) => Promise<void>;
   showErr: (e: unknown) => void;
+  showToast: (message: string) => void;
   setSetup: (v: boolean) => void;
   setBooting: (v: boolean) => void;
   err: string;
@@ -41,6 +43,9 @@ export function startPeopleBoot(ctx: PeopleBootCtx): () => void {
   void listen("menu-switch-archive", () => {
     void switchToSetup(ctx);
   }).then(keepMenu);
+  void listen("menu-copy-archive-to", () => {
+    void copyArchiveTo(ctx);
+  }).then(keepMenu);
   void getCurrentWebview()
     .onDragDropEvent((event) => {
       if (event.payload.type !== "drop") return;
@@ -66,6 +71,16 @@ export function startPeopleBoot(ctx: PeopleBootCtx): () => void {
     menuGone = true;
     for (const unlisten of menuUnlisten) unlisten();
   };
+}
+
+async function copyArchiveTo(ctx: PeopleBootCtx) {
+  try {
+    const copied = await api.copyArchiveTo();
+    if (copied) ctx.showToast(t("archiveCopied"));
+  } catch (e) {
+    const raw = e instanceof Error ? e.message : String(e ?? "");
+    ctx.showToast(raw.includes("import running") ? t("importRunning") : "Could not copy archive");
+  }
 }
 
 async function switchToSetup(ctx: PeopleBootCtx) {

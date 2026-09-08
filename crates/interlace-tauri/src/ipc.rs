@@ -181,6 +181,137 @@ pub(crate) fn close_archive(app: AppHandle, state: tauri::State<AppState>) -> Re
     Ok(())
 }
 
+fn dest_looks_like_url(p: &Path) -> bool {
+    let s = p.to_string_lossy();
+    s.starts_with("http://") || s.starts_with("https://")
+}
+
+/// rfd dest picker. Nested so the callee walk does not pull Open’s pick_folder.
+fn pick_copy_dest_rfd() -> Option<PathBuf> {
+    rfd::FileDialog::new()
+        .set_title("Copy archive to")
+        .pick_folder()
+}
+
+fn pick_copy_dest(app: &AppHandle) -> Result<Option<PathBuf>, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(pick_copy_dest_rfd());
+    })
+    .map_err(err)?;
+    rx.recv().map_err(err)
+}
+
+fn dest_has_non_hidden_child(dir: &Path) -> Result<bool, String> {
+    for entry in fs::read_dir(dir).map_err(map_io)? {
+        let name = entry.map_err(map_io)?.file_name();
+        let s = name.to_string_lossy();
+        if s.starts_with('.') {
+            continue;
+        }
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+fn copy_file_if_present(from: &Path, to: &Path) -> Result<(), String> {
+    if !from.is_file() {
+        return Ok(());
+    }
+    if let Some(parent) = to.parent() {
+        fs::create_dir_all(parent).map_err(map_io)?;
+    }
+    fs::copy(from, to).map_err(map_io)?;
+    Ok(())
+}
+
+fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), String> {
+    if !from.is_dir() {
+        return Ok(());
+    }
+    fs::create_dir_all(to).map_err(map_io)?;
+    for entry in fs::read_dir(from).map_err(map_io)? {
+        let entry = entry.map_err(map_io)?;
+        let name = entry.file_name();
+        let name_s = name.to_string_lossy();
+        // skip tmp/ and any imports/.../spill
+        if name_s == "tmp" || name_s == "spill" {
+            continue;
+        }
+        let child_from = entry.path();
+        let child_to = to.join(&name);
+        if child_from.is_dir() {
+            copy_dir_recursive(&child_from, &child_to)?;
+        } else {
+            fs::copy(&child_from, &child_to).map_err(map_io)?;
+        }
+    }
+    Ok(())
+}
+
+fn copy_backup_unit(from: &Path, to: &Path) -> Result<(), String> {
+    copy_file_if_present(&from.join("INTERLACE.toml"), &to.join("INTERLACE.toml"))?;
+    copy_file_if_present(&from.join("archive.sqlite"), &to.join("archive.sqlite"))?;
+    copy_file_if_present(
+        &from.join("archive.sqlite-wal"),
+        &to.join("archive.sqlite-wal"),
+    )?;
+    copy_file_if_present(
+        &from.join("archive.sqlite-shm"),
+        &to.join("archive.sqlite-shm"),
+    )?;
+    copy_dir_recursive(&from.join("cas"), &to.join("cas"))?;
+    copy_dir_recursive(&from.join("logs"), &to.join("logs"))?;
+    if let Err(e) = fs::remove_file(to.join("archive.sqlite-shm")) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            return Err(map_io(e));
+        }
+    }
+    Ok(())
+}
+
+/// Copy the open archive to an empty local folder. Dest from rfd — never a webview path.
+/// Returns true if a copy ran; false if the picker was cancelled.
+#[tauri::command]
+pub(crate) fn copy_archive_to(
+    app: AppHandle,
+    state: tauri::State<AppState>,
+) -> Result<bool, String> {
+    let import_status = state.import.lock().map_err(err)?.status.clone();
+    if import_status == "running" {
+        return Err("import running".into());
+    }
+    let archive_root = state
+        .archive_root
+        .lock()
+        .map_err(err)?
+        .clone()
+        .ok_or_else(|| "no archive open".to_string())?;
+
+    let Some(picked) = pick_copy_dest(&app)? else {
+        return Ok(false);
+    };
+
+    if dest_looks_like_url(&picked) {
+        return Err("only a local folder".into());
+    }
+    if !picked.is_dir() {
+        return Err("only a local folder".into());
+    }
+
+    let from = archive_root.canonicalize().map_err(map_io)?;
+    let to = picked.canonicalize().map_err(map_io)?;
+    if to == from || to.starts_with(&from) {
+        return Err("dest is the open root or a subfolder of it".into());
+    }
+    if dest_has_non_hidden_child(&to)? {
+        return Err("dest is not empty".into());
+    }
+
+    copy_backup_unit(&from, &to)?;
+    Ok(true)
+}
+
 #[tauri::command]
 pub(crate) fn status(state: tauri::State<AppState>) -> Result<serde_json::Value, String> {
     let guard = state.archive.lock().map_err(err)?;

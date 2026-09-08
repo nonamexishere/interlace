@@ -36,7 +36,14 @@ fn file_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Submenu<tauri::Wry>>
             switch_on,
             None::<&str>,
         )?)
-        .text("menu-import", "Import");
+        .text("menu-import", "Import")
+        .item(&MenuItem::with_id(
+            app,
+            "copy-archive-to",
+            "Copy archive to…",
+            true,
+            None::<&str>,
+        )?);
     let recents = read_recents();
     if !recents.is_empty() {
         let mut recent = SubmenuBuilder::new(app, "Recent archives");
