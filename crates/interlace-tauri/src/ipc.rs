@@ -143,6 +143,9 @@ pub(crate) fn init(
     emails: Vec<String>,
     phones: Vec<String>,
 ) -> Result<serde_json::Value, String> {
+    if *state.copying.lock().map_err(err)? {
+        return Err("copy in progress".into());
+    }
     *state.archive.lock().map_err(err)? = None;
     let p = PathBuf::from(path);
     if p.as_os_str().is_empty() {
@@ -160,6 +163,9 @@ pub(crate) fn open(
     state: tauri::State<AppState>,
     path: String,
 ) -> Result<serde_json::Value, String> {
+    if *state.copying.lock().map_err(err)? {
+        return Err("copy in progress".into());
+    }
     *state.archive.lock().map_err(err)? = None;
     let p = PathBuf::from(path);
     ensure_archive_readable(&p)?;
@@ -304,6 +310,9 @@ pub(crate) fn copy_archive_to(
     if import_status == "running" {
         return Err("import running".into());
     }
+    if *state.copying.lock().map_err(err)? {
+        return Err("copy in progress".into());
+    }
     let archive_root = state
         .archive_root
         .lock()
@@ -346,7 +355,13 @@ pub(crate) fn copy_archive_to(
         return Err("dest is not empty".into());
     }
 
-    *state.copying.lock().map_err(err)? = true;
+    {
+        let mut copying = state.copying.lock().map_err(err)?;
+        if *copying {
+            return Err("copy in progress".into());
+        }
+        *copying = true;
+    }
     let _guard = CopyGuard {
         flag: Arc::clone(&state.copying),
     };

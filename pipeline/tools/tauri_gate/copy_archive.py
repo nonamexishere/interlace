@@ -15,7 +15,7 @@ copy-file-menu, copy-keys-en-tr, copy-no-plugin-shell,
 copy-no-zip-icloud, copy-d24, keep-274-reveal, keep-266-cancel,
 keep-130-file, copy-opening-overlay, copy-dest-drop-shm,
 keep-136-doctor-full, copy-recheck-after-picker, copy-in-progress,
-copy-dest-rollback.
+copy-dest-rollback, copy-open-refuses, copy-second-walk-cas.
 """
 from __future__ import annotations
 
@@ -391,6 +391,28 @@ _PICKER_CALLEES = frozenset(
         "format",
     }
 )
+_ARCHIVE_DROP = re.compile(
+    r"("
+    r"\*\s*(?:state\s*\.\s*)?archive\b[^=;\n]{0,160}=\s*None"
+    r"|\.archive\b[^=;\n]{0,160}=\s*None"
+    r"|archive\s*=\s*None"
+    r"|\barchive\b[^\n]{0,60}\.take\s*\("
+    r")"
+)
+_COPY_IN_PROGRESS_ERR = re.compile(
+    r"("
+    r"[\"']copy in progress[\"']"
+    r"|copy[- ]in[- ]progress"
+    r"|already.{0,24}copy"
+    r"|copy.{0,24}already"
+    r")",
+    re.I,
+)
+_CAS_SET = re.compile(
+    r"\bcompare_exchange(?:_weak)?\b|\bcompare_and_swap\b"
+)
+_SWAP_TRUE = re.compile(r"\.swap\s*\(\s*true")
+_CLAIM_IDENT = re.compile(r"\b(?:flag|copying|copy_in_progress|busy)\b")
 
 
 def _fn(src: str, name: str) -> str:
@@ -761,6 +783,149 @@ def _rolls_back_dest(surf: str) -> bool:
     return True
 
 
+def _before_picker(own: str) -> str:
+    """Own-body prefix before the first dest picker call."""
+    m = _PICK_DEST.search(own)
+    if not m:
+        return own
+    return own[: m.start()]
+
+
+def _archive_drop_pos(own: str) -> int:
+    """Index of first `state.archive = None` / archive.take() in own, else -1."""
+    m = _ARCHIVE_DROP.search(own)
+    return m.start() if m else -1
+
+
+def _looks_like_flag_refuse(win: str, flag: str) -> bool:
+    """True when a window tests the bit and returns a calm copy-in-progress Err."""
+    if not _COPY_IN_PROGRESS_ERR.search(win):
+        return False
+    if not _RETURN_ERR.search(win):
+        return False
+    return bool(
+        re.search(
+            rf"if\s+\*?\s*(?:state\s*\.\s*)?{re.escape(flag)}\b",
+            win,
+        )
+        or _CAS_SET.search(win)
+        or _SWAP_TRUE.search(win)
+        or re.search(r"if\s+\*\s*\w+", win)
+    )
+
+
+def _has_copying_refuse(own_or_head: str, rust: str, flag: str) -> bool:
+    """True when own/head (or one callee hop) refuses an already-true flag."""
+    if not own_or_head.strip():
+        return False
+    surf = own_or_head + "\n" + _callees_of(rust, own_or_head)
+    surf_c = _without_comments(surf)
+    if re.search(rf"\b{re.escape(flag)}\b", surf_c):
+        win = _windows_around(
+            surf_c, re.compile(rf"\b{re.escape(flag)}\b"), before=100, after=240
+        )
+        if _looks_like_flag_refuse(win, flag):
+            return True
+    for name in re.findall(
+        r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", _without_comments(own_or_head)
+    ):
+        inner = _without_comments(_rust_function_body(rust, name))
+        if not inner.strip():
+            continue
+        if not _COPY_IN_PROGRESS_ERR.search(inner) or not _RETURN_ERR.search(inner):
+            continue
+        if (
+            re.search(
+                rf"if\s+\*?\s*(?:state\s*\.\s*)?{re.escape(flag)}\b",
+                inner,
+            )
+            or re.search(r"if\s+\*\s*\w+", inner)
+            or _CAS_SET.search(inner)
+            or _SWAP_TRUE.search(inner)
+        ):
+            return True
+    return False
+
+
+def _refuses_copying_before_archive_drop(own: str, rust: str, flag: str) -> bool:
+    """True when the flag is refused before the first archive drop (or at all)."""
+    drop_at = _archive_drop_pos(own)
+    head = own if drop_at < 0 else own[:drop_at]
+    return _has_copying_refuse(head, rust, flag)
+
+
+def _bare_lock_assign_true(src: str, flag: str) -> bool:
+    """True when the bit is set with `*state.copying.lock()… = true` (no CAS)."""
+    return bool(
+        re.search(
+            rf"\*\s*(?:state\s*\.\s*)?{re.escape(flag)}\s*\.\s*lock\s*\("
+            rf"[^;]{{0,200}}=\s*true",
+            src,
+        )
+        or re.search(
+            rf"\b(?:state\s*\.\s*)?{re.escape(flag)}\s*\.\s*store\s*\(\s*true",
+            src,
+        )
+    )
+
+
+def _sets_bit_with_cas(own: str, rust: str, flag: str) -> bool:
+    """True when the walk claims the bit via CAS / same-lock already-true refuse."""
+    after = _without_comments(_after_picker_surface(rust, own))
+    walk = after + "\n" + _without_comments(_rust_function_body(rust, "copy_backup_unit"))
+    blob = walk + "\n" + _without_comments(_callees_of(rust, walk))
+    if _bare_lock_assign_true(blob, flag):
+        return False
+    if _CAS_SET.search(blob):
+        win = _windows_around(blob, _CAS_SET, before=160, after=220)
+        if _COPY_IN_PROGRESS_ERR.search(win) or (
+            _RETURN_ERR.search(win) and re.search(rf"\b{re.escape(flag)}\b", win)
+        ):
+            return True
+    if _SWAP_TRUE.search(blob):
+        win = _windows_around(blob, _SWAP_TRUE, before=80, after=240)
+        if _COPY_IN_PROGRESS_ERR.search(win) or (
+            re.search(r"\bif\s+", win) and _RETURN_ERR.search(win)
+        ):
+            return True
+    for m in re.finditer(
+        r"let\s+(?:mut\s+)?(\w+)\s*=\s*[^;]{0,200}lock\s*\(",
+        blob,
+    ):
+        ident = m.group(1)
+        lock_expr = m.group(0)
+        if not (
+            re.search(rf"\b{re.escape(flag)}\b", lock_expr)
+            or _CLAIM_IDENT.search(lock_expr)
+        ):
+            continue
+        after_let = blob[m.end() : m.end() + 500]
+        if not re.search(rf"if\s+\*\s*{re.escape(ident)}\b", after_let):
+            continue
+        if not (
+            _COPY_IN_PROGRESS_ERR.search(after_let)
+            or _RETURN_ERR.search(after_let[:300])
+        ):
+            continue
+        if not re.search(rf"\*\s*{re.escape(ident)}\s*=\s*true", after_let):
+            continue
+        return True
+    return False
+
+
+def _non_owner_clears_flag(own: str, rust: str, flag: str) -> bool:
+    """True when own / a non-Drop callee assigns the bit false (only Drop may)."""
+    own_c = _without_comments(own)
+    clear_rx = re.compile(
+        rf"\b{re.escape(flag)}\b[^\n]{{0,100}}"
+        rf"(?:=\s*false|\.store\s*\(\s*false)"
+    )
+    if clear_rx.search(own_c):
+        return True
+    helpers = _without_comments(_callees_of(rust, own_c))
+    return bool(clear_rx.search(helpers))
+
+
 def assert_copy_archive_to(crate: Path) -> None:
     """#320: Copy archive to… — rfd dest in Rust, backup-unit copy.
 
@@ -768,6 +933,7 @@ def assert_copy_archive_to(crate: Path) -> None:
     No webview path. Keep Reveal / import cancel / File Open+Import.
     File → Open dest must not unmount Doctor; dest shm is dropped after copy.
     After dest picker: re-read import/root, copy-in-progress bit, dest rollback.
+    open / init refuse copying before dropping archive; second walk CAS.
     """
     doctor_path = crate / "web" / "lib" / "DoctorPane.svelte"
     if not doctor_path.is_file():
@@ -1371,4 +1537,46 @@ def assert_copy_archive_to(crate: Path) -> None:
             "the command wrote (INTERLACE.toml, archive.sqlite / -wal / "
             "-shm, cas/, logs/) via remove_file / remove_dir_all / unlink; "
             "drop dest archive.sqlite-shm on the failure path too"
+        )
+
+    # 23) copy-open-refuses — open (and init if it drops archive) before None.
+    open_own = _rust_function_body(rust, "open")
+    if not _refuses_copying_before_archive_drop(open_own, rust, flag):
+        fail(
+            f"{_ISSUE}: open must refuse the copy-in-progress flag with a "
+            "calm Err before state.archive is set to None (File → Open / "
+            "Recent stay enabled during the walk)"
+        )
+    init_own = _rust_function_body(rust, "init")
+    if _archive_drop_pos(init_own) >= 0 and not _refuses_copying_before_archive_drop(
+        init_own, rust, flag
+    ):
+        fail(
+            f"{_ISSUE}: init must refuse the copy-in-progress flag with a "
+            "calm Err before state.archive is set to None"
+        )
+
+    # 24) copy-second-walk-cas — already-true refuse + CAS; only owner Drop.
+    before = _before_picker(own)
+    if not _has_copying_refuse(before, rust, flag):
+        fail(
+            f"{_ISSUE}: copy_archive_to must refuse if the copy-in-progress "
+            "flag is already true (pre-picker — a second walk must not start)"
+        )
+    if not _has_copying_refuse(_after_picker_surface(rust, own), rust, flag):
+        fail(
+            f"{_ISSUE}: copy_archive_to must refuse if the copy-in-progress "
+            "flag is already true after the dest re-check (two overlapping "
+            "pickers)"
+        )
+    if not _sets_bit_with_cas(own, rust, flag):
+        fail(
+            f"{_ISSUE}: copy_archive_to must set the copy-in-progress bit "
+            "with a compare-and-swap / already-true refuse — not a bare "
+            "= true (only the owner Drop may clear it)"
+        )
+    if _non_owner_clears_flag(own, rust, flag):
+        fail(
+            f"{_ISSUE}: only the owner Drop may clear the copy-in-progress "
+            "bit (a second walk must not see the first Drop reset it)"
         )
