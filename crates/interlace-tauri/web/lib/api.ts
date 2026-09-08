@@ -167,6 +167,7 @@ export const api = {
   revealCas: (hash: string) => invoke<void>("reveal_cas", { hash }),
   openCas: (hash: string) => invoke<void>("open_cas", { hash }),
   revealArchive: () => invoke<void>("reveal_archive"),
+  copyArchiveTo: () => invoke<boolean>("copy_archive_to"),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   people: () => invoke<Person[]>("people"),
   personShow: (id: number) =>

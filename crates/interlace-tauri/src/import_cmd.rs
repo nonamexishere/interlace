@@ -171,6 +171,9 @@ pub(crate) fn import_start(
             return Err("import already running".into());
         }
     }
+    if *state.copying.lock().map_err(err)? {
+        return Err("copy in progress".into());
+    }
     let pth = PathBuf::from(&path);
     if pth.as_os_str().is_empty() {
         return Err("import path required".into());
@@ -185,6 +188,9 @@ pub(crate) fn import_start(
         format!("{} WhatsApp ZIPs", jobs.len())
     };
     let mut slot = state.archive.lock().map_err(err)?;
+    if *state.copying.lock().map_err(err)? {
+        return Err("copy in progress".into());
+    }
     let Some(arch) = slot.take() else {
         return Err("no archive open".into());
     };

@@ -184,7 +184,6 @@
   }
   async function openPath(path: string) {
     err = "";
-    doctor = [];
     opening = true;
     try {
       await applyStatus(await api.open(path));
@@ -304,7 +303,7 @@
       setView: (v) => { if (setup) return; view = v; },
       importDroppedPaths,
       openPath,
-      showErr, get err() { return err; }, set err(v) { err = v; },
+      showErr, showToast, get err() { return err; }, set err(v) { err = v; },
       setSetup: (v) => {
         setup = v;
         if (v) { people = []; selectedId = null; events = []; st = null; doctor = []; filter = ""; searchQ = ""; seedPerson = null; includeGroups = false; identities = []; personTitle = "Select a person"; view = "people"; ++peopleGen; confirmOpen = false; confirmRun = null; }
@@ -371,7 +370,7 @@
   {/if}
 
   {#if booting || opening}
-    <main class="flex h-full flex-col items-center justify-center gap-3 p-6">
+    <main class="fixed inset-0 z-[70] flex h-full flex-col items-center justify-center gap-3 bg-background/80 p-6">
       <div
         class="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground motion-reduce:animate-none"
         role="status"
@@ -382,7 +381,8 @@
       </p>
       <p class="text-xs text-muted-foreground">If this hangs, another Interlace or CLI writer may hold the lock.</p>
     </main>
-  {:else if setup}
+  {/if}
+  {#if setup}
     <SetupScreen
       bind:region
       bind:name

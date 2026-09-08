@@ -99,6 +99,16 @@
     }
   }
 
+  async function copyArchiveTo() {
+    try {
+      const copied = await api.copyArchiveTo();
+      if (copied) onToast?.(t("archiveCopied"));
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e ?? "");
+      onToast?.(raw.includes("import running") ? t("importRunning") : "Could not copy archive");
+    }
+  }
+
   onMount(() => {
     load();
   });
@@ -211,6 +221,9 @@
     </p>
     <Button variant="outline" size="sm" data-reveal-archive onclick={revealArchive}>
       {t("revealInFinder")}
+    </Button>
+    <Button variant="outline" size="sm" data-copy-archive onclick={copyArchiveTo}>
+      {t("copyArchiveTo")}
     </Button>
   </section>
 </ScrollArea>

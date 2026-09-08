@@ -23,9 +23,9 @@ use tauri::{Emitter, Manager};
 use crate::cas::{cas_data_url, cas_response, open_cas, reveal_archive, reveal_cas};
 use crate::import_cmd::{import_cancel, import_progress, import_start, pick_import_path};
 use crate::ipc::{
-    close_archive, doctor_issues_cmd, doctor_issues_quick_cmd, doctor_run_cmd, init, open,
-    open_url, pick_folder, remembered_path, review_accept_cmd, review_list_cmd, review_reject_cmd,
-    review_show_cmd, search_body, search_cmd, status,
+    close_archive, copy_archive_to, doctor_issues_cmd, doctor_issues_quick_cmd, doctor_run_cmd,
+    init, open, open_url, pick_folder, remembered_path, review_accept_cmd, review_list_cmd,
+    review_reject_cmd, review_show_cmd, search_body, search_cmd, status,
 };
 use crate::menu::native_menu;
 use crate::people_cmd::{
@@ -48,6 +48,7 @@ pub(crate) struct AppState {
     pub(crate) archive_root: Arc<Mutex<Option<PathBuf>>>,
     pub(crate) import: Arc<Mutex<ImportProgress>>,
     pub(crate) import_cancel: Arc<Mutex<Option<ImportCancel>>>,
+    pub(crate) copying: Arc<Mutex<bool>>,
 }
 
 pub(crate) fn err(e: impl std::fmt::Display) -> String {
@@ -137,6 +138,7 @@ fn main() {
                 ..ImportProgress::default()
             })),
             import_cancel: Arc::new(Mutex::new(None)),
+            copying: Arc::new(Mutex::new(false)),
         })
         .menu(native_menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -163,6 +165,9 @@ fn main() {
             }
             "switch-archive" => {
                 let _ = app.emit("menu-switch-archive", ());
+            }
+            "copy-archive-to" => {
+                let _ = app.emit("menu-copy-archive-to", ());
             }
             _ => {}
         })
@@ -201,6 +206,7 @@ fn main() {
             reveal_cas,
             open_cas,
             reveal_archive,
+            copy_archive_to,
             open_url,
             people,
             person_show,

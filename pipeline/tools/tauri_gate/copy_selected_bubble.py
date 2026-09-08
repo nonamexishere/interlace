@@ -440,12 +440,12 @@ def assert_copy_selected_bubble(crate: Path) -> None:
         extra = [
             k
             for k in _chrome_pack_entries(en_p.read_text())
-            if re.search(r"copy", k, re.I) and k != "copyText"
+            if re.search(r"copy", k, re.I) and k not in ("copyText", "copyArchiveTo")
         ]
         if extra:
             fail(
                 f"{_ISSUE}: no new t() key "
-                f"({', '.join(sorted(extra))} — keep copyText only)"
+                f"({', '.join(sorted(extra))} — keep copyText / copyArchiveTo only)"
             )
 
     # 11) copy-d24

@@ -112,7 +112,8 @@ The window uses an overlay titlebar: you can drag the top bar; native close/mini
 
 The native macOS **menu bar** has **File → Open archive** (same folder picker as
 **Open existing…**), **File → Switch archive** (setup without quitting; flock
-drops so CLI can write the previous folder), **File → Import**, and **File →
+drops so CLI can write the previous folder), **File → Import**, **File → Copy
+archive to…**, and **File →
 Recent archives** (folders you successfully opened, most-recent first). A
 missing folder does not crash — that entry is dropped. **View** switches People,
 Search, Review, and Doctor. About states the app is offline and not encrypted
@@ -267,7 +268,10 @@ There is no Share sheet or AirDrop.
 If the archive path looks like iCloud Drive, Dropbox, or Google Drive, a
 banner stays up on every tab. Time Machine of the whole folder is fine after
 you close the window. Doctor and People can **Reveal archive** folder in Finder
-(the open archive). Backup is still copy that folder after closing the app. See
+(the open archive). Doctor and File can **Copy archive to…** while this app is
+the only writer; the dest folder Opens as an archive (copied shm is dropped so
+dest Open rebuilds a fresh WAL-index); import running refuses
+calmly. After you close the app, `cp -a` still works. See
 [backup.md](backup.md).
 
 ## Encryption
