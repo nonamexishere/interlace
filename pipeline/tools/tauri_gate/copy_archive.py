@@ -14,7 +14,8 @@ copy-skip-tmp-spill, copy-sqlite-wal, copy-doctor-control,
 copy-file-menu, copy-keys-en-tr, copy-no-plugin-shell,
 copy-no-zip-icloud, copy-d24, keep-274-reveal, keep-266-cancel,
 keep-130-file, copy-opening-overlay, copy-dest-drop-shm,
-keep-136-doctor-full.
+keep-136-doctor-full, copy-recheck-after-picker, copy-in-progress,
+copy-dest-rollback.
 """
 from __future__ import annotations
 
@@ -284,6 +285,112 @@ _REMOVE_FILE = re.compile(
 )
 _DEST_SHM_IDENT = re.compile(r"\b(?:dest_shm|shm_dest|out_shm|dest_shm_path)\b")
 _DEST_JOIN = re.compile(r"\b(?:to|dest|out|picked)\b")
+_PICK_DEST = re.compile(
+    r"("
+    r"\b(?:pick_copy_dest|pick_copy_dest_rfd|pick_dest)\s*\("
+    r"|FileDialog\s*::\s*new\s*\("
+    r"|\.pick_folder\s*\("
+    r"|\brfd\s*::\s*FileDialog\b"
+    r")"
+)
+_STATE_ROOT = re.compile(
+    r"state\s*\.\s*archive_root|\.archive_root\s*\.\s*lock"
+)
+_ROOT_GONE = re.compile(
+    r"("
+    r"no archive open"
+    r"|ok_or(?:_else)?"
+    r"|is_none\s*\("
+    r"|root (?:is )?gone"
+    r"|archive closed"
+    r")",
+    re.I,
+)
+_ROOT_CHANGED = re.compile(
+    r"("
+    r"no longer"
+    r"|root changed"
+    r"|archive (?:root )?changed"
+    r"|not (?:the )?(?:same )?(?:source|open )?root"
+    r"|\b(?:live|current|fresh|again|now|got|root2|new_root)\b.{0,60}(?:==|!=)"
+    r"|(?:==|!=).{0,60}\b(?:live|current|fresh|again|now|got|root2|new_root)\b"
+    r"|\b(?:archive_root|from|src|source)\s*!=\s*&?(?:archive_root|from|live|current|fresh|again|now|got|root)\b"
+    r"|!=\s*&?(?:archive_root|from)\b"
+    r")",
+    re.I | re.S,
+)
+_DEST_VS_SRC = re.compile(
+    r"("
+    r"\b(?:to|picked|dest|out)\b\s*==\s*&?(?:from|archive_root)\b"
+    r"|\b(?:from|archive_root)\b\s*==\s*&?(?:to|picked|dest|out)\b"
+    r"|\.starts_with\s*\("
+    r")"
+)
+_COPY_FLAG_NAME = re.compile(
+    r"\b("
+    r"copying|copy_in_progress|copy_running|is_copying|"
+    r"copying_archive|copy_busy|archive_copying|copy_lock|"
+    r"copy_in_flight|copying_to|copy_active|copy_guard|"
+    r"copying_flag|CopyInProgress|Copying"
+    r")\b"
+)
+_FLAG_SET = re.compile(
+    r"("
+    r"=\s*true\b"
+    r"|=\s*Some\s*\("
+    r"|\.store\s*\(\s*true"
+    r"|swap\s*\(\s*true"
+    r")"
+)
+_FLAG_CLEAR = re.compile(
+    r"("
+    r"=\s*false\b"
+    r"|=\s*None\b"
+    r"|\.store\s*\(\s*false"
+    r"|swap\s*\(\s*false"
+    r")"
+)
+_DROP_FOR = re.compile(r"\bimpl(?:\s*<[^>]+>)?\s+Drop\s+for\s+(\w+)")
+_ROLLBACK_FN = re.compile(
+    r"\bfn\s+(\w*(?:rollback|revert_dest|cleanup_dest|remove_partial|"
+    r"wipe_dest|undo_copy|clear_partial)\w*)\b",
+    re.I,
+)
+_REMOVE_DIR_ALL = re.compile(
+    r"\b(?:(?:std\s*::\s*)?fs\s*::\s*)?remove_dir_all\s*(?:!)?\s*\("
+)
+_ERR_WRAP = re.compile(
+    r"if\s+let\s+Err|inspect_err\s*\(|\.or_else\s*\(|\.is_err\s*\("
+)
+_RETURN_ERR = re.compile(r"return\s+Err\s*\(|\bErr\s*\(")
+_PICKER_CALLEES = frozenset(
+    {
+        "pick_copy_dest",
+        "pick_copy_dest_rfd",
+        "pick_dest",
+        "FileDialog",
+        "pick_folder",
+        "new",
+        "set_title",
+        "run_on_main_thread",
+        "send",
+        "recv",
+        "Ok",
+        "Err",
+        "Some",
+        "None",
+        "drop",
+        "clone",
+        "lock",
+        "map_err",
+        "ok_or",
+        "ok_or_else",
+        "canonicalize",
+        "starts_with",
+        "join",
+        "format",
+    }
+)
 
 
 def _fn(src: str, name: str) -> str:
@@ -473,12 +580,194 @@ def _drops_dest_shm(walker: str) -> bool:
     return True
 
 
+def _after_picker(own: str) -> str:
+    """Own-body suffix after the last dest picker call (pick_copy_dest / rfd)."""
+    last_end = -1
+    for m in _PICK_DEST.finditer(own):
+        last_end = m.end()
+    if last_end < 0:
+        return ""
+    return own[last_end:]
+
+
+def _callees_of(rust: str, blob: str, skip: frozenset[str] | None = None) -> str:
+    parts: list[str] = []
+    seen: set[str] = set(skip or ())
+    for m in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", blob):
+        name = m.group(1)
+        if name in seen:
+            continue
+        seen.add(name)
+        inner = _rust_function_body(rust, name)
+        if inner:
+            parts.append(inner)
+    return "\n".join(parts)
+
+
+def _after_picker_surface(rust: str, own: str) -> str:
+    after = _after_picker(own)
+    if not after.strip():
+        return ""
+    return after + "\n" + _callees_of(rust, after, _PICKER_CALLEES)
+
+
+def _copy_flag_names(rust: str) -> list[str]:
+    out: list[str] = []
+    for m in _COPY_FLAG_NAME.finditer(rust):
+        name = m.group(1)
+        if name not in out:
+            out.append(name)
+    return out
+
+
+def _drop_bodies(rust: str) -> list[str]:
+    bodies: list[str] = []
+    i = 0
+    n = len(rust)
+    while i < n:
+        m = _DROP_FOR.search(rust[i:])
+        if not m:
+            break
+        start = i + m.end()
+        brace = rust.find("{", start)
+        if brace < 0:
+            break
+        bodies.append(_brace_after(rust, brace))
+        i = brace + 1
+    return bodies
+
+
+def _flag_set_for_walk(own: str, rust: str, flag: str) -> bool:
+    """True when the flag is set after the dest picker / on the copy walk."""
+    after = _without_comments(_after_picker_surface(rust, own))
+    walk = after + "\n" + _rust_function_body(rust, "copy_backup_unit")
+    if not re.search(rf"\b{re.escape(flag)}\b", walk):
+        return False
+    win = _windows_around(
+        walk, re.compile(rf"\b{re.escape(flag)}\b"), before=80, after=80
+    )
+    return bool(_FLAG_SET.search(win))
+
+
+def _refuses_flag(own: str, rust: str, flag: str, before: str | None) -> bool:
+    """True when own (or a callee) returns Err on the copy-in-progress flag."""
+    if not own.strip():
+        return False
+    head = own
+    if before:
+        pos = own.find(before)
+        if pos >= 0:
+            head = own[:pos]
+    surf = head + "\n" + _callees_of(rust, head)
+    if not re.search(rf"\b{re.escape(flag)}\b", surf):
+        return False
+    win = _windows_around(
+        surf, re.compile(rf"\b{re.escape(flag)}\b"), before=80, after=200
+    )
+    return bool(_RETURN_ERR.search(win) or _RETURN_ERR.search(surf))
+
+
+def _flag_cleared_on_exit(own: str, rust: str, flag: str) -> bool:
+    """True when the bit is cleared on every exit (Drop, or Err + ok)."""
+    i = 0
+    n = len(rust)
+    while i < n:
+        m = _DROP_FOR.search(rust[i:])
+        if not m:
+            break
+        typ = m.group(1)
+        start = i + m.end()
+        brace = rust.find("{", start)
+        if brace < 0:
+            break
+        blob = _without_comments(_brace_after(rust, brace))
+        i = brace + 1
+        if not _FLAG_CLEAR.search(blob):
+            continue
+        if re.search(rf"\b{re.escape(flag)}\b", blob):
+            return True
+        if re.search(r"copy|guard", typ, re.I):
+            return True
+    own_c = _without_comments(own)
+    if not _FLAG_CLEAR.search(own_c):
+        helpers = _callees_of(rust, own_c)
+        help_c = _without_comments(helpers)
+        if (
+            re.search(rf"\b{re.escape(flag)}\b", help_c)
+            and _FLAG_CLEAR.search(help_c)
+            and _ERR_WRAP.search(own_c)
+        ):
+            return True
+        return False
+    # explicit clear must not be success-only after `copy_backup_unit(...)?`
+    if _ERR_WRAP.search(own_c) or re.search(r"if\s+let\s+Err", own_c):
+        return True
+    return False
+
+
+def _rollback_surface(rust: str, own: str) -> str:
+    """Named dest-rollback / Drop / Err-arm that removes what copy wrote."""
+    parts: list[str] = []
+    for m in _ROLLBACK_FN.finditer(rust):
+        inner = _rust_function_body(rust, m.group(1))
+        if inner:
+            parts.append(inner)
+    for body in _drop_bodies(rust):
+        if not (_REMOVE_FILE.search(body) or _REMOVE_DIR_ALL.search(body)):
+            continue
+        if _TOML.search(body) or _SQLITE.search(body) or _SHM.search(body):
+            parts.append(body)
+    for blob in (own, _rust_function_body(rust, "copy_backup_unit")):
+        for wm in _ERR_WRAP.finditer(blob):
+            win = blob[wm.start() : wm.start() + 900]
+            if _REMOVE_FILE.search(win) or _REMOVE_DIR_ALL.search(win):
+                parts.append(win)
+    # callee named rollback called from own / copy_backup_unit
+    walk = own + "\n" + _rust_function_body(rust, "copy_backup_unit")
+    for m in re.finditer(
+        r"\b([A-Za-z_][A-Za-z0-9_]*(?:rollback|revert|cleanup|wipe|undo)\w*)\s*\(",
+        walk,
+        re.I,
+    ):
+        inner = _rust_function_body(rust, m.group(1))
+        if inner and inner not in parts:
+            parts.append(inner)
+    return "\n".join(parts)
+
+
+def _rolls_back_dest(surf: str) -> bool:
+    """True when dest toml / sqlite+wal+shm / cas/ / logs/ are removed."""
+    if not surf.strip():
+        return False
+    if not _REMOVE_FILE.search(surf) and not _REMOVE_DIR_ALL.search(surf):
+        return False
+    if not _TOML.search(surf):
+        return False
+    if not _SQLITE.search(surf):
+        return False
+    if not _WAL.search(surf):
+        return False
+    if not _SHM.search(surf):
+        return False
+    if not _CAS_DIR.search(surf):
+        return False
+    if not _LOGS_DIR.search(surf):
+        return False
+    if not _REMOVE_DIR_ALL.search(surf):
+        return False
+    shm_win = _windows_around(surf, _SHM, before=120, after=80)
+    if not _REMOVE_FILE.search(shm_win) and not _DEST_SHM_IDENT.search(shm_win):
+        return False
+    return True
+
+
 def assert_copy_archive_to(crate: Path) -> None:
     """#320: Copy archive to… — rfd dest in Rust, backup-unit copy.
 
     Doctor Backup owned Button next to Reveal + File menu. Same command.
     No webview path. Keep Reveal / import cancel / File Open+Import.
     File → Open dest must not unmount Doctor; dest shm is dropped after copy.
+    After dest picker: re-read import/root, copy-in-progress bit, dest rollback.
     """
     doctor_path = crate / "web" / "lib" / "DoctorPane.svelte"
     if not doctor_path.is_file():
@@ -1005,4 +1294,81 @@ def assert_copy_archive_to(crate: Path) -> None:
     if not re.search(r"onclick=\{[^}]*\bload\b", doctor):
         fail(
             f"{_ISSUE}: keep Doctor Refresh → load (full doctorIssues — #136)"
+        )
+
+    # 20) copy-recheck-after-picker — import running + archive_root after rfd.
+    after_raw = _after_picker(own)
+    after = _without_comments(_after_picker_surface(rust, own))
+    if not after_raw.strip() or not after.strip():
+        fail(
+            f"{_ISSUE}: {_CMD} must re-read import running after the dest "
+            "picker (pick_copy_dest / rfd) — File → Switch / Import during "
+            "the picker is not frozen by the frontend await"
+        )
+    if not _IMPORT_RUN.search(after):
+        fail(
+            f"{_ISSUE}: {_CMD} must re-read import running after the dest "
+            "picker (pick_copy_dest / rfd) — File → Switch / Import during "
+            "the picker is not frozen by the frontend await"
+        )
+    if not _STATE_ROOT.search(after):
+        fail(
+            f"{_ISSUE}: {_CMD} must re-read archive_root after the dest "
+            "picker (root gone or no longer the source being copied)"
+        )
+    if not _ROOT_GONE.search(after):
+        fail(
+            f"{_ISSUE}: {_CMD} must re-read archive_root after the dest "
+            "picker and refuse if the root is gone (no archive open)"
+        )
+    after_no_dest = _DEST_VS_SRC.sub(" ", after)
+    if not _ROOT_CHANGED.search(after_no_dest):
+        fail(
+            f"{_ISSUE}: {_CMD} must re-read archive_root after the dest "
+            "picker and refuse if the root no longer matches the source "
+            "being copied"
+        )
+
+    # 21) copy-in-progress — bit for the copy walk; close / import refuse it.
+    flags = _copy_flag_names(rust_c)
+    if not flags:
+        fail(
+            f"{_ISSUE}: set a copy-in-progress flag for the copy walk "
+            "(close_archive / import_start must refuse it — same spirit as "
+            "import running)"
+        )
+    flag = flags[0]
+    if not _flag_set_for_walk(own, rust, flag):
+        fail(
+            f"{_ISSUE}: set a copy-in-progress flag for the copy walk "
+            f"({flag} after the dest picker — picker cancel stays quiet)"
+        )
+    close_own = _rust_function_body(rust, "close_archive")
+    if not _refuses_flag(close_own, rust, flag, "archive.lock"):
+        fail(
+            f"{_ISSUE}: close_archive must refuse the copy-in-progress flag "
+            "(calm Err — same spirit as import running; do not drop flock "
+            "mid-copy)"
+        )
+    import_own = _rust_function_body(rust, "import_start")
+    if not _refuses_flag(import_own, rust, flag, ".take("):
+        fail(
+            f"{_ISSUE}: import_start must refuse the copy-in-progress flag "
+            "(calm Err — same spirit as import already running; do not "
+            "take() Archive mid-copy)"
+        )
+    if not _flag_cleared_on_exit(own, rust, flag):
+        fail(
+            f"{_ISSUE}: clear the copy-in-progress flag on the way out "
+            "(ok / err / cancel after the bit was set — Drop or both paths)"
+        )
+
+    # 22) copy-dest-rollback — dest artifacts + dest shm on copy Err.
+    rb = _without_comments(_rollback_surface(rust, own))
+    if not _rolls_back_dest(rb):
+        fail(
+            f"{_ISSUE}: dest must be rolled back on copy Err — remove what "
+            "the command wrote (INTERLACE.toml, archive.sqlite / -wal / "
+            "-shm, cas/, logs/) via remove_file / remove_dir_all / unlink; "
+            "drop dest archive.sqlite-shm on the failure path too"
         )

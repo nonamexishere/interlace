@@ -48,6 +48,7 @@ pub(crate) struct AppState {
     pub(crate) archive_root: Arc<Mutex<Option<PathBuf>>>,
     pub(crate) import: Arc<Mutex<ImportProgress>>,
     pub(crate) import_cancel: Arc<Mutex<Option<ImportCancel>>>,
+    pub(crate) copying: Arc<Mutex<bool>>,
 }
 
 pub(crate) fn err(e: impl std::fmt::Display) -> String {
@@ -137,6 +138,7 @@ fn main() {
                 ..ImportProgress::default()
             })),
             import_cancel: Arc::new(Mutex::new(None)),
+            copying: Arc::new(Mutex::new(false)),
         })
         .menu(native_menu)
         .on_menu_event(|app, event| match event.id().as_ref() {

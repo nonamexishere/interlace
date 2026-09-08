@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use interlace_core::people::{attachments_for, complete_attachments};
 use interlace_core::session::{
@@ -175,6 +176,9 @@ pub(crate) fn close_archive(app: AppHandle, state: tauri::State<AppState>) -> Re
     if import_status == "running" {
         return Err("import running".into());
     }
+    if *state.copying.lock().map_err(err)? {
+        return Err("copy in progress".into());
+    }
     *state.archive.lock().map_err(err)? = None;
     *state.archive_root.lock().map_err(err)? = None;
     crate::menu::rebuild_menu(&app);
@@ -270,6 +274,25 @@ fn copy_backup_unit(from: &Path, to: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn rollback_dest(to: &Path) {
+    let _ = fs::remove_file(to.join("INTERLACE.toml"));
+    let _ = fs::remove_file(to.join("archive.sqlite"));
+    let _ = fs::remove_file(to.join("archive.sqlite-wal"));
+    let _ = fs::remove_file(to.join("archive.sqlite-shm"));
+    let _ = fs::remove_dir_all(to.join("cas"));
+    let _ = fs::remove_dir_all(to.join("logs"));
+}
+
+struct CopyGuard {
+    flag: Arc<Mutex<bool>>,
+}
+
+impl Drop for CopyGuard {
+    fn drop(&mut self) {
+        *self.flag.lock().unwrap_or_else(|e| e.into_inner()) = false;
+    }
+}
+
 /// Copy the open archive to an empty local folder. Dest from rfd — never a webview path.
 /// Returns true if a copy ran; false if the picker was cancelled.
 #[tauri::command]
@@ -299,7 +322,22 @@ pub(crate) fn copy_archive_to(
         return Err("only a local folder".into());
     }
 
+    let import_status = state.import.lock().map_err(err)?.status.clone();
+    if import_status == "running" {
+        return Err("import running".into());
+    }
+    let live_root = state
+        .archive_root
+        .lock()
+        .map_err(err)?
+        .clone()
+        .ok_or_else(|| "no archive open".to_string())?;
     let from = archive_root.canonicalize().map_err(map_io)?;
+    let live = live_root.canonicalize().map_err(map_io)?;
+    if live != from {
+        return Err("archive root changed".into());
+    }
+
     let to = picked.canonicalize().map_err(map_io)?;
     if to == from || to.starts_with(&from) {
         return Err("dest is the open root or a subfolder of it".into());
@@ -308,7 +346,15 @@ pub(crate) fn copy_archive_to(
         return Err("dest is not empty".into());
     }
 
-    copy_backup_unit(&from, &to)?;
+    *state.copying.lock().map_err(err)? = true;
+    let _guard = CopyGuard {
+        flag: Arc::clone(&state.copying),
+    };
+
+    if let Err(e) = copy_backup_unit(&from, &to) {
+        rollback_dest(&to);
+        return Err(e);
+    }
     Ok(true)
 }
 
