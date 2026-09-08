@@ -42,9 +42,10 @@ unsigned app release is **`app-v0.1.1`**. **Phase 2.2 polish is done.**
 Children **#265–#279**, **#297**, **#300** (PRs **#282–#301**) are done.
 **#303**, **#304**, **#305**, **#306**, **#307**, **#308**, **#309**,
 **#310**, **#311**, **#312**, **#313**, **#314**, **#315**, **#316**,
-**#317**, **#318**, and **#319** are done (PRs **#323–#328**, **#330**,
-**#332**, **#336**, **#338**, **#340**, **#343**, **#345**, **#347**,
-**#349**, **#351**, **#353**). Next coding **#320** only if asked. Do
+**#317**, **#318**, **#319**, and **#320** are done (PRs **#323–#328**,
+**#330**, **#332**, **#336**, **#338**, **#340**, **#343**, **#345**,
+**#347**, **#349**, **#351**, **#353**, **#355**). Next coding **#321**
+only if asked. Do
 not start 1.1 / 3 / 4.
 Line count is **not** a CI gate (dropped in #316); split later if a
 file gets messy.
@@ -101,12 +102,14 @@ for the *next* `app-v*` tag; that tag is **not** cut. Ask before another
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: `10482cb` (merge of PR **#353** / #319).
+HEAD when this was rewritten: this PR **#355** / #320 (`feat/copy-archive-to`).
+After merge, `git log -1` / `gh pr list`.
 Tag **`app-v0.1.2`** (last shipped; still unsigned).
 Epic **#108**, milestone 6, the Phase 1 CLI milestone, Phase 2.2 (#197),
 and Phase **2.3** (epic **#264** / milestone 8) are **closed**.
-#265–#279 / #297 / #300 / #303–#319 (PRs #282–#301 / #323–#328 / #330 /
-#332 / #336 / #338 / #340 / #343 / #345 / #347 / #349 / #351 / #353) done.
+#265–#279 / #297 / #300 / #303–#320 (PRs #282–#301 / #323–#328 / #330 /
+#332 / #336 / #338 / #340 / #343 / #345 / #347 / #349 / #351 / #353 /
+#355) done.
 First notarized `app-v*` is not cut.
 Re-check with `git log -1` / `gh pr list`.
 
@@ -254,6 +257,7 @@ Phase 2.1 milestone (#6): **closed**.
 | #317 / PR #349 | Open a stored CAS attachment with the default app (typed temp copy; menu clamp) |
 | #318 / PR #351 | Keep last Search query when leaving the tab (session-only; hits refresh once) |
 | #319 / PR #353 | Search date presets 7d / 30d / this year (host TZ; inclusive to) |
+| #320 / PR #355 | Copy archive to… from Doctor and File (empty dest; dest Opens) |
 
 ## Open — product now
 
@@ -267,11 +271,11 @@ names helpers, files, and must-IDs.
 
 ### Suggested next
 
-1. **#319** is done (PR **#353**). Next coding **#320** only if asked
-   (Copy archive to… local backup). Do not invent a new 2.3 ticket.
-   Remaining parked dogfood UI (**#320–#322**) only if asked. **#342**
-   (why Review is quiet; do not auto-merge names) stays parked until
-   picked.
+1. **#320** is done (PR **#355**). Next coding **#321** only if asked
+   (Doctor GC confirm shows reclaimable bytes). Do not invent a new 2.3
+   ticket. Remaining parked dogfood UI (**#321–#322**) only if asked.
+   **#342** (why Review is quiet; do not auto-merge names) stays parked
+   until picked.
 2. Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*` tag.
 
 Phase 2.3 archive: [#264](https://github.com/nonamexishere/interlace/issues/264) / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8).
@@ -286,10 +290,10 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 
 ## Recommended next steps
 
-1. #303–#319 are done (PRs #323–#328, #330, #332, #336, #338, #340,
-   #343, #345, #347, #349, #351, #353). Next coding **#320** only if
-   asked. Remaining parked dogfood UI (**#320–#322**) only if asked.
-   **#342** stays parked until picked.
+1. #303–#320 are done (PRs #323–#328, #330, #332, #336, #338, #340,
+   #343, #345, #347, #349, #351, #353, #355). Next coding **#321**
+   only if asked. Remaining parked dogfood UI (**#321–#322**) only if
+   asked. **#342** stays parked until picked.
 2. Phase 2.3 coding is done. Do not start 1.1 / P3 / P4.
 3. Last shipped app tag is **`app-v0.1.2`** (unsigned). Workflow can
    Developer ID + notarize the next `app-v*` once Apple secrets exist.
@@ -370,9 +374,10 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > does not implement product code. Ask before commit / push / merge.
 > Phase 2.3 coding is done (epic #264 / milestone 8 closed). Read
 > `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,
-> #297, #300, #303–#319 done (PRs #323–#328, #330, #332, #336, #338, #340,
-> #343, #345, #347, #349, #351, #353). Next coding **#320** only if asked.
-> Parked dogfood #320–#322 only if asked. #342 stays parked until picked.
+> #297, #300, #303–#320 done (PRs #323–#328, #330, #332, #336, #338, #340,
+> #343, #345, #347, #349, #351, #353, #355). Next coding **#321** only if
+> asked. Parked dogfood #321–#322 only if asked. #342 stays parked until
+> picked.
 > Line count is not a CI gate.
 > Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
