@@ -35,6 +35,10 @@ export const en = {
   searchTo: "To",
   searchDateInvalid:
     "Check the date range. From and to must be valid dates, and from cannot be after to.",
+  searchLast7Days: "7 days",
+  searchLast30Days: "30 days",
+  searchThisYear: "this year",
+  searchAnyDate: "Any",
   openingLastArchive: "Opening last archive",
   noFileSelected: "No file selected",
   importEmptyBody:

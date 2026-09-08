@@ -13,6 +13,7 @@ unsigned **`app-v0.1.2`**.
 
 ### Added
 
+- Compact Search date presets (7 days / 30 days / this year / Any) fill the date filters in the Mac timezone.
 - Leave Search and come back in the same session keeps the last query; hits refresh once.
 - Import Cancel stops the run (`interrupted`); committed rows stay.
 - Developer ID + notarize workflow for the next `app-v*` (fail-closed without

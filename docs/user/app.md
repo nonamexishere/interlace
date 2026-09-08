@@ -195,8 +195,10 @@ query is still there; hits refresh once. Not Spotlight. Not multi-tab
 history. Not “survives quit.” Typing in `#q` searches as you type (a short
 debounce is fine); it does not wait for the people list. The first search shows a quiet
 skeleton; later keystrokes keep the previous hits until the new list applies.
-The date range is optional (empty = any). Invalid dates do
-not search. **Person** is
+The date range is optional (empty = any). Compact 7 days / 30 days /
+this year / Any presets fill the date filters in the Mac timezone;
+empty / Any = any. Storage / JSON / FTS stay UTC. Not a calendar.
+Invalid dates do not search. **Person** is
 a name-facing combobox over the same people list as the sidebar: type to filter
 by display name (case-insensitive substring; self gets a “(self)” label), Enter
 or click to pick — the archive stores `person_id` under the hood for the search
