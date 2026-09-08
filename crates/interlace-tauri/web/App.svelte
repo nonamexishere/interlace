@@ -184,7 +184,6 @@
   }
   async function openPath(path: string) {
     err = "";
-    doctor = [];
     opening = true;
     try {
       await applyStatus(await api.open(path));

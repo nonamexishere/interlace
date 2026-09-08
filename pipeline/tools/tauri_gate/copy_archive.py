@@ -15,7 +15,8 @@ copy-file-menu, copy-keys-en-tr, copy-no-plugin-shell,
 copy-no-zip-icloud, copy-d24, keep-274-reveal, keep-266-cancel,
 keep-130-file, copy-opening-overlay, copy-dest-drop-shm,
 keep-136-doctor-full, copy-recheck-after-picker, copy-in-progress,
-copy-dest-rollback, copy-open-refuses, copy-second-walk-cas.
+copy-dest-rollback, copy-open-refuses, copy-second-walk-cas,
+copy-import-recheck-take, copy-openpath-keep-doctor.
 """
 from __future__ import annotations
 
@@ -926,6 +927,64 @@ def _non_owner_clears_flag(own: str, rust: str, flag: str) -> bool:
     return bool(clear_rx.search(helpers))
 
 
+_IMPORT_TAKE = re.compile(r"\b(?:slot\s*\.\s*)?take\s*\(")
+_SLOW_BEFORE_TAKE = re.compile(
+    r"\b(?:plan_import|list_whatsapp_zips|ImporterRegistry\s*::\s*detect)\s*\("
+)
+_OPENPATH_DOCTOR_CLEAR = re.compile(r"\bdoctor\s*=\s*\[\s*\]")
+_IMMEDIATE_TAKE_CHARS = 480
+
+
+def _last_take_pos(own: str) -> int:
+    """Index of last slot.take() / .take( in own, else -1."""
+    last = -1
+    for m in _IMPORT_TAKE.finditer(own):
+        last = m.start()
+    return last
+
+
+def _take_host_body(own: str, rust: str) -> str:
+    """Own body, or the callee that actually take()s Archive."""
+    if _last_take_pos(_without_comments(own)) >= 0:
+        return own
+    for name in re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", own):
+        inner = _rust_function_body(rust, name)
+        if inner and _last_take_pos(_without_comments(inner)) >= 0:
+            return inner
+    return own
+
+
+def _window_immediately_before_take(own: str) -> str:
+    """Suffix immediately before take() — after plan_import, not the fn head."""
+    own_c = _without_comments(own)
+    take_at = _last_take_pos(own_c)
+    if take_at < 0:
+        return ""
+    start = max(0, take_at - _IMMEDIATE_TAKE_CHARS)
+    last_slow = -1
+    for m in _SLOW_BEFORE_TAKE.finditer(own_c[:take_at]):
+        last_slow = m.end()
+    if last_slow >= start:
+        start = last_slow
+    return own_c[start:take_at]
+
+
+def _refuses_copying_immediately_before_take(
+    own: str, rust: str, flag: str
+) -> bool:
+    """True when a copying refuse sits immediately before take() / slot.take()."""
+    host = _take_host_body(own, rust)
+    window = _window_immediately_before_take(host)
+    if not window.strip():
+        return False
+    return _has_copying_refuse(window, rust, flag)
+
+
+def _openpath_clears_doctor(body: str) -> bool:
+    """True when openPath assigns doctor = [] (setup / leave-archive stay ok)."""
+    return bool(_OPENPATH_DOCTOR_CLEAR.search(_without_comments(body)))
+
+
 def assert_copy_archive_to(crate: Path) -> None:
     """#320: Copy archive to… — rfd dest in Rust, backup-unit copy.
 
@@ -934,6 +993,8 @@ def assert_copy_archive_to(crate: Path) -> None:
     File → Open dest must not unmount Doctor; dest shm is dropped after copy.
     After dest picker: re-read import/root, copy-in-progress bit, dest rollback.
     open / init refuse copying before dropping archive; second walk CAS.
+    import_start re-checks copying immediately before take(); openPath
+    does not wipe doctor.
     """
     doctor_path = crate / "web" / "lib" / "DoctorPane.svelte"
     if not doctor_path.is_file():
@@ -1579,4 +1640,30 @@ def assert_copy_archive_to(crate: Path) -> None:
         fail(
             f"{_ISSUE}: only the owner Drop may clear the copy-in-progress "
             "bit (a second walk must not see the first Drop reset it)"
+        )
+
+    # 25) copy-import-recheck-take — refuse copying immediately before take().
+    # Check 21 only requires a refuse somewhere before .take( — top-of-fn
+    # then plan_import then take() still passes. This lock requires the
+    # refuse in the same region as take() (after plan_import / detect).
+    import_own = _rust_function_body(rust, "import_start")
+    if not _refuses_copying_immediately_before_take(import_own, rust, flag):
+        fail(
+            f"{_ISSUE}: import_start must refuse the copy-in-progress flag "
+            "immediately before take() (a top-of-function check only is not "
+            "enough — re-check after plan_import / before slot.take())"
+        )
+
+    # 26) copy-openpath-keep-doctor — dest Open must not wipe Doctor.
+    open_path = _fn(app_src, "openPath")
+    if not open_path.strip():
+        fail(
+            f"{_ISSUE}: openPath required (must not assign doctor = [] "
+            "before api.open — dest Open keeps the previous scan)"
+        )
+    if _openpath_clears_doctor(open_path):
+        fail(
+            f"{_ISSUE}: openPath must not assign doctor = [] "
+            "(dest Open keeps the previous scan; clear doctor only when "
+            "leaving the archive / setup)"
         )
