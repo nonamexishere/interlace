@@ -89,6 +89,7 @@ export const tr: ChromePack = {
   inspector: "İnceleyici",
   identities: "Kimlikler",
   lastActivity: "Son etkinlik",
+  inThisGroup: "Bu grupta",
   findInThread: "Sohbette bul",
   jumpToDay: "Güne git",
   latest: "En yeni",

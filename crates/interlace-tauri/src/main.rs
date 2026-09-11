@@ -30,8 +30,8 @@ use crate::ipc::{
 };
 use crate::menu::native_menu;
 use crate::people_cmd::{
-    link_events, person_conversations_cmd, person_merge_cmd, person_show, person_timeline,
-    person_undo_cmd, person_unlink_cmd,
+    conversation_participants_cmd, link_events, person_conversations_cmd, person_merge_cmd,
+    person_show, person_timeline, person_undo_cmd, person_unlink_cmd,
 };
 
 #[derive(Clone, Default, serde::Serialize)]
@@ -214,6 +214,7 @@ fn main() {
             person_show,
             person_timeline,
             person_conversations_cmd,
+            conversation_participants_cmd,
             person_merge_cmd,
             person_unlink_cmd,
             person_undo_cmd,

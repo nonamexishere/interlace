@@ -1,8 +1,8 @@
 //! Person show / timeline / merge / undo IPC. `people` stays in main.rs (#265).
 
 use interlace_core::people::{
-    person_conversations, person_display_name, person_identities, person_timeline_rows_for,
-    recent_link_events,
+    conversation_participant_names, person_conversations, person_display_name, person_identities,
+    person_timeline_rows_for, recent_link_events,
 };
 use interlace_core::{person_merge, person_undo, person_unlink, PersonMergeOpts};
 
@@ -44,6 +44,17 @@ pub(crate) fn person_timeline(
         )
         .map_err(err)?;
         serde_json::to_value(rows).map_err(err)
+    })
+}
+
+#[tauri::command]
+pub(crate) fn conversation_participants_cmd(
+    state: tauri::State<AppState>,
+    conversation_id: i64,
+) -> Result<serde_json::Value, String> {
+    with_arch(&state, |arch| {
+        serde_json::to_value(conversation_participant_names(arch, conversation_id).map_err(err)?)
+            .map_err(err)
     })
 }
 

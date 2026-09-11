@@ -1,6 +1,13 @@
 <script lang="ts">
   import { fly } from "svelte/transition";
-  import type { Identity, Person } from "./api";
+  import {
+    api,
+    type ConversationParticipantName,
+    type Identity,
+    type Person,
+    type PersonConversation,
+    type TimelineRow,
+  } from "./api";
   import { humanTime } from "./formatTime";
   import { Button } from "$lib/components/ui/button/index.js";
   import { t } from "$lib/i18n";
@@ -14,6 +21,10 @@
     identities,
     selectedId,
     includeGroups = $bindable(false),
+    selectedConversationId = null as number | null,
+    timeline = [] as TimelineRow[],
+    conversations = [] as PersonConversation[],
+    tlIndex = 0,
     personById,
     onMerge,
     onUnlink,
@@ -25,11 +36,62 @@
     identities: Identity[];
     selectedId: number | null;
     includeGroups?: boolean;
+    selectedConversationId?: number | null;
+    timeline?: TimelineRow[];
+    conversations?: PersonConversation[];
+    tlIndex?: number;
     personById: (id: number | null) => Person | undefined;
     onMerge: () => void;
     onUnlink: (id: number) => void;
     onReloadPerson: (includeGroups: boolean) => void;
   } = $props();
+
+  let participants = $state<ConversationParticipantName[]>([]);
+  let conversation_kind = $state("");
+  let loadGen = 0;
+
+  async function loadGroupParticipants() {
+    const gen = ++loadGen;
+    if (!includeGroups) {
+      if (gen !== loadGen) return;
+      participants = [];
+      conversation_kind = "";
+      return;
+    }
+    let cid: number | null = null;
+    if (selectedConversationId != null) {
+      const conv = conversations.find((c) => c.id === selectedConversationId);
+      const hit = timeline.find((r) => r.conversation_id === selectedConversationId);
+      if (conv?.kind === "group" || hit?.conversation_kind === "group") {
+        cid = selectedConversationId;
+      }
+    } else {
+      const row = timeline[tlIndex];
+      if (row?.conversation_kind === "group") cid = row.conversation_id;
+    }
+    if (gen !== loadGen) return;
+    conversation_kind = cid != null ? "group" : "";
+    if (cid == null) {
+      participants = [];
+      return;
+    }
+    try {
+      const names = await api.conversationParticipants(cid);
+      if (gen !== loadGen) return;
+      participants = names;
+    } catch {
+      if (gen !== loadGen) return;
+      participants = [];
+    }
+  }
+
+  $effect(() => {
+    void selectedConversationId;
+    void timeline;
+    void conversations;
+    void tlIndex;
+    void loadGroupParticipants();
+  });
 </script>
 
 {#if showPersonChrome}
@@ -72,5 +134,13 @@
       </li>
     {/each}
   </ul>
+  {#if includeGroups && conversation_kind === "group"}
+    <p class="text-xs font-medium">{t("inThisGroup")}</p>
+    <ul data-group-participants class="space-y-1 text-sm text-muted-foreground">
+      {#each participants as participant}
+        <li>{participant.display_name || participant.value}</li>
+      {/each}
+    </ul>
+  {/if}
 </aside>
 {/if}

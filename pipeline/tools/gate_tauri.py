@@ -192,6 +192,7 @@ def main() -> None:
     assert_custom_titlebar(crate)
     assert_people_sidebar_collapse(crate)
     assert_person_inspector(crate)
+    assert_group_inspector_names(crate)
     assert_keyboard_list_arrows(crate)
     assert_command_palette(crate)
     assert_command_palette_people_cap(crate)

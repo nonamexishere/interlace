@@ -11,7 +11,9 @@ use crate::db::Archive;
 use crate::model::CoreError;
 
 pub use attach::{attachments_for, complete_attachments, extract_attached_filenames};
-pub use list::{merge_targets, person_display_name, person_identities};
+pub use list::{
+    conversation_participant_names, merge_targets, person_display_name, person_identities,
+};
 pub use timeline::{person_conversations, person_timeline_rows, person_timeline_rows_for};
 
 #[derive(Debug, Clone, Serialize)]
@@ -32,6 +34,14 @@ pub struct PersonIdentity {
     pub kind: String,
     pub value: String,
     pub display_name: Option<String>,
+}
+
+/// Identity name on one conversation (`conversation_participants` ⨝ `identities`).
+#[derive(Debug, Clone, Serialize)]
+pub struct ConversationParticipantName {
+    pub identity_id: i64,
+    pub display_name: Option<String>,
+    pub value: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

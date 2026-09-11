@@ -61,6 +61,12 @@ export type PersonConversation = {
   last_at?: string | null;
 };
 
+export type ConversationParticipantName = {
+  identity_id: number;
+  display_name?: string | null;
+  value: string;
+};
+
 export type LinkEvent = {
   id: number;
   ts: string;
@@ -185,6 +191,10 @@ export const api = {
   }) => invoke<TimelineRow[]>("person_timeline", args),
   personConversations: (args: { id: number; includeGroups: boolean }) =>
     invoke<PersonConversation[]>("person_conversations_cmd", args),
+  conversationParticipants: (conversationId: number) =>
+    invoke<ConversationParticipantName[]>("conversation_participants_cmd", {
+      conversationId,
+    }),
   merge: (a: number, b: number, keep: number) =>
     invoke<{ survivor: number; event_id: number }>("person_merge_cmd", {
       a,
