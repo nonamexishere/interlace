@@ -228,9 +228,9 @@ pub fn review_census(archive: &Archive) -> Result<ReviewCensus, CoreError> {
         // merged survivor (same pid in both SELECTs) is still a live cluster.
         let live_pair = wa.iter().any(|(left_pid, _, left_name)| {
             name_fold_join(left_name) == wa_fold
-                && contacts.iter().any(|(c_pid, c_name)| {
-                    *c_pid != *left_pid && name_fold_join(c_name) == wa_fold
-                })
+                && contacts
+                    .iter()
+                    .any(|(c_pid, c_name)| *c_pid != *left_pid && name_fold_join(c_name) == wa_fold)
         });
         if !live_pair {
             continue;
