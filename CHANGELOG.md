@@ -13,6 +13,7 @@ unsigned **`app-v0.1.2`**.
 
 ### Added
 
+- `--preserve-raw` on `import gmail` and `import takeout` (default off) stores unescaped rfc822 in CAS. Raw mail can add several gigabytes of disk.
 - `interlace review census --json` prints count-only matcher diagnostics (no names).
 - Inspector lists group participant names when include groups is on (DMs do not).
 - Doctor GC confirm names reclaimable unused CAS bytes before delete.

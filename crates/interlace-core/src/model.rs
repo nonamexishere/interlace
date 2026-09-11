@@ -315,6 +315,9 @@ pub struct ImportOpts {
     pub phone_region: Option<String>,
     /// When set, `run_import` / heartbeat / `maybe_commit` stop cooperatively.
     pub cancel: Option<ImportCancel>,
+    /// When true, `cas_put` the unescaped rfc822 and set `messages.raw_cas_hash`.
+    /// Default off: raw mail can add several gigabytes of disk.
+    pub preserve_raw: bool,
 }
 
 impl Default for ImportOpts {
@@ -326,6 +329,7 @@ impl Default for ImportOpts {
             max_bytes: 60 * 1024 * 1024 * 1024,
             phone_region: None,
             cancel: None,
+            preserve_raw: false,
         }
     }
 }

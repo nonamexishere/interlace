@@ -47,6 +47,8 @@ pub trait ImportContext {
     fn heartbeat(&mut self) -> Result<(), CoreError>;
     fn maybe_commit(&mut self) -> Result<(), CoreError>;
     fn cas_put(&mut self, bytes: &[u8], mime_hint: Option<&str>) -> Result<String, CoreError>;
+    /// After an insert, point `messages.raw_cas_hash` at a CAS blob. Duplicate persist must not call this.
+    fn set_message_raw_cas_hash(&mut self, message_id: i64, hash: &str) -> Result<(), CoreError>;
 
     /// Folded owner / self-identity names for D18-C. Default: none.
     fn owner_self_folds(&self) -> Result<Vec<String>, CoreError> {

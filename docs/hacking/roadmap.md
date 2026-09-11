@@ -4,14 +4,15 @@ Canonical in-repo copy of issue **#52**. Work top-down. One issue → one PR
 (`Fixes #N`). How we work: [pipeline.md](pipeline.md) (researcher → test-author → impl →
 reviewer; parent chat sequences those roles as separate agents; CI is the gate).
 
-Do **not** start Phase 1.1 (#57–#69) or Phase 3/4 (#72–#82) unprompted.
+Do **not** start Phase 1.1 (#57–#69), Phase 3 export (#72–#75), or
+Phase 4 **#80–#82** unprompted. Phase 4 **#79** is PR **#359**.
 Phase 2.1 is **done**. Phase 2.2 polish is **done**. Phase 2.3 coding is **done**.
 
 ## Now
 
 | What | Notes |
 | --- | --- |
-| Phase 2.3 | Epic [#264](https://github.com/nonamexishere/interlace/issues/264) / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8) **closed**. Coding done. **#303–#322** / **#342** done (PRs **#323–#328**, **#330**, **#332**, **#336**, **#338**, **#340**, **#343**, **#345**, **#347**, **#349**, **#351**, **#353**, **#355**, **#356**, **#357**, **#358**). Next coding is a **#342** follow-up ((a) enqueue more review, (b) Review UX, (c) parked signals) only if asked. Parked dogfood UI is empty unless Mustafa opens a new one. Line count is not a CI gate. First notarized `app-v*` is not cut. Do not start 1.1 / 3 / 4. Ask before the first notarized `app-v*`. |
+| Phase 4 | Epic [#56](https://github.com/nonamexishere/interlace/issues/56) **started**. **#79** is PR **#359** (`--preserve-raw`, default off; 0002 index + transactional migrate; CI green). Next **#80** only if asked. #81 / #82 stay until picked. Do not start 1.1 / Phase 3 export unprompted. |
 | Phase 2.2 | Epic [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7). Normative [`UI-DESIGN.md`](../design/UI-DESIGN.md). **Done** (#198–#222 / PRs #225–#262). |
 | Desktop app | **`app-v0.1.2` shipped** ([release](https://github.com/nonamexishere/interlace/releases/tag/app-v0.1.2)). Ask before another `app-v*`. |
 | crates.io | Published **0.1.1**. Do not `cargo publish` / `v*` without asking. |
@@ -35,9 +36,9 @@ Same CLI, not a new product. Do not start until chosen.
 
 #72 export jsonl · #73 export mbox · #74 export media-zip · #75 schema_epoch · #76 Telegram · #77 iMessage spike · #78 Windows+Linux CLI.
 
-## Parked — Phase 4 — epic [#56](https://github.com/nonamexishere/interlace/issues/56)
+## Phase 4 — epic [#56](https://github.com/nonamexishere/interlace/issues/56)
 
-#79 `--preserve-raw` · #80 photo pHash · #81 behavioral echo · #82 tokenizer / Tantivy if needed.
+**#79** `--preserve-raw` — PR **#359** (default off). Next **#80** photo pHash only if asked. Parked until picked: #81 behavioral echo · #82 tokenizer / Tantivy if needed.
 
 ## Intentionally not on the road
 

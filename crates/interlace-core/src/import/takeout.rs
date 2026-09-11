@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
 use super::contacts::{import_csv_file, import_vcf_file, import_vcf_text};
-use super::gmail::import_mbox_file;
+use super::gmail::{import_mbox_file, PRESERVE_RAW_SIZE_WARN};
 use super::{ImportContext, SourceImporter};
 use crate::cas::validate_zip_entry_name;
 use crate::model::*;
@@ -85,7 +85,7 @@ impl SourceImporter for TakeoutImporter {
                 let zips = collect_takeout_zips(path)?;
                 assert_disjoint_zips(&zips)?;
                 for z in zips {
-                    import_takeout_zip(ctx, &z, self.opts.max_bytes)?;
+                    import_takeout_zip(ctx, &z, self.opts.max_bytes, self.opts.preserve_raw)?;
                 }
             } else {
                 let root = if path.join("Takeout").is_dir() {
@@ -93,20 +93,30 @@ impl SourceImporter for TakeoutImporter {
                 } else {
                     path.to_path_buf()
                 };
-                import_takeout_tree(ctx, &root)?;
+                import_takeout_tree(ctx, &root, self.opts.preserve_raw)?;
             }
         } else {
-            import_takeout_zip(ctx, path, self.opts.max_bytes)?;
+            import_takeout_zip(ctx, path, self.opts.max_bytes, self.opts.preserve_raw)?;
         }
-        ctx.warn(Warning {
-            severity: Severity::Warn,
-            locator: path.display().to_string(),
-            kind: "takeout_raw".into(),
-            detail: "Phase 1 does not store raw rfc822 in CAS. Deleting the Takeout dump \
-                     loses bit-perfect originals. --preserve-raw is Phase 2 (default off)."
-                .into(),
-            raw_excerpt: None,
-        })?;
+        if self.opts.preserve_raw {
+            ctx.warn(Warning {
+                severity: Severity::Warn,
+                locator: path.display().to_string(),
+                kind: "preserve_raw_size".into(),
+                detail: PRESERVE_RAW_SIZE_WARN.into(),
+                raw_excerpt: None,
+            })?;
+        } else {
+            ctx.warn(Warning {
+                severity: Severity::Warn,
+                locator: path.display().to_string(),
+                kind: "takeout_raw".into(),
+                detail: "Deleting the Takeout dump loses bit-perfect raw rfc822. \
+                         Keep the dump if you want the originals."
+                    .into(),
+                raw_excerpt: None,
+            })?;
+        }
         Ok(ImportStats::default())
     }
 }
@@ -247,7 +257,11 @@ fn logical_takeout_path(name: &str) -> String {
     }
 }
 
-fn import_takeout_tree(ctx: &mut dyn ImportContext, root: &Path) -> Result<(), CoreError> {
+fn import_takeout_tree(
+    ctx: &mut dyn ImportContext,
+    root: &Path,
+    preserve_raw: bool,
+) -> Result<(), CoreError> {
     let mail = root.join("Mail");
     if mail.is_dir() {
         for e in fs::read_dir(&mail)? {
@@ -257,7 +271,13 @@ fn import_takeout_tree(ctx: &mut dyn ImportContext, root: &Path) -> Result<(), C
                 .map(|s| s.eq_ignore_ascii_case("mbox"))
                 == Some(true)
             {
-                import_mbox_file(ctx, &p, &p.display().to_string(), 60 * 1024 * 1024 * 1024)?;
+                import_mbox_file(
+                    ctx,
+                    &p,
+                    &p.display().to_string(),
+                    60 * 1024 * 1024 * 1024,
+                    preserve_raw,
+                )?;
             }
         }
     }
@@ -293,6 +313,7 @@ fn import_takeout_zip(
     ctx: &mut dyn ImportContext,
     path: &Path,
     max_bytes: u64,
+    preserve_raw: bool,
 ) -> Result<(), CoreError> {
     let names = list_zip_names(path)?;
     let mut seen: HashSet<String> = HashSet::new();
@@ -320,7 +341,7 @@ fn import_takeout_zip(
         let lower = logical.to_ascii_lowercase();
         if lower.ends_with(".mbox") {
             let spill = spill_entry(ctx, path, n, max_bytes)?;
-            import_mbox_file(ctx, &spill, &logical, max_bytes)?;
+            import_mbox_file(ctx, &spill, &logical, max_bytes, preserve_raw)?;
         } else if lower.ends_with(".vcf") || lower.ends_with(".vcard") {
             let bytes = read_zip_entry(path, n, max_bytes)?;
             let text = String::from_utf8_lossy(&bytes).into_owned();

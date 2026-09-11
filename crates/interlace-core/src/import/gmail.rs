@@ -12,6 +12,10 @@ mod persist;
 
 pub(crate) const HEADER_CAP: usize = 1024 * 1024;
 
+/// Emitted when `--preserve-raw` is on; not the Takeout dump-deletion warning.
+pub(crate) const PRESERVE_RAW_SIZE_WARN: &str = "Preserving raw rfc822 stores a copy of each \
+message in CAS and can add several gigabytes of disk.";
+
 #[derive(Default)]
 pub struct GmailMboxImporter {
     pub opts: ImportOpts,
@@ -57,7 +61,22 @@ impl SourceImporter for GmailMboxImporter {
     }
 
     fn import(&self, path: &Path, ctx: &mut dyn ImportContext) -> Result<ImportStats, CoreError> {
-        import_mbox_file(ctx, path, &path.display().to_string(), self.opts.max_bytes)?;
+        if self.opts.preserve_raw {
+            ctx.warn(Warning {
+                severity: Severity::Warn,
+                locator: path.display().to_string(),
+                kind: "preserve_raw_size".into(),
+                detail: PRESERVE_RAW_SIZE_WARN.into(),
+                raw_excerpt: None,
+            })?;
+        }
+        import_mbox_file(
+            ctx,
+            path,
+            &path.display().to_string(),
+            self.opts.max_bytes,
+            self.opts.preserve_raw,
+        )?;
         Ok(ImportStats::default())
     }
 }
@@ -67,6 +86,7 @@ pub fn import_mbox_file(
     path: &Path,
     locator: &str,
     max_bytes: u64,
+    preserve_raw: bool,
 ) -> Result<(), CoreError> {
     let meta = fs::metadata(path)?;
     if meta.len() > max_bytes {
@@ -77,13 +97,14 @@ pub fn import_mbox_file(
         )));
     }
     let bytes = fs::read(path)?;
-    import_mbox_bytes(ctx, &bytes, locator)
+    import_mbox_bytes(ctx, &bytes, locator, preserve_raw)
 }
 
 pub fn import_mbox_bytes(
     ctx: &mut dyn ImportContext,
     bytes: &[u8],
     locator: &str,
+    preserve_raw: bool,
 ) -> Result<(), CoreError> {
     let ckpt = ctx.load_checkpoint("mbox_file_offset")?;
     let resume_off = ckpt
@@ -108,7 +129,7 @@ pub fn import_mbox_bytes(
         if (rec.start as u64) < resume_off {
             continue;
         }
-        match persist::persist_rfc822(ctx, rec.raw, locator, rec.start) {
+        match persist::persist_rfc822(ctx, rec.raw, locator, rec.start, preserve_raw) {
             Ok(()) => {}
             Err(CoreError::Parse(e)) => {
                 ctx.warn(Warning {

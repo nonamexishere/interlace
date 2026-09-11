@@ -367,4 +367,12 @@ impl ImportContext for DbImportContext<'_> {
         self.cas_since += bytes.len() as u64;
         Ok(h)
     }
+
+    fn set_message_raw_cas_hash(&mut self, message_id: i64, hash: &str) -> Result<(), CoreError> {
+        self.archive.conn.execute(
+            "UPDATE messages SET raw_cas_hash = ?1 WHERE id = ?2 AND raw_cas_hash IS NULL",
+            rusqlite::params![hash, message_id],
+        )?;
+        Ok(())
+    }
 }

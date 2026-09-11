@@ -40,6 +40,7 @@ pub(super) fn cmd_import(path: Option<PathBuf>, source: ImportCmd) -> Result<(),
             file,
             resume,
             max_bytes,
+            preserve_raw,
         } => {
             let kind = if file.is_dir() {
                 SourceKind::TakeoutDir
@@ -52,6 +53,7 @@ pub(super) fn cmd_import(path: Option<PathBuf>, source: ImportCmd) -> Result<(),
                 ImportOpts {
                     resume_run_id: resume,
                     max_bytes,
+                    preserve_raw,
                     ..ImportOpts::default()
                 },
             )
@@ -60,12 +62,14 @@ pub(super) fn cmd_import(path: Option<PathBuf>, source: ImportCmd) -> Result<(),
             file,
             resume,
             max_bytes,
+            preserve_raw,
         } => (
             SourceKind::GmailMbox,
             file,
             ImportOpts {
                 resume_run_id: resume,
                 max_bytes,
+                preserve_raw,
                 ..ImportOpts::default()
             },
         ),
@@ -86,11 +90,15 @@ pub(super) fn cmd_import(path: Option<PathBuf>, source: ImportCmd) -> Result<(),
     println!("probing… {kind:?}");
     let stats = arch.run_import(kind, &file, &opts)?;
     print_stats(&stats);
-    if matches!(kind, SourceKind::TakeoutDir | SourceKind::TakeoutZip) {
+    if opts.preserve_raw {
         eprintln!(
-            "warning: Phase 1 stores decoded text + attachments only. Keep your Takeout \
-dump if you want bit-perfect rfc822. Deleting it cannot be undone.\n\
-(--preserve-raw arrives in Phase 2, default off.)"
+            "warning: --preserve-raw stores a copy of each message in CAS and can add \
+several gigabytes of disk."
+        );
+    } else if matches!(kind, SourceKind::TakeoutDir | SourceKind::TakeoutZip) {
+        eprintln!(
+            "warning: Keep your Takeout dump if you want bit-perfect rfc822. \
+Deleting it cannot be undone."
         );
     }
     Ok(())

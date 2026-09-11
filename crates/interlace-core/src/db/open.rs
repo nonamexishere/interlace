@@ -220,6 +220,16 @@ impl Archive {
                 issues.push(format!("CAS blob missing: {h}"));
             }
         }
+        let mut stmt = self
+            .conn
+            .prepare("SELECT DISTINCT raw_cas_hash FROM messages WHERE raw_cas_hash IS NOT NULL")?;
+        let hashes = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        for h in hashes {
+            let h = h?;
+            if self.cas_get(&h).is_err() {
+                issues.push(format!("CAS blob missing: {h}"));
+            }
+        }
         Ok(issues)
     }
 
