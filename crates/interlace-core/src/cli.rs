@@ -111,6 +111,7 @@ enum Commands {
     Doctor {
         #[arg(long = "rebuild-fts")]
         rebuild_fts: bool,
+        /// Delete unreferenced CAS files (`interlace doctor --gc-cas`)
         #[arg(long = "gc-cas")]
         gc_cas: bool,
         #[arg(long)]

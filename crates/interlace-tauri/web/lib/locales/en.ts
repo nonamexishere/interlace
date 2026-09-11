@@ -72,6 +72,8 @@ export const en = {
   gcUnusedCas: "Garbage-collect unused CAS files?",
   gcUnusedCasDesc:
     "Deletes blobs not referenced by attachments or contact photos. Cannot undo. Close other writers first.",
+  gcUnusedCasBytes:
+    "About {n} of unused CAS files will be deleted. Cannot undo. Close other writers first.",
   deleteUnused: "Delete unused",
   casGcFinished: "CAS GC finished.",
   copyText: "Copy text",

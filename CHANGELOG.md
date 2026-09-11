@@ -13,6 +13,7 @@ unsigned **`app-v0.1.2`**.
 
 ### Added
 
+- Doctor GC confirm names reclaimable unused CAS bytes before delete.
 - Copy archive to… from Doctor Backup and File (empty local folder; dest Opens).
 - Compact Search date presets (7 days / 30 days / this year / Any) fill the date filters in the Mac timezone.
 - Leave Search and come back in the same session keeps the last query; hits refresh once.

@@ -56,6 +56,38 @@
     }
   }
 
+  function formatSi(n: number): string {
+    const units = ["B", "KB", "MB", "GB"];
+    if (n === 0) return "0 B";
+    let v = n;
+    let i = 0;
+    while (v >= 1000 && i < units.length - 1) {
+      v /= 1000;
+      i += 1;
+    }
+    return (v % 1 === 0 ? String(v) : v.toFixed(1)) + " " + units[i];
+  }
+
+  async function estimateThenAsk() {
+    busy = true;
+    let desc = t("gcUnusedCasDesc");
+    try {
+      const n = await api.estimateUnreferencedCasBytes();
+      desc = t("gcUnusedCasBytes").replace("{n}", formatSi(n));
+    } catch {
+      // keep today's unsized copy; GC still runnable
+    } finally {
+      busy = false;
+    }
+    ask(
+      t("gcUnusedCas"),
+      desc,
+      t("deleteUnused"),
+      { integrity: false, rebuildFts: false, gcCas: true },
+      t("casGcFinished"),
+    );
+  }
+
   function ask(
     title: string,
     description: string,
@@ -190,14 +222,7 @@
       variant="outline"
       size="sm"
       disabled={busy || scanning}
-      onclick={() =>
-        ask(
-          t("gcUnusedCas"),
-          t("gcUnusedCasDesc"),
-          t("deleteUnused"),
-          { integrity: false, rebuildFts: false, gcCas: true },
-          t("casGcFinished"),
-        )}
+      onclick={estimateThenAsk}
     >
       GC CAS
     </Button>

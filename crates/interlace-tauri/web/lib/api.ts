@@ -163,6 +163,7 @@ export const api = {
   doctorIssuesQuick: () => invoke<string[]>("doctor_issues_quick_cmd"),
   doctorRun: (args: { integrity: boolean; rebuildFts: boolean; gcCas: boolean }) =>
     invoke<string[]>("doctor_run_cmd", args),
+  estimateUnreferencedCasBytes: () => invoke<number>("estimate_unreferenced_cas_bytes"),
   casDataUrl: (hash: string) => invoke<string>("cas_data_url", { hash }),
   revealCas: (hash: string) => invoke<void>("reveal_cas", { hash }),
   openCas: (hash: string) => invoke<void>("open_cas", { hash }),

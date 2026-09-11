@@ -82,3 +82,5 @@ DROPped** (D17).
 
 `doctor --gc-cas` deletes blobs not referenced by `attachments.cas_hash` or
 `contacts_raw.photo_cas_hash`. Do not GC from `refcount==0` alone.
+The in-app Doctor GC confirm names reclaimable bytes before unused files
+are deleted.

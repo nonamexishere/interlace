@@ -410,6 +410,15 @@ pub(crate) fn doctor_run_cmd(
     })
 }
 
+#[tauri::command]
+pub(crate) fn estimate_unreferenced_cas_bytes(
+    state: tauri::State<AppState>,
+) -> Result<u64, String> {
+    with_arch(&state, |arch| {
+        arch.estimate_unreferenced_cas_bytes().map_err(err)
+    })
+}
+
 /// Open an http(s) URL in the OS browser. Reject every other scheme.
 #[tauri::command]
 pub(crate) fn open_url(url: String) -> Result<(), String> {
