@@ -53,7 +53,10 @@ interlace review list
 interlace review show <id>
 interlace review accept <id>
 interlace review reject <id>
+interlace review census --json
 ```
+
+`review census --json` prints count-only matcher diagnostics (no names).
 
 `review show` (CLI and Review tab) uses the same payload: the queued pair
 (`left` / `right`) plus `sides` — one panel per live person in the exact-fold
