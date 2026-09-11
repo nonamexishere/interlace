@@ -356,7 +356,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 
 ## What not to do next
 
-- Do not start Phase 3 (Telegram/iMessage/export) or Phase 4 (pHash/echo/Tantivy).
+- Do not start Phase 3 export (#72–#75) or Phase 4 #80–#82 unprompted.
 - Do not put real ZIP filenames, display names, or message text in tickets.
 - Do not `cargo publish` / tag without asking.
 - Do not require PR reviewers (solo). Reviewer **role** is still required
@@ -377,9 +377,9 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > Phase 2.3 coding is done (epic #264 / milestone 8 closed). Read
 > `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,
 > #297, #300, #303–#322, #342 done (PRs #323–#328, #330, #332, #336, #338, #340,
-> #343, #345, #347, #349, #351, #353, #355, #356, #357, #358). Next coding is a
-> #342 follow-up ((a)/(b)/(c)) only if asked. Parked dogfood UI is empty unless Mustafa opens a new one. #342 follow-up stays parked until
-> picked.
+> #343, #345, #347, #349, #351, #353, #355, #356, #357, #358). Phase 4 started:
+> #79 / PR #359. Next coding #80 only if asked. #342 follow-up is D (quiet is
+> correct).
 > Line count is not a CI gate.
 > Do not start 1.1 / P3 / P4.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
