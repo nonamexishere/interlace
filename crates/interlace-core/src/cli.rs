@@ -147,6 +147,9 @@ enum ImportCmd {
         resume: Option<i64>,
         #[arg(long = "max-bytes", default_value_t = 60 * 1024 * 1024 * 1024)]
         max_bytes: u64,
+        /// Store unescaped rfc822 in CAS (default off). Raw mail can add several gigabytes of disk.
+        #[arg(long = "preserve-raw")]
+        preserve_raw: bool,
     },
     /// Standalone Gmail mbox
     Gmail {
@@ -156,6 +159,9 @@ enum ImportCmd {
         resume: Option<i64>,
         #[arg(long = "max-bytes", default_value_t = 60 * 1024 * 1024 * 1024)]
         max_bytes: u64,
+        /// Store unescaped rfc822 in CAS (default off). Raw mail can add several gigabytes of disk.
+        #[arg(long = "preserve-raw")]
+        preserve_raw: bool,
     },
     /// Contacts vCard or CSV
     Contacts {

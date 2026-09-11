@@ -61,7 +61,18 @@ pub fn cas_get(archive: &Archive, hash: &str) -> Result<Vec<u8>, CoreError> {
     })
 }
 
-/// Delete blobs not referenced by attachments.cas_hash or contacts_raw.photo_cas_hash.
+fn cas_reference_count(archive: &Archive, hash: &str) -> Result<i64, CoreError> {
+    Ok(archive.conn.query_row(
+        "SELECT
+                (SELECT COUNT(*) FROM attachments WHERE cas_hash = ?1)
+              + (SELECT COUNT(*) FROM contacts_raw WHERE photo_cas_hash = ?1)
+              + (SELECT COUNT(*) FROM messages WHERE raw_cas_hash = ?1)",
+        [hash],
+        |r| r.get(0),
+    )?)
+}
+
+/// Delete blobs not referenced by attachments, contact photos, or messages.raw_cas_hash.
 /// Returns number of files removed. Repairs cas_blobs.refcount.
 pub fn gc_cas(archive: &Archive) -> Result<u64, CoreError> {
     let cas_root = archive.root.join("cas");
@@ -77,13 +88,7 @@ pub fn gc_cas(archive: &Archive) -> Result<u64, CoreError> {
         if parse_hash(&hash).is_err() {
             continue;
         }
-        let referenced: i64 = archive.conn.query_row(
-            "SELECT
-                (SELECT COUNT(*) FROM attachments WHERE cas_hash = ?1)
-              + (SELECT COUNT(*) FROM contacts_raw WHERE photo_cas_hash = ?1)",
-            [&hash],
-            |r| r.get(0),
-        )?;
+        let referenced = cas_reference_count(archive, &hash)?;
         if referenced == 0 {
             let _ = fs::remove_file(&entry);
             archive
@@ -100,7 +105,7 @@ pub fn gc_cas(archive: &Archive) -> Result<u64, CoreError> {
     Ok(removed)
 }
 
-/// Sum sizes of blobs not referenced by attachments or contact photos.
+/// Sum sizes of blobs not referenced by attachments, contact photos, or raw rfc822.
 /// Read-only: does not delete files or rewrite cas_blobs.
 pub fn estimate_unreferenced_cas_bytes(archive: &Archive) -> Result<u64, CoreError> {
     let cas_root = archive.root.join("cas");
@@ -116,13 +121,7 @@ pub fn estimate_unreferenced_cas_bytes(archive: &Archive) -> Result<u64, CoreErr
         if parse_hash(&hash).is_err() {
             continue;
         }
-        let referenced: i64 = archive.conn.query_row(
-            "SELECT
-                (SELECT COUNT(*) FROM attachments WHERE cas_hash = ?1)
-              + (SELECT COUNT(*) FROM contacts_raw WHERE photo_cas_hash = ?1)",
-            [&hash],
-            |r| r.get(0),
-        )?;
+        let referenced = cas_reference_count(archive, &hash)?;
         if referenced == 0 {
             bytes += fs::metadata(&path)?.len();
         }

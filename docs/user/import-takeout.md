@@ -50,8 +50,9 @@ are not separators; they lose one leading `>` when the body is read.
 | `From` `To` `Cc` `Bcc` | identities + recipients |
 | `Subject` `Date` | subject / `sent_at` (else mbox From_ date) |
 
-`--preserve-raw` is **Phase 2, default off**. Phase 1 stores decoded text +
-attachments only.
+`--preserve-raw` (default **off**) stores the unescaped rfc822 in CAS.
+Without it, Interlace stores decoded text + attachments only. Raw mail
+can add several gigabytes of disk.
 
 ## Multi-zip probe (Spike 4)
 
@@ -84,12 +85,13 @@ union. That is the only non-insert-only mail metadata write.
 
 ## `--preserve-raw`
 
-Not in Phase 1. When it lands (Phase 2) it will CAS the original rfc822; default
-stays **off**.
+`import gmail` and `import takeout` accept `--preserve-raw` (default **off**).
+When set, Interlace stores the unescaped rfc822 in CAS. This can add several
+gigabytes of disk (hundreds of thousands of messages × tens of KB).
 
-At the end of every Takeout import Interlace records a **non-blocking warning**:
-deleting the Takeout dump loses bit-perfect raw rfc822. There is no yes/no
-confirm (OQ5).
+At the end of every Takeout import without `--preserve-raw` Interlace records a
+**non-blocking warning**: deleting the Takeout dump loses bit-perfect raw rfc822.
+There is no yes/no confirm (OQ5).
 
 ## Limits
 

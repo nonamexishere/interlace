@@ -16,6 +16,7 @@ pub(super) fn persist_rfc822(
     raw: &[u8],
     locator: &str,
     offset: usize,
+    preserve_raw: bool,
 ) -> Result<(), CoreError> {
     let (from_line, rfc) = split_from_line(raw);
     let rfc = unescape_mboxrd(rfc);
@@ -109,7 +110,13 @@ pub(super) fn persist_rfc822(
         labels: labels.clone(),
     })?;
     let message_id_row = match outcome {
-        PersistOutcome::Inserted { message_id } => message_id,
+        PersistOutcome::Inserted { message_id } => {
+            if preserve_raw {
+                let hash = ctx.cas_put(&rfc, Some("message/rfc822"))?;
+                ctx.set_message_raw_cas_hash(message_id, &hash)?;
+            }
+            message_id
+        }
         PersistOutcome::Duplicate { message_id } => {
             if !labels.is_empty() {
                 ctx.persist_labels(message_id, &labels)?;
