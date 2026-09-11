@@ -1,7 +1,7 @@
 # Agent / session handoff
 
 **Date:** 2026-09-11. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
-HEAD this PR **#358** / #342.
+HEAD this PR **#359** / #79.
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -45,9 +45,9 @@ Children **#265–#279**, **#297**, **#300** (PRs **#282–#301**) are done.
 **#317**, **#318**, **#319**, **#320**, **#321**, **#322**, and **#342**
 are done (PRs **#323–#328**,
 **#330**, **#332**, **#336**, **#338**, **#340**, **#343**, **#345**,
-**#347**, **#349**, **#351**, **#353**, **#355**, **#356**, **#357**, **#358**). Next coding is a
-**#342** follow-up ((a) enqueue more review, (b) Review UX, or (c) parked
-signals) only if asked. Do
+**#347**, **#349**, **#351**, **#353**, **#355**, **#356**, **#357**, **#358**).
+Phase 4 started: **#79** is this PR **#359**. Next coding **#80** only if
+asked. Do
 not start 1.1 / 3 / 4.
 Line count is **not** a CI gate (dropped in #316); split later if a
 file gets messy.
@@ -104,14 +104,14 @@ for the *next* `app-v*` tag; that tag is **not** cut. Ask before another
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: this PR **#358** / #342 (`feat/review-quiet`).
+HEAD when this was rewritten: this PR **#359** / #79 (`feat/preserve-raw`).
 After merge, `git log -1` / `gh pr list`.
 Tag **`app-v0.1.2`** (last shipped; still unsigned).
 Epic **#108**, milestone 6, the Phase 1 CLI milestone, Phase 2.2 (#197),
 and Phase **2.3** (epic **#264** / milestone 8) are **closed**.
 #265–#279 / #297 / #300 / #303–#322 / #342 (PRs #282–#301 / #323–#328 / #330 /
 #332 / #336 / #338 / #340 / #343 / #345 / #347 / #349 / #351 / #353 /
-#355 / #356 / #357 / #358) done.
+#355 / #356 / #357 / #358) done. Phase 4 **#79** / PR **#359** in flight.
 First notarized `app-v*` is not cut.
 Re-check with `git log -1` / `gh pr list`.
 
@@ -263,6 +263,7 @@ Phase 2.1 milestone (#6): **closed**.
 | #321 / PR #356 | Doctor GC confirm names reclaimable unused CAS bytes |
 | #322 / PR #357 | Inspector lists group participant names (include groups on) |
 | #342 / PR #358 | Count-only `review census`; names never auto-merge |
+| #79 / PR #359 | `--preserve-raw` Gmail/Takeout rfc822 in CAS (default off) |
 
 ## Open — product now
 
@@ -276,12 +277,10 @@ names helpers, files, and must-IDs.
 
 ### Suggested next
 
-1. **#342** measure-first is done (PR **#358**). Next coding is a
-   **#342** follow-up only if asked: (a) enqueue more review rows,
-   (b) Review-tab UX, or (c) parked review-only signals. Do not
-   invent a new 2.3 ticket. Parked dogfood UI is empty unless
-   Mustafa opens a new one.
-2. Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*` tag.
+1. **#79** is this PR **#359**. Next coding **#80** (photo pHash)
+   only if asked. Do not start #81 / #82 / 1.1 / Phase 3 export
+   unprompted. #342 follow-up is **D** (quiet is correct).
+2. Ask before the first notarized `app-v*` tag.
 
 Phase 2.3 archive: [#264](https://github.com/nonamexishere/interlace/issues/264) / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8).
 Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7).
@@ -295,11 +294,9 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 
 ## Recommended next steps
 
-1. #303–#322 / #342 are done (PRs #323–#328, #330, #332, #336, #338, #340,
-   #343, #345, #347, #349, #351, #353, #355, #356, #357, #358). Next coding
-   is a **#342** follow-up ((a)/(b)/(c)) only if asked. Parked dogfood UI
-   is empty unless Mustafa opens a new one.
-2. Phase 2.3 coding is done. Do not start 1.1 / P3 / P4.
+1. #303–#322 / #342 are done. Phase 4 started: **#79** / PR **#359**.
+   Next coding **#80** only if asked. #342 follow-up is **D**.
+2. Do not start 1.1 / Phase 3 export / #81 / #82 unprompted.
 3. Last shipped app tag is **`app-v0.1.2`** (unsigned). Workflow can
    Developer ID + notarize the next `app-v*` once Apple secrets exist.
    Ask before another `app-v*` / `v*` / crates.io.
