@@ -219,14 +219,19 @@ pub fn review_census(archive: &Archive) -> Result<ReviewCensus, CoreError> {
     let mut exact_fold_clusters_rejected = 0i64;
     let mut exact_fold_clusters_never_enqueued = 0i64;
     let mut seen_folds = HashSet::new();
-    for (wa_pid, _wa_iid, wa_name) in &wa {
+    for (_wa_pid, _wa_iid, wa_name) in &wa {
         let wa_fold = name_fold_join(wa_name);
         if wa_fold.is_empty() || !seen_folds.insert(wa_fold.clone()) {
             continue;
         }
-        let live_pair = contacts
-            .iter()
-            .any(|(c_pid, c_name)| *c_pid != *wa_pid && name_fold_join(c_name) == wa_fold);
+        // Whole WA × Contacts sets: a leftover same-fold WA person beside a
+        // merged survivor (same pid in both SELECTs) is still a live cluster.
+        let live_pair = wa.iter().any(|(left_pid, _, left_name)| {
+            name_fold_join(left_name) == wa_fold
+                && contacts.iter().any(|(c_pid, c_name)| {
+                    *c_pid != *left_pid && name_fold_join(c_name) == wa_fold
+                })
+        });
         if !live_pair {
             continue;
         }

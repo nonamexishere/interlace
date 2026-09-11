@@ -423,6 +423,78 @@ fn review_census_never_enqueued_without_resolve() {
 }
 
 #[test]
+fn review_census_leftover_wa_beside_merged_survivor_is_never_enqueued() {
+    let root = tmp_root();
+    let mut arch = init_archive(&root).unwrap();
+    persist_card(&mut arch, "card-ada", "Ada", Some("+905321110100"), None);
+    let survivor: i64 = arch
+        .conn
+        .query_row(
+            "SELECT id FROM persons WHERE display_name = 'Ada' AND tombstoned_at IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let survivor_wa = insert_ident(
+        &arch,
+        "whatsapp",
+        "display_name",
+        "Ada",
+        &name_fold_join("Ada"),
+        Some("Ada"),
+    );
+    arch.conn
+        .execute(
+            "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
+             VALUES (?1, ?2, 'manual', 1.0, 'user')",
+            rusqlite::params![survivor, survivor_wa],
+        )
+        .unwrap();
+    let leftover_iid = insert_ident(
+        &arch,
+        "whatsapp",
+        "display_name",
+        "Ada leftover",
+        "ada leftover",
+        Some("Ada"),
+    );
+    arch.conn
+        .execute(
+            "INSERT INTO persons(display_name, is_self) VALUES ('Ada', 0)",
+            [],
+        )
+        .unwrap();
+    let leftover_pid = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
+             VALUES (?1, ?2, 'manual', 1.0, 'user')",
+            rusqlite::params![leftover_pid, leftover_iid],
+        )
+        .unwrap();
+    assert_eq!(live_non_self(&arch), 2);
+    assert_eq!(count(&arch, "SELECT COUNT(*) FROM merge_review_queue"), 0);
+
+    let census = review_census(&arch).unwrap();
+    assert_eq!(census.persons_live, 2);
+    assert_eq!(census.review_open, 0);
+    assert!(
+        census.name_only_wa_exact_fold_contacts >= 1,
+        "leftover WA Ada vs Contacts Ada is still an exact-fold person hit, got {}",
+        census.name_only_wa_exact_fold_contacts
+    );
+    assert!(
+        census.exact_fold_clusters_never_enqueued >= 1,
+        "leftover same-fold WA beside a merged survivor must count as never-enqueued, got {}",
+        census.exact_fold_clusters_never_enqueued
+    );
+    assert_eq!(census.exact_fold_clusters_rejected, 0);
+    assert_context_matches_sql(&arch, &census);
+    assert_census_json_integers_no_names(&census);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn review_census_accepted_cluster_not_resurrected() {
     let root = tmp_root();
     let mut arch = init_archive(&root).unwrap();

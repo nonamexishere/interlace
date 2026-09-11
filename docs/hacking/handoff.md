@@ -281,8 +281,6 @@ names helpers, files, and must-IDs.
    (b) Review-tab UX, or (c) parked review-only signals. Do not
    invent a new 2.3 ticket. Parked dogfood UI is empty unless
    Mustafa opens a new one.
-   **#342** (why Review is quiet; do not auto-merge names) stays parked
-   until picked.
 2. Do not start 1.1 / P3 / P4. Ask before the first notarized `app-v*` tag.
 
 Phase 2.3 archive: [#264](https://github.com/nonamexishere/interlace/issues/264) / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8).
