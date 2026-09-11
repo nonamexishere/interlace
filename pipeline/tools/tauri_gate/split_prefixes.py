@@ -42,6 +42,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_bubble_search",
     "assert_reveal_archive",
     "assert_copy_archive_to",
+    "assert_gc_confirm_bytes",
     "assert_first_run",
     "assert_font_density",
     "assert_reopen_last_session",

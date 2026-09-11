@@ -155,6 +155,7 @@ def main() -> None:
     assert_bubble_search(crate)
     assert_reveal_archive(crate)
     assert_copy_archive_to(crate)
+    assert_gc_confirm_bytes(crate)
     assert_first_run(crate)
     assert_font_density(crate)
     assert_reopen_last_session(crate)

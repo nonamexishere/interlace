@@ -92,6 +92,7 @@ from tauri_gate.import_reveal import (  # noqa: E402
     assert_defer_doctor_cas,
 )
 from tauri_gate.copy_archive import assert_copy_archive_to  # noqa: E402
+from tauri_gate.gc_confirm_bytes import assert_gc_confirm_bytes  # noqa: E402
 from tauri_gate.import_doctor import (  # noqa: E402
     assert_drag_drop_import,
     assert_import_progress,

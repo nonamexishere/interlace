@@ -74,6 +74,8 @@ export const tr: ChromePack = {
   gcUnusedCas: "Kullanılmayan CAS dosyalarını çöp topla?",
   gcUnusedCasDesc:
     "Ekler veya kişi fotoğrafları tarafından başvurulmayan blob'ları siler. Geri alınamaz. Önce diğer yazıcıları kapatın.",
+  gcUnusedCasBytes:
+    "Yaklaşık {n} kullanılmayan CAS dosyası silinecek. Geri alınamaz. Önce diğer yazıcıları kapatın.",
   deleteUnused: "Kullanılmayanı sil",
   casGcFinished: "CAS GC bitti.",
   copyText: "Metni kopyala",

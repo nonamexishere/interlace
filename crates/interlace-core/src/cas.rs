@@ -100,6 +100,36 @@ pub fn gc_cas(archive: &Archive) -> Result<u64, CoreError> {
     Ok(removed)
 }
 
+/// Sum sizes of blobs not referenced by attachments or contact photos.
+/// Read-only: does not delete files or rewrite cas_blobs.
+pub fn estimate_unreferenced_cas_bytes(archive: &Archive) -> Result<u64, CoreError> {
+    let cas_root = archive.root.join("cas");
+    if !cas_root.is_dir() {
+        return Ok(0);
+    }
+    let mut bytes = 0u64;
+    for path in walk_blobs(&cas_root)? {
+        let hash = match path.file_name().and_then(|s| s.to_str()) {
+            Some(h) => h.to_string(),
+            None => continue,
+        };
+        if parse_hash(&hash).is_err() {
+            continue;
+        }
+        let referenced: i64 = archive.conn.query_row(
+            "SELECT
+                (SELECT COUNT(*) FROM attachments WHERE cas_hash = ?1)
+              + (SELECT COUNT(*) FROM contacts_raw WHERE photo_cas_hash = ?1)",
+            [&hash],
+            |r| r.get(0),
+        )?;
+        if referenced == 0 {
+            bytes += fs::metadata(&path)?.len();
+        }
+    }
+    Ok(bytes)
+}
+
 pub fn validate_zip_entry_name(name: &str) -> Result<(), CoreError> {
     let n = name.replace('\\', "/");
     if n.starts_with('/') || n.starts_with('~') {
@@ -181,5 +211,9 @@ impl Archive {
 
     pub fn gc_cas(&self) -> Result<u64, CoreError> {
         gc_cas(self)
+    }
+
+    pub fn estimate_unreferenced_cas_bytes(&self) -> Result<u64, CoreError> {
+        estimate_unreferenced_cas_bytes(self)
     }
 }

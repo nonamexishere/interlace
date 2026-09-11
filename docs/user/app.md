@@ -229,7 +229,7 @@ kind + normalized value — phone/email/display_name — under the title so a
 name-similarity card is decidable without the CLI; no raw person ids in the
 queue or confirm copy; Accept is undoable via Undo last link on the Review pane — only a user merge/link that has not already been undone, not import auto-links), **Import** (ZIP/mbox/vcf/Takeout via the
 folder picker; progress in-window; Cancel stops the import; status interrupted/failed keeps counts; another import can start after), **Doctor** (integrity / rebuild FTS / GC)
-CAS with a confirm dialog — same as the CLI, no extra window).
+CAS with a confirm dialog that names reclaimable bytes — same as the CLI, no extra window).
 Drop a local ZIP or mbox onto the window (any tab) to start import — no URLs.
 
 Empty lists, loading, lock conflicts, and doctor findings are shown as copy
