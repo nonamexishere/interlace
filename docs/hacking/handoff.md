@@ -1,7 +1,7 @@
 # Agent / session handoff
 
-**Date:** 2026-09-11. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
-HEAD this PR **#359** / #79.
+**Date:** 2026-09-12. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
+HEAD this PR **#359** / #79 (`feat/preserve-raw`, CI green).
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -46,14 +46,15 @@ Children **#265–#279**, **#297**, **#300** (PRs **#282–#301**) are done.
 are done (PRs **#323–#328**,
 **#330**, **#332**, **#336**, **#338**, **#340**, **#343**, **#345**,
 **#347**, **#349**, **#351**, **#353**, **#355**, **#356**, **#357**, **#358**).
-Phase 4 started: **#79** is this PR **#359**. Next coding **#80** only if
-asked. Do
-not start 1.1 / 3 / 4.
+Phase 4 started: **#79** is this PR **#359** (`--preserve-raw`, default
+off; fold: `idx_messages_raw_cas_hash` + transactional 0002). Next
+coding **#80** only if asked. Do not start #81 / #82 / 1.1 / Phase 3
+export unprompted. #342 follow-up is **D** (quiet is correct).
 Line count is **not** a CI gate (dropped in #316); split later if a
 file gets messy.
 Ask before the first notarized `app-v*` (#267 is wired; that tag is not cut).
 Normative:
-[`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md). Do not start 1.1 / 3 / 4.
+[`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md).
 
 Normative spec: [`docs/design/DESIGN.md`](../design/DESIGN.md).
 Roadmap index: [`docs/hacking/roadmap.md`](roadmap.md) and issue **#52**.
@@ -104,15 +105,17 @@ for the *next* `app-v*` tag; that tag is **not** cut. Ask before another
 enforce_admins, no force-push, no delete, 0 required reviewers.
 Do not flip the repo private without asking.
 
-HEAD when this was rewritten: this PR **#359** / #79 (`feat/preserve-raw`).
-After merge, `git log -1` / `gh pr list`.
+HEAD when this was rewritten: this PR **#359** / #79 (`feat/preserve-raw`,
+`37ef376`, `check` + `tauri` green). After merge, `git log -1` / `gh pr list`.
 Tag **`app-v0.1.2`** (last shipped; still unsigned).
 Epic **#108**, milestone 6, the Phase 1 CLI milestone, Phase 2.2 (#197),
 and Phase **2.3** (epic **#264** / milestone 8) are **closed**.
 #265–#279 / #297 / #300 / #303–#322 / #342 (PRs #282–#301 / #323–#328 / #330 /
 #332 / #336 / #338 / #340 / #343 / #345 / #347 / #349 / #351 / #353 /
-#355 / #356 / #357 / #358) done. Phase 4 **#79** / PR **#359** in flight.
-First notarized `app-v*` is not cut.
+#355 / #356 / #357 / #358) done. Phase 4 **#79** / PR **#359** ready to
+merge (default-off `--preserve-raw`; `messages.raw_cas_hash` + 0002
+index; GC/doctor treat that blob as referenced). First notarized
+`app-v*` is not cut.
 Re-check with `git log -1` / `gh pr list`.
 
 Live dogfood archive (`interlace --path ~/Interlace --json status`, counts only):
@@ -263,21 +266,23 @@ Phase 2.1 milestone (#6): **closed**.
 | #321 / PR #356 | Doctor GC confirm names reclaimable unused CAS bytes |
 | #322 / PR #357 | Inspector lists group participant names (include groups on) |
 | #342 / PR #358 | Count-only `review census`; names never auto-merge |
-| #79 / PR #359 | `--preserve-raw` Gmail/Takeout rfc822 in CAS (default off) |
+| #79 / PR #359 | `--preserve-raw` Gmail/Takeout rfc822 in CAS (default off; 0002 index + transactional migrate) |
 
 ## Open — product now
 
 Phase 2.3 coding is **done** (epic **#264** / milestone 8 closed). Phase 2.2
-polish (#197) is **done**. Normative
+polish (#197) is **done**. Phase 4 epic **#56** is **started** (#79 / PR
+**#359**). Normative
 [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md).
-Do **not** start Phase 1.1 (#57–#69) or Phase 3/4 (#72–#82). Prefer one
-issue → one PR; thin chrome still uses the loop when load-bearing
-(a11y, titlebar, search). Skip researcher only when the issue already
-names helpers, files, and must-IDs.
+Do **not** start Phase 1.1 (#57–#69), Phase 3 export (#72–#75), or
+Phase 4 **#80–#82** unprompted. Prefer one issue → one PR; thin chrome
+still uses the loop when load-bearing. Skip researcher only when the
+issue already names helpers, files, and must-IDs. Orchestrator does
+not implement product code.
 
 ### Suggested next
 
-1. **#79** is this PR **#359**. Next coding **#80** (photo pHash)
+1. Merge **#359** when Mustafa asks. Next coding **#80** (photo pHash)
    only if asked. Do not start #81 / #82 / 1.1 / Phase 3 export
    unprompted. #342 follow-up is **D** (quiet is correct).
 2. Ask before the first notarized `app-v*` tag.
@@ -290,12 +295,14 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 | # | Note |
 | --- | --- |
 | **#17** | Phase 1.1 umbrella — parked; not blocked; do not start children |
-| Phase 1.1 / 3 / 4 | Parked. Do not start. |
+| Phase 1.1 / 3 | Parked. Do not start. |
+| Phase 4 **#80–#82** | Parked until picked. #79 is PR #359. |
 
 ## Recommended next steps
 
-1. #303–#322 / #342 are done. Phase 4 started: **#79** / PR **#359**.
-   Next coding **#80** only if asked. #342 follow-up is **D**.
+1. #303–#322 / #342 are done. Phase 4 started: **#79** / PR **#359**
+   (CI green; merge when asked). Next coding **#80** only if asked.
+   #342 follow-up is **D**.
 2. Do not start 1.1 / Phase 3 export / #81 / #82 unprompted.
 3. Last shipped app tag is **`app-v0.1.2`** (unsigned). Workflow can
    Developer ID + notarize the next `app-v*` once Apple secrets exist.
@@ -307,9 +314,11 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 # CLI with this tree (not crates.io 0.1.1)
 cargo install --path crates/interlace --locked --force
 
-# status / integrity (Switch archive or close the app first if flock busy)
+# status / integrity / census (Switch archive or close the app first if flock busy)
 interlace --path ~/Interlace --json status
 interlace --path ~/Interlace doctor --integrity
+interlace --path ~/Interlace --json review census
+# --preserve-raw is default off (import gmail / import takeout)
 
 # wipe + re-import only if Mustafa asks (archive is already post-#54)
 # mv ~/Interlace ~/Interlace.bak-$(date +%Y-%m-%d)
@@ -356,7 +365,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 
 ## What not to do next
 
-- Do not start Phase 3 export (#72–#75) or Phase 4 #80–#82 unprompted.
+- Do not start Phase 3 export (#72–#75) or Phase 4 **#80–#82** unprompted.
 - Do not put real ZIP filenames, display names, or message text in tickets.
 - Do not `cargo publish` / tag without asking.
 - Do not require PR reviewers (solo). Reviewer **role** is still required
@@ -378,10 +387,10 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,
 > #297, #300, #303–#322, #342 done (PRs #323–#328, #330, #332, #336, #338, #340,
 > #343, #345, #347, #349, #351, #353, #355, #356, #357, #358). Phase 4 started:
-> #79 / PR #359. Next coding #80 only if asked. #342 follow-up is D (quiet is
-> correct).
+> #79 / PR #359 (CI green). Next coding #80 only if asked. #342 follow-up is D
+> (quiet is correct).
 > Line count is not a CI gate.
-> Do not start 1.1 / P3 / P4.
+> Do not start 1.1 / Phase 3 export / #81 / #82 unprompted.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag (`app-v0.1.2` is current; first notarized tag is not cut). After
 > merges, update this handoff in the same session.
