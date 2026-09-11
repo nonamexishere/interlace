@@ -10,6 +10,10 @@
 //! `cas_put` unescaped rfc822; `messages.raw_cas_hash` via 0002; schema_epoch
 //! stays 1; GC/doctor treat the hash as referenced; size warning when on;
 //! OQ5 when off; duplicate persist does not backfill. Placeholders only (`Ada`).
+//!
+//! Fold (PR #359 review): after `init_archive`, index
+//! `idx_messages_raw_cas_hash` exists; `migrate.rs` wraps each pending
+//! numbered migration in `BEGIN IMMEDIATE` / `COMMIT`, `ROLLBACK` on error.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -39,6 +43,12 @@ fn count(arch: &interlace_core::db::Archive, sql: &str) -> i64 {
 fn has_column(arch: &interlace_core::db::Archive, table: &str, col: &str) -> bool {
     let sql = format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1");
     let n: i64 = arch.conn.query_row(&sql, [col], |r| r.get(0)).unwrap();
+    n > 0
+}
+
+fn has_index(arch: &interlace_core::db::Archive, table: &str, name: &str) -> bool {
+    let sql = format!("SELECT COUNT(*) FROM pragma_index_list('{table}') WHERE name = ?1");
+    let n: i64 = arch.conn.query_row(&sql, [name], |r| r.get(0)).unwrap();
     n > 0
 }
 
@@ -641,5 +651,63 @@ fn preserve_raw_docs_shipped_default_off_no_export() {
     assert!(
         log.contains("--preserve-raw"),
         "CHANGELOG [Unreleased] must mention --preserve-raw"
+    );
+}
+
+#[test]
+fn preserve_raw_idx_messages_raw_cas_hash_after_init() {
+    let root = tmp_root();
+    let arch = init_archive(&root.join("arch")).unwrap();
+    assert!(
+        has_index(&arch, "messages", "idx_messages_raw_cas_hash"),
+        "after init_archive, pragma_index_list(messages) must list idx_messages_raw_cas_hash"
+    );
+    let from_master: i64 = arch
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_messages_raw_cas_hash'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        from_master >= 1,
+        "after init_archive, sqlite_master must have index idx_messages_raw_cas_hash"
+    );
+    let tbl: String = arch
+        .conn
+        .query_row(
+            "SELECT tbl_name FROM sqlite_master WHERE type = 'index' AND name = 'idx_messages_raw_cas_hash'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(tbl, "messages");
+    let sql = include_str!("../migrations/0002_raw_cas_hash.sql");
+    assert!(
+        sql.contains("CREATE INDEX idx_messages_raw_cas_hash ON messages(raw_cas_hash)"),
+        "0002 must CREATE INDEX idx_messages_raw_cas_hash ON messages(raw_cas_hash)"
+    );
+    assert!(
+        sql.contains("WHERE raw_cas_hash IS NOT NULL"),
+        "idx_messages_raw_cas_hash is partial on non-NULL raw_cas_hash"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn preserve_raw_migrate_numbered_begin_immediate() {
+    let src = include_str!("../src/db/migrate.rs");
+    assert!(
+        src.contains("BEGIN IMMEDIATE"),
+        "numbered-migration path must wrap pending SQL in BEGIN IMMEDIATE"
+    );
+    assert!(
+        src.contains("COMMIT"),
+        "numbered-migration path must COMMIT so SQL and schema_migrations land together"
+    );
+    assert!(
+        src.contains("ROLLBACK"),
+        "numbered-migration path must ROLLBACK on error"
     );
 }
