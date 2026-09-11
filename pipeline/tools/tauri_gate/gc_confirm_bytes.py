@@ -542,17 +542,27 @@ def assert_gc_confirm_bytes(crate: Path) -> None:
         fail(
             f"{_ISSUE}: {_CORE} must use the same walk_blobs as gc_cas"
         )
-    if not re.search(r"\battachments\b", est_own) or not re.search(
-        r"\bphoto_cas_hash\b", est_own
+    est_sql = est_own
+    if re.search(r"\bcas_reference_count\b", est_own):
+        est_sql += "\n" + _rust_function_body(core_cas, "cas_reference_count")
+    if not re.search(r"\battachments\b", est_sql) or not re.search(
+        r"\bphoto_cas_hash\b", est_sql
     ):
         fail(
             f"{_ISSUE}: {_CORE} must use the same two-table COUNT "
             "(attachments.cas_hash + contacts_raw.photo_cas_hash)"
         )
-    if not _COUNT_SQL.search(est_own):
+    if not _COUNT_SQL.search(est_sql):
         fail(
             f"{_ISSUE}: {_CORE} must COUNT attachment / photo refs "
             "(not refcount==0, not SUM(cas_blobs.size))"
+        )
+    if re.search(r"\bcas_reference_count\b", est_own) and not re.search(
+        r"\braw_cas_hash\b", est_sql
+    ):
+        fail(
+            f"{_ISSUE}: cas_reference_count must COUNT messages.raw_cas_hash "
+            "(#79 opted-in rfc822 is referenced)"
         )
     if not _META.search(est_own) or not re.search(r"\.len\s*\(", est_own):
         fail(
@@ -871,12 +881,15 @@ def assert_gc_confirm_bytes(crate: Path) -> None:
             "(do not rewrite the file-count deleter)"
         )
     gc_own = _rust_function_body(core_cas, "gc_cas")
-    if not _REMOVE_FILE.search(gc_own) or not _COUNT_SQL.search(gc_own):
+    gc_sql = gc_own
+    if re.search(r"\bcas_reference_count\b", gc_own):
+        gc_sql += "\n" + _rust_function_body(core_cas, "cas_reference_count")
+    if not _REMOVE_FILE.search(gc_own) or not _COUNT_SQL.search(gc_sql):
         fail(
             f"{_ISSUE}: gc_cas must still delete unreferenced files "
             "(COUNT refs, not refcount==0 alone)"
         )
-    if re.search(r"refcount\s*==\s*0", gc_own) and not _COUNT_SQL.search(gc_own):
+    if re.search(r"refcount\s*==\s*0", gc_own) and not _COUNT_SQL.search(gc_sql):
         fail(f"{_ISSUE}: gc_cas must not GC from refcount==0 alone (CAS3)")
 
     # 16) CLI --gc-cas unchanged (no byte line).
