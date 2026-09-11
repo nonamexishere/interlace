@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::db::{open_archive, LockMode};
-use crate::{review_resolve, review_show};
+use crate::{review_census, review_resolve, review_show};
 
 use super::common::{resolve_path, CliError};
 use super::ReviewCmd;
@@ -147,6 +147,12 @@ pub(super) fn cmd_review(
             let mut arch = open_archive(&root, LockMode::Exclusive)?;
             review_resolve(&mut arch, id, false)?;
             println!("status=rejected; matcher will skip this pair");
+        }
+        ReviewCmd::Census => {
+            let root = resolve_path(path)?;
+            let arch = open_archive(&root, LockMode::Shared)?;
+            let census = review_census(&arch)?;
+            println!("{}", serde_json::to_string(&census).unwrap());
         }
     }
     Ok(())

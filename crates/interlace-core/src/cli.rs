@@ -189,9 +189,17 @@ enum PersonCmd {
 #[derive(Subcommand, Debug)]
 enum ReviewCmd {
     List,
-    Show { id: i64 },
-    Accept { id: i64 },
-    Reject { id: i64 },
+    Show {
+        id: i64,
+    },
+    Accept {
+        id: i64,
+    },
+    Reject {
+        id: i64,
+    },
+    /// Count-only matcher diagnostics (integers; no names)
+    Census,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]

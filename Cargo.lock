@@ -1860,6 +1860,7 @@ dependencies = [
  "interlace-core",
  "interlace-fixtures",
  "rusqlite",
+ "serde_json",
 ]
 
 [[package]]

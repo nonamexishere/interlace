@@ -1,4 +1,8 @@
-//! Review queue resolve / list / show.
+//! Review queue resolve / list / show / census.
+
+use std::collections::HashSet;
+
+use serde::Serialize;
 
 use crate::db::Archive;
 use crate::import::name_fold_join;
@@ -10,6 +14,7 @@ use super::helpers::{
     review_queued_fold, review_side_panel,
 };
 use super::merge::{link_identity, merge_persons};
+use super::score::name_score;
 
 pub fn review_resolve(
     archive: &mut Archive,
@@ -141,6 +146,175 @@ pub fn review_list(archive: &Archive) -> Result<Vec<serde_json::Value>, CoreErro
         }))
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// Count-only matcher diagnostics. Integers only — no names, phones, or samples.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct ReviewCensus {
+    pub identities: i64,
+    pub persons_live: i64,
+    pub review_open: i64,
+    pub name_only_wa_exact_fold_contacts: i64,
+    pub name_only_wa_no_phone_email: i64,
+    pub name_score_pairs_under_040: i64,
+    pub name_score_best_under_040: i64,
+    pub exact_fold_clusters_rejected: i64,
+    pub exact_fold_clusters_never_enqueued: i64,
+}
+
+/// Read-only walk. Does not insert `merge_review_queue`, merge, or relink.
+pub fn review_census(archive: &Archive) -> Result<ReviewCensus, CoreError> {
+    let identities: i64 = archive
+        .conn
+        .query_row("SELECT COUNT(*) FROM identities", [], |r| r.get(0))?;
+    let persons_live: i64 = archive.conn.query_row(
+        "SELECT COUNT(*) FROM persons WHERE tombstoned_at IS NULL",
+        [],
+        |r| r.get(0),
+    )?;
+    let review_open: i64 = archive.conn.query_row(
+        "SELECT COUNT(*) FROM merge_review_queue WHERE status = 'open'",
+        [],
+        |r| r.get(0),
+    )?;
+
+    let contacts = live_contacts_or_vcard_persons(archive)?;
+    let wa = live_wa_display_name_persons(archive)?;
+
+    let mut name_only_wa_exact_fold_contacts = 0i64;
+    let mut name_only_wa_no_phone_email = 0i64;
+    let mut name_score_pairs_under_040 = 0i64;
+    let mut name_score_best_under_040 = 0i64;
+
+    for (wa_pid, _wa_iid, wa_name) in &wa {
+        if !person_has_phone_or_email(archive, *wa_pid)? {
+            name_only_wa_no_phone_email += 1;
+        }
+        let wa_fold = name_fold_join(wa_name);
+        if !wa_fold.is_empty()
+            && contacts
+                .iter()
+                .any(|(c_pid, c_name)| *c_pid != *wa_pid && name_fold_join(c_name) == wa_fold)
+        {
+            name_only_wa_exact_fold_contacts += 1;
+        }
+
+        let mut best: Option<f64> = None;
+        for (c_pid, c_name) in &contacts {
+            if *c_pid == *wa_pid {
+                continue;
+            }
+            let s = name_score(wa_name, c_name);
+            if s < 0.40 {
+                name_score_pairs_under_040 += 1;
+            }
+            best = Some(best.map_or(s, |b| b.max(s)));
+        }
+        if best.is_some_and(|b| b < 0.40) {
+            name_score_best_under_040 += 1;
+        }
+    }
+
+    let (rejected_folds, any_queue_folds) = exact_fold_queue_folds(archive)?;
+    let mut exact_fold_clusters_rejected = 0i64;
+    let mut exact_fold_clusters_never_enqueued = 0i64;
+    let mut seen_folds = HashSet::new();
+    for (wa_pid, _wa_iid, wa_name) in &wa {
+        let wa_fold = name_fold_join(wa_name);
+        if wa_fold.is_empty() || !seen_folds.insert(wa_fold.clone()) {
+            continue;
+        }
+        let live_pair = contacts
+            .iter()
+            .any(|(c_pid, c_name)| *c_pid != *wa_pid && name_fold_join(c_name) == wa_fold);
+        if !live_pair {
+            continue;
+        }
+        if rejected_folds.contains(&wa_fold) {
+            exact_fold_clusters_rejected += 1;
+        }
+        if !any_queue_folds.contains(&wa_fold) {
+            exact_fold_clusters_never_enqueued += 1;
+        }
+    }
+
+    Ok(ReviewCensus {
+        identities,
+        persons_live,
+        review_open,
+        name_only_wa_exact_fold_contacts,
+        name_only_wa_no_phone_email,
+        name_score_pairs_under_040,
+        name_score_best_under_040,
+        exact_fold_clusters_rejected,
+        exact_fold_clusters_never_enqueued,
+    })
+}
+
+/// Same live Contacts / `takeout_vcard` SELECT as `enqueue_exact_name_fold_reviews`.
+fn live_contacts_or_vcard_persons(archive: &Archive) -> Result<Vec<(i64, String)>, CoreError> {
+    let mut stmt = archive.conn.prepare(
+        "SELECT DISTINCT p.id, p.display_name
+         FROM persons p
+         JOIN person_identities pi ON pi.person_id = p.id
+         LEFT JOIN identities i ON i.id = pi.identity_id
+         WHERE p.tombstoned_at IS NULL AND p.is_self = 0
+           AND (i.platform = 'contacts' OR pi.link_reason = 'takeout_vcard')",
+    )?;
+    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// Same live WhatsApp `display_name` SELECT as `enqueue_exact_name_fold_reviews`.
+fn live_wa_display_name_persons(archive: &Archive) -> Result<Vec<(i64, i64, String)>, CoreError> {
+    let mut stmt = archive.conn.prepare(
+        "SELECT p.id, MIN(i.id), p.display_name
+         FROM persons p
+         JOIN person_identities pi ON pi.person_id = p.id
+         JOIN identities i ON i.id = pi.identity_id
+         WHERE p.tombstoned_at IS NULL AND p.is_self = 0
+           AND i.platform = 'whatsapp' AND i.kind = 'display_name'
+         GROUP BY p.id, p.display_name",
+    )?;
+    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+fn person_has_phone_or_email(archive: &Archive, person_id: i64) -> Result<bool, CoreError> {
+    let n: i64 = archive.conn.query_row(
+        "SELECT COUNT(*) FROM person_identities pi
+         JOIN identities i ON i.id = pi.identity_id
+         WHERE pi.person_id = ?1 AND i.kind IN ('phone', 'email')",
+        [person_id],
+        |r| r.get(0),
+    )?;
+    Ok(n > 0)
+}
+
+/// Folds on existing queue rows (any status / rejected), via `review_queued_fold`.
+fn exact_fold_queue_folds(
+    archive: &Archive,
+) -> Result<(HashSet<String>, HashSet<String>), CoreError> {
+    let rows: Vec<(String, i64, Option<i64>, Option<i64>)> = {
+        let mut stmt = archive.conn.prepare(
+            "SELECT status, left_identity_id, right_person_id, right_identity_id
+             FROM merge_review_queue",
+        )?;
+        let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?;
+        it.collect::<Result<Vec<_>, _>>()?
+    };
+    let mut rejected = HashSet::new();
+    let mut any = HashSet::new();
+    for (status, left, right_person, right_ident) in rows {
+        let Some(fold) = review_queued_fold(archive, left, right_person, right_ident)? else {
+            continue;
+        };
+        any.insert(fold.clone());
+        if status == "rejected" {
+            rejected.insert(fold);
+        }
+    }
+    Ok((rejected, any))
 }
 
 pub fn review_show(archive: &Archive, id: i64) -> Result<serde_json::Value, CoreError> {

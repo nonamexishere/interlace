@@ -13,6 +13,7 @@ unsigned **`app-v0.1.2`**.
 
 ### Added
 
+- `interlace review census --json` prints count-only matcher diagnostics (no names).
 - Inspector lists group participant names when include groups is on (DMs do not).
 - Doctor GC confirm names reclaimable unused CAS bytes before delete.
 - Copy archive to… from Doctor Backup and File (empty local folder; dest Opens).

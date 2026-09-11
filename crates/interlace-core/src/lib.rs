@@ -14,8 +14,8 @@ pub mod session;
 
 pub use db::{init_archive, migrate, open_archive, open_with_options, Archive, LockMode};
 pub use identity::{
-    person_merge, person_undo, person_unlink, resolve_run, review_list, review_resolve,
-    review_resolve_selected, review_show,
+    person_merge, person_undo, person_unlink, resolve_run, review_census, review_list,
+    review_resolve, review_resolve_selected, review_show, ReviewCensus,
 };
 pub use import::{
     ContactsImporter, GmailMboxImporter, ImportContext, ImporterRegistry, SourceImporter,

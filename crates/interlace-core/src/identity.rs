@@ -8,5 +8,7 @@ mod score;
 
 pub use auto::resolve_run;
 pub use merge::{person_merge, person_undo, person_unlink};
-pub use review::{review_list, review_resolve, review_resolve_selected, review_show};
+pub use review::{
+    review_census, review_list, review_resolve, review_resolve_selected, review_show, ReviewCensus,
+};
 pub use score::name_score;
