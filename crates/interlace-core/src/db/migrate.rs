@@ -4,7 +4,7 @@ use super::Result;
 
 const INIT_SQL: &str = include_str!("../../migrations/0001_init.sql");
 
-/// Numbered files after 0001.
+/// Numbered files after 0001. `schema_epoch` stays 1 (#75 is not this ticket).
 const MIGRATIONS: &[(i64, &str, &str)] = &[(
     2,
     "0002_raw_cas_hash",
@@ -32,22 +32,11 @@ pub fn migrate(conn: &Connection) -> Result<()> {
             |r| r.get(0),
         )?;
         if applied == 0 {
-            conn.execute_batch("BEGIN IMMEDIATE")?;
-            let step = (|| -> Result<()> {
-                conn.execute_batch(sql)?;
-                conn.execute(
-                    "INSERT INTO schema_migrations(version, name) VALUES (?1, ?2)",
-                    rusqlite::params![version, name],
-                )?;
-                Ok(())
-            })();
-            match step {
-                Ok(()) => conn.execute_batch("COMMIT")?,
-                Err(e) => {
-                    let _ = conn.execute_batch("ROLLBACK");
-                    return Err(e);
-                }
-            }
+            conn.execute_batch(sql)?;
+            conn.execute(
+                "INSERT INTO schema_migrations(version, name) VALUES (?1, ?2)",
+                rusqlite::params![version, name],
+            )?;
         }
     }
     Ok(())

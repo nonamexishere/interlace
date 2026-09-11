@@ -12,7 +12,7 @@ mod persist;
 
 pub(crate) const HEADER_CAP: usize = 1024 * 1024;
 
-/// Emitted when `--preserve-raw` is on; not the Takeout dump-deletion warning.
+/// D10 size warning when `--preserve-raw` is on (not the OQ5 dump-deletion copy).
 pub(crate) const PRESERVE_RAW_SIZE_WARN: &str = "Preserving raw rfc822 stores a copy of each \
 message in CAS and can add several gigabytes of disk.";
 
