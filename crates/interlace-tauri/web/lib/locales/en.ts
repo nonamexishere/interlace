@@ -87,6 +87,7 @@ export const en = {
   inspector: "Inspector",
   identities: "Identities",
   lastActivity: "Last activity",
+  inThisGroup: "In this group",
   findInThread: "Find in conversation",
   jumpToDay: "Jump to day",
   latest: "Latest",

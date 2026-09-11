@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import { api, type Identity, type LinkEvent, type Person, type Status } from "./api";
+  import { api, type Identity, type LinkEvent, type Person, type PersonConversation, type Status, type TimelineRow } from "./api";
   import PeopleSidebar from "./PeopleSidebar.svelte";
   import PeopleInspector from "./PeopleInspector.svelte";
   import TimelinePane from "./TimelinePane.svelte";
@@ -65,6 +65,9 @@
     onPeopleChanged: () => Promise<void>;
   } = $props();
 
+  let selectedConversationId = $state<number | null>(null);
+  let timeline = $state<TimelineRow[]>([]);
+  let conversations = $state<PersonConversation[]>([]);
   let mergeOpen = $state(false);
   let mergeKeepId = $state<number | null>(null);
   let mergeKeepName = $state("");
@@ -192,6 +195,9 @@
       bind:tlIndex
       bind:visibleTlIndices
       bind:showPersonChrome
+      bind:selectedConversationId
+      bind:timeline
+      bind:conversations
       {density}
       {persistLastPerson}
       {friendly}
@@ -211,6 +217,10 @@
         {identities}
         {selectedId}
         bind:includeGroups
+        {selectedConversationId}
+        {timeline}
+        {conversations}
+        {tlIndex}
         personById={(id) => findPerson(people, id)}
         onMerge={openMerge}
         onUnlink={doUnlink}

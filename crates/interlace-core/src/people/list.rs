@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use crate::db::Archive;
 use crate::model::CoreError;
 
-use super::{PersonIdentity, PersonSummary};
+use super::{ConversationParticipantName, PersonIdentity, PersonSummary};
 
 const PREVIEW_MAX_CHARS: usize = 160;
 
@@ -120,6 +120,32 @@ pub fn person_identities(
             kind: r.get(2)?,
             value: r.get(3)?,
             display_name: r.get(4)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
+/// Names on one conversation: identity `display_name` then `value`. Includes `role=me`.
+pub fn conversation_participant_names(
+    archive: &Archive,
+    conversation_id: i64,
+) -> Result<Vec<ConversationParticipantName>, CoreError> {
+    let mut stmt = archive.conn.prepare(
+        "SELECT cp.identity_id, i.display_name, COALESCE(i.value_normalized, i.value_raw)
+         FROM conversation_participants cp
+         JOIN identities i ON i.id = cp.identity_id
+         WHERE cp.conversation_id = ?1
+         ORDER BY cp.identity_id",
+    )?;
+    let rows = stmt.query_map([conversation_id], |r| {
+        Ok(ConversationParticipantName {
+            identity_id: r.get(0)?,
+            display_name: r.get(1)?,
+            value: r.get(2)?,
         })
     })?;
     let mut out = Vec::new();

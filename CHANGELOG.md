@@ -13,6 +13,7 @@ unsigned **`app-v0.1.2`**.
 
 ### Added
 
+- Inspector lists group participant names when include groups is on (DMs do not).
 - Doctor GC confirm names reclaimable unused CAS bytes before delete.
 - Copy archive to… from Doctor Backup and File (empty local folder; dest Opens).
 - Compact Search date presets (7 days / 30 days / this year / Any) fill the date filters in the Mac timezone.

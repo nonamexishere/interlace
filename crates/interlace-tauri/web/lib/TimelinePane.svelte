@@ -18,6 +18,9 @@
     tlIndex = $bindable(0),
     visibleTlIndices = $bindable<number[]>([]),
     showPersonChrome = $bindable(false),
+    selectedConversationId = $bindable<number | null>(null),
+    timeline = $bindable<TimelineRow[]>([]),
+    conversations = $bindable<PersonConversation[]>([]),
     density,
     persistLastPerson,
     friendly,
@@ -36,6 +39,9 @@
     tlIndex?: number;
     visibleTlIndices?: number[];
     showPersonChrome?: boolean;
+    selectedConversationId?: number | null;
+    timeline?: TimelineRow[];
+    conversations?: PersonConversation[];
     density: string;
     persistLastPerson: (id: number) => void;
     friendly: (raw: string) => string;
@@ -48,9 +54,6 @@
     onFocusInspector: () => void;
   } = $props();
 
-  let timeline = $state<TimelineRow[]>([]);
-  let conversations = $state<PersonConversation[]>([]);
-  let selectedConversationId = $state<number | null>(null);
   let platformFilter = $state("all");
   let kindFilter = $state("all");
   let tlLoading = $state(false);
