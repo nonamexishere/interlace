@@ -93,4 +93,10 @@ export const tr: ChromePack = {
   findInThread: "Sohbette bul",
   jumpToDay: "Güne git",
   latest: "En yeni",
+  media: "Medya",
+  showInTimeline: "Zaman çizelgesinde göster",
+  noStoredMedia: "Kayıtlı medya yok",
+  noStoredMediaBody:
+    "Bu kişinin kayıtlı fotoğrafı, videosu veya çıkartması yok. Grup sohbetlerini de taramak için grupları dahil edin, veya daha fazla kaynak içe aktarın.",
+  includeGroups: "Grupları dahil et",
 };

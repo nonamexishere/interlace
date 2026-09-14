@@ -2,7 +2,7 @@ use crate::db::Archive;
 use crate::model::CoreError;
 
 use super::attach::{attach_attachments, enrich_from_body_tokens};
-use super::{PersonConversation, TimelineRow};
+use super::{PersonConversation, PersonMediaRow, TimelineRow};
 
 const TIMELINE_DEFAULT: u32 = 100;
 const TIMELINE_MAX: u32 = 200;
@@ -117,6 +117,87 @@ pub fn person_timeline_rows_for(
     }
     attach_attachments(archive, &mut out)?;
     enrich_from_body_tokens(archive, &mut out)?;
+    Ok(out)
+}
+
+/// Stored CAS image / video / sticker rows for one person (same membership
+/// as `person_timeline_rows_for` with `conversation_id = None`).
+pub fn person_media_rows_for(
+    archive: &Archive,
+    person_id: i64,
+    include_groups: bool,
+    limit: u32,
+    before: Option<&str>,
+) -> Result<Vec<PersonMediaRow>, CoreError> {
+    let limit = limit.clamp(1, TIMELINE_MAX);
+    let limit = if limit == 0 { TIMELINE_DEFAULT } else { limit };
+    let group_sql = if include_groups {
+        ""
+    } else {
+        "AND c.kind IN ('dm','email_thread')"
+    };
+    let cursor_sql = if before.is_some() {
+        "AND m.sent_at IS NOT NULL AND m.sent_at < :before"
+    } else {
+        ""
+    };
+    let sql = format!(
+        "SELECT a.id, m.id, m.sent_at, c.kind, a.cas_hash, a.filename, a.mime, a.kind
+         FROM messages m
+         JOIN conversations c ON c.id = m.conversation_id
+         JOIN attachments a ON a.message_id = m.id
+         WHERE (
+                m.sender_identity_id IN (
+                    SELECT identity_id FROM person_identities WHERE person_id = :pid
+                )
+             OR m.conversation_id IN (
+                    SELECT cp.conversation_id
+                    FROM conversation_participants cp
+                    JOIN person_identities pi ON pi.identity_id = cp.identity_id
+                    WHERE pi.person_id = :pid
+                )
+              )
+           AND a.cas_hash IS NOT NULL
+           AND a.omitted = 0
+           AND a.missing = 0
+           AND (
+                a.kind IN ('image','video','sticker')
+             OR (a.kind = 'inline' AND (a.mime LIKE 'image/%' OR a.mime LIKE 'video/%'))
+           )
+           {group_sql}
+           {cursor_sql}
+         ORDER BY m.sent_at IS NULL, m.sent_at DESC, a.id DESC
+         LIMIT :lim"
+    );
+    let mut stmt = archive.conn.prepare(&sql)?;
+    let map_row = |r: &rusqlite::Row<'_>| {
+        Ok(PersonMediaRow {
+            attachment_id: r.get(0)?,
+            message_id: r.get(1)?,
+            sent_at: r.get(2)?,
+            conversation_kind: r.get(3)?,
+            cas_hash: r.get(4)?,
+            filename: r.get(5)?,
+            mime: r.get(6)?,
+            kind: r.get(7)?,
+        })
+    };
+    let lim = limit as i64;
+    let rows = if let Some(b) = before {
+        stmt.query_map(
+            rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":before": b },
+            map_row,
+        )?
+    } else {
+        stmt.query_map(
+            rusqlite::named_params! { ":pid": person_id, ":lim": lim },
+            map_row,
+        )?
+    };
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
     Ok(out)
 }
 

@@ -256,6 +256,17 @@ Space play/pause; `#q` still types a space. Videos play in-window from the same
 local CAS bytes (`data:`); autoplay is off. A stored video can be opened
 full-size in-window. PDFs open in-window from
 local CAS. Video and PDF are never a remote stream (no remote viewer).
+A person’s **Media** gallery (Find / Jump row, or the inspector Media
+button) lists that person’s stored CAS image / video / sticker files,
+plus Gmail inline image/video parts. Click a photo for the existing
+lightbox. A video thumb opens the existing overlay (Close / Esc / backdrop
+returns to the gallery); autoplay is off. Clicking another cell replaces
+the overlay — a late load does not stack. A long gallery keeps its
+scroll through a window resize; closing Media, switching person, or
+toggling include-groups reopens at the top and does not leave a
+lightbox or video overlay.
+**Show in timeline** jumps to that message. Empty has a next action
+(include groups, or Import). Include-groups follows the timeline tick.
 Nothing is fetched from the network. Exports that omitted media show a
 placeholder. Right-click a timeline bubble to **Copy text** to the clipboard. A highlighted bubble, ⌘C (Ctrl+C) copies that body's plain text; `#q` / people filter keep native copy.
 The same context menu has **Search**: from a timeline bubble you can open Search

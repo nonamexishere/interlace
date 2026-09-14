@@ -8,6 +8,8 @@
   import { findCount, findHitIndices, onFindKey, snapFindHit, stepFindIndex } from "./findHighlight";
   import { applyJumpScrollPos, jumpToLocalDay, nearestVisibleTlIndex, TIMELINE_PAGE_LIMIT } from "./jumpDay";
   import { Input } from "$lib/components/ui/input/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import PersonMediaDialog from "./PersonMediaDialog.svelte";
   import { t } from "$lib/i18n";
 
   let {
@@ -61,6 +63,7 @@
   let tlError = $state("");
   let tlGen = 0;
   let findQ = $state(""), jumpDay = $state(""), jumpGen = 0, dayPin = false;
+  let galleryOpen = $state(false);
   let quotedOpen = $state<Record<number, boolean>>({});
   let list: {
     ensureTlIndexVisible: (index: number) => void;
@@ -375,6 +378,7 @@
   export function closeCopyMenu() { list?.closeCopy(); }
   export function scrollToLatest() { list?.scrollToLatest(); }
   export function copySelected() { list?.copySelected(); }
+  export function openGallery() { galleryOpen = true; }
 </script>
 
 <div class="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -454,6 +458,7 @@
         {#if findQ}
           <span data-tl-hit-count class="shrink-0 text-xs tabular-nums text-muted-foreground">{findCount(filteredTimeline, findQ, tlIndex, quotedOpen)}</span>
         {/if}
+        <Button type="button" variant="outline" size="sm" data-person-gallery-open onclick={() => (galleryOpen = true)}>{t("media")}</Button>
       </div>
     {/if}
   </div>
@@ -491,6 +496,19 @@
     {onCopyFail}
     {findQ}
     onClearDayPin={() => (dayPin = false, jumpGen++)}
+  />
+  <PersonMediaDialog
+    bind:open={galleryOpen}
+    {selectedId}
+    bind:includeGroups
+    onIncludeGroups={() => {
+      if (!selectedId) return;
+      includeGroups = true;
+      writeIncludeGroupsPref(true);
+      void selectPerson(selectedId);
+    }}
+    {onImport}
+    {openPersonAtMessage}
   />
   <p class="shrink-0 bg-background px-4 pb-4 pt-2 text-xs text-muted-foreground">
     Bodies are text only. Day headings follow the Mac timezone. <kbd class="rounded border border-border px-1">j</kbd>/<kbd

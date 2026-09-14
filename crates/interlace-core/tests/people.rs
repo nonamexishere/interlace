@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use interlace_core::db::init_archive;
-use interlace_core::people::{person_list, person_timeline_rows};
+use interlace_core::people::{person_list, person_media_rows_for, person_timeline_rows};
 use interlace_core::{person_merge, person_timeline, person_undo, PersonMergeOpts};
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -623,5 +623,409 @@ fn list_group_only_activity_does_not_reorder_when_groups_off() {
     );
     assert_eq!(list[ali].last_activity_at.as_deref(), Some(ALI_DM_AT));
     assert_ne!(list[ali].last_activity_at.as_deref(), Some(ALI_GROUP_AT));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Stored CAS hash for gallery plants (64 hex; cas_blobs FK).
+const GALLERY_CAS: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
+struct GalleryPlant {
+    ada_id: i64,
+    berk_id: i64,
+    ada_day1: i64,
+    ada_day2: i64,
+    ada_omit: i64,
+    ada_missing: i64,
+    ada_voice: i64,
+    ada_group: i64,
+    ada_inline_img: i64,
+    ada_inline_other: i64,
+    ada_from_me: i64,
+    berk_img: i64,
+}
+
+/// Ada + Berk gallery plant. Placeholders only. Attachments table is the source
+/// of truth (no `<attached:` token rows).
+fn plant_ada_gallery(arch: &interlace_core::db::Archive) -> GalleryPlant {
+    arch.conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('whatsapp_android_zip', 't', '/t.zip')",
+            [],
+        )
+        .unwrap();
+    let src = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO import_runs(source_id, status) VALUES (?1, 'done')",
+            [src],
+        )
+        .unwrap();
+    let run = arch.conn.last_insert_rowid();
+
+    let ident = |arch: &interlace_core::db::Archive, name: &str, raw: &str, norm: &str| -> i64 {
+        arch.conn
+            .execute(
+                "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+                 VALUES ('whatsapp', 'display_name', ?1, ?2, ?3)",
+                rusqlite::params![raw, norm, name],
+            )
+            .unwrap();
+        arch.conn.last_insert_rowid()
+    };
+    let person = |arch: &interlace_core::db::Archive, name: &str, iid: i64, is_self: i64| -> i64 {
+        arch.conn
+            .execute(
+                "INSERT INTO persons(display_name, is_self) VALUES (?1, ?2)",
+                rusqlite::params![name, is_self],
+            )
+            .unwrap();
+        let pid = arch.conn.last_insert_rowid();
+        arch.conn
+            .execute(
+                "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
+                 VALUES (?1, ?2, 'auto_email', 0.99, 'system')",
+                rusqlite::params![pid, iid],
+            )
+            .unwrap();
+        pid
+    };
+
+    let ada_iid = ident(arch, "Ada", "Ada", "ada");
+    let ada_id = person(arch, "Ada", ada_iid, 0);
+    let me_iid = ident(arch, "Me", "Me", "me");
+    let _me_id = person(arch, "Me", me_iid, 1);
+    let berk_iid = ident(arch, "Berk", "Berk", "berk");
+    let berk_id = person(arch, "Berk", berk_iid, 0);
+    let other_iid = ident(arch, "Other", "Other", "other");
+
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('whatsapp', 'dm', 'whatsapp:ada', 'Ada')",
+            [],
+        )
+        .unwrap();
+    let ada_dm = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![ada_dm, ada_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![ada_dm, me_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('whatsapp', 'group', 'whatsapp:g-ada', 'Project')",
+            [],
+        )
+        .unwrap();
+    let ada_grp = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![ada_grp, ada_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![ada_grp, other_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('whatsapp', 'dm', 'whatsapp:berk', 'Berk')",
+            [],
+        )
+        .unwrap();
+    let berk_dm = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![berk_dm, berk_iid],
+        )
+        .unwrap();
+
+    arch.conn
+        .execute(
+            "INSERT INTO cas_blobs(hash, size) VALUES (?1, 4)",
+            [GALLERY_CAS],
+        )
+        .unwrap();
+
+    let msg = |arch: &interlace_core::db::Archive,
+               conv: i64,
+               sender: i64,
+               sent_at: &str,
+               key: &str|
+     -> i64 {
+        arch.conn
+            .execute(
+                "INSERT INTO messages(conversation_id, source_id, import_run_id, sender_identity_id,
+                    sent_at, sent_at_precision, kind, body_text, idempotency_key)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'second', 'text', '', ?6)",
+                rusqlite::params![conv, src, run, sender, sent_at, key],
+            )
+            .unwrap();
+        arch.conn.last_insert_rowid()
+    };
+    let stored = |arch: &interlace_core::db::Archive,
+                  mid: i64,
+                  filename: &str,
+                  mime: Option<&str>,
+                  kind: &str|
+     -> i64 {
+        arch.conn
+            .execute(
+                "INSERT INTO attachments(message_id, cas_hash, filename, mime, kind, omitted, missing)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 0, 0)",
+                rusqlite::params![mid, GALLERY_CAS, filename, mime, kind],
+            )
+            .unwrap();
+        arch.conn.last_insert_rowid()
+    };
+
+    // Two stored DM images on different days (newest = day2).
+    let day1_msg = msg(arch, ada_dm, ada_iid, "2024-03-10T10:00:00Z", "k-ada-d1");
+    let ada_day1 = stored(arch, day1_msg, "ada-day1.jpg", Some("image/jpeg"), "image");
+    let day2_msg = msg(arch, ada_dm, ada_iid, "2024-03-11T10:00:00Z", "k-ada-d2");
+    let ada_day2 = stored(arch, day2_msg, "ada-day2.jpg", Some("image/jpeg"), "image");
+
+    // Omitted image, missing / no-hash image, voice (hash set — still out).
+    let omit_msg = msg(arch, ada_dm, ada_iid, "2024-03-09T10:00:00Z", "k-ada-omit");
+    arch.conn
+        .execute(
+            "INSERT INTO attachments(message_id, filename, kind, omitted, missing)
+             VALUES (?1, 'ada-omit.jpg', 'image', 1, 0)",
+            [omit_msg],
+        )
+        .unwrap();
+    let ada_omit = arch.conn.last_insert_rowid();
+    let miss_msg = msg(arch, ada_dm, ada_iid, "2024-03-09T11:00:00Z", "k-ada-miss");
+    arch.conn
+        .execute(
+            "INSERT INTO attachments(message_id, filename, kind, omitted, missing)
+             VALUES (?1, 'ada-missing.jpg', 'image', 0, 1)",
+            [miss_msg],
+        )
+        .unwrap();
+    let ada_missing = arch.conn.last_insert_rowid();
+    // Body token is not a source of truth (timeline may synthesize a missing row).
+    arch.conn
+        .execute(
+            "UPDATE messages SET body_text = 'hi <attached: orphan-photo.jpg>' WHERE id = ?1",
+            [miss_msg],
+        )
+        .unwrap();
+    let voice_msg = msg(arch, ada_dm, ada_iid, "2024-03-09T12:00:00Z", "k-ada-voice");
+    let ada_voice = stored(
+        arch,
+        voice_msg,
+        "ada-voice.opus",
+        Some("audio/ogg"),
+        "voice",
+    );
+
+    // Stored group image (only when include_groups).
+    let grp_msg = msg(arch, ada_grp, ada_iid, "2024-03-16T10:00:00Z", "k-ada-grp");
+    let ada_group = stored(arch, grp_msg, "ada-group.jpg", Some("image/jpeg"), "image");
+
+    // kind=inline image/* in; non-image inline out.
+    let inline_img_msg = msg(arch, ada_dm, ada_iid, "2024-03-12T10:00:00Z", "k-ada-inl");
+    let ada_inline_img = stored(
+        arch,
+        inline_img_msg,
+        "ada-inline.jpg",
+        Some("image/jpeg"),
+        "inline",
+    );
+    let inline_other_msg = msg(arch, ada_dm, ada_iid, "2024-03-12T11:00:00Z", "k-ada-pdf");
+    let ada_inline_other = stored(
+        arch,
+        inline_other_msg,
+        "ada-inline.pdf",
+        Some("application/pdf"),
+        "inline",
+    );
+
+    // from_me stored image on the DM (whole membership — sender or participant).
+    let from_me_msg = msg(arch, ada_dm, me_iid, "2024-03-13T10:00:00Z", "k-ada-me");
+    let ada_from_me = stored(
+        arch,
+        from_me_msg,
+        "ada-from-me.jpg",
+        Some("image/jpeg"),
+        "image",
+    );
+
+    // Berk's stored image must not appear in Ada's query.
+    let berk_msg = msg(
+        arch,
+        berk_dm,
+        berk_iid,
+        "2024-03-14T10:00:00Z",
+        "k-berk-img",
+    );
+    let berk_img = stored(arch, berk_msg, "berk.jpg", Some("image/jpeg"), "image");
+
+    GalleryPlant {
+        ada_id,
+        berk_id,
+        ada_day1,
+        ada_day2,
+        ada_omit,
+        ada_missing,
+        ada_voice,
+        ada_group,
+        ada_inline_img,
+        ada_inline_other,
+        ada_from_me,
+        berk_img,
+    }
+}
+
+/// gallery-core-ada-two: Ada include_groups=false has the two stored DM images
+/// (plus from_me + inline image/*). Newest first. len >= 2.
+#[test]
+fn gallery_core_ada_two() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_ada_gallery(&arch);
+    let rows = person_media_rows_for(&arch, p.ada_id, false, 50, None).unwrap();
+    let ids: Vec<i64> = rows.iter().map(|r| r.attachment_id).collect();
+    assert!(
+        rows.len() >= 2,
+        "Ada include_groups=false must return at least the two stored DM images, got {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_day1),
+        "day1 stored DM image missing: {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_day2),
+        "day2 stored DM image missing: {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_from_me),
+        "from_me stored DM image must be in Ada's list (whole membership): {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_inline_img),
+        "kind=inline mime=image/jpeg must be included: {ids:?}"
+    );
+    let pos1 = ids.iter().position(|id| *id == p.ada_day1).unwrap();
+    let pos2 = ids.iter().position(|id| *id == p.ada_day2).unwrap();
+    assert!(
+        pos2 < pos1,
+        "newest first (sent_at DESC): day2 before day1, got {ids:?}"
+    );
+    for w in rows.windows(2) {
+        let a = w[0].sent_at.as_deref().unwrap_or("");
+        let b = w[1].sent_at.as_deref().unwrap_or("");
+        assert!(
+            a >= b,
+            "newest first (sent_at DESC): {a} then {b} (ids {:?})",
+            ids
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// gallery-core-omit: omitted + missing + voice + no-hash + non-image inline
+/// stay out. No broken-thumb rows. Body `<attached:` tokens are not a source.
+#[test]
+fn gallery_core_omit() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_ada_gallery(&arch);
+    let rows = person_media_rows_for(&arch, p.ada_id, false, 50, None).unwrap();
+    let ids: Vec<i64> = rows.iter().map(|r| r.attachment_id).collect();
+    assert!(!ids.contains(&p.ada_omit), "omitted image leaked: {ids:?}");
+    assert!(
+        !ids.contains(&p.ada_missing),
+        "missing / no-hash image leaked: {ids:?}"
+    );
+    assert!(!ids.contains(&p.ada_voice), "voice leaked: {ids:?}");
+    assert!(
+        !ids.contains(&p.ada_inline_other),
+        "non-image inline leaked: {ids:?}"
+    );
+    for r in &rows {
+        let k = r.kind.as_str();
+        let mime = r.mime.as_deref().unwrap_or("");
+        let ok = matches!(k, "image" | "video" | "sticker")
+            || (k == "inline" && (mime.starts_with("image/") || mime.starts_with("video/")));
+        assert!(ok, "unexpected kind/mime in gallery: {k} {mime}");
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// gallery-core-groups: group image absent when include_groups=false, present when true.
+#[test]
+fn gallery_core_groups() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_ada_gallery(&arch);
+    let off = person_media_rows_for(&arch, p.ada_id, false, 50, None).unwrap();
+    let off_ids: Vec<i64> = off.iter().map(|r| r.attachment_id).collect();
+    assert!(
+        !off_ids.contains(&p.ada_group),
+        "group image leaked with include_groups=false: {off_ids:?}"
+    );
+    let on = person_media_rows_for(&arch, p.ada_id, true, 50, None).unwrap();
+    let on_ids: Vec<i64> = on.iter().map(|r| r.attachment_id).collect();
+    assert!(
+        on_ids.contains(&p.ada_group),
+        "group image missing with include_groups=true: {on_ids:?}"
+    );
+    let grp = on.iter().find(|r| r.attachment_id == p.ada_group).unwrap();
+    assert_eq!(grp.conversation_kind, "group");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// gallery-core-berk: Berk's query does not return Ada's attachment ids; Ada's
+/// query does not return Berk's.
+#[test]
+fn gallery_core_berk() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_ada_gallery(&arch);
+    let ada = person_media_rows_for(&arch, p.ada_id, true, 50, None).unwrap();
+    let ada_ids: Vec<i64> = ada.iter().map(|r| r.attachment_id).collect();
+    let berk = person_media_rows_for(&arch, p.berk_id, true, 50, None).unwrap();
+    let berk_ids: Vec<i64> = berk.iter().map(|r| r.attachment_id).collect();
+    assert!(
+        !ada_ids.contains(&p.berk_img),
+        "Berk's attachment leaked into Ada's gallery: {ada_ids:?}"
+    );
+    let ada_own = [
+        p.ada_day1,
+        p.ada_day2,
+        p.ada_group,
+        p.ada_inline_img,
+        p.ada_from_me,
+    ];
+    for id in ada_own {
+        assert!(
+            !berk_ids.contains(&id),
+            "Ada attachment {id} leaked into Berk's gallery: {berk_ids:?}"
+        );
+    }
+    assert!(
+        berk_ids.contains(&p.berk_img),
+        "Berk's stored image missing from Berk's gallery: {berk_ids:?}"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
