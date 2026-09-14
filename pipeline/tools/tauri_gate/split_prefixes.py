@@ -83,6 +83,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_person_media_gallery_fold",
     "assert_person_media_gallery_race",
     "assert_person_media_gallery_click",
+    "assert_person_media_gallery_bind",
     "assert_keyboard_list_arrows",
     "assert_command_palette",
     "assert_command_palette_people_cap",

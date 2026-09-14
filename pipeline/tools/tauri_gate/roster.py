@@ -57,6 +57,7 @@ from tauri_gate.person_media_gallery import assert_person_media_gallery  # noqa:
 from tauri_gate.person_media_gallery_fold import assert_person_media_gallery_fold  # noqa: E402
 from tauri_gate.person_media_gallery_race import assert_person_media_gallery_race  # noqa: E402
 from tauri_gate.person_media_gallery_click import assert_person_media_gallery_click  # noqa: E402
+from tauri_gate.person_media_gallery_bind import assert_person_media_gallery_bind  # noqa: E402
 from tauri_gate.media_lightbox import (  # noqa: E402
     assert_photo_lightbox,
     assert_voice_note_player,

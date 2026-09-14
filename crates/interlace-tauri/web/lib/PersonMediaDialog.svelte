@@ -8,6 +8,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { t } from "$lib/i18n";
+  import { untrack } from "svelte";
 
   let {
     open = $bindable(false),
@@ -131,9 +132,8 @@
   $effect(() => {
     const el = galleryEl;
     if (!el) return;
-    el.scrollTop = 0;
     viewportH = el.clientHeight || 400;
-    measureRowH();
+    untrack(() => measureRowH());
     const ro = new ResizeObserver(() => {
       viewportH = el.clientHeight || 400;
       measureRowH();
