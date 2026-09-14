@@ -36,6 +36,7 @@
   const ROW_FALLBACK = 232;
 
   let galleryGen = 0;
+  let overlayGen = 0;
   let mediaRows = $state<PersonMediaRow[]>([]);
   let srcs = $state<Record<string, string>>({});
   let mediaLoading = $state(false);
@@ -173,6 +174,7 @@
 
   async function openPhoto(row: PersonMediaRow) {
     const gen = galleryGen;
+    const click = ++overlayGen;
     closeOverlays();
     const hash = row.cas_hash;
     let url = srcs[hash];
@@ -184,20 +186,23 @@
         return;
       }
     }
-    if (gen !== galleryGen || !open) return;
+    if (gen !== galleryGen || click !== overlayGen || !open) return;
     lightboxAlt = row.filename || "";
+    closeOverlays();
     lightboxSrc = url;
   }
 
   async function openVideo(row: PersonMediaRow) {
     const gen = galleryGen;
+    const click = ++overlayGen;
     closeOverlays();
     const hash = row.cas_hash;
     try {
       const url = srcs[hash] || (await api.casDataUrl(hash));
       srcs = { ...srcs, [hash]: url };
-      if (gen !== galleryGen || !open) return;
+      if (gen !== galleryGen || click !== overlayGen || !open) return;
       videoName = row.filename || "";
+      closeOverlays();
       videoSrc = url;
     } catch {
       return;

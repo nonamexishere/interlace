@@ -260,7 +260,8 @@ A person’s **Media** gallery (Find / Jump row, or the inspector Media
 button) lists that person’s stored CAS image / video / sticker files,
 plus Gmail inline image/video parts. Click a photo for the existing
 lightbox. A video thumb opens the existing overlay (Close / Esc / backdrop
-returns to the gallery); autoplay is off. Closing Media, switching person,
+returns to the gallery); autoplay is off. Clicking another cell replaces
+the overlay — a late load does not stack. Closing Media, switching person,
 or toggling include-groups does not leave a lightbox or video overlay.
 **Show in timeline** jumps to that message. Empty has a next action
 (include groups, or Import). Include-groups follows the timeline tick.

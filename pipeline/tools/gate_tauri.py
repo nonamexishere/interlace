@@ -196,6 +196,7 @@ def main() -> None:
     assert_person_media_gallery(crate)
     assert_person_media_gallery_fold(crate)
     assert_person_media_gallery_race(crate)
+    assert_person_media_gallery_click(crate)
     assert_keyboard_list_arrows(crate)
     assert_command_palette(crate)
     assert_command_palette_people_cap(crate)
