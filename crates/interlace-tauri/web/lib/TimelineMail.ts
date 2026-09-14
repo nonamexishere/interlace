@@ -87,3 +87,50 @@ export function kindLabel(kind: string | null | undefined) {
   if (!k) return "";
   return k.charAt(0).toUpperCase() + k.slice(1);
 }
+
+type AttachKindRef = { kind?: string | null; mime?: string | null };
+
+function attachKindOf(a: AttachKindRef): string {
+  return (a.kind ?? "").trim().toLowerCase();
+}
+
+function attachMimeOf(a: AttachKindRef): string {
+  return (a.mime ?? "").trim().toLowerCase();
+}
+
+function isPhotosAttach(a: AttachKindRef): boolean {
+  const k = attachKindOf(a);
+  const mime = attachMimeOf(a);
+  return k === "image" || k === "sticker" || ((k === "inline" || k === "file") && mime.startsWith("image/"));
+}
+
+function isVideoAttach(a: AttachKindRef): boolean {
+  const k = attachKindOf(a);
+  const mime = attachMimeOf(a);
+  return k === "video" || ((k === "inline" || k === "file") && mime.startsWith("video/"));
+}
+
+function isVoiceAttach(a: AttachKindRef): boolean {
+  const k = attachKindOf(a);
+  const mime = attachMimeOf(a);
+  return k === "voice" || ((k === "inline" || k === "file") && mime.startsWith("audio/"));
+}
+
+function isFilesAttach(a: AttachKindRef): boolean {
+  const k = attachKindOf(a);
+  return (k === "file" || k === "vcf") && !isPhotosAttach(a) && !isVideoAttach(a) && !isVoiceAttach(a);
+}
+
+/** Client AND for attachKindFilter (same predicates as person_timeline EXISTS). */
+export function rowMatchesAttachKind(
+  row: { attachments?: AttachKindRef[] | null },
+  attachKind: string,
+): boolean {
+  if (attachKind === "all") return true;
+  const atts = row.attachments ?? [];
+  if (attachKind === "photos") return atts.some(isPhotosAttach);
+  if (attachKind === "video") return atts.some(isVideoAttach);
+  if (attachKind === "voice") return atts.some(isVoiceAttach);
+  if (attachKind === "files") return atts.some(isFilesAttach);
+  return false;
+}

@@ -142,6 +142,8 @@ def main() -> None:
     assert_conversation_switcher(crate)
     assert_timeline_platform_chips(crate)
     assert_timeline_kind_filter(crate)
+    assert_timeline_attach_kind(crate)
+    assert_timeline_attach_kind_fold(crate)
     assert_gmail_timeline_rows(crate)
     assert_people_sidebar_no_x_scroll(crate)
     assert_people_filter_identity(crate)

@@ -4,7 +4,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use interlace_core::db::init_archive;
-use interlace_core::people::{person_list, person_media_rows_for, person_timeline_rows};
+use interlace_core::people::{
+    person_list, person_media_rows_for, person_timeline_rows, person_timeline_rows_for,
+};
 use interlace_core::{person_merge, person_timeline, person_undo, PersonMergeOpts};
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -1026,6 +1028,732 @@ fn gallery_core_berk() {
     assert!(
         berk_ids.contains(&p.berk_img),
         "Berk's stored image missing from Berk's gallery: {berk_ids:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Stored CAS hash for #362 timeline attach-kind plants (64 hex; cas_blobs FK).
+const MEDIA_KIND_CAS: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+
+struct MediaKindPlant {
+    ada_id: i64,
+    berk_id: i64,
+    ada_image: i64,
+    ada_voice: i64,
+    ada_video: i64,
+    ada_file_pdf: i64,
+    ada_file_null_mime: i64,
+    ada_file_empty_mime: i64,
+    ada_sticker: i64,
+    ada_omit_voice: i64,
+    ada_inline_img: i64,
+    ada_file_image: i64,
+    ada_file_audio: i64,
+    ada_inline_audio: i64,
+    ada_photo_voice: i64,
+    ada_group_voice: i64,
+    ada_text: i64,
+    ada_body_token: i64,
+    berk_voice: i64,
+}
+
+/// Ada + Berk attach-kind plant. Placeholders only. Attachments table is the
+/// source of truth (body `<attached:` tokens must not mint a Voice/Photos row).
+fn plant_ada_media_kind(arch: &interlace_core::db::Archive) -> MediaKindPlant {
+    arch.conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('whatsapp_android_zip', 't', '/t.zip')",
+            [],
+        )
+        .unwrap();
+    let src = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO import_runs(source_id, status) VALUES (?1, 'done')",
+            [src],
+        )
+        .unwrap();
+    let run = arch.conn.last_insert_rowid();
+
+    let ident = |arch: &interlace_core::db::Archive, name: &str, raw: &str, norm: &str| -> i64 {
+        arch.conn
+            .execute(
+                "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+                 VALUES ('whatsapp', 'display_name', ?1, ?2, ?3)",
+                rusqlite::params![raw, norm, name],
+            )
+            .unwrap();
+        arch.conn.last_insert_rowid()
+    };
+    let person = |arch: &interlace_core::db::Archive, name: &str, iid: i64| -> i64 {
+        arch.conn
+            .execute(
+                "INSERT INTO persons(display_name, is_self) VALUES (?1, 0)",
+                [name],
+            )
+            .unwrap();
+        let pid = arch.conn.last_insert_rowid();
+        arch.conn
+            .execute(
+                "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
+                 VALUES (?1, ?2, 'auto_email', 0.99, 'system')",
+                rusqlite::params![pid, iid],
+            )
+            .unwrap();
+        pid
+    };
+
+    let ada_iid = ident(arch, "Ada", "Ada", "ada");
+    let ada_id = person(arch, "Ada", ada_iid);
+    let berk_iid = ident(arch, "Berk", "Berk", "berk");
+    let berk_id = person(arch, "Berk", berk_iid);
+    let other_iid = ident(arch, "Other", "Other", "other");
+
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('whatsapp', 'dm', 'whatsapp:ada', 'Ada')",
+            [],
+        )
+        .unwrap();
+    let ada_dm = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![ada_dm, ada_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('whatsapp', 'group', 'whatsapp:g-ada', 'Project')",
+            [],
+        )
+        .unwrap();
+    let ada_grp = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![ada_grp, ada_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![ada_grp, other_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('whatsapp', 'dm', 'whatsapp:berk', 'Berk')",
+            [],
+        )
+        .unwrap();
+    let berk_dm = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![berk_dm, berk_iid],
+        )
+        .unwrap();
+
+    arch.conn
+        .execute(
+            "INSERT INTO cas_blobs(hash, size) VALUES (?1, 4)",
+            [MEDIA_KIND_CAS],
+        )
+        .unwrap();
+
+    let msg = |arch: &interlace_core::db::Archive,
+               conv: i64,
+               sender: i64,
+               sent_at: &str,
+               key: &str,
+               body: &str|
+     -> i64 {
+        arch.conn
+            .execute(
+                "INSERT INTO messages(conversation_id, source_id, import_run_id, sender_identity_id,
+                    sent_at, sent_at_precision, kind, body_text, idempotency_key)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'second', 'text', ?6, ?7)",
+                rusqlite::params![conv, src, run, sender, sent_at, body, key],
+            )
+            .unwrap();
+        arch.conn.last_insert_rowid()
+    };
+    let stored = |arch: &interlace_core::db::Archive,
+                  mid: i64,
+                  filename: &str,
+                  mime: Option<&str>,
+                  kind: &str| {
+        arch.conn
+            .execute(
+                "INSERT INTO attachments(message_id, cas_hash, filename, mime, kind, omitted, missing)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 0, 0)",
+                rusqlite::params![mid, MEDIA_KIND_CAS, filename, mime, kind],
+            )
+            .unwrap();
+    };
+
+    let ada_text = msg(
+        arch,
+        ada_dm,
+        ada_iid,
+        "2024-03-01T10:00:00Z",
+        "k-ada-text",
+        "ada text",
+    );
+    let ada_image = msg(
+        arch,
+        ada_dm,
+        ada_iid,
+        "2024-03-02T10:00:00Z",
+        "k-ada-img",
+        "",
+    );
+    stored(arch, ada_image, "ada.jpg", Some("image/jpeg"), "image");
+    let ada_voice = msg(
+        arch,
+        ada_dm,
+        ada_iid,
+        "2024-03-03T10:00:00Z",
+        "k-ada-voice",
+        "",
+    );
+    stored(
+        arch,
+        ada_voice,
+        "ada-voice.opus",
+        Some("audio/ogg"),
+        "voice",
+    );
+    let ada_video = msg(
+        arch,
+        ada_dm,
+        ada_iid,
+        "2024-03-04T10:00:00Z",
+        "k-ada-vid",
+        "",
+    );
+    stored(arch, ada_video, "ada.mp4", Some("video/mp4"), "video");
+    let ada_file_pdf = msg(
+        arch,
+        ada_dm,
+        ada_iid,
+        "2024-03-05T10:00:00Z",
+        "k-ada-pdf",
+        "",
+    );
+    stored(
+        arch,
+        ada_file_pdf,
+        "ada.pdf",
+        Some("application/pdf"),
+        "file",
+    );
+    let ada_sticker = msg(
+        arch,
+        ada_dm,
+        ada_iid,
+        "2024-03-06T10:00:00Z",
+        "k-ada-stk",
+        "",
+    );
+    stored(arch, ada_sticker, "ada.webp", Some("image/webp"), "sticker");
+    let ada_omit_voice = msg(
+        arch,
+        ada_dm,
+        ada_iid,
+        "2024-03-07T10:00:00Z",
+        "k-ada-omit-voice",
+        "",
+    );
+    arch.conn
+        .execute(
+            "INSERT INTO attachments(message_id, filename, mime, kind, omitted, missing)
+             VALUES (?1, 'ada-omit.opus', 'audio/ogg', 'voice', 1, 0)",
+            [ada_omit_voice],
+        )
+        .unwrap();
+    let ada_inline_img = msg(
+        arch,
+        ada_dm,
+        ada_iid,
+        "2024-03-08T10:00:00Z",
+        "k-ada-inl-img",
+        "",
+    );
+    stored(
+        arch,
+        ada_inline_img,
+        "ada-cid.jpg",
+        Some("image/jpeg"),
+        "inline",
+    );
+    let ada_file_image = msg(
+        arch,
+        ada_dm,
+        ada_iid,
+        "2024-03-09T10:00:00Z",
+        "k-ada-file-img",
+        "",
+    );
+    stored(
+        arch,
+        ada_file_image,
+        "ada-file.jpg",
+        Some("image/jpeg"),
+        "file",
+    );
+    let ada_file_audio = msg(
+        arch,
+        ada_dm,
+        ada_iid,
+        "2024-03-10T10:00:00Z",
+        "k-ada-file-aud",
+        "",
+    );
+    stored(
+        arch,
+        ada_file_audio,
+        "ada-file.ogg",
+        Some("audio/ogg"),
+        "file",
+    );
+    let ada_inline_audio = msg(
+        arch,
+        ada_dm,
+        ada_iid,
+        "2024-03-11T10:00:00Z",
+        "k-ada-inl-aud",
+        "",
+    );
+    stored(
+        arch,
+        ada_inline_audio,
+        "ada-cid.ogg",
+        Some("audio/ogg"),
+        "inline",
+    );
+    let ada_photo_voice = msg(
+        arch,
+        ada_dm,
+        ada_iid,
+        "2024-03-12T10:00:00Z",
+        "k-ada-photo-voice",
+        "",
+    );
+    stored(
+        arch,
+        ada_photo_voice,
+        "ada-both.jpg",
+        Some("image/jpeg"),
+        "image",
+    );
+    stored(
+        arch,
+        ada_photo_voice,
+        "ada-both.opus",
+        Some("audio/ogg"),
+        "voice",
+    );
+    let ada_body_token = msg(
+        arch,
+        ada_dm,
+        ada_iid,
+        "2024-03-13T10:00:00Z",
+        "k-ada-tok",
+        "hi <attached: orphan-voice.opus>",
+    );
+    let ada_group_voice = msg(
+        arch,
+        ada_grp,
+        ada_iid,
+        "2024-03-16T10:00:00Z",
+        "k-ada-grp-voice",
+        "",
+    );
+    stored(
+        arch,
+        ada_group_voice,
+        "ada-group.opus",
+        Some("audio/ogg"),
+        "voice",
+    );
+    let berk_voice = msg(
+        arch,
+        berk_dm,
+        berk_iid,
+        "2024-03-14T10:00:00Z",
+        "k-berk-voice",
+        "",
+    );
+    stored(arch, berk_voice, "berk.opus", Some("audio/ogg"), "voice");
+    // WhatsApp PDF / omitted file: kind=file with mime NULL (and empty).
+    // Current Files SQL treats NOT (file AND mime LIKE 'image/%') as
+    // unknown when mime is NULL, so this row is dropped.
+    let ada_file_null_mime = msg(
+        arch,
+        ada_dm,
+        ada_iid,
+        "2024-03-15T10:00:00Z",
+        "k-ada-file-null",
+        "",
+    );
+    stored(arch, ada_file_null_mime, "ada-null.pdf", None, "file");
+    let ada_file_empty_mime = msg(
+        arch,
+        ada_dm,
+        ada_iid,
+        "2024-03-17T10:00:00Z",
+        "k-ada-file-empty",
+        "",
+    );
+    stored(arch, ada_file_empty_mime, "ada-empty.pdf", Some(""), "file");
+
+    MediaKindPlant {
+        ada_id,
+        berk_id,
+        ada_image,
+        ada_voice,
+        ada_video,
+        ada_file_pdf,
+        ada_file_null_mime,
+        ada_file_empty_mime,
+        ada_sticker,
+        ada_omit_voice,
+        ada_inline_img,
+        ada_file_image,
+        ada_file_audio,
+        ada_inline_audio,
+        ada_photo_voice,
+        ada_group_voice,
+        ada_text,
+        ada_body_token,
+        berk_voice,
+    }
+}
+
+fn media_kind_ids(rows: &[interlace_core::people::TimelineRow]) -> Vec<i64> {
+    rows.iter().map(|r| r.message_id).collect()
+}
+
+/// media-kind-core-voice: Voice → kind=voice + file/inline audio/* (omitted
+/// still matches). Not the photo-only row. Photo+voice EXISTS-any. Table only.
+#[test]
+fn media_kind_core_voice() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_ada_media_kind(&arch);
+    let rows = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("voice"))
+        .expect("Voice must be Ok");
+    let ids = media_kind_ids(&rows);
+    assert!(
+        ids.contains(&p.ada_voice),
+        "stored kind=voice missing: {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_omit_voice),
+        "omitted voice must still match Voice (no cas_hash / omitted=0 requirement): {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_file_audio),
+        "kind=file mime=audio/* must match Voice: {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_inline_audio),
+        "kind=inline mime=audio/* must match Voice: {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_photo_voice),
+        "photo+voice message must appear under Voice (EXISTS any): {ids:?}"
+    );
+    assert!(
+        !ids.contains(&p.ada_image),
+        "photo-only row leaked into Voice: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&p.ada_sticker),
+        "sticker leaked into Voice: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&p.ada_inline_img),
+        "inline image leaked into Voice: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&p.ada_file_image),
+        "file+image/* leaked into Voice: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&p.ada_text),
+        "text-only row leaked into Voice: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&p.ada_body_token),
+        "body-token synthetic must not match Voice (attachments table only): {ids:?}"
+    );
+    assert!(
+        !ids.contains(&p.ada_group_voice),
+        "group voice leaked with include_groups=false: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&p.berk_voice),
+        "Berk's voice leaked into Ada Voice: {ids:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// media-kind-core-photos-not-voice: Photos → image/sticker/inline|file image/*.
+/// Not voice-only. Photo+voice in. file+image/* is Photos, not Files.
+#[test]
+fn media_kind_core_photos_not_voice() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_ada_media_kind(&arch);
+    let rows = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("photos"))
+        .expect("Photos must be Ok");
+    let ids = media_kind_ids(&rows);
+    assert!(
+        ids.contains(&p.ada_image),
+        "kind=image missing from Photos: {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_sticker),
+        "kind=sticker must be Photos: {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_inline_img),
+        "kind=inline mime=image/* must be Photos: {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_file_image),
+        "kind=file mime=image/* must be Photos (not Files): {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_photo_voice),
+        "photo+voice message must appear under Photos (EXISTS any): {ids:?}"
+    );
+    assert!(
+        !ids.contains(&p.ada_voice),
+        "voice-only row leaked into Photos: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&p.ada_omit_voice),
+        "omitted voice leaked into Photos: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&p.ada_file_audio),
+        "file+audio/* leaked into Photos: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&p.ada_file_pdf),
+        "file+pdf leaked into Photos: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&p.ada_text),
+        "text-only row leaked into Photos: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&p.ada_body_token),
+        "body-token synthetic must not match Photos (attachments table only): {ids:?}"
+    );
+
+    let files = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("files"))
+        .expect("Files must be Ok");
+    let file_ids = media_kind_ids(&files);
+    assert!(
+        file_ids.contains(&p.ada_file_pdf),
+        "file+pdf must be Files: {file_ids:?}"
+    );
+    assert!(
+        !file_ids.contains(&p.ada_file_image),
+        "file+image/* is Photos, not Files: {file_ids:?}"
+    );
+    assert!(
+        !file_ids.contains(&p.ada_file_audio),
+        "file+audio/* is Voice, not Files: {file_ids:?}"
+    );
+    assert!(
+        !file_ids.contains(&p.ada_image),
+        "kind=image leaked into Files: {file_ids:?}"
+    );
+    assert!(
+        !file_ids.contains(&p.ada_voice),
+        "kind=voice leaked into Files: {file_ids:?}"
+    );
+    assert!(
+        !file_ids.contains(&p.ada_video),
+        "kind=video leaked into Files: {file_ids:?}"
+    );
+
+    let video = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("video"))
+        .expect("Video must be Ok");
+    let video_ids = media_kind_ids(&video);
+    assert!(
+        video_ids.contains(&p.ada_video),
+        "kind=video missing from Video: {video_ids:?}"
+    );
+    assert!(
+        !video_ids.contains(&p.ada_image),
+        "photo-only row leaked into Video: {video_ids:?}"
+    );
+    assert!(
+        !video_ids.contains(&p.ada_voice),
+        "voice-only row leaked into Video: {video_ids:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// media-kind-core-all: All / None → merged stream includes photo + voice + text.
+#[test]
+fn media_kind_core_all() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_ada_media_kind(&arch);
+    let rows = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, None)
+        .expect("All (omit attach-kind) must be Ok");
+    let ids = media_kind_ids(&rows);
+    assert!(
+        ids.contains(&p.ada_image),
+        "All must keep the photo row: {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_voice),
+        "All must keep the voice row: {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_text),
+        "All must keep the text-only row: {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_video),
+        "All must keep the video row: {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_file_pdf),
+        "All must keep the file/pdf row: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&p.ada_group_voice),
+        "All still hides group rows when include_groups=false: {ids:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// media-kind-core-empty: Ada with no video + Video → Ok([]), not Err.
+#[test]
+fn media_kind_core_empty() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let (ada, dm_msg, _) = plant_ada_sender(&arch);
+    arch.conn
+        .execute(
+            "INSERT INTO attachments(message_id, filename, mime, kind, omitted, missing)
+             VALUES (?1, 'ada.jpg', 'image/jpeg', 'image', 0, 0)",
+            [dm_msg],
+        )
+        .unwrap();
+    let rows = person_timeline_rows_for(&arch, ada, false, 50, None, None, Some("video"))
+        .expect("Video on Ada with no video must be Ok, not Err");
+    assert!(
+        rows.is_empty(),
+        "Ada with no video + Video must be empty, got {:?}",
+        media_kind_ids(&rows)
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// media-kind-core-groups: group voice absent when include_groups=false,
+/// present when true.
+#[test]
+fn media_kind_core_groups() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_ada_media_kind(&arch);
+    let off = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("voice"))
+        .expect("Voice include_groups=false must be Ok");
+    let off_ids = media_kind_ids(&off);
+    assert!(
+        !off_ids.contains(&p.ada_group_voice),
+        "group voice leaked with include_groups=false: {off_ids:?}"
+    );
+    assert!(
+        off_ids.contains(&p.ada_voice),
+        "DM voice must remain when groups are off: {off_ids:?}"
+    );
+    let on = person_timeline_rows_for(&arch, p.ada_id, true, 50, None, None, Some("voice"))
+        .expect("Voice include_groups=true must be Ok");
+    let on_ids = media_kind_ids(&on);
+    assert!(
+        on_ids.contains(&p.ada_group_voice),
+        "group voice missing with include_groups=true: {on_ids:?}"
+    );
+    let grp = on
+        .iter()
+        .find(|r| r.message_id == p.ada_group_voice)
+        .unwrap();
+    assert_eq!(grp.conversation_kind, "group");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// media-kind-core-berk: Berk Voice does not return Ada's voice message_id.
+#[test]
+fn media_kind_core_berk() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_ada_media_kind(&arch);
+    let ada = person_timeline_rows_for(&arch, p.ada_id, true, 50, None, None, Some("voice"))
+        .expect("Ada Voice must be Ok");
+    let ada_ids = media_kind_ids(&ada);
+    let berk = person_timeline_rows_for(&arch, p.berk_id, true, 50, None, None, Some("voice"))
+        .expect("Berk Voice must be Ok");
+    let berk_ids = media_kind_ids(&berk);
+    assert!(
+        !berk_ids.contains(&p.ada_voice),
+        "Ada's voice leaked into Berk Voice: {berk_ids:?}"
+    );
+    assert!(
+        !berk_ids.contains(&p.ada_omit_voice),
+        "Ada omitted voice leaked into Berk Voice: {berk_ids:?}"
+    );
+    assert!(
+        !berk_ids.contains(&p.ada_photo_voice),
+        "Ada photo+voice leaked into Berk Voice: {berk_ids:?}"
+    );
+    assert!(
+        !ada_ids.contains(&p.berk_voice),
+        "Berk's voice leaked into Ada Voice: {ada_ids:?}"
+    );
+    assert!(
+        berk_ids.contains(&p.berk_voice),
+        "Berk's voice missing from Berk Voice: {berk_ids:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// media-kind-core-files-null-mime: Files treats NULL/empty mime as not
+/// image/video/audio (same as client isFilesAttach). kind=file + mime IS
+/// NULL (WhatsApp PDF / omitted file) must return that message_id.
+#[test]
+fn media_kind_core_files_null_mime() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_ada_media_kind(&arch);
+    let files = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("files"))
+        .expect("Files must be Ok");
+    let ids = media_kind_ids(&files);
+    assert!(
+        ids.contains(&p.ada_file_null_mime),
+        "kind=file mime=NULL must match Files (WhatsApp PDF / omitted file): {ids:?}"
+    );
+    assert!(
+        ids.contains(&p.ada_file_empty_mime),
+        "kind=file mime='' must match Files: {ids:?}"
     );
     let _ = std::fs::remove_dir_all(&root);
 }

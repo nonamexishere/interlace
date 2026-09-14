@@ -32,6 +32,7 @@ pub(crate) fn person_timeline(
     limit: Option<u32>,
     before: Option<String>,
     conversation_id: Option<i64>,
+    attach_kind: Option<String>,
 ) -> Result<serde_json::Value, String> {
     with_arch(&state, |arch| {
         let rows = person_timeline_rows_for(
@@ -41,6 +42,7 @@ pub(crate) fn person_timeline(
             limit.unwrap_or(80),
             before.as_deref(),
             conversation_id,
+            attach_kind.as_deref(),
         )
         .map_err(err)?;
         serde_json::to_value(rows).map_err(err)

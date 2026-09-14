@@ -12,6 +12,7 @@
     timeline,
     filteredTimeline,
     includeGroups,
+    attachKindFilter = "all",
     onRetry,
     onShowAll,
     onIncludeGroups,
@@ -24,11 +25,14 @@
     timeline: TimelineRow[];
     filteredTimeline: { index: number }[];
     includeGroups: boolean;
+    attachKindFilter?: string;
     onRetry: () => void;
     onShowAll: () => void;
     onIncludeGroups: () => void;
     onImport: () => void;
   } = $props();
+
+  const filterEmpty = $derived(attachKindFilter !== "all" || timeline.length > 0);
 </script>
 
 {#if tlLoading}
@@ -62,12 +66,12 @@
   <div class="py-6">
     <EmptyState
       title="No messages in this view"
-      body={timeline.length === 0
-        ? "This person may only appear in groups. Tick include groups, or import more sources."
-        : "Nothing matches the current platform or kind filter. Try All, or another chip."}
-      actionLabel={timeline.length > 0 ? "Show all" : includeGroups ? "Import" : "Include groups"}
+      body={filterEmpty
+        ? "Nothing matches the current platform, kind, or attachment filter. Try All, or another chip."
+        : "This person may only appear in groups. Tick include groups, or import more sources."}
+      actionLabel={filterEmpty ? "Show all" : includeGroups ? "Import" : "Include groups"}
       onAction={() => {
-        if (timeline.length > 0) {
+        if (filterEmpty) {
           onShowAll();
           return;
         }

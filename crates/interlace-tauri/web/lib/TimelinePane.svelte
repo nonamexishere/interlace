@@ -3,7 +3,7 @@
   import { api, type Identity, type Person, type PersonConversation, type TimelineRow } from "./api";
   import TimelineFilters from "./TimelineFilters.svelte";
   import TimelineList from "./TimelineList.svelte";
-  import { platformLabel } from "./TimelineMail";
+  import { platformLabel, rowMatchesAttachKind } from "./TimelineMail";
   import { writeIncludeGroupsPref } from "./PeoplePrefs";
   import { findCount, findHitIndices, onFindKey, snapFindHit, stepFindIndex } from "./findHighlight";
   import { applyJumpScrollPos, jumpToLocalDay, nearestVisibleTlIndex, TIMELINE_PAGE_LIMIT } from "./jumpDay";
@@ -58,6 +58,7 @@
 
   let platformFilter = $state("all");
   let kindFilter = $state("all");
+  let attachKindFilter = $state("all");
   let tlLoading = $state(false);
   let tlAppending = $state(false);
   let tlError = $state("");
@@ -134,7 +135,8 @@
       .filter(
         (item) =>
           (platformFilter === "all" || item.row.platform === platformFilter) &&
-          (kindFilter === "all" || item.row.conversation_kind === kindFilter),
+          (kindFilter === "all" || item.row.conversation_kind === kindFilter) &&
+          (attachKindFilter === "all" || rowMatchesAttachKind(item.row, attachKindFilter)),
       ),
   );
 
@@ -184,6 +186,7 @@
       showPersonChrome = false;
       platformFilter = "all";
       kindFilter = "all";
+      attachKindFilter = "all";
       findQ = "";
     }
     selectedId = id;
@@ -210,6 +213,7 @@
         limit: TIMELINE_PAGE_LIMIT,
         before,
         conversationId: selectedConversationId,
+        ...(attachKindFilter !== "all" ? { attachKind: attachKindFilter } : {}),
       });
       if (gen !== tlGen) return;
       const pane = document.getElementById("person-timeline");
@@ -264,6 +268,7 @@
     showPersonChrome = false;
     platformFilter = "all";
     kindFilter = "all";
+    attachKindFilter = "all";
     findQ = ""; dayPin = false; jumpGen++;
     selectedId = personId;
     persistLastPerson(personId);
@@ -296,6 +301,7 @@
           limit: pageLimit,
           before,
           conversationId: null,
+          ...(attachKindFilter !== "all" ? { attachKind: attachKindFilter } : {}),
         });
         if (gen !== tlGen) return;
         if (batch.length === 0) break;
@@ -451,6 +457,12 @@
         {availableKinds}
         bind:platformFilter
         bind:kindFilter
+        bind:attachKindFilter
+        onAttachKindChange={() => {
+          if (!selectedId) return;
+          const keepConversation = true;
+          void selectPerson(selectedId, false, keepConversation);
+        }}
       />
       <div class="mb-3 flex items-center gap-2">
         <Input id="tl-find" data-tl-find type="search" bind:value={findQ} placeholder={t("findInThread")} aria-label={t("findInThread")} autocomplete="off" class="h-8 min-w-0 flex-1" oninput={() => (dayPin = false, jumpGen++)} onkeydown={onPaneFindKey} />
@@ -472,6 +484,7 @@
     {tlAppending}
     {tlError}
     bind:includeGroups
+    {attachKindFilter}
     {oldestCursor}
     {density}
     onRetry={() => selectedId && selectPerson(selectedId)}
@@ -483,6 +496,10 @@
     onShowAll={() => {
       platformFilter = "all";
       kindFilter = "all";
+      attachKindFilter = "all";
+      if (!selectedId) return;
+      const keepConversation = true;
+      void selectPerson(selectedId, false, keepConversation);
     }}
     onIncludeGroups={() => {
       if (!selectedId) return;

@@ -7,6 +7,33 @@ use super::{PersonConversation, PersonMediaRow, TimelineRow};
 const TIMELINE_DEFAULT: u32 = 100;
 const TIMELINE_MAX: u32 = 200;
 
+/// EXISTS predicate for optional attach-kind (`None` / All = no extra clause).
+fn attach_kind_sql(attach_kind: Option<&str>) -> &'static str {
+    const PHOTOS: &str = "AND EXISTS (SELECT 1 FROM attachments a WHERE a.message_id = m.id AND (\
+         a.kind IN ('image','sticker')\
+      OR (a.kind IN ('inline','file') AND a.mime LIKE 'image/%')))";
+    const VIDEO: &str = "AND EXISTS (SELECT 1 FROM attachments a WHERE a.message_id = m.id AND (\
+         a.kind = 'video'\
+      OR (a.kind IN ('inline','file') AND a.mime LIKE 'video/%')))";
+    const VOICE: &str = "AND EXISTS (SELECT 1 FROM attachments a WHERE a.message_id = m.id AND (\
+         a.kind = 'voice'\
+      OR (a.kind IN ('inline','file') AND a.mime LIKE 'audio/%')))";
+    // NULL/empty mime is not image/video/audio (same as client isFilesAttach).
+    const FILES: &str = "AND EXISTS (SELECT 1 FROM attachments a WHERE a.message_id = m.id AND \
+         a.kind IN ('file','vcf')\
+     AND IFNULL(a.mime,'') NOT LIKE 'image/%'\
+     AND IFNULL(a.mime,'') NOT LIKE 'video/%'\
+     AND IFNULL(a.mime,'') NOT LIKE 'audio/%')";
+    match attach_kind {
+        None | Some("") | Some("all") => "",
+        Some("photos") => PHOTOS,
+        Some("video") => VIDEO,
+        Some("voice") => VOICE,
+        Some("files") => FILES,
+        Some(_) => "AND 1=0",
+    }
+}
+
 /// D18 timeline with optional `before` sent_at cursor (exclusive, descending).
 pub fn person_timeline_rows(
     archive: &Archive,
@@ -15,10 +42,19 @@ pub fn person_timeline_rows(
     limit: u32,
     before: Option<&str>,
 ) -> Result<Vec<TimelineRow>, CoreError> {
-    person_timeline_rows_for(archive, person_id, include_groups, limit, before, None)
+    person_timeline_rows_for(
+        archive,
+        person_id,
+        include_groups,
+        limit,
+        before,
+        None,
+        None,
+    )
 }
 
 /// D18 timeline; `conversation_id = None` is All (merged stream).
+/// `attach_kind = None` / All omits the attachments EXISTS filter.
 pub fn person_timeline_rows_for(
     archive: &Archive,
     person_id: i64,
@@ -26,6 +62,7 @@ pub fn person_timeline_rows_for(
     limit: u32,
     before: Option<&str>,
     conversation_id: Option<i64>,
+    attach_kind: Option<&str>,
 ) -> Result<Vec<TimelineRow>, CoreError> {
     let limit = limit.clamp(1, TIMELINE_MAX);
     let limit = if limit == 0 { TIMELINE_DEFAULT } else { limit };
@@ -44,6 +81,7 @@ pub fn person_timeline_rows_for(
     } else {
         ""
     };
+    let attach_sql = attach_kind_sql(attach_kind);
     let sql = format!(
         "SELECT m.id, m.sent_at, m.conversation_id, c.title, c.kind, c.platform,
                 m.sender_identity_id, m.subject, COALESCE(m.body_text, ''),
@@ -73,6 +111,7 @@ pub fn person_timeline_rows_for(
            {group_sql}
            {cursor_sql}
            {conv_sql}
+           {attach_sql}
          ORDER BY m.sent_at IS NULL, m.sent_at DESC, m.id DESC
          LIMIT :lim"
     );

@@ -153,7 +153,13 @@ toolbar (All | WhatsApp | Gmail | …) lists only sources present for that
 person; **All** is the default and switching people resets it. A **kind filter**
 (All | DMs | Email threads | Groups) ANDs with the platform filter on
 `conversation_kind`; groups still need **include groups** to load at all.
-Switching people resets both filters. Each bubble
+Switching people resets both filters. An **attachment-kind** filter on the
+person timeline (All | Photos | Voice | Video | Files) ANDs with the
+platform and kind filters; **All** is the default and switching people
+resets it. **Files** is a file or vCard that is not Photos, Voice, or Video
+(a WhatsApp PDF or omitted file with no type still counts). Changing the
+attachment chip, or **Show all**, keeps the open conversation. A person
+with no videos + Video is empty + clear, not a stuck spinner. Each bubble
 shows a small text **platform chip** (not a brand logo). An **optional right inspector**
 (off by default) opens when you click the person name at the top of the
 conversation: identities and last activity, with Merge, include groups, and
