@@ -1394,9 +1394,7 @@ fn plant_ada_media_kind(arch: &interlace_core::db::Archive) -> MediaKindPlant {
         "",
     );
     stored(arch, berk_voice, "berk.opus", Some("audio/ogg"), "voice");
-    // WhatsApp PDF / omitted file: kind=file with mime NULL (and empty).
-    // Current Files SQL treats NOT (file AND mime LIKE 'image/%') as
-    // unknown when mime is NULL, so this row is dropped.
+    // WhatsApp PDF / omitted-file shape (kind=file, mime NULL/empty) that Files must keep.
     let ada_file_null_mime = msg(
         arch,
         ada_dm,
