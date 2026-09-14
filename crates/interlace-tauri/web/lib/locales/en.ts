@@ -97,6 +97,12 @@ export const en = {
   noStoredMediaBody:
     "This person has no stored photos, videos, or stickers. Tick include groups to also search group chats, or import more sources.",
   includeGroups: "Include groups",
+  attachKind: "Attachments",
+  attachKindAll: "All",
+  attachKindPhotos: "Photos",
+  attachKindVoice: "Voice",
+  attachKindVideo: "Video",
+  attachKindFiles: "Files",
 } as const;
 
 export type ChromeKey = keyof typeof en;

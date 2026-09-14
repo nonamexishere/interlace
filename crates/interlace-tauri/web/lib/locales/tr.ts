@@ -99,4 +99,10 @@ export const tr: ChromePack = {
   noStoredMediaBody:
     "Bu kişinin kayıtlı fotoğrafı, videosu veya çıkartması yok. Grup sohbetlerini de taramak için grupları dahil edin, veya daha fazla kaynak içe aktarın.",
   includeGroups: "Grupları dahil et",
+  attachKind: "Ekler",
+  attachKindAll: "Tümü",
+  attachKindPhotos: "Fotoğraflar",
+  attachKindVoice: "Ses",
+  attachKindVideo: "Videolar",
+  attachKindFiles: "Dosyalar",
 };

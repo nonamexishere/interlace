@@ -199,6 +199,7 @@ export const api = {
     limit?: number;
     before?: string | null;
     conversationId?: number | null;
+    attachKind?: string | null;
   }) => invoke<TimelineRow[]>("person_timeline", args),
   personConversations: (args: { id: number; includeGroups: boolean }) =>
     invoke<PersonConversation[]>("person_conversations_cmd", args),

@@ -29,6 +29,8 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_conversation_switcher",
     "assert_timeline_platform_chips",
     "assert_timeline_kind_filter",
+    "assert_timeline_attach_kind",
+    "assert_timeline_attach_kind_fold",
     "assert_gmail_timeline_rows",
     "assert_people_sidebar_no_x_scroll",
     "assert_people_filter_identity",
