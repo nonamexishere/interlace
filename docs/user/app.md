@@ -259,7 +259,8 @@ local CAS. Video and PDF are never a remote stream (no remote viewer).
 A person’s **Media** gallery (Find / Jump row, or the inspector Media
 button) lists that person’s stored CAS image / video / sticker files,
 plus Gmail inline image/video parts. Click a photo for the existing
-lightbox. A video thumb opens the existing overlay; autoplay is off.
+lightbox. A video thumb opens the existing overlay (Close / Esc / backdrop
+returns to the gallery); autoplay is off.
 **Show in timeline** jumps to that message. Empty has a next action
 (include groups, or Import). Include-groups follows the timeline tick.
 Nothing is fetched from the network. Exports that omitted media show a

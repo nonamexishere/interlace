@@ -194,6 +194,7 @@ def main() -> None:
     assert_person_inspector(crate)
     assert_group_inspector_names(crate)
     assert_person_media_gallery(crate)
+    assert_person_media_gallery_fold(crate)
     assert_keyboard_list_arrows(crate)
     assert_command_palette(crate)
     assert_command_palette_people_cap(crate)
