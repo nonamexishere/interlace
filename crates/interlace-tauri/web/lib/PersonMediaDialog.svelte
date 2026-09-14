@@ -64,8 +64,6 @@
     requested.clear();
     lightboxSrc = null;
     videoSrc = null;
-    scrollTop = 0;
-    if (galleryEl) galleryEl.scrollTop = 0;
     const gen = ++galleryGen;
     if (!shown || id == null) {
       mediaLoading = false;
@@ -130,13 +128,8 @@
   $effect(() => {
     const el = galleryEl;
     if (!el) return;
-    el.scrollTop = 0;
-    viewportH = el.clientHeight || 400;
     measureRowH();
-    const ro = new ResizeObserver(() => {
-      viewportH = el.clientHeight || 400;
-      measureRowH();
-    });
+    const ro = new ResizeObserver(() => measureRowH());
     ro.observe(el);
     return () => ro.disconnect();
   });
@@ -234,10 +227,21 @@
   }
 
   $effect(() => {
-    if (!lightboxSrc) return;
+    if (!lightboxSrc && !videoSrc) return;
     const handler = (e: KeyboardEvent) => onOverlayKey(e);
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
+  });
+
+  $effect(() => {
+    if (!videoSrc) return;
+    const id = requestAnimationFrame(() => {
+      const btn = document.querySelector(
+        "[data-person-gallery-video] [data-cas-video-expand]",
+      ) as HTMLButtonElement | null;
+      btn?.click();
+    });
+    return () => cancelAnimationFrame(id);
   });
 </script>
 
@@ -354,13 +358,36 @@
   {/if}
   {#if videoSrc}
     <Dialog.Portal>
-      <CasVideo
-        srcs={{ gallery: videoSrc }}
-        srcKey="gallery"
-        filename={videoName}
-        overlayOnly
-        onClose={() => (videoSrc = null)}
-      />
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="photo-lightbox pointer-events-auto fixed inset-0 z-[100] flex items-center justify-center"
+        style="pointer-events: auto"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("media")}
+        onclick={(e) => {
+          e.stopPropagation();
+          closeOverlays();
+        }}
+        onkeydown={onOverlayKey}
+      >
+        <button
+          type="button"
+          class="lightbox-chrome pointer-events-auto absolute top-3 right-3 z-[101] inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+          data-lightbox-close
+          aria-label={t("media")}
+          onclick={(e) => {
+            e.stopPropagation();
+            closeOverlays();
+          }}
+        >
+          <X class="size-4" />
+        </button>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div data-person-gallery-video onclick={(e) => e.stopPropagation()}>
+          <CasVideo srcs={{ gallery: videoSrc }} srcKey="gallery" filename={videoName} />
+        </div>
+      </div>
     </Dialog.Portal>
   {/if}
 </Dialog.Root>

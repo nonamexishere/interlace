@@ -8,19 +8,14 @@
     srcKey,
     filename,
     onBroken,
-    overlayOnly = false,
-    onClose,
   }: {
     srcs: Record<string, string>;
     srcKey: string;
     filename?: string | null;
     onBroken?: () => void;
-    /** Gallery: skip the inline player and open the existing overlay only. */
-    overlayOnly?: boolean;
-    onClose?: () => void;
   } = $props();
 
-  let expanded = $state(overlayOnly);
+  let expanded = $state(false);
 
   function openExpanded(e: MouseEvent) {
     e.stopPropagation();
@@ -33,7 +28,6 @@
 
   function closeExpanded() {
     expanded = false;
-    onClose?.();
   }
 
   function onOverlayKeydown(e: KeyboardEvent) {
@@ -61,30 +55,28 @@
   }
 </script>
 
-{#if !overlayOnly}
-  <div class="relative inline-block max-w-full">
-    <video
-      class="max-h-64 max-w-full rounded-md border border-border"
-      src={srcs[srcKey]}
-      preload="metadata"
-      controls
-      playsinline
-      data-cas-video
-      aria-label={filename || "video"}
-      onplay={onPlay}
-      onerror={() => onBroken?.()}
-    ></video>
-    <button
-      type="button"
-      class="absolute top-2 right-2 z-10 inline-flex size-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-      data-cas-video-expand
-      aria-label="Open video full size"
-      onclick={openExpanded}
-    >
-      <Maximize2 class="size-4" />
-    </button>
-  </div>
-{/if}
+<div class="relative inline-block max-w-full">
+  <video
+    class="max-h-64 max-w-full rounded-md border border-border"
+    src={srcs[srcKey]}
+    preload="metadata"
+    controls
+    playsinline
+    data-cas-video
+    aria-label={filename || "video"}
+    onplay={onPlay}
+    onerror={() => onBroken?.()}
+  ></video>
+  <button
+    type="button"
+    class="absolute top-2 right-2 z-10 inline-flex size-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+    data-cas-video-expand
+    aria-label="Open video full size"
+    onclick={openExpanded}
+  >
+    <Maximize2 class="size-4" />
+  </button>
+</div>
 
 {#if expanded}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
