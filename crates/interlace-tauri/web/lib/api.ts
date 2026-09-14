@@ -53,6 +53,17 @@ export type TimelineRow = {
   attachments?: Attachment[];
 };
 
+export type PersonMediaRow = {
+  attachment_id: number;
+  message_id: number;
+  sent_at?: string | null;
+  conversation_kind: string;
+  cas_hash: string;
+  filename?: string | null;
+  mime?: string | null;
+  kind: string;
+};
+
 export type PersonConversation = {
   id: number;
   title?: string | null;
@@ -191,6 +202,12 @@ export const api = {
   }) => invoke<TimelineRow[]>("person_timeline", args),
   personConversations: (args: { id: number; includeGroups: boolean }) =>
     invoke<PersonConversation[]>("person_conversations_cmd", args),
+  personMedia: (args: {
+    id: number;
+    includeGroups: boolean;
+    limit?: number;
+    before?: string | null;
+  }) => invoke<PersonMediaRow[]>("person_media", args),
   conversationParticipants: (conversationId: number) =>
     invoke<ConversationParticipantName[]>("conversation_participants_cmd", {
       conversationId,

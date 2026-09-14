@@ -1,7 +1,9 @@
 # Agent / session handoff
 
-**Date:** 2026-09-12. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
-HEAD this PR **#359** / #79 (`feat/preserve-raw`, CI green).
+**Date:** 2026-09-14. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
+HEAD this PR **#359** / #79 (`feat/preserve-raw`, CI green). **#361**
+(Phase 2.4 / epic **#360**) is **in flight** on `feat/ui-person-media-gallery`.
+Do not start **#362** until #361 lands.
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -271,20 +273,24 @@ Phase 2.1 milestone (#6): **closed**.
 ## Open — product now
 
 Phase 2.3 coding is **done** (epic **#264** / milestone 8 closed). Phase 2.2
-polish (#197) is **done**. Phase 4 epic **#56** is **started** (#79 / PR
-**#359**). Normative
+polish (#197) is **done**. Phase 2.4 epic **#360** is **started**: **#361**
+person media gallery is **in flight**. Phase 4 epic **#56** is **started**
+(#79 / PR **#359**). Normative
 [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md).
-Do **not** start Phase 1.1 (#57–#69), Phase 3 export (#72–#75), or
-Phase 4 **#80–#82** unprompted. Prefer one issue → one PR; thin chrome
-still uses the loop when load-bearing. Skip researcher only when the
-issue already names helpers, files, and must-IDs. Orchestrator does
-not implement product code.
+Do **not** start **#362** until #361 lands. Do **not** start Phase 1.1
+(#57–#69), Phase 3 export (#72–#75), or Phase 4 **#80–#82** unprompted.
+Prefer one issue → one PR; thin chrome still uses the loop when
+load-bearing. Skip researcher only when the issue already names
+helpers, files, and must-IDs. Orchestrator does not implement product
+code.
 
 ### Suggested next
 
-1. Merge **#359** when Mustafa asks. Next coding **#80** (photo pHash)
-   only if asked. Do not start #81 / #82 / 1.1 / Phase 3 export
-   unprompted. #342 follow-up is **D** (quiet is correct).
+1. Land **#361** (person Media gallery). Do not start **#362** until
+   it lands. Merge **#359** when Mustafa asks. Next Phase 4 coding
+   **#80** (photo pHash) only if asked. Do not start #81 / #82 / 1.1 /
+   Phase 3 export unprompted. #342 follow-up is **D** (quiet is
+   correct).
 2. Ask before the first notarized `app-v*` tag.
 
 Phase 2.3 archive: [#264](https://github.com/nonamexishere/interlace/issues/264) / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8).
@@ -300,9 +306,10 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 
 ## Recommended next steps
 
-1. #303–#322 / #342 are done. Phase 4 started: **#79** / PR **#359**
-   (CI green; merge when asked). Next coding **#80** only if asked.
-   #342 follow-up is **D**.
+1. #303–#322 / #342 are done. Phase 2.4: **#361** in flight (epic
+   **#360**). Do not start **#362** until #361 lands. Phase 4 started:
+   **#79** / PR **#359** (CI green; merge when asked). Next Phase 4
+   coding **#80** only if asked. #342 follow-up is **D**.
 2. Do not start 1.1 / Phase 3 export / #81 / #82 unprompted.
 3. Last shipped app tag is **`app-v0.1.2`** (unsigned). Workflow can
    Developer ID + notarize the next `app-v*` once Apple secrets exist.
@@ -383,14 +390,16 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > recommended mix; Mustafa may type take X from A, Y from B. Write the
 > mix into IN.md before test-author. Do not spawn agents from a child. Orchestrator
 > does not implement product code. Ask before commit / push / merge.
-> Phase 2.3 coding is done (epic #264 / milestone 8 closed). Read
+> Phase 2.3 coding is done (epic #264 / milestone 8 closed). Phase 2.4
+> epic #360 started: **#361** in flight. Do not start **#362** until
+> #361 lands. Read
 > `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,
 > #297, #300, #303–#322, #342 done (PRs #323–#328, #330, #332, #336, #338, #340,
 > #343, #345, #347, #349, #351, #353, #355, #356, #357, #358). Phase 4 started:
-> #79 / PR #359 (CI green). Next coding #80 only if asked. #342 follow-up is D
+> #79 / PR #359 (CI green). Next Phase 4 coding #80 only if asked. #342 follow-up is D
 > (quiet is correct).
 > Line count is not a CI gate.
-> Do not start 1.1 / Phase 3 export / #81 / #82 unprompted.
+> Do not start 1.1 / Phase 3 export / #80–#82 unprompted.
 > Do not dump chat bodies. Ask before crates.io, `v*`, or another `app-v*`
 > tag (`app-v0.1.2` is current; first notarized tag is not cut). After
 > merges, update this handoff in the same session.

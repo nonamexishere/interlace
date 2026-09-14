@@ -14,7 +14,9 @@ pub use attach::{attachments_for, complete_attachments, extract_attached_filenam
 pub use list::{
     conversation_participant_names, merge_targets, person_display_name, person_identities,
 };
-pub use timeline::{person_conversations, person_timeline_rows, person_timeline_rows_for};
+pub use timeline::{
+    person_conversations, person_media_rows_for, person_timeline_rows, person_timeline_rows_for,
+};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PersonSummary {
@@ -53,6 +55,20 @@ pub struct AttachmentRef {
     pub kind: String,
     pub omitted: bool,
     pub missing: bool,
+}
+
+/// Compact stored image / video / sticker (or Gmail inline image/video) for
+/// the person Media gallery. Attachments table only.
+#[derive(Debug, Clone, Serialize)]
+pub struct PersonMediaRow {
+    pub attachment_id: i64,
+    pub message_id: i64,
+    pub sent_at: Option<String>,
+    pub conversation_kind: String,
+    pub cas_hash: String,
+    pub filename: Option<String>,
+    pub mime: Option<String>,
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

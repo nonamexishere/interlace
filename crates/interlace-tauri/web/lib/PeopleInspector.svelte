@@ -29,6 +29,7 @@
     onMerge,
     onUnlink,
     onReloadPerson,
+    onOpenGallery,
   }: {
     showPersonChrome?: boolean;
     personTitle: string;
@@ -44,6 +45,7 @@
     onMerge: () => void;
     onUnlink: (id: number) => void;
     onReloadPerson: (includeGroups: boolean) => void;
+    onOpenGallery: () => void;
   } = $props();
 
   let participants = $state<ConversationParticipantName[]>([]);
@@ -114,6 +116,13 @@
   <div class="flex flex-col gap-2">
     <Button variant="outline" size="sm" disabled={!personById(selectedId)} onclick={onMerge}
       >Merge…</Button
+    >
+    <Button
+      variant="outline"
+      size="sm"
+      data-person-gallery-open
+      disabled={selectedId == null}
+      onclick={onOpenGallery}>{t("media")}</Button
     >
     <label class="flex items-center gap-2 text-sm">
       <input

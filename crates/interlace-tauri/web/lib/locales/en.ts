@@ -91,6 +91,12 @@ export const en = {
   findInThread: "Find in conversation",
   jumpToDay: "Jump to day",
   latest: "Latest",
+  media: "Media",
+  showInTimeline: "Show in timeline",
+  noStoredMedia: "No stored media",
+  noStoredMediaBody:
+    "This person has no stored photos, videos, or stickers. Tick include groups to also search group chats, or import more sources.",
+  includeGroups: "Include groups",
 } as const;
 
 export type ChromeKey = keyof typeof en;

@@ -167,6 +167,9 @@ body {
 
 .photo-lightbox {
   background-color: var(--lightbox-scrim);
+  /* Bits UI dialog scroll-lock sets body pointer-events: none; this layer
+     must take hits or the X and backdrop do nothing and the grid clicks through. */
+  pointer-events: auto;
 }
 
 .dialog-overlay {

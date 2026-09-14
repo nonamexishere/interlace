@@ -2,7 +2,7 @@
 
 use interlace_core::people::{
     conversation_participant_names, person_conversations, person_display_name, person_identities,
-    person_timeline_rows_for, recent_link_events,
+    person_media_rows_for, person_timeline_rows_for, recent_link_events,
 };
 use interlace_core::{person_merge, person_undo, person_unlink, PersonMergeOpts};
 
@@ -41,6 +41,27 @@ pub(crate) fn person_timeline(
             limit.unwrap_or(80),
             before.as_deref(),
             conversation_id,
+        )
+        .map_err(err)?;
+        serde_json::to_value(rows).map_err(err)
+    })
+}
+
+#[tauri::command]
+pub(crate) fn person_media(
+    state: tauri::State<AppState>,
+    id: i64,
+    include_groups: bool,
+    limit: Option<u32>,
+    before: Option<String>,
+) -> Result<serde_json::Value, String> {
+    with_arch(&state, |arch| {
+        let rows = person_media_rows_for(
+            arch,
+            id,
+            include_groups,
+            limit.unwrap_or(200),
+            before.as_deref(),
         )
         .map_err(err)?;
         serde_json::to_value(rows).map_err(err)

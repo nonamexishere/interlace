@@ -13,6 +13,7 @@ unsigned **`app-v0.1.2`**.
 
 ### Added
 
+- Person Media gallery (timeline Find / Jump row and inspector): stored CAS images / videos / stickers plus Gmail inline image/video. Photo uses the existing lightbox; video uses the existing overlay (no autoplay). Show in timeline jumps to that bubble. Include-groups follows the timeline tick.
 - `--preserve-raw` on `import gmail` and `import takeout` (default off) stores unescaped rfc822 in CAS. Raw mail can add several gigabytes of disk.
 - `interlace review census --json` prints count-only matcher diagnostics (no names).
 - Inspector lists group participant names when include groups is on (DMs do not).

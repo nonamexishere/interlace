@@ -101,6 +101,7 @@
     ensureTlIndexVisible: (index: number) => void;
     closeCopyMenu: () => void;
     scrollToLatest: () => void; copySelected: () => void;
+    openGallery: () => void;
   } | undefined = $state();
 
   export function pane() {
@@ -225,6 +226,7 @@
         onMerge={openMerge}
         onUnlink={doUnlink}
         onReloadPerson={(includeGroups) => selectedId && loadPerson(selectedId, false, false, includeGroups)}
+        onOpenGallery={() => timelinePane?.openGallery()}
       />
     {/if}
   </div>
