@@ -172,6 +172,7 @@
   }
 
   async function openPhoto(row: PersonMediaRow) {
+    const gen = galleryGen;
     closeOverlays();
     const hash = row.cas_hash;
     let url = srcs[hash];
@@ -183,16 +184,19 @@
         return;
       }
     }
+    if (gen !== galleryGen || !open) return;
     lightboxAlt = row.filename || "";
     lightboxSrc = url;
   }
 
   async function openVideo(row: PersonMediaRow) {
+    const gen = galleryGen;
     closeOverlays();
     const hash = row.cas_hash;
     try {
       const url = srcs[hash] || (await api.casDataUrl(hash));
       srcs = { ...srcs, [hash]: url };
+      if (gen !== galleryGen || !open) return;
       videoName = row.filename || "";
       videoSrc = url;
     } catch {
@@ -314,7 +318,7 @@
       {/if}
     </div>
   </Dialog.Content>
-  {#if lightboxSrc}
+  {#if open && lightboxSrc}
     <Dialog.Portal>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
@@ -352,7 +356,7 @@
       </div>
     </Dialog.Portal>
   {/if}
-  {#if videoSrc}
+  {#if open && videoSrc}
     <Dialog.Portal>
       <CasVideo
         srcs={{ gallery: videoSrc }}

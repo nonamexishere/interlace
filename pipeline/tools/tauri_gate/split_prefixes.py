@@ -81,6 +81,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_group_inspector_names",
     "assert_person_media_gallery",
     "assert_person_media_gallery_fold",
+    "assert_person_media_gallery_race",
     "assert_keyboard_list_arrows",
     "assert_command_palette",
     "assert_command_palette_people_cap",

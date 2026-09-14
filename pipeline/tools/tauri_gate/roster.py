@@ -55,6 +55,7 @@ from tauri_gate.people_inspector import assert_person_inspector  # noqa: E402
 from tauri_gate.group_inspector_names import assert_group_inspector_names  # noqa: E402
 from tauri_gate.person_media_gallery import assert_person_media_gallery  # noqa: E402
 from tauri_gate.person_media_gallery_fold import assert_person_media_gallery_fold  # noqa: E402
+from tauri_gate.person_media_gallery_race import assert_person_media_gallery_race  # noqa: E402
 from tauri_gate.media_lightbox import (  # noqa: E402
     assert_photo_lightbox,
     assert_voice_note_player,
