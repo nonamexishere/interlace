@@ -10,6 +10,7 @@
 
   let {
     people,
+    archivePath,
     onError,
     onToast,
     onJumpToMessage,
@@ -18,6 +19,7 @@
     seedPerson = null,
   }: {
     people: Person[];
+    archivePath: string;
     onError: (e: unknown) => void;
     onToast?: (message: string) => void;
     friendly: (raw: string) => string;
@@ -53,6 +55,7 @@
   let searching = $state(false);
   let searchError = $state("");
   let searchGen = 0;
+  let labelsGen = 0;
 
   type DatePresetKind = "7d" | "30d" | "year" | "any";
 
@@ -371,19 +374,24 @@
     }
   }
 
-  async function loadLabels() {
+  async function loadLabels(gen: number) {
     try {
-      labels = await api.labelsList();
+      const next = await api.labelsList();
+      if (gen !== labelsGen) return;
+      labels = next;
     } catch {
+      if (gen !== labelsGen) return;
       labels = [];
     }
   }
 
-  // people is replaced on Open / Open Recent while Search stays mounted.
+  // Path flips in applyStatus right after api.open; people lags that.
   $effect(() => {
-    void people;
+    void archivePath;
+    const gen = ++labelsGen;
     labelId = "";
-    void loadLabels();
+    labels = [];
+    void loadLabels(gen);
   });
 
   onMount(() => {

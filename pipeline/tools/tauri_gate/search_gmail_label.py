@@ -33,6 +33,7 @@ from tauri_gate.scan import (
     _search_pane_blob,
     _svelte_markup,
     _tauri_rust_blob,
+    _web_logic,
     _without_comments,
 )
 from tauri_gate.search_filters_lib import _SEARCH_API_PLATFORM_ARG
@@ -345,7 +346,12 @@ def assert_search_gmail_label(crate: Path) -> None:
     if not _LABELS_LIST_API.search(cleaned) and not re.search(
         r"labelsList\s*\(|labels_list", cleaned
     ):
-        fail(f"{_ISSUE}: SearchPane loads the catalog via labels_list (on mount)")
+        fail(f"{_ISSUE}: SearchPane loads the catalog via labels_list")
+    if not re.search(r"\barchivePath\b", cleaned):
+        fail(
+            f"{_ISSUE}: catalog reload keys off archivePath (flips with api.open), "
+            "not the later people assignment"
+        )
     if _STATUS_LABELS.search(cleaned) or _STATUS_LABELS.search(api):
         fail(f"{_ISSUE}: catalog is labels_list IPC, not status / open")
     if not _LABEL_ID_TS.search(api):
@@ -474,7 +480,7 @@ def assert_search_gmail_label(crate: Path) -> None:
         fail(f"{_ISSUE}: keep search data-partial Error+Retry (#205)")
     app_path = crate / "web" / "App.svelte"
     app = _text(app_path)
-    if not re.search(r"\bdata-chrome-search\b", app):
+    if not re.search(r"\bdata-chrome-search\b", _web_logic(crate)):
         fail(f"{_ISSUE}: keep chrome search field data-chrome-search (#208)")
     if re.search(r"\bapi\.search\s*\(", app):
         fail(
