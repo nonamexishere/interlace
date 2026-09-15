@@ -159,7 +159,13 @@ platform and kind filters; **All** is the default and switching people
 resets it. **Files** is a file or vCard that is not Photos, Voice, or Video
 (a WhatsApp PDF or omitted file with no type still counts). Changing the
 attachment chip, or **Show all**, keeps the open conversation. A person
-with no videos + Video is empty + clear, not a stuck spinner. Each bubble
+with no videos + Video is empty + clear, not a stuck spinner. A **sender**
+filter on the person timeline (All | Them | Me) ANDs with the platform,
+kind, and attachment-kind filters; **All** is the default and switching
+people resets it. **Me** is only messages you sent (still on the right);
+**Them** is only the other side (left). Them with no matching rows is
+empty + **Show all** (clears sender and the other chips), not a stuck
+spinner. Caption grouping stays on the filtered set. Each bubble
 shows a small text **platform chip** (not a brand logo). An **optional right inspector**
 (off by default) opens when you click the person name at the top of the
 conversation: identities and last activity, with Merge, include groups, and

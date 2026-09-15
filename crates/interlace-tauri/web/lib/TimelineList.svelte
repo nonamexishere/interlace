@@ -37,6 +37,7 @@
     onShowAll,
     onIncludeGroups,
     attachKindFilter = "all",
+    fromMeFilter = "all",
     openUrl,
     showToast,
     onSearchFromBubble,
@@ -61,6 +62,7 @@
     onShowAll: () => void;
     onIncludeGroups: () => void;
     attachKindFilter?: string;
+    fromMeFilter?: string;
     openUrl: (url: string) => void;
     showToast: (message: string) => void;
     onSearchFromBubble: () => void;
@@ -471,6 +473,7 @@
     {onIncludeGroups}
     {onImport}
     {attachKindFilter}
+    {fromMeFilter}
   />
   <TimelineRows
     {windowedDayGroups}

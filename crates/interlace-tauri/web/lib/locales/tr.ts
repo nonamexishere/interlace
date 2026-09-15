@@ -105,4 +105,8 @@ export const tr: ChromePack = {
   attachKindVoice: "Ses",
   attachKindVideo: "Videolar",
   attachKindFiles: "Dosyalar",
+  fromMe: "Gönderen",
+  fromMeAll: "Tümü",
+  fromMeThem: "Onlar",
+  fromMeMe: "Ben",
 };

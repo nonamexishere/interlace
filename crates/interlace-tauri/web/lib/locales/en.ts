@@ -103,6 +103,10 @@ export const en = {
   attachKindVoice: "Voice",
   attachKindVideo: "Video",
   attachKindFiles: "Files",
+  fromMe: "Sender",
+  fromMeAll: "All",
+  fromMeThem: "Them",
+  fromMeMe: "Me",
 } as const;
 
 export type ChromeKey = keyof typeof en;

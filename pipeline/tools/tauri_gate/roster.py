@@ -40,6 +40,7 @@ from tauri_gate.timeline_filters import (  # noqa: E402
 )
 from tauri_gate.timeline_attach_kind import assert_timeline_attach_kind  # noqa: E402
 from tauri_gate.timeline_attach_kind_fold import assert_timeline_attach_kind_fold  # noqa: E402
+from tauri_gate.timeline_from_me import assert_timeline_from_me  # noqa: E402
 from tauri_gate.timeline_hierarchy import (  # noqa: E402
     assert_timeline_grouped_runs,
     assert_timeline_bubble_hierarchy,
