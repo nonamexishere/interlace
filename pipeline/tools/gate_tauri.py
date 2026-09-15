@@ -197,6 +197,7 @@ def main() -> None:
     assert_custom_titlebar(crate)
     assert_people_sidebar_collapse(crate)
     assert_person_inspector(crate)
+    assert_people_avatar(crate)
     assert_group_inspector_names(crate)
     assert_person_media_gallery(crate)
     assert_person_media_gallery_fold(crate)

@@ -27,6 +27,8 @@ pub struct PersonSummary {
     pub preview: Option<String>,
     /// Linked identities' `value_normalized` (phone/email) for client-side filter.
     pub identity_values: Vec<String>,
+    /// Contacts PHOTO CAS hash (64-hex). Bytes stay in CAS; missing blob is still Ok.
+    pub photo_cas_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -226,6 +228,7 @@ fn person_list_on_with_groups(
             last_activity_at: r.get(3)?,
             preview,
             identity_values: Vec::new(),
+            photo_cas_hash: None,
         })
     })?;
     let mut out = Vec::new();
@@ -233,6 +236,7 @@ fn person_list_on_with_groups(
         out.push(row?);
     }
     list::attach_identity_values(conn, &mut out)?;
+    list::attach_photo_hashes(conn, &mut out)?;
     tx.commit()?;
     Ok(out)
 }

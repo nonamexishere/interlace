@@ -7,6 +7,7 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
   import EmptyState from "$lib/EmptyState.svelte";
+  import PersonAvatar from "./PersonAvatar.svelte";
 
   let {
     open = $bindable(false),
@@ -72,7 +73,14 @@
                 : ''}"
               onclick={() => onPick(p)}
             >
-              <span>{personLabel(p)}</span>
+              <span class="flex min-w-0 items-center gap-2">
+                <PersonAvatar
+                  personId={p.id}
+                  display_name={p.display_name}
+                  photo_cas_hash={p.photo_cas_hash}
+                />
+                <span class="min-w-0 truncate">{personLabel(p)}</span>
+              </span>
               {#if p.last_activity_at || p.preview}
                 <span class="chrome-preview-fg mt-0.5 block truncate text-xs font-normal text-muted-foreground">
                   {humanTime(p.last_activity_at)}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
