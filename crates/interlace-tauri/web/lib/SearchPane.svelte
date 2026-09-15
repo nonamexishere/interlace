@@ -385,7 +385,6 @@
     }
   }
 
-  // Path flips in applyStatus right after api.open; people lags that.
   $effect(() => {
     void archivePath;
     const gen = ++labelsGen;
