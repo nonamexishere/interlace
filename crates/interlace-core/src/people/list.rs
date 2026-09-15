@@ -81,6 +81,38 @@ pub(super) fn attach_identity_values(
     Ok(())
 }
 
+/// Fill each person's first Contacts PHOTO hash (`MIN(contacts_raw.id)` among non-null).
+pub(super) fn attach_photo_hashes(
+    conn: &Connection,
+    people: &mut [PersonSummary],
+) -> Result<(), CoreError> {
+    if people.is_empty() {
+        return Ok(());
+    }
+    let mut by_person: HashMap<i64, String> = HashMap::new();
+    let mut stmt = conn.prepare(
+        "SELECT pi.person_id, cr.photo_cas_hash
+         FROM person_identities pi
+         JOIN contact_channels cc ON cc.identity_id = pi.identity_id
+         JOIN contacts_raw cr ON cr.id = cc.contact_id
+         WHERE cr.photo_cas_hash IS NOT NULL AND TRIM(cr.photo_cas_hash) != ''
+         ORDER BY cr.id",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        let pid: i64 = r.get(0)?;
+        let hash: String = r.get(1)?;
+        Ok((pid, hash))
+    })?;
+    for row in rows {
+        let (pid, hash) = row?;
+        by_person.entry(pid).or_insert(hash);
+    }
+    for p in people.iter_mut() {
+        p.photo_cas_hash = by_person.remove(&p.id);
+    }
+    Ok(())
+}
+
 /// People the UI may offer as merge targets for `selected_id`.
 ///
 /// Drops the selected person and, unless `allow_self`, anyone with `is_self`.

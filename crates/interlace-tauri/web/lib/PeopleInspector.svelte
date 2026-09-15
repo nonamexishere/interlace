@@ -13,6 +13,7 @@
   import { t } from "$lib/i18n";
   import { chromeMotionMs } from "$lib/motion";
   import { writeIncludeGroupsPref } from "./PeoplePrefs";
+  import PersonAvatar from "./PersonAvatar.svelte";
 
   let {
     showPersonChrome = $bindable(false),
@@ -104,11 +105,14 @@
   aria-label={t("inspector")}
   transition:fly={{ x: 16, duration: chromeMotionMs() }}
 >
-  <button
-    type="button"
-    class="text-left font-medium focus-visible:ring-2 focus-visible:ring-ring"
-    onclick={() => (showPersonChrome = !showPersonChrome)}
-  >{personTitle}</button>
+  <div class="flex min-w-0 items-center gap-2">
+    <button
+      type="button"
+      class="min-w-0 flex-1 text-left font-medium focus-visible:ring-2 focus-visible:ring-ring"
+      onclick={() => (showPersonChrome = !showPersonChrome)}
+    >{personTitle}</button>
+    <PersonAvatar personId={selectedPerson?.id ?? selectedId ?? 0} display_name={selectedPerson?.display_name ?? personTitle} photo_cas_hash={selectedPerson?.photo_cas_hash} />
+  </div>
   <p class="text-xs text-muted-foreground">
     {t("lastActivity")}
     {humanTime(selectedPerson?.last_activity_at)}

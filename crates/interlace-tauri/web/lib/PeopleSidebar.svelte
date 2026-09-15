@@ -7,10 +7,10 @@
   import { Label } from "$lib/components/ui/label/index.js";
   import { Skeleton } from "$lib/components/ui/skeleton/index.js";
   import EmptyState from "$lib/EmptyState.svelte";
+  import PersonAvatar from "./PersonAvatar.svelte";
   import { t } from "$lib/i18n";
   import PanelLeft from "@lucide/svelte/icons/panel-left";
   import PanelLeftClose from "@lucide/svelte/icons/panel-left-close";
-  import User from "@lucide/svelte/icons/user";
 
   let {
     st,
@@ -74,10 +74,10 @@
       aria-label={sidebarCollapsed ? t("expandSidebar") : t("collapseSidebar")}
       onclick={() => persistSidebar(!sidebarCollapsed)}
     >
-      {#if sidebarCollapsed}
-        <PanelLeft class="size-4" />
-      {:else}
+      {#if !sidebarCollapsed}
         <PanelLeftClose class="size-4" />
+      {:else}
+        <PanelLeft class="size-4" />
       {/if}
     </Button>
   </div>
@@ -145,20 +145,27 @@
           onclick={() => onSelectPerson(p.id)}
         >
           {#if sidebarCollapsed}
-            <span class="flex size-8 items-center justify-center rounded-md text-sm font-medium" aria-hidden="true">
-              {#if p.display_name.charAt(0)}
-                {p.display_name.charAt(0)}
-              {:else}
-                <User class="size-4" />
-              {/if}
-            </span>
+            <PersonAvatar
+              personId={p.id}
+              display_name={p.display_name}
+              photo_cas_hash={p.photo_cas_hash}
+            />
           {:else}
-            <span class="block truncate">{p.is_self ? `${p.display_name} (self)` : p.display_name}</span>
-            {#if p.last_activity_at || p.preview}
-              <span class="chrome-preview-fg mt-0.5 block truncate text-xs font-normal text-muted-foreground">
-                {humanTime(p.last_activity_at)}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
+            <span class="flex min-w-0 items-start gap-2">
+              <PersonAvatar
+                personId={p.id}
+                display_name={p.display_name}
+                photo_cas_hash={p.photo_cas_hash}
+              />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate">{p.is_self ? `${p.display_name} (self)` : p.display_name}</span>
+                {#if p.last_activity_at || p.preview}
+                  <span class="chrome-preview-fg mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+                    {humanTime(p.last_activity_at)}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
+                  </span>
+                {/if}
               </span>
-            {/if}
+            </span>
           {/if}
         </button>
       </li>

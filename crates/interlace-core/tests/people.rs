@@ -6,6 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use interlace_core::db::init_archive;
 use interlace_core::people::{
     person_list, person_media_rows_for, person_timeline_rows, person_timeline_rows_for,
+    PersonSummary,
 };
 use interlace_core::{person_merge, person_timeline, person_undo, PersonMergeOpts};
 
@@ -2040,5 +2041,194 @@ fn tl_labels_core_wa() {
     // Core may attach Family on berk_wa_labeled (same family as attachments).
     // Do not fail if names appear on the DTO — the UI gate keeps WA chip-less.
     let _ = &_labeled.labels;
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// #366: `person_list` batch-attaches `contacts_raw.photo_cas_hash`.
+/// SQL plant only (no import persist / no fake JID). Placeholders Ada / Berk.
+/// which-photo: MIN(contacts_raw.id) among non-null hashes.
+
+const ADA_PHOTO_WIN: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const ADA_PHOTO_LOSE: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+struct PhotoPlant {
+    ada_id: i64,
+    berk_id: i64,
+    win_contact_id: i64,
+    lose_contact_id: i64,
+}
+
+fn plant_linked_contact(
+    arch: &interlace_core::db::Archive,
+    source_id: i64,
+    person_id: i64,
+    uid: &str,
+    email: &str,
+    hash: Option<&str>,
+) -> i64 {
+    arch.conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('contacts', 'email', ?1, ?2, 'Ada')",
+            rusqlite::params![email, email],
+        )
+        .unwrap();
+    let iid = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
+             VALUES (?1, ?2, 'takeout_vcard', 1.0, 'system')",
+            rusqlite::params![person_id, iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO contacts_raw(source_id, uid, fn, photo_cas_hash) VALUES (?1, ?2, 'Ada', ?3)",
+            rusqlite::params![source_id, uid, hash],
+        )
+        .unwrap();
+    let cid = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO contact_channels(contact_id, kind, value_raw, value_normalized, pref, identity_id)
+             VALUES (?1, 'email', ?2, ?3, 0, ?4)",
+            rusqlite::params![cid, email, email, iid],
+        )
+        .unwrap();
+    cid
+}
+
+fn plant_photo_ada_berk(arch: &interlace_core::db::Archive) -> PhotoPlant {
+    arch.conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('contacts_vcf', 't', '/t.vcf')",
+            [],
+        )
+        .unwrap();
+    let source_id = arch.conn.last_insert_rowid();
+
+    arch.conn
+        .execute(
+            "INSERT INTO persons(display_name, is_self) VALUES ('Ada', 0)",
+            [],
+        )
+        .unwrap();
+    let ada_id = arch.conn.last_insert_rowid();
+    // Lowest id is a linked card with a NULL hash — must not win which-photo.
+    let _null_contact_id = plant_linked_contact(
+        arch,
+        source_id,
+        ada_id,
+        "ada-photo-null",
+        "ada-photo-null@example.com",
+        None,
+    );
+    let win_contact_id = plant_linked_contact(
+        arch,
+        source_id,
+        ada_id,
+        "ada-photo-win",
+        "ada-photo-win@example.com",
+        Some(ADA_PHOTO_WIN),
+    );
+    let lose_contact_id = plant_linked_contact(
+        arch,
+        source_id,
+        ada_id,
+        "ada-photo-lose",
+        "ada-photo-lose@example.com",
+        Some(ADA_PHOTO_LOSE),
+    );
+
+    arch.conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('whatsapp', 'display_name', 'Berk', 'berk', 'Berk')",
+            [],
+        )
+        .unwrap();
+    let berk_iid = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO persons(display_name, is_self) VALUES ('Berk', 0)",
+            [],
+        )
+        .unwrap();
+    let berk_id = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
+             VALUES (?1, ?2, 'manual', 1.0, 'system')",
+            rusqlite::params![berk_id, berk_iid],
+        )
+        .unwrap();
+
+    PhotoPlant {
+        ada_id,
+        berk_id,
+        win_contact_id,
+        lose_contact_id,
+    }
+}
+
+fn photo_person<'a>(list: &'a [PersonSummary], id: i64, who: &str) -> &'a PersonSummary {
+    list.iter()
+        .find(|p| p.id == id)
+        .unwrap_or_else(|| panic!("{who} (id={id}) missing from person_list"))
+}
+
+/// list-payload-photo-hash: planted Ada hash rides `person_list` (no CAS bytes).
+#[test]
+fn person_list_photo_hash_ada() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_photo_ada_berk(&arch);
+    let list = person_list(&arch).expect("person_list must be Ok without CAS bytes on disk");
+    let ada = photo_person(&list, p.ada_id, "Ada");
+    assert_eq!(
+        ada.photo_cas_hash.as_deref(),
+        Some(ADA_PHOTO_WIN),
+        "Ada must carry the planted 64-hex (not bytes / data:)"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// name-only-no-hash: Berk WhatsApp display_name, no contacts_raw → None.
+#[test]
+fn person_list_photo_hash_berk_name_only() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_photo_ada_berk(&arch);
+    let list = person_list(&arch).expect("person_list must be Ok without CAS bytes on disk");
+    let berk = photo_person(&list, p.berk_id, "Berk");
+    assert_eq!(
+        berk.photo_cas_hash, None,
+        "Berk name-only WA must not inherit Ada's photo_cas_hash"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// which-photo: MIN(contacts_raw.id) among non-null hashes (NULL row does not win).
+#[test]
+fn person_list_photo_hash_min_id_wins() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_photo_ada_berk(&arch);
+    assert!(
+        p.win_contact_id < p.lose_contact_id,
+        "plant must insert the winning hash at a lower contacts_raw.id"
+    );
+    let list = person_list(&arch).expect("person_list must be Ok without CAS bytes on disk");
+    let ada = photo_person(&list, p.ada_id, "Ada");
+    assert_eq!(
+        ada.photo_cas_hash.as_deref(),
+        Some(ADA_PHOTO_WIN),
+        "MIN(contacts_raw.id) among non-null hashes must win, not the later card"
+    );
+    assert_ne!(
+        ada.photo_cas_hash.as_deref(),
+        Some(ADA_PHOTO_LOSE),
+        "later contacts_raw.id must not win which-photo"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }

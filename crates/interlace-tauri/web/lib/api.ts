@@ -20,6 +20,8 @@ export type Person = {
   preview?: string | null;
   /** Linked identity value_normalized (phone/email) for client-side filter. */
   identity_values?: string[];
+  /** Contacts PHOTO CAS hash (64-hex); bytes via casDataUrl. */
+  photo_cas_hash?: string | null;
 };
 
 export type Identity = {

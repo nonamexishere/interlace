@@ -137,7 +137,7 @@ the message, or you share a DM / email thread). You can switch **Recent | A–Z*
 the choice is remembered locally (localStorage, not iCloud). Each row shows that last
 activity as a **short time** (`11 Aug 14:32`) from the stored wall-clock digits, not the raw ISO, and a
 one-line **plain-text** preview (the last message’s subject if it has one,
-otherwise a truncated body — never HTML). The merge-target picker uses the
+otherwise a truncated body — never HTML). The people row, inspector header, and merge picker show a local CAS contact photo when one is stored, or initials from the display name — no network. The merge-target picker uses the
 same short time. Archive JSON still stores ISO UTC. Contacts with no matching messages
 stay listed at the bottom. A large people list does not freeze Review,
 Confirm, or Undo while it fills — exclusive flock on the archive

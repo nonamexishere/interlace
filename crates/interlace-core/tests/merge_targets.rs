@@ -17,6 +17,7 @@ fn person(id: i64, display_name: &str, is_self: bool) -> PersonSummary {
         last_activity_at: None,
         preview: None,
         identity_values: vec![],
+        photo_cas_hash: None,
     }
 }
 
