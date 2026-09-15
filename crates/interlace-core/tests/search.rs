@@ -816,9 +816,7 @@ fn search_label_family() {
         "Family pick must return only the Family message_id, got {hits:?}"
     );
     assert!(
-        !got.contains(&p.ada_inbox)
-            && !got.contains(&p.ada_unlabeled)
-            && !got.contains(&p.berk_wa),
+        !got.contains(&p.ada_inbox) && !got.contains(&p.ada_unlabeled) && !got.contains(&p.berk_wa),
         "Inbox-only / unlabeled Ada / Berk WA must stay out of Family, got {hits:?}"
     );
     let _ = std::fs::remove_dir_all(&root);
