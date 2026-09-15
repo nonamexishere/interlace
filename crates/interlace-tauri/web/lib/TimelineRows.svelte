@@ -113,6 +113,44 @@
                       <LinkifyBody text={item.row.subject ?? ""} {splitUrls} {openUrl} {findQ} />
                     </p>
                   {/if}
+                  {@const names = item.row.labels ?? []}
+                  {@const visibleLabels = names.slice(0, 3)}
+                  {#if names.length}
+                    <div
+                      class="mail-labels flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden"
+                      data-mail-labels
+                    >
+                      {#if visibleLabels[0]}
+                        {@const name = visibleLabels[0]}
+                        <Badge
+                          variant="outline"
+                          class="mail-label-chip min-w-0 truncate rounded-full border-border/80 bg-background/60 px-1.5 py-px text-[0.65rem] font-medium leading-none text-muted-foreground"
+                          >{name}</Badge
+                        >
+                      {/if}
+                      {#if visibleLabels[1]}
+                        {@const name = visibleLabels[1]}
+                        <Badge
+                          variant="outline"
+                          class="mail-label-chip min-w-0 truncate rounded-full border-border/80 bg-background/60 px-1.5 py-px text-[0.65rem] font-medium leading-none text-muted-foreground"
+                          >{name}</Badge
+                        >
+                      {/if}
+                      {#if visibleLabels[2]}
+                        {@const name = visibleLabels[2]}
+                        <Badge
+                          variant="outline"
+                          class="mail-label-chip min-w-0 truncate rounded-full border-border/80 bg-background/60 px-1.5 py-px text-[0.65rem] font-medium leading-none text-muted-foreground"
+                          >{name}</Badge
+                        >
+                      {/if}
+                      {#if names.length > 3}
+                        <span class="shrink-0 text-[0.65rem] text-muted-foreground"
+                          >+{names.length - 3}</span
+                        >
+                      {/if}
+                    </div>
+                  {/if}
                   {@const parts = splitQuotedBody(item.row.body_text || "")}
                   {#if parts.main || !parts.quoted}
                     <p class="whitespace-pre-wrap break-words text-sm leading-normal text-foreground">

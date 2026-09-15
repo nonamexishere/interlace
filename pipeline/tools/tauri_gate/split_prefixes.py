@@ -33,6 +33,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_timeline_attach_kind_fold",
     "assert_timeline_from_me",
     "assert_gmail_timeline_rows",
+    "assert_timeline_gmail_labels",
     "assert_people_sidebar_no_x_scroll",
     "assert_people_filter_identity",
     "assert_people_list_lock",

@@ -84,6 +84,7 @@ pub struct TimelineRow {
     pub subject: Option<String>,
     pub body_text: String,
     pub attachments: Vec<AttachmentRef>,
+    pub labels: Vec<String>,
 }
 
 /// One conversation on a person's switcher. `last_at` is the latest D18

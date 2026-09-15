@@ -51,6 +51,7 @@ export type TimelineRow = {
   subject?: string | null;
   body_text: string;
   attachments?: Attachment[];
+  labels?: string[];
 };
 
 export type PersonMediaRow = {

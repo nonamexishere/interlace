@@ -1755,3 +1755,290 @@ fn media_kind_core_files_null_mime() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// Ada Gmail / email_thread + Berk WhatsApp label plant. Placeholders only.
+/// Labels are SQL-planted (`labels` + `message_labels`); no persist/parse.
+struct LabelsPlant {
+    ada_id: i64,
+    berk_id: i64,
+    ada_labeled: i64,
+    ada_unlabeled: i64,
+    berk_wa: i64,
+    berk_wa_labeled: i64,
+}
+
+fn plant_ada_gmail_labels(arch: &interlace_core::db::Archive) -> LabelsPlant {
+    arch.conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('gmail_mbox', 't', '/t.mbox')",
+            [],
+        )
+        .unwrap();
+    let gsrc = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO import_runs(source_id, status) VALUES (?1, 'done')",
+            [gsrc],
+        )
+        .unwrap();
+    let grun = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('whatsapp_android_zip', 't', '/t.zip')",
+            [],
+        )
+        .unwrap();
+    let wsrc = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO import_runs(source_id, status) VALUES (?1, 'done')",
+            [wsrc],
+        )
+        .unwrap();
+    let wrun = arch.conn.last_insert_rowid();
+
+    arch.conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('gmail', 'email', 'ada@x.com', 'ada@x.com', 'Ada')",
+            [],
+        )
+        .unwrap();
+    let ada_iid = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO persons(display_name, is_self) VALUES ('Ada', 0)",
+            [],
+        )
+        .unwrap();
+    let ada_id = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
+             VALUES (?1, ?2, 'auto_email', 0.99, 'system')",
+            rusqlite::params![ada_id, ada_iid],
+        )
+        .unwrap();
+
+    arch.conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('whatsapp', 'display_name', 'Berk', 'berk', 'Berk')",
+            [],
+        )
+        .unwrap();
+    let berk_iid = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO persons(display_name, is_self) VALUES ('Berk', 0)",
+            [],
+        )
+        .unwrap();
+    let berk_id = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
+             VALUES (?1, ?2, 'auto_email', 0.99, 'system')",
+            rusqlite::params![berk_id, berk_iid],
+        )
+        .unwrap();
+
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('gmail', 'email_thread', 'gmail-ada', 'Ada thread')",
+            [],
+        )
+        .unwrap();
+    let ada_th = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![ada_th, ada_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('whatsapp', 'dm', 'whatsapp:berk', 'Berk')",
+            [],
+        )
+        .unwrap();
+    let berk_dm = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![berk_dm, berk_iid],
+        )
+        .unwrap();
+
+    let mail = |arch: &interlace_core::db::Archive,
+                sent_at: &str,
+                key: &str,
+                subject: &str,
+                body: &str|
+     -> i64 {
+        arch.conn
+            .execute(
+                "INSERT INTO messages(conversation_id, source_id, import_run_id, sender_identity_id,
+                    sent_at, sent_at_precision, kind, subject, body_text, idempotency_key)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'second', 'email', ?6, ?7, ?8)",
+                rusqlite::params![ada_th, gsrc, grun, ada_iid, sent_at, subject, body, key],
+            )
+            .unwrap();
+        arch.conn.last_insert_rowid()
+    };
+    let wa = |arch: &interlace_core::db::Archive, sent_at: &str, key: &str, body: &str| -> i64 {
+        arch.conn
+            .execute(
+                "INSERT INTO messages(conversation_id, source_id, import_run_id, sender_identity_id,
+                    sent_at, sent_at_precision, kind, body_text, idempotency_key)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'second', 'text', ?6, ?7)",
+                rusqlite::params![berk_dm, wsrc, wrun, berk_iid, sent_at, body, key],
+            )
+            .unwrap();
+        arch.conn.last_insert_rowid()
+    };
+
+    let ada_labeled = mail(
+        arch,
+        "2024-03-10T10:00:00Z",
+        "k-ada-mail-labeled",
+        "Ada hello",
+        "ada labeled",
+    );
+    let ada_unlabeled = mail(
+        arch,
+        "2024-03-11T10:00:00Z",
+        "k-ada-mail-unlabeled",
+        "Ada later",
+        "ada unlabeled",
+    );
+    let berk_wa = wa(arch, "2024-03-12T10:00:00Z", "k-berk-wa", "berk hi");
+    let berk_wa_labeled = wa(
+        arch,
+        "2024-03-13T10:00:00Z",
+        "k-berk-wa-labeled",
+        "berk labeled",
+    );
+
+    let lab = |arch: &interlace_core::db::Archive, name: &str| -> i64 {
+        arch.conn
+            .execute(
+                "INSERT INTO labels(platform, name) VALUES ('gmail', ?1)",
+                [name],
+            )
+            .unwrap();
+        arch.conn.last_insert_rowid()
+    };
+    let link = |arch: &interlace_core::db::Archive, mid: i64, lid: i64| {
+        arch.conn
+            .execute(
+                "INSERT INTO message_labels(message_id, label_id) VALUES (?1, ?2)",
+                rusqlite::params![mid, lid],
+            )
+            .unwrap();
+    };
+
+    let inbox = lab(arch, "Inbox");
+    let sent = lab(arch, "Sent");
+    let family = lab(arch, "Family");
+    link(arch, ada_labeled, inbox);
+    link(arch, ada_labeled, sent);
+    link(arch, ada_labeled, family);
+    // Optional: a WhatsApp row that also has message_labels (table reuse).
+    // Core may attach the name; the UI gate keeps WA chip-less.
+    link(arch, berk_wa_labeled, family);
+
+    LabelsPlant {
+        ada_id,
+        berk_id,
+        ada_labeled,
+        ada_unlabeled,
+        berk_wa,
+        berk_wa_labeled,
+    }
+}
+
+fn labels_of(rows: &[interlace_core::people::TimelineRow], id: i64) -> Vec<String> {
+    let row = rows
+        .iter()
+        .find(|r| r.message_id == id)
+        .unwrap_or_else(|| panic!("missing timeline row {id}"));
+    row.labels.clone()
+}
+
+/// tl-labels-core-mail: Ada gmail / email_thread with Inbox/Sent/Family on one
+/// message_id → those names on that TimelineRow. Three message_labels is the
+/// duplicate-union (all names visible). Sort is stable-as-attached — do not
+/// lock Inbox/Sent-first.
+#[test]
+fn tl_labels_core_mail() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_ada_gmail_labels(&arch);
+    let rows = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, None)
+        .expect("Ada timeline must be Ok");
+    let names = labels_of(&rows, p.ada_labeled);
+    assert!(
+        names.iter().any(|n| n == "Inbox"),
+        "Inbox missing on Ada labeled mail: {names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n == "Sent"),
+        "Sent missing on Ada labeled mail: {names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n == "Family"),
+        "Family missing on Ada labeled mail: {names:?}"
+    );
+    assert_eq!(
+        names.len(),
+        3,
+        "duplicate-union must keep all three names, got {names:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// tl-labels-core-mail empty: Ada mail with no message_labels → empty labels
+/// (not leftover names from the labeled Ada row in the same page).
+#[test]
+fn tl_labels_core_mail_empty() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_ada_gmail_labels(&arch);
+    let rows = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, None)
+        .expect("Ada timeline must be Ok");
+    let names = labels_of(&rows, p.ada_unlabeled);
+    assert!(
+        names.is_empty(),
+        "Ada unlabeled mail must not inherit Inbox/Sent/Family: {names:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// tl-labels-core-wa: Berk WhatsApp plant (no label rows) → empty labels.
+/// A sibling WA row may have planted message_labels; that must not leak here.
+#[test]
+fn tl_labels_core_wa() {
+    let root = tmp();
+    let arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_ada_gmail_labels(&arch);
+    let rows = person_timeline_rows_for(&arch, p.berk_id, false, 50, None, None, None)
+        .expect("Berk timeline must be Ok");
+    let names = labels_of(&rows, p.berk_wa);
+    assert!(
+        names.is_empty(),
+        "Berk WhatsApp with no message_labels must be empty: {names:?}"
+    );
+    let _labeled = rows
+        .iter()
+        .find(|r| r.message_id == p.berk_wa_labeled)
+        .expect("Berk WA row with planted message_labels must still load");
+    // Core may attach Family on berk_wa_labeled (same family as attachments).
+    // Do not fail if names appear on the DTO — the UI gate keeps WA chip-less.
+    let _ = &_labeled.labels;
+    let _ = std::fs::remove_dir_all(&root);
+}

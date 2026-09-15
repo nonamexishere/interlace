@@ -1,7 +1,7 @@
 use crate::db::Archive;
 use crate::model::CoreError;
 
-use super::attach::{attach_attachments, enrich_from_body_tokens};
+use super::attach::{attach_attachments, attach_labels, enrich_from_body_tokens};
 use super::{PersonConversation, PersonMediaRow, TimelineRow};
 
 const TIMELINE_DEFAULT: u32 = 100;
@@ -129,6 +129,7 @@ pub fn person_timeline_rows_for(
             body_text: r.get(8)?,
             from_me: r.get::<_, i64>(9)? == 1,
             attachments: Vec::new(),
+            labels: Vec::new(),
         })
     };
     let lim = limit as i64;
@@ -155,6 +156,7 @@ pub fn person_timeline_rows_for(
         out.push(row?);
     }
     attach_attachments(archive, &mut out)?;
+    attach_labels(archive, &mut out)?;
     enrich_from_body_tokens(archive, &mut out)?;
     Ok(out)
 }

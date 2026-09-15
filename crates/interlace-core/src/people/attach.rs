@@ -164,3 +164,30 @@ pub(super) fn attach_attachments(
     }
     Ok(())
 }
+
+/// Names from `labels` ⨝ `message_labels` for the page's `message_id`s.
+/// One `IN` join; order is stable as attached (no Inbox/Sent-first reorder).
+pub(super) fn attach_labels(archive: &Archive, rows: &mut [TimelineRow]) -> Result<(), CoreError> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<i64> = rows.iter().map(|r| r.message_id).collect();
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let mut stmt = archive.conn.prepare(&format!(
+        "SELECT ml.message_id, l.name FROM message_labels ml
+         JOIN labels l ON l.id = ml.label_id
+         WHERE ml.message_id IN ({placeholders})"
+    ))?;
+    let mapped = stmt.query_map(rusqlite::params_from_iter(&ids), |r| {
+        Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut map: HashMap<i64, Vec<String>> = HashMap::new();
+    for pair in mapped {
+        let (mid, name) = pair?;
+        map.entry(mid).or_default().push(name);
+    }
+    for row in rows.iter_mut() {
+        row.labels = map.remove(&row.message_id).unwrap_or_default();
+    }
+    Ok(())
+}
