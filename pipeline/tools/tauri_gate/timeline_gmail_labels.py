@@ -15,7 +15,8 @@ Overflow: show 3 then muted-text ASCII +k (not another Badge; no new en+tr
 keys). Row: nowrap + min-w-0 + overflow-hidden. A single long name truncates.
 Sort: stable as attached. Hide: show every stored name. No-subject mail:
 chips still first child of data-bubble-body. Find haystack stays subject +
-body. Do not start #365.
+body. SearchPane may host the #365 Filters select; SearchHits / inspector
+stay chip-less. Timeline chips stay unclickable.
 
 Placeholders only (Ada / Berk). Plant strings Inbox / Sent / Family.
 """
@@ -478,16 +479,14 @@ def assert_timeline_gmail_labels(crate: Path) -> None:
             "(do not add chip names)"
         )
 
-    # 9) no Search / inspector chips.
-    search = _text(crate / "web" / "lib" / "SearchPane.svelte") + "\n" + _text(
-        crate / "web" / "lib" / "SearchHits.svelte"
-    )
-    if _SEARCH_LABEL.search(search) or re.search(
-        r"gmail[-_ ]?label|labelIds|label[-_ ]?filter", search, re.I
+    # 9) no SearchHits / inspector chips. SearchPane Filters select is #365.
+    hits_src = _text(crate / "web" / "lib" / "SearchHits.svelte")
+    if _SEARCH_LABEL.search(hits_src) or re.search(
+        r"gmail[-_ ]?label|labelIds|label[-_ ]?filter", hits_src, re.I
     ):
-        fail(f"{_ISSUE}: do not start #365 Search label select")
-    if _CHIP_HOOK.search(search) or (
-        _LABELS_FIELD.search(search) and _BADGE.search(search)
+        fail(f"{_ISSUE}: do not put data-gmail-label on SearchHits")
+    if _CHIP_HOOK.search(hits_src) or (
+        _LABELS_FIELD.search(hits_src) and _BADGE.search(hits_src)
     ):
         fail(f"{_ISSUE}: do not put label chips in SearchHits")
     insp = _text(crate / "web" / "lib" / "PeopleInspector.svelte")
@@ -495,6 +494,15 @@ def assert_timeline_gmail_labels(crate: Path) -> None:
         _LABELS_FIELD.search(insp) and _BADGE.search(insp)
     ):
         fail(f"{_ISSUE}: do not put label chips in PeopleInspector")
+    for m in re.finditer(
+        r"<div\b[^>]*\bdata-mail-labels\b[^>]*>[\s\S]*?</div>",
+        rows_raw,
+    ):
+        if re.search(r"\bonclick\b|\bhref\s*=|\bapi\.search", m.group(0)):
+            fail(
+                f"{_ISSUE}: timeline chips stay unclickable "
+                "(not a Search control)"
+            )
 
     # 10) D24 docs/user/app.md.
     dtxt = _text(root / "docs" / "user" / "app.md")

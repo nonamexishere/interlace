@@ -400,6 +400,7 @@
     <SearchPane
       bind:q={searchQ}
       {people}
+      archivePath={st.path}
       {friendly}
       {seedPerson}
       onError={showErr}

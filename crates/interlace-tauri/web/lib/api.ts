@@ -91,6 +91,11 @@ export type LinkEvent = {
   loser?: number | null;
 };
 
+export type LabelRef = {
+  id: number;
+  name: string;
+};
+
 export type SearchHit = {
   message_id: number;
   sent_at?: string | null;
@@ -226,6 +231,7 @@ export const api = {
   linkEvents: () => invoke<LinkEvent[]>("link_events"),
   pickImportPath: (folder: boolean) =>
     invoke<string | null>("pick_import_path", { folder }),
+  labelsList: () => invoke<LabelRef[]>("labels_list_cmd"),
   search: (args: {
     q: string;
     personId?: number | null;
@@ -234,6 +240,7 @@ export const api = {
     platform?: string | null;
     conversationKind?: string | null;
     attachmentFilter?: string | null;
+    labelId: number | null;
     includeGroups: boolean;
     limit?: number;
   }) => invoke<SearchHit[]>("search_cmd", { args }),

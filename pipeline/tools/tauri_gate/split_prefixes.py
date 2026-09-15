@@ -66,6 +66,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_search_attachment_filter",
     "assert_search_safe_highlight",
     "assert_search_filters_secondary",
+    "assert_search_gmail_label",
     "assert_search_hit_density",
     "assert_review_identifiers",
     "assert_window_title",

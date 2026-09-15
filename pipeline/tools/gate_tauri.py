@@ -180,6 +180,7 @@ def main() -> None:
     assert_search_attachment_filter(crate)
     assert_search_safe_highlight(crate)
     assert_search_filters_secondary(crate)
+    assert_search_gmail_label(crate)
     assert_search_hit_density(crate)
     assert_review_identifiers(crate)
     assert_window_title(crate)

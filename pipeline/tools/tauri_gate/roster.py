@@ -93,6 +93,7 @@ from tauri_gate.search_picker import (  # noqa: E402
     assert_search_person_picker,
     assert_search_filters_secondary,
 )
+from tauri_gate.search_gmail_label import assert_search_gmail_label  # noqa: E402
 from tauri_gate.import_boot import (  # noqa: E402
     assert_boot_spinner,
     assert_first_run,

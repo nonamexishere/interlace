@@ -268,8 +268,9 @@ def assert_search_filters_secondary(crate: Path) -> None:
     Date range is two local type="date" inputs (empty = any). run() must
     not call api.search when from/to is unparseable or from > to; calm
     error via data-partial or existing searchError chrome. No CDN/npm
-    datepicker, no Gmail labels, no invented platforms. Docs: filters
-    secondary + optional date range; invalid dates do not search.
+    datepicker, no invented platforms. A Gmail label filter, if present,
+    must be a closed <select> under the hook (existence is #365). Docs:
+    filters secondary + optional date range; invalid dates do not search.
     Keep #121–#126 / #205 / #208.
     """
     search_path = crate / "web" / "lib" / "SearchPane.svelte"
@@ -454,9 +455,42 @@ def assert_search_filters_secondary(crate: Path) -> None:
             "(use native type=\"date\" only)"
         )
 
-    # 8) No Gmail label filter / invented platforms (already scanned options).
-    if _SEARCH_GMAIL_LABEL.search(cleaned) or _SEARCH_GMAIL_LABEL.search(surface):
-        fail("#209: not in scope — no Gmail label filter")
+    # 8) Label filter, if present, is a closed <select> under the hook.
+    #    Existence is #365. Still fail labelIds / free-text / a control outside the hook.
+    if re.search(r"\blabelIds\b", cleaned) or re.search(r"\blabelIds\b", surface):
+        fail("#209: Gmail API labelIds is not a Search filter")
+    label_anywhere = bool(
+        _SEARCH_GMAIL_LABEL.search(cleaned) or _SEARCH_GMAIL_LABEL.search(surface)
+    )
+    label_in_hook = bool(_SEARCH_GMAIL_LABEL.search(hook_blob))
+    if label_anywhere and not label_in_hook:
+        fail(
+            "#209: label filter must live under data-search-filters "
+            "(not a #q sibling / not outside the hook)"
+        )
+    if label_in_hook:
+        has_closed = bool(
+            re.search(
+                r"<select\b[^>]{0,400}\bdata-gmail-label\b"
+                r"|<select\b[^>]{0,400}\bid\s*=\s*[\"']slabel[\"']",
+                hook_blob,
+                re.I,
+            )
+        )
+        if not has_closed:
+            fail(
+                "#209: if a label filter exists it must be a closed <select> "
+                "under data-search-filters (not free-text)"
+            )
+        if re.search(
+            r"<Input\b[^>]{0,400}(?:data-gmail-label|labelFilter|"
+            r"id\s*=\s*[\"']slabel[\"'])"
+            r"|<input\b(?![^>]*\btype\s*=\s*[\"'](?:hidden|checkbox|radio)[\"'])"
+            r"[^>]{0,400}(?:data-gmail-label|labelFilter|id\s*=\s*[\"']slabel[\"'])",
+            hook_blob,
+            re.I,
+        ):
+            fail("#209: label filter must be a closed <select>, not free-text")
 
     # 9) Docs: filters secondary + optional date range; invalid dates do not search.
     if not _DOCS_FILTERS_SECONDARY.search(dtxt):

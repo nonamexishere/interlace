@@ -24,9 +24,9 @@ use crate::cas::{cas_data_url, cas_response, open_cas, reveal_archive, reveal_ca
 use crate::import_cmd::{import_cancel, import_progress, import_start, pick_import_path};
 use crate::ipc::{
     close_archive, copy_archive_to, doctor_issues_cmd, doctor_issues_quick_cmd, doctor_run_cmd,
-    estimate_unreferenced_cas_bytes, init, open, open_url, pick_folder, remembered_path,
-    review_accept_cmd, review_list_cmd, review_reject_cmd, review_show_cmd, search_body,
-    search_cmd, status,
+    estimate_unreferenced_cas_bytes, init, labels_list_cmd, open, open_url, pick_folder,
+    remembered_path, review_accept_cmd, review_list_cmd, review_reject_cmd, review_show_cmd,
+    search_body, search_cmd, status,
 };
 use crate::menu::native_menu;
 use crate::people_cmd::{
@@ -221,6 +221,7 @@ fn main() {
             person_undo_cmd,
             link_events,
             search_cmd,
+            labels_list_cmd,
             search_body,
             review_list_cmd,
             review_show_cmd,
