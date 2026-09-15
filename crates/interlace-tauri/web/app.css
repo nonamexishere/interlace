@@ -194,6 +194,11 @@ body {
   color: var(--chrome-chip-fg);
 }
 
+[data-mail-labels] .mail-label-chip {
+  background-color: var(--chrome-chip-bg);
+  color: var(--chrome-chip-fg);
+}
+
 [data-person-inspector] .text-muted-foreground {
   color: var(--chrome-inspector-fg);
 }

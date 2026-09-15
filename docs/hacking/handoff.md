@@ -1,10 +1,9 @@
 # Agent / session handoff
 
 **Date:** 2026-09-15. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
-HEAD this PR **#359** / #79 (`feat/preserve-raw`, CI green). **#361**
-person media gallery landed (PR **#381**). **#362** timeline media-kind
-filter landed (PR **#382**). **#363** (Phase 2.4 / epic **#360**) is
-**in flight** on `feat/ui-timeline-from-me`.
+HEAD `master` **#363** / PR **#383**. **#361**–**#363** landed.
+**#364** (Gmail label chips, Phase 2.4) is **in flight**.
+**#384** and **#385** were tried and **backed out**.
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -274,13 +273,13 @@ Phase 2.1 milestone (#6): **closed**.
 ## Open — product now
 
 Phase 2.3 coding is **done** (epic **#264** / milestone 8 closed). Phase 2.2
-polish (#197) is **done**. Phase 2.4 epic **#360** is **started**: **#361**
-person media gallery landed (PR **#381**); **#362** timeline media-kind
-filter landed (PR **#382**); **#363** timeline from-me / from-them
-filter is **in flight**. Phase 4 epic **#56** is **started**
-(#79 / PR **#359**). Normative
-[`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md).
-Do **not** start the next 2.4 ticket until #363 lands. Do **not** start Phase 1.1
+polish (#197) is **done**. Phase 2.4 epic **#360** is **started**: **#361**–**#363**
+landed (PRs **#381**–**#383**). **#364** Gmail label chips is **in flight**.
+**#384** and **#385** were
+tried locally and **backed out**. Stay on post-#363 chrome.
+Phase 4 epic **#56** is **started** (#79 / PR **#359**).
+Normative [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md).
+Do **not** restart **#384** / **#385** unprompted. Do **not** start Phase 1.1
 (#57–#69), Phase 3 export (#72–#75), or Phase 4 **#80–#82** unprompted.
 Prefer one issue → one PR; thin chrome still uses the loop when
 load-bearing. Skip researcher only when the issue already names
@@ -289,10 +288,10 @@ code.
 
 ### Suggested next
 
-1. Land **#363** (timeline from-me / from-them filter). Merge **#359** when Mustafa asks. Next Phase 4 coding
-   **#80** (photo pHash) only if asked. Do not start #81 / #82 / 1.1 /
-   Phase 3 export unprompted. #342 follow-up is **D** (quiet is
-   correct).
+1. Next 2.4 / thematic work only if Mustafa picks it.
+   **#384** / **#385** stay backed out. Next Phase 4 coding
+   **#80** only if asked. Do not start #81 / #82 / 1.1 /
+   Phase 3 export unprompted.
 2. Ask before the first notarized `app-v*` tag.
 
 Phase 2.3 archive: [#264](https://github.com/nonamexishere/interlace/issues/264) / [milestone 8](https://github.com/nonamexishere/interlace/milestone/8).
@@ -304,13 +303,15 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 | --- | --- |
 | **#17** | Phase 1.1 umbrella — parked; not blocked; do not start children |
 | Phase 1.1 / 3 | Parked. Do not start. |
+| **#384** | Compact filter stack. Tried, backed out 2026-09-15. |
+| **#385** | Conversation switcher + leftover locale. Tried, backed out. |
 | Phase 4 **#80–#82** | Parked until picked. #79 is PR #359. |
 
 ## Recommended next steps
 
-1. #303–#322 / #342 are done. Phase 2.4: **#363** in flight (epic
-   **#360**; #361 / #362 landed). Phase 4 started:
-   **#79** / PR **#359** (CI green; merge when asked). Next Phase 4
+1. #303–#322 / #342 / #361–#363 are done. Phase 2.4:
+   **#364** in flight. **#384** / **#385** backed out. Stay at post-#363.
+   Phase 4 started: **#79** / PR **#359**. Next Phase 4
    coding **#80** only if asked. #342 follow-up is **D**.
 2. Do not start 1.1 / Phase 3 export / #81 / #82 unprompted.
 3. Last shipped app tag is **`app-v0.1.2`** (unsigned). Workflow can
@@ -393,7 +394,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > mix into IN.md before test-author. Do not spawn agents from a child. Orchestrator
 > does not implement product code. Ask before commit / push / merge.
 > Phase 2.3 coding is done (epic #264 / milestone 8 closed). Phase 2.4
-> epic #360 started: **#363** in flight (#361 / #362 landed). Read
+> epic #360 started: **#364** in flight (#361–#363 landed). Read
 > `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,
 > #297, #300, #303–#322, #342 done (PRs #323–#328, #330, #332, #336, #338, #340,
 > #343, #345, #347, #349, #351, #353, #355, #356, #357, #358). Phase 4 started:
