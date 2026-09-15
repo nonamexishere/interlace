@@ -213,7 +213,7 @@
     {#if showPersonChrome}
       <PeopleInspector
         bind:showPersonChrome
-        {personTitle}
+        bind:personTitle
         {selectedPerson}
         {identities}
         {selectedId}
@@ -227,6 +227,8 @@
         onUnlink={doUnlink}
         onReloadPerson={(includeGroups) => selectedId && loadPerson(selectedId, false, false, includeGroups)}
         onOpenGallery={() => timelinePane?.openGallery()}
+        {onPeopleChanged}
+        {showErr}
       />
     {/if}
   </div>

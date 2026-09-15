@@ -111,6 +111,9 @@ export const en = {
   fromMeAll: "All",
   fromMeThem: "Them",
   fromMeMe: "Me",
+  renameConfirm: "Confirm",
+  personNotes: "Notes",
+  saveNotes: "Save notes",
 } as const;
 
 export type ChromeKey = keyof typeof en;

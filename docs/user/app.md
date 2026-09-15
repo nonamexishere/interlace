@@ -169,7 +169,9 @@ spinner. Caption grouping stays on the filtered set. Each bubble
 shows a small text **platform chip** (not a brand logo). An **optional right inspector**
 (off by default) opens when you click the person name at the top of the
 conversation: identities and last activity, with Merge, include groups, and
-unlink there. When include groups is on and the open conversation is a group,
+unlink there. The inspector can rename a person (rename is not a merge —
+identities and message senders stay put) and save a notes field that persists
+in the archive SQLite. When include groups is on and the open conversation is a group,
 the inspector lists participant names; DMs do not grow a member list. Names
 are text, not ids. It is not a second timeline. The person timeline is a **chat**, not a log:
 messages you sent sit on the right, the other person on the left. Each

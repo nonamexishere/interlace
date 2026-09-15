@@ -10,6 +10,7 @@
   } from "./api";
   import { humanTime } from "./formatTime";
   import { Button } from "$lib/components/ui/button/index.js";
+  import { Input } from "$lib/components/ui/input/index.js";
   import { t } from "$lib/i18n";
   import { chromeMotionMs } from "$lib/motion";
   import { writeIncludeGroupsPref } from "./PeoplePrefs";
@@ -17,7 +18,7 @@
 
   let {
     showPersonChrome = $bindable(false),
-    personTitle,
+    personTitle = $bindable(""),
     selectedPerson,
     identities,
     selectedId,
@@ -31,6 +32,8 @@
     onUnlink,
     onReloadPerson,
     onOpenGallery,
+    onPeopleChanged,
+    showErr,
   }: {
     showPersonChrome?: boolean;
     personTitle: string;
@@ -47,7 +50,60 @@
     onUnlink: (id: number) => void;
     onReloadPerson: (includeGroups: boolean) => void;
     onOpenGallery: () => void;
+    onPeopleChanged: () => Promise<void>;
+    showErr: (e: unknown) => void;
   } = $props();
+
+  let nameDraft = $state("");
+  let notesDraft = $state("");
+  let notesLoadGen = 0;
+
+  $effect(() => {
+    const id = selectedId;
+    nameDraft = selectedPerson?.display_name ?? personTitle;
+    if (id == null) {
+      notesDraft = "";
+      return;
+    }
+    const gen = ++notesLoadGen;
+    void api
+      .personShow(id)
+      .then((show) => {
+        if (gen !== notesLoadGen) return;
+        notesDraft = show.notes ?? "";
+        nameDraft = show.display_name;
+      })
+      .catch(() => {});
+  });
+
+  async function confirmRename() {
+    const name = nameDraft.trim();
+    if (!name) return;
+    if (selectedId == null) return;
+    try {
+      await api.personRename(selectedId, name);
+      await onPeopleChanged();
+      const show = await api.personShow(selectedId);
+      personTitle = show.display_name;
+      nameDraft = show.display_name;
+      notesDraft = show.notes ?? "";
+    } catch (e) {
+      showErr(e);
+    }
+  }
+
+  async function saveNotes() {
+    if (selectedId == null) return;
+    try {
+      await api.personSetNotes(selectedId, notesDraft);
+      await onPeopleChanged();
+      const show = await api.personShow(selectedId);
+      personTitle = show.display_name;
+      notesDraft = show.notes ?? "";
+    } catch (e) {
+      showErr(e);
+    }
+  }
 
   let participants = $state<ConversationParticipantName[]>([]);
   let conversation_kind = $state("");
@@ -118,6 +174,42 @@
     {humanTime(selectedPerson?.last_activity_at)}
   </p>
   <div class="flex flex-col gap-2">
+    <div class="flex items-center gap-2">
+      <Input
+        bind:value={nameDraft}
+        aria-label={t("renameConfirm")}
+        disabled={selectedId == null}
+        class="h-8 min-w-0"
+        onkeydown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void confirmRename();
+          }
+        }}
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        data-person-rename-confirm
+        disabled={selectedId == null}
+        onclick={() => void confirmRename()}>{t("renameConfirm")}</Button
+      >
+    </div>
+    <div class="flex flex-col gap-2">
+      <Input
+        bind:value={notesDraft}
+        aria-label={t("personNotes")}
+        disabled={selectedId == null}
+        class="h-8 min-w-0"
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        data-person-notes-save
+        disabled={selectedId == null}
+        onclick={() => void saveNotes()}>{t("saveNotes")}</Button
+      >
+    </div>
     <Button variant="outline" size="sm" disabled={!personById(selectedId)} onclick={onMerge}
       >Merge…</Button
     >

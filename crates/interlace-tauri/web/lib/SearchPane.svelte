@@ -129,6 +129,12 @@
     }
   });
 
+  $effect(() => {
+    if (personId == null) return;
+    const p = people.find((x) => x.id === personId);
+    if (p) personFilter = personLabel(p);
+  });
+
   function clearPerson() {
     personId = null;
     personFilter = "";
