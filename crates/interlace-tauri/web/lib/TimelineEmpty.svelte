@@ -13,6 +13,7 @@
     filteredTimeline,
     includeGroups,
     attachKindFilter = "all",
+    fromMeFilter = "all",
     onRetry,
     onShowAll,
     onIncludeGroups,
@@ -26,13 +27,16 @@
     filteredTimeline: { index: number }[];
     includeGroups: boolean;
     attachKindFilter?: string;
+    fromMeFilter?: string;
     onRetry: () => void;
     onShowAll: () => void;
     onIncludeGroups: () => void;
     onImport: () => void;
   } = $props();
 
-  const filterEmpty = $derived(attachKindFilter !== "all" || timeline.length > 0);
+  const filterEmpty = $derived(
+    attachKindFilter !== "all" || fromMeFilter !== "all" || timeline.length > 0,
+  );
 </script>
 
 {#if tlLoading}
@@ -67,7 +71,7 @@
     <EmptyState
       title="No messages in this view"
       body={filterEmpty
-        ? "Nothing matches the current platform, kind, or attachment filter. Try All, or another chip."
+        ? "Nothing matches the current platform, kind, attachment, or sender filter. Try All, or another chip."
         : "This person may only appear in groups. Tick include groups, or import more sources."}
       actionLabel={filterEmpty ? "Show all" : includeGroups ? "Import" : "Include groups"}
       onAction={() => {

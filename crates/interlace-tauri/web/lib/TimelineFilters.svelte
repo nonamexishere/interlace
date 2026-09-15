@@ -9,6 +9,7 @@
     platformFilter = $bindable("all"),
     kindFilter = $bindable("all"),
     attachKindFilter = $bindable("all"),
+    fromMeFilter = $bindable("all"),
     onAttachKindChange,
   }: {
     availablePlatforms: string[];
@@ -16,6 +17,7 @@
     platformFilter?: string;
     kindFilter?: string;
     attachKindFilter?: string;
+    fromMeFilter?: string;
     onAttachKindChange?: () => void;
   } = $props();
 
@@ -123,6 +125,28 @@
             ? 'filter-chip-active border-border bg-background font-medium text-foreground shadow-sm'
             : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'}"
           onclick={() => pickAttachKind(chip.id)}
+        >
+          {chip.l}
+        </button>
+      {/each}
+    </div>
+  </div>
+  <Separator />
+  <div
+    class="from-me-filter flex flex-wrap items-center gap-x-2 gap-y-1.5"
+    role="toolbar"
+    aria-label={t("fromMe")}
+  >
+    <span class="filter-section-label shrink-0 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">{t("fromMe")}</span>
+    <div data-from-me-filter class="flex min-w-0 flex-wrap items-center gap-1.5">
+      {#each [{ id: "all", l: t("fromMeAll") }, { id: "them", l: t("fromMeThem") }, { id: "me", l: t("fromMeMe") }] as chip}
+        <button
+          type="button"
+          class="filter-chip rounded-full border px-2.5 py-0.5 text-xs transition-colors focus-visible:ring-2 focus-visible:ring-ring {fromMeFilter ===
+          chip.id
+            ? 'filter-chip-active border-border bg-background font-medium text-foreground shadow-sm'
+            : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'}"
+          onclick={() => (fromMeFilter = chip.id)}
         >
           {chip.l}
         </button>

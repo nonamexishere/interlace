@@ -59,6 +59,7 @@
   let platformFilter = $state("all");
   let kindFilter = $state("all");
   let attachKindFilter = $state("all");
+  let fromMeFilter = $state("all");
   let tlLoading = $state(false);
   let tlAppending = $state(false);
   let tlError = $state("");
@@ -136,7 +137,10 @@
         (item) =>
           (platformFilter === "all" || item.row.platform === platformFilter) &&
           (kindFilter === "all" || item.row.conversation_kind === kindFilter) &&
-          (attachKindFilter === "all" || rowMatchesAttachKind(item.row, attachKindFilter)),
+          (attachKindFilter === "all" || rowMatchesAttachKind(item.row, attachKindFilter)) &&
+          (fromMeFilter === "all" ||
+            (fromMeFilter === "me" && item.row.from_me === true) ||
+            (fromMeFilter === "them" && item.row.from_me === false)),
       ),
   );
 
@@ -187,6 +191,7 @@
       platformFilter = "all";
       kindFilter = "all";
       attachKindFilter = "all";
+      fromMeFilter = "all";
       findQ = "";
     }
     selectedId = id;
@@ -269,6 +274,7 @@
     platformFilter = "all";
     kindFilter = "all";
     attachKindFilter = "all";
+    fromMeFilter = "all";
     findQ = ""; dayPin = false; jumpGen++;
     selectedId = personId;
     persistLastPerson(personId);
@@ -458,6 +464,7 @@
         bind:platformFilter
         bind:kindFilter
         bind:attachKindFilter
+        bind:fromMeFilter
         onAttachKindChange={() => {
           if (!selectedId) return;
           const keepConversation = true;
@@ -485,6 +492,7 @@
     {tlError}
     bind:includeGroups
     {attachKindFilter}
+    {fromMeFilter}
     {oldestCursor}
     {density}
     onRetry={() => selectedId && selectPerson(selectedId)}
@@ -497,6 +505,7 @@
       platformFilter = "all";
       kindFilter = "all";
       attachKindFilter = "all";
+      fromMeFilter = "all";
       if (!selectedId) return;
       const keepConversation = true;
       void selectPerson(selectedId, false, keepConversation);
