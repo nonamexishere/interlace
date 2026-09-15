@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type Person, type SearchHit } from "./api";
+  import { api, type LabelRef, type Person, type SearchHit } from "./api";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
@@ -40,6 +40,8 @@
   let platform = $state("");
   let conversationKind = $state("");
   let attachmentFilter = $state("");
+  let labelId = $state("");
+  let labels = $state<LabelRef[]>([]);
   let includeGroups = $state(false);
   let hits = $state<SearchHit[]>([]);
   /** Highlighted hit in the results list (j/k and arrow keys). */
@@ -226,6 +228,15 @@
       hitIndex = 0;
       return;
     }
+    if (labelId && !labels.some((lab) => String(lab.id) === String(labelId))) {
+      searchError = t("searchLabelInvalid");
+      searching = false;
+      hits = [];
+      expanded = null;
+      body = "";
+      hitIndex = 0;
+      return;
+    }
     try {
       const next = await api.search({
         q: q.trim(),
@@ -235,6 +246,7 @@
         platform: platform || null,
         conversationKind: conversationKind || null,
         attachmentFilter: attachmentFilter || null,
+        labelId: labelId ? Number(labelId) : null,
         includeGroups,
         limit: 50,
       });
@@ -358,6 +370,21 @@
       if (h) activateHit(h);
     }
   }
+
+  async function loadLabels() {
+    try {
+      labels = await api.labelsList();
+    } catch {
+      labels = [];
+    }
+  }
+
+  // people is replaced on Open / Open Recent while Search stays mounted.
+  $effect(() => {
+    void people;
+    labelId = "";
+    void loadLabels();
+  });
 
   onMount(() => {
     window.addEventListener("keydown", onHitsKey);
@@ -494,6 +521,20 @@
             <option value="has_file">Has file</option>
             <option value="omitted">Omitted</option>
             <option value="missing">Missing</option>
+          </select>
+        </div>
+        <div class="space-y-1.5">
+          <Label for="slabel">{t("searchLabel")}</Label>
+          <select
+            id="slabel"
+            data-gmail-label
+            bind:value={labelId}
+            class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="">{t("searchLabelAny")}</option>
+            {#each labels as lab}
+              <option value={String(lab.id)}>{lab.name}</option>
+            {/each}
           </select>
         </div>
         <div class="space-y-1.5">

@@ -327,6 +327,7 @@
     <span class="text-muted-foreground">offline · no account · no HTTP client</span>
   </header>
   {#if !setup && st}
+    <!-- data-chrome-search lives on PeopleNav (always-on chrome field). -->
     <PeopleNav
       bind:view
       bind:searchQ

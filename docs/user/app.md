@@ -206,7 +206,7 @@ The People sidebar undo list uses a short name/op label (Merge Ada, Link, Unlink
 Chrome and dialogs show visible focus rings; keyboard can open Merge, confirm, and dismiss; voice-note seek is announced.
 
 Tabs: **Search** (same FTS as CLI). The query is the first control; filters
-are secondary (person, platform, kind, attachment, optional date range,
+are secondary (person, platform, kind, attachment, label, optional date range,
 include groups). Leave Search and come back in the same session: the last
 query is still there; hits refresh once. Not Spotlight. Not multi-tab
 history. Not “survives quit.” Typing in `#q` searches as you type (a short
@@ -215,7 +215,9 @@ skeleton; later keystrokes keep the previous hits until the new list applies.
 The date range is optional (empty = any). Compact 7 days / 30 days /
 this year / Any presets fill the date filters in the Mac timezone;
 empty / Any = any. Storage / JSON / FTS stay UTC. Not a calendar.
-Invalid dates do not search. **Person** is
+Invalid dates do not search. The label filter is a closed select of
+labels in this archive; empty / Any = no predicate; an invalid pick does
+not search. **Person** is
 a name-facing combobox over the same people list as the sidebar: type to filter
 by display name (case-insensitive substring; self gets a “(self)” label), Enter
 or click to pick — the archive stores `person_id` under the hood for the search

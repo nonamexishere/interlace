@@ -10,8 +10,8 @@ use interlace_core::session::{
     write_last_bookmark, write_last_path,
 };
 use interlace_core::{
-    open_archive, review_list, review_resolve, review_resolve_selected, review_show, search,
-    Archive, AttachmentFilter, ConversationKind, LockMode, Platform, SearchQuery,
+    labels_list, open_archive, review_list, review_resolve, review_resolve_selected, review_show,
+    search, Archive, AttachmentFilter, ConversationKind, LockMode, Platform, SearchQuery,
 };
 use tauri::AppHandle;
 
@@ -435,6 +435,14 @@ pub(crate) fn open_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub(crate) fn labels_list_cmd(state: tauri::State<AppState>) -> Result<serde_json::Value, String> {
+    with_arch(&state, |arch| {
+        let rows = labels_list(arch).map_err(err)?;
+        serde_json::to_value(rows).map_err(err)
+    })
+}
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SearchArgs {
@@ -445,6 +453,8 @@ pub(crate) struct SearchArgs {
     platform: Option<String>,
     conversation_kind: Option<String>,
     attachment_filter: Option<String>,
+    #[serde(default)]
+    label_id: Option<i64>,
     include_groups: bool,
     limit: Option<u32>,
 }
@@ -468,6 +478,7 @@ pub(crate) fn search_cmd(
             attachment_filter: parse_attachment_filter(
                 args.attachment_filter.as_deref().unwrap_or(""),
             )?,
+            label_id: args.label_id,
             include_groups: args.include_groups,
             limit: args.limit.unwrap_or(50),
         };

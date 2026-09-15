@@ -148,6 +148,11 @@ pub fn search(archive: &Archive, q: &SearchQuery) -> Result<Vec<SearchHit>, Core
         }
         None => {}
     }
+    if q.label_id.is_some() {
+        sql.push_str(
+            " AND EXISTS (SELECT 1 FROM message_labels ml WHERE ml.message_id = m.id AND ml.label_id = ?)",
+        );
+    }
     if q.person_id.is_some() {
         sql.push_str(
             " AND (
@@ -182,6 +187,9 @@ pub fn search(archive: &Archive, q: &SearchQuery) -> Result<Vec<SearchHit>, Core
     }
     if let Some(k) = kind_sql {
         vals.push(k.to_string().into());
+    }
+    if let Some(lid) = q.label_id {
+        vals.push(lid.into());
     }
     if let Some(pid) = q.person_id {
         vals.push(pid.into());
@@ -376,6 +384,7 @@ impl Default for SearchQuery {
             conversation_id: None,
             conversation_kind: None,
             attachment_filter: None,
+            label_id: None,
             include_groups: false,
             limit: DEFAULT_LIMIT,
         }

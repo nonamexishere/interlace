@@ -256,6 +256,8 @@ pub struct SearchQuery {
     pub conversation_kind: Option<ConversationKind>,
     /// When set, only messages with at least one matching attachment row.
     pub attachment_filter: Option<AttachmentFilter>,
+    /// When set, only messages that have this `labels.id` in `message_labels`.
+    pub label_id: Option<i64>,
     pub include_groups: bool,
     pub limit: u32,
 }

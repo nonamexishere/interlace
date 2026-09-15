@@ -57,6 +57,13 @@ pub struct AttachmentRef {
     pub missing: bool,
 }
 
+/// Archive label row (`labels.id` / `labels.name`) for the Search filter.
+#[derive(Debug, Clone, Serialize)]
+pub struct LabelRef {
+    pub id: i64,
+    pub name: String,
+}
+
 /// Compact stored image / video / sticker (or Gmail inline image/video) for
 /// the person Media gallery. Attachments table only.
 #[derive(Debug, Clone, Serialize)]
@@ -123,6 +130,24 @@ pub struct LinkEvent {
 
 pub fn person_list(archive: &Archive) -> Result<Vec<PersonSummary>, CoreError> {
     person_list_on(&archive.conn)
+}
+
+/// Every `labels` row, name order. No hide-list.
+pub fn labels_list(archive: &Archive) -> Result<Vec<LabelRef>, CoreError> {
+    let mut stmt = archive
+        .conn
+        .prepare("SELECT id, name FROM labels ORDER BY name")?;
+    let rows = stmt.query_map([], |r| {
+        Ok(LabelRef {
+            id: r.get(0)?,
+            name: r.get(1)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
 }
 
 /// Same contract as `person_list` (groups off) on a caller-owned connection.

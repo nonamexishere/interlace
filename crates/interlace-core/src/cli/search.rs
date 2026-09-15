@@ -32,6 +32,7 @@ pub(super) fn cmd_search(
         conversation_id: None,
         conversation_kind: kind.map(Into::into),
         attachment_filter: attachment.map(Into::into),
+        label_id: None,
         include_groups,
         limit,
     };

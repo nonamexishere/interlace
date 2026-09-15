@@ -41,6 +41,10 @@ export const tr: ChromePack = {
   searchLast30Days: "30 gün",
   searchThisYear: "Bu yıl",
   searchAnyDate: "Tümü",
+  searchLabel: "Etiket",
+  searchLabelAny: "Tümü",
+  searchLabelInvalid:
+    "Bu etiket artık bu arşivde yok. Tümü veya başka bir etiket seçin.",
   openingLastArchive: "Son arşiv açılıyor",
   noFileSelected: "Dosya seçilmedi",
   importEmptyBody:

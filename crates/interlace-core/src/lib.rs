@@ -23,11 +23,12 @@ pub use import::{
 };
 pub use model::*;
 pub use people::{
-    attachments_for, complete_attachments, conversation_participant_names, merge_targets,
-    person_conversations, person_display_name, person_identities, person_list, person_list_on,
-    person_list_with_groups, person_media_rows_for, person_timeline_rows, person_timeline_rows_for,
-    recent_link_events, AttachmentRef, ConversationParticipantName, LinkEvent, PersonConversation,
-    PersonIdentity, PersonMediaRow, PersonSummary, TimelineRow,
+    attachments_for, complete_attachments, conversation_participant_names, labels_list,
+    merge_targets, person_conversations, person_display_name, person_identities, person_list,
+    person_list_on, person_list_with_groups, person_media_rows_for, person_timeline_rows,
+    person_timeline_rows_for, recent_link_events, AttachmentRef, ConversationParticipantName,
+    LabelRef, LinkEvent, PersonConversation, PersonIdentity, PersonMediaRow, PersonSummary,
+    TimelineRow,
 };
 pub use search::{
     build_search_text, expand_query, extra_ascii_fold, index_import_run, person_timeline,

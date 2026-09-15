@@ -39,6 +39,10 @@ export const en = {
   searchLast30Days: "30 days",
   searchThisYear: "this year",
   searchAnyDate: "Any",
+  searchLabel: "Label",
+  searchLabelAny: "Any",
+  searchLabelInvalid:
+    "That label is no longer in this archive. Pick Any or another label.",
   openingLastArchive: "Opening last archive",
   noFileSelected: "No file selected",
   importEmptyBody:

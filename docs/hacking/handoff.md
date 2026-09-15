@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-15. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
 HEAD `master` **#364** / PR **#386**. **#361**–**#364** landed.
+**#365** in flight (Search filter by Gmail label).
 **#384** and **#385** were tried and **backed out**.
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
@@ -274,8 +275,9 @@ Phase 2.1 milestone (#6): **closed**.
 
 Phase 2.3 coding is **done** (epic **#264** / milestone 8 closed). Phase 2.2
 polish (#197) is **done**. Phase 2.4 epic **#360** is **started**: **#361**–**#364**
-landed (PRs **#381**–**#383**, **#386**). **#384** and **#385** were
-tried locally and **backed out**. Stay on post-#364 chrome.
+landed (PRs **#381**–**#383**, **#386**). **#365** is in flight.
+**#384** and **#385** were tried locally and **backed out**. Stay on
+post-#364 chrome.
 Phase 4 epic **#56** is **started** (#79 / PR **#359**).
 Normative [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md).
 Do **not** restart **#384** / **#385** unprompted. Do **not** start Phase 1.1
