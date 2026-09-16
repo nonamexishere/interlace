@@ -11,6 +11,8 @@
   import { t } from "$lib/i18n";
   import PanelLeft from "@lucide/svelte/icons/panel-left";
   import PanelLeftClose from "@lucide/svelte/icons/panel-left-close";
+  import Pin from "@lucide/svelte/icons/pin";
+  import PinOff from "@lucide/svelte/icons/pin-off";
 
   let {
     st,
@@ -30,6 +32,8 @@
     onImport,
     persistSidebar,
     undoRowLabel,
+    pinIds,
+    onTogglePin,
   }: {
     st: Status;
     people: Person[];
@@ -48,7 +52,12 @@
     onImport: () => void;
     persistSidebar: (next: boolean) => void;
     undoRowLabel: (e: LinkEvent) => string;
+    pinIds: number[];
+    onTogglePin: (id: number) => void;
   } = $props();
+
+  const pinSet = $derived(new Set(pinIds));
+  const pinnedMatching = $derived(filtered.filter((p) => pinSet.has(p.id)));
 
   function setSort(next: "recent" | "az") {
     peopleSort = next;
@@ -127,47 +136,77 @@
       <Button variant={peopleSort === "az" ? "secondary" : "ghost"} size="sm" class="h-7 px-2 text-xs" aria-pressed={peopleSort === "az"} onclick={() => setSort("az")}>A–Z</Button>
     </div>
   </div>
+  {#if !sidebarCollapsed && pinnedMatching.length > 0}
+    <p class="mt-2 text-xs text-muted-foreground">{t("pinned")}</p>
+  {/if}
   <ul class="mt-2 min-w-0 space-y-0.5" role="listbox" aria-label="People" aria-busy={peopleLoading}>
-    {#each filtered as p}
+    {#each filtered as p (p.id)}
       <li class="min-w-0" role="presentation">
-        <button
-          type="button"
-          role="option"
-          aria-selected={selectedId === p.id}
-          tabindex={p.id === peopleTabId ? 0 : -1}
-          title={p.display_name}
-          aria-label={`${p.display_name}${p.is_self ? " (self)" : ""}${p.last_activity_at ? ` ${humanTime(p.last_activity_at)}` : ""}`}
-          class="w-full min-w-0 max-w-full rounded-md text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {sidebarCollapsed
-            ? 'flex justify-center px-0 py-1'
-            : 'px-2 py-1.5 text-left'} {selectedId === p.id
-            ? 'bg-accent'
-            : ''} {p.is_self ? 'font-semibold' : ''}"
-          onclick={() => onSelectPerson(p.id)}
-        >
-          {#if sidebarCollapsed}
+        {#if sidebarCollapsed}
+          <button
+            type="button"
+            role="option"
+            aria-selected={selectedId === p.id}
+            tabindex={p.id === peopleTabId ? 0 : -1}
+            title={p.display_name}
+            aria-label={`${p.display_name}${p.is_self ? " (self)" : ""}${p.last_activity_at ? ` ${humanTime(p.last_activity_at)}` : ""}`}
+            class="flex w-full min-w-0 max-w-full justify-center rounded-md px-0 py-1 text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {selectedId === p.id
+              ? 'bg-accent'
+              : ''} {p.is_self ? 'font-semibold' : ''}"
+            onclick={() => onSelectPerson(p.id)}
+          >
             <PersonAvatar
               personId={p.id}
               display_name={p.display_name}
               photo_cas_hash={p.photo_cas_hash}
             />
-          {:else}
-            <span class="flex min-w-0 items-start gap-2">
-              <PersonAvatar
-                personId={p.id}
-                display_name={p.display_name}
-                photo_cas_hash={p.photo_cas_hash}
-              />
-              <span class="min-w-0 flex-1">
-                <span class="block truncate">{p.is_self ? `${p.display_name} (self)` : p.display_name}</span>
-                {#if p.last_activity_at || p.preview}
-                  <span class="chrome-preview-fg mt-0.5 block truncate text-xs font-normal text-muted-foreground">
-                    {humanTime(p.last_activity_at)}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
-                  </span>
-                {/if}
+          </button>
+        {:else}
+          <div class="flex min-w-0 items-start gap-0.5">
+            <button
+              type="button"
+              role="option"
+              aria-selected={selectedId === p.id}
+              tabindex={p.id === peopleTabId ? 0 : -1}
+              title={p.display_name}
+              aria-label={`${p.display_name}${p.is_self ? " (self)" : ""}${p.last_activity_at ? ` ${humanTime(p.last_activity_at)}` : ""}`}
+              class="min-w-0 flex-1 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {selectedId === p.id
+                ? 'bg-accent'
+                : ''} {p.is_self ? 'font-semibold' : ''}"
+              onclick={() => onSelectPerson(p.id)}
+            >
+              <span class="flex min-w-0 items-start gap-2">
+                <PersonAvatar
+                  personId={p.id}
+                  display_name={p.display_name}
+                  photo_cas_hash={p.photo_cas_hash}
+                />
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate">{p.is_self ? `${p.display_name} (self)` : p.display_name}</span>
+                  {#if p.last_activity_at || p.preview}
+                    <span class="chrome-preview-fg mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+                      {humanTime(p.last_activity_at)}{p.last_activity_at && p.preview ? " · " : ""}{p.preview ?? ""}
+                    </span>
+                  {/if}
+                </span>
               </span>
-            </span>
-          {/if}
-        </button>
+            </button>
+            <Button
+              variant="ghost"
+              size="icon"
+              class="size-8 shrink-0"
+              tabindex="-1"
+              aria-label={`${pinSet.has(p.id) ? t("unpinPerson") : t("pinPerson")} ${p.display_name} ${humanTime(p.last_activity_at)}`}
+              onclick={() => onTogglePin(p.id)}
+            >
+              {#if pinSet.has(p.id)}
+                <PinOff class="size-4" />
+              {:else}
+                <Pin class="size-4" />
+              {/if}
+            </Button>
+          </div>
+        {/if}
       </li>
     {/each}
   </ul>

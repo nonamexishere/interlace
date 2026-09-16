@@ -6,6 +6,7 @@
   import TimelinePane from "./TimelinePane.svelte";
   import MergeDialog from "./MergeDialog.svelte";
   import { personById as findPerson, personLabel, undoableFrom, undoRowLabel as formatUndoRow } from "./PeopleUndo";
+  import { pinsForArchive, togglePersonPin } from "./PeoplePrefs";
 
   let {
     st,
@@ -72,6 +73,11 @@
   let mergeKeepId = $state<number | null>(null);
   let mergeKeepName = $state("");
   const undoableEvents = $derived(undoableFrom(events));
+  let pinEpoch = $state(0);
+  const pinIds = $derived.by(() => {
+    void pinEpoch;
+    return pinsForArchive(st.archive_id ?? "");
+  });
   const filtered = $derived(
     (() => {
       const rows = people.filter((p) => {
@@ -83,11 +89,29 @@
         }
         return hay.includes(q);
       });
-      return peopleSort === "az"
-        ? [...rows].sort((a, b) => a.display_name.localeCompare(b.display_name, undefined, { sensitivity: "base" }) || a.id - b.id)
-        : rows;
+      return pinThenRest(rows, pinIds, peopleSort, people);
     })(),
   );
+  function pinThenRest(rows: Person[], pinIds: number[], peopleSort: string, people: Person[]): Person[] {
+    const liveById = new Map(people.map((p) => [p.id, p]));
+    const match = new Set(rows.map((p) => p.id));
+    const pinnedMatching: Person[] = [];
+    for (const id of pinIds) {
+      const p = liveById.get(id);
+      if (p && match.has(p.id)) pinnedMatching.push(p);
+    }
+    const pinSet = new Set(pinIds);
+    const rest = rows.filter((p) => !pinSet.has(p.id));
+    const sorted =
+      peopleSort === "az"
+        ? [...rest].sort((a, b) => a.display_name.localeCompare(b.display_name, undefined, { sensitivity: "base" }) || a.id - b.id)
+        : rest;
+    return [...pinnedMatching, ...sorted];
+  }
+  function togglePin(id: number) {
+    togglePersonPin(st.archive_id ?? "", id);
+    pinEpoch += 1;
+  }
   const peopleTabId = $derived(
     selectedId != null && filtered.some((p) => p.id === selectedId)
       ? selectedId
@@ -185,6 +209,8 @@
     {onImport}
     {persistSidebar}
     undoRowLabel={(e) => formatUndoRow(e, people)}
+    {pinIds}
+    onTogglePin={togglePin}
   />
   <div class="flex min-h-0 min-w-0 flex-1">
     <TimelinePane

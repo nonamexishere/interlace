@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type Status = {
   path: string;
+  archive_id?: string;
   owner_display_name?: string | null;
   default_phone_region?: string | null;
   messages: number;

@@ -134,7 +134,7 @@ findings so a remounted Doctor tab does not flash the old list.
 After open: **people list + timeline** (groups hidden unless you tick include
 groups). The people list is **recent-first** by last D18 activity (you sent
 the message, or you share a DM / email thread). You can switch **Recent | A–Z**;
-the choice is remembered locally (localStorage, not iCloud). Each row shows that last
+the choice is remembered locally (localStorage, not iCloud). You can **pin** people to a quiet **Pinned** block at the top of the list (pin-time order). Pins are local (localStorage, not iCloud) and per archive; unpin returns them to Recent | A–Z. Quit and reopen keeps them. `/` still filters the Pinned block and the rest. Each row shows that last
 activity as a **short time** (`11 Aug 14:32`) from the stored wall-clock digits, not the raw ISO, and a
 one-line **plain-text** preview (the last message’s subject if it has one,
 otherwise a truncated body — never HTML). The people row, inspector header, and merge picker show a local CAS contact photo when one is stored, or initials from the display name — no network. The merge-target picker uses the
