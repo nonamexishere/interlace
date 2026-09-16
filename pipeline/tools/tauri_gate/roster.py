@@ -61,6 +61,7 @@ from tauri_gate.people_rename_notes import assert_people_rename_notes  # noqa: E
 from tauri_gate.people_pin import (  # noqa: E402
     assert_people_pin,
     assert_people_pin_icon,
+    assert_people_pin_key,
 )
 from tauri_gate.group_inspector_names import assert_group_inspector_names  # noqa: E402
 from tauri_gate.person_media_gallery import assert_person_media_gallery  # noqa: E402

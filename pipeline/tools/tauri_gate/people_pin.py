@@ -2,6 +2,7 @@
 
 Wired immediately after assert_people_rename_notes (#213 / #366 / #367 family).
 assert_people_pin_icon follows assert_people_pin.
+assert_people_pin_key follows assert_people_pin_icon.
 
 Confirmed mix: row pin + localStorage `interlace.peoplePins`
 `{ [archive_id]: number[] }` (pin-time, first pinned first) in PeoplePrefs.
@@ -16,6 +17,12 @@ No pins on Search hits or merge picker. Uncapped.
 (owned ghost Button size="icon"), not visible Pin / Unpin text.
 t("pinPerson") / t("unpinPerson") stay the accessible name (aria-label,
 with #184 display_name + humanTime). Do not delete #368 / #184.
+
+#368-key fold: PeopleSidebar {#each filtered as p (p.id)} (or equivalent
+key on person id). Unkeyed each compiles to index; pin-time prepend
+reuses the focused pin Button for whoever now occupies that slot.
+Keep {#each filtered so #138 / filteredIds still match.
+Do not delete #368 / #368-icon / #184 / #138.
 
 #138 / #212 / #213 / #184 / #366 / #367 stay as their own asserts.
 Placeholders only (Ada / Berk).
@@ -49,6 +56,13 @@ from tauri_gate.status_toasts_toast import _svelte_effect_args
 
 _ISSUE = "#368"
 _ICON_ISSUE = "#368-icon"
+_KEY_ISSUE = "#368-key"
+# {#each filtered as p (p.id)} / {#each filtered as person (person.id)} /
+# {#each filtered as p, i (p.id)} / {#each filtered as p (String(p.id))}.
+_FILTERED_EACH_KEYED = re.compile(
+    r"\{#each\s+filtered\s+as\s+(\w+)(?:\s*,\s*\w+)?\s*\(\s*"
+    r"(?:String\s*\(\s*)?\1\s*\.\s*id\b"
+)
 _PIN_KEY = "interlace.peoplePins"
 _PIN_KEY_RX = re.compile(r"interlace\.peoplePins")
 _PIN_PREF_NAME = re.compile(
@@ -861,3 +875,32 @@ def assert_people_pin_icon(crate: Path) -> None:
         or _surface_has_pin_icons(src, collapsed)
     ):
         fail(f"{_ICON_ISSUE}: collapsed rail must not host the pin icon (glyphs only)")
+
+
+def assert_people_pin_key(crate: Path) -> None:
+    """#368-key: PeopleSidebar {#each filtered} is keyed by person id."""
+    side_path = _web_file(crate, "PeopleSidebar.svelte")
+    if not side_path.is_file():
+        fail(
+            f"{_KEY_ISSUE}: PeopleSidebar.svelte required "
+            "({{#each filtered as p (p.id)}})"
+        )
+    sidebar_raw = side_path.read_text()
+    sidebar = _without_comments(sidebar_raw)
+    sidebar_mark = _svelte_markup(sidebar_raw)
+    src = sidebar_mark if _PEOPLE_EACH.search(sidebar_mark) else sidebar
+    if not _PEOPLE_EACH.search(src):
+        fail(
+            f"{_KEY_ISSUE}: keep {{#each filtered}} as the one people list "
+            "(#138 / filteredIds still match)"
+        )
+    each = _people_each_block(src)
+    if not each.strip():
+        fail(f"{_KEY_ISSUE}: people list {{#each filtered}} body missing")
+    header = each.split("}", 1)[0] + "}"
+    if not _FILTERED_EACH_KEYED.search(header):
+        fail(
+            f"{_KEY_ISSUE}: PeopleSidebar {{#each filtered as p}} must be keyed "
+            f"by person id ({{#each filtered as p (p.id)}}) — unkeyed each "
+            "reuses the pin Button at that index after pin-time prepend"
+        )

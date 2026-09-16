@@ -140,7 +140,7 @@
     <p class="mt-2 text-xs text-muted-foreground">{t("pinned")}</p>
   {/if}
   <ul class="mt-2 min-w-0 space-y-0.5" role="listbox" aria-label="People" aria-busy={peopleLoading}>
-    {#each filtered as p}
+    {#each filtered as p (p.id)}
       <li class="min-w-0" role="presentation">
         {#if sidebarCollapsed}
           <button
