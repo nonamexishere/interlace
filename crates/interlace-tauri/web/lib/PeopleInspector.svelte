@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { fly } from "svelte/transition";
   import {
     api,
@@ -56,24 +57,31 @@
 
   let nameDraft = $state("");
   let notesDraft = $state("");
+  let notesReady = $state(false);
   let notesLoadGen = 0;
 
   $effect(() => {
     const id = selectedId;
-    nameDraft = selectedPerson?.display_name ?? personTitle;
+    const seedName = untrack(() => selectedPerson?.display_name ?? personTitle);
+    nameDraft = seedName;
+    notesDraft = "";
+    notesReady = false;
     if (id == null) {
-      notesDraft = "";
+      notesLoadGen += 1;
       return;
     }
     const gen = ++notesLoadGen;
+    const nameAtStart = seedName;
+    const notesAtStart = "";
     void api
       .personShow(id)
       .then((show) => {
         if (gen !== notesLoadGen) return;
-        notesDraft = show.notes ?? "";
-        nameDraft = show.display_name;
+        notesReady = true;
+        if (nameDraft === nameAtStart) nameDraft = show.display_name;
+        if (notesDraft === notesAtStart) notesDraft = show.notes ?? "";
       })
-      .catch(() => {});
+      .catch(showErr);
   });
 
   async function confirmRename() {
@@ -86,7 +94,6 @@
       const show = await api.personShow(selectedId);
       personTitle = show.display_name;
       nameDraft = show.display_name;
-      notesDraft = show.notes ?? "";
     } catch (e) {
       showErr(e);
     }
@@ -98,7 +105,6 @@
       await api.personSetNotes(selectedId, notesDraft);
       await onPeopleChanged();
       const show = await api.personShow(selectedId);
-      personTitle = show.display_name;
       notesDraft = show.notes ?? "";
     } catch (e) {
       showErr(e);
@@ -177,7 +183,7 @@
     <div class="flex items-center gap-2">
       <Input
         bind:value={nameDraft}
-        aria-label={t("renameConfirm")}
+        aria-label={t("personName")}
         disabled={selectedId == null}
         class="h-8 min-w-0"
         onkeydown={(e) => {
@@ -206,7 +212,7 @@
         variant="outline"
         size="sm"
         data-person-notes-save
-        disabled={selectedId == null}
+        disabled={!notesReady}
         onclick={() => void saveNotes()}>{t("saveNotes")}</Button
       >
     </div>

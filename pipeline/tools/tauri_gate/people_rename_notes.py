@@ -15,6 +15,15 @@ the new display_name. Window title stays personTitle — Interlace.
 
 #213 / #366 / #129 / #138 stay as their own asserts. Do not delete them.
 Placeholders only (Ada / Berk). Plant Ada K. and notes work.
+
+#367-fold (PR #392): drafts are independent. Load $effect keys only on
+selectedId (untrack if seeding from personTitle / selectedPerson).
+confirmRename must not write notesDraft; saveNotes must not write
+nameDraft / personTitle. personShow load .catch calls showErr. Save
+notes stays disabled until notesReady / notesLoaded. Rename Input
+aria-label is personName (not renameConfirm). Drop ticket-phrasing
+rustdocs on people/edit.rs items; module //! may keep live-row UPDATE
+/ not a merge.
 """
 from __future__ import annotations
 
@@ -169,6 +178,25 @@ _T_KEY = re.compile(r"""\bt\(\s*["']([A-Za-z][A-Za-z0-9_]*)["']""")
 _CHROME_KEY_HINT = re.compile(r"rename|notes|save|confirm", re.I)
 _BLIND = frozenset({"identity.rs", "search.rs"})
 _BLIND_DIRS = frozenset({"import"})
+_FOLD = "#367-fold"
+_DRAFT_ASSIGN = re.compile(r"\b(?:nameDraft|notesDraft)\s*=(?!=)")
+_NOTES_DRAFT_ASSIGN = re.compile(r"\bnotesDraft\s*=(?!=)")
+_NAME_OR_TITLE_ASSIGN = re.compile(r"\b(?:nameDraft|personTitle)\s*=(?!=)")
+_LIVE_DEP = re.compile(r"\b(?:personTitle|selectedPerson)\b")
+_NOTES_READY = re.compile(
+    r"\b(?:notesReady|notesLoaded|notesHydrated|notesOk|notesHaveLoaded|notesLoadOk)\b"
+)
+_NAME_ARIA_KEY = re.compile(
+    r"""aria-label\s*=\s*\{?\s*t\(\s*["']([A-Za-z][A-Za-z0-9_]*)["']"""
+)
+_NAME_KEY_OK = re.compile(r"^(?:personName|displayName|renameName|personDisplayName)$")
+_CONFIRM_ARIA = re.compile(r"renameConfirm|^confirm$|^save")
+_FORBIDDEN_DOC = re.compile(
+    r"notes\s+ride|today'?s\s+person_show|\bwhitespace\b",
+    re.I,
+)
+_RENAME_FNS = ("confirmRename", "onRename", "saveRename", "commitRename", "rename")
+_SAVE_FNS = ("saveNotes", "onSaveNotes", "commitNotes", "setNotes")
 
 
 def _text(path: Path) -> str:
@@ -264,6 +292,144 @@ def _locale_keys(src: str) -> set[str]:
 def _locale_value(src: str, key: str) -> str:
     m = re.search(rf'(?m)^\s+{re.escape(key)}\s*:\s*("(?:\\.|[^"\\])*")', src)
     return m.group(1) if m else ""
+
+
+def _effect_bodies(src: str) -> list[str]:
+    out: list[str] = []
+    for m in re.finditer(r"\$effect(?:\.pre)?\s*\(", src):
+        open_p = m.end() - 1
+        close = _match_closer(src, open_p)
+        if close >= 0:
+            out.append(src[open_p + 1 : close])
+    return out
+
+
+def _strip_untrack(src: str) -> str:
+    out = src
+    while True:
+        m = re.search(r"\buntrack\s*\(", out)
+        if not m:
+            return out
+        open_p = m.end() - 1
+        close = _match_closer(out, open_p)
+        if close < 0:
+            return out
+        out = out[: m.start()] + " " + out[close + 1 :]
+
+
+def _js_fn_body(src: str, name: str) -> str:
+    m = re.search(rf"(?:async\s+)?function\s+{re.escape(name)}\s*\(", src)
+    if not m:
+        m = re.search(
+            rf"(?:const|let)\s+{re.escape(name)}\s*=\s*(?:async\s*)?(?:function\s*)?\(",
+            src,
+        )
+    if not m:
+        return ""
+    brace = src.find("{", m.start())
+    if brace < 0:
+        return ""
+    end = _match_closer(src, brace)
+    return src[brace + 1 : end] if end >= 0 else src[brace + 1 : brace + 800]
+
+
+def _joined_fn_bodies(src: str, names: tuple[str, ...]) -> str:
+    return "\n".join(_js_fn_body(src, n) for n in names)
+
+
+def _open_tag_from(src: str, start: int, limit: int = 800) -> str:
+    j = start
+    depth = 0
+    end = min(len(src), start + limit)
+    while j < end:
+        c = src[j]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth = max(0, depth - 1)
+        elif c == ">" and depth == 0:
+            return src[start : j + 1]
+        j += 1
+    return src[start:end]
+
+
+def _name_input_tag(mark: str) -> str:
+    m = re.search(r"bind:value\s*=\s*\{nameDraft\}", mark)
+    if not m:
+        return ""
+    start = mark.rfind("<Input", 0, m.start())
+    if start < 0:
+        start = max(0, m.start() - 80)
+    return _open_tag_from(mark, start)
+
+
+def _notes_save_tag(mark: str) -> str:
+    for hook in (
+        "data-person-notes-save",
+        't("saveNotes")',
+        "t('saveNotes')",
+        't("notesSave")',
+    ):
+        idx = mark.find(hook)
+        if idx < 0:
+            continue
+        start = mark.rfind("<Button", 0, idx)
+        if start < 0:
+            start = max(0, idx - 240)
+        return _open_tag_from(mark, start)
+    return ""
+
+
+def _disabled_expr(tag: str) -> str:
+    m = re.search(r"\bdisabled\s*=\s*\{", tag)
+    if not m:
+        m2 = re.search(r'\bdisabled\s*=\s*"([^"]*)"', tag)
+        return m2.group(1) if m2 else ""
+    open_b = tag.find("{", m.start())
+    close = _match_closer(tag, open_b)
+    return tag[open_b + 1 : close] if close >= 0 else tag[open_b + 1 :]
+
+
+def _load_effects(src: str) -> list[str]:
+    found: list[str] = []
+    for body in _effect_bodies(src):
+        if _DRAFT_ASSIGN.search(body) or re.search(r"\bpersonShow\s*\(", body):
+            found.append(body)
+    return found
+
+
+def _catch_calls_show_err(blob: str) -> bool:
+    if re.search(r"\.catch\s*\(\s*showErr\b", blob):
+        return True
+    if re.search(r"\.catch\s*\([^)]*showErr", blob):
+        return True
+    if re.search(
+        r"\.catch\s*\(\s*(?:\([^)]*\)|[A-Za-z_]\w*)\s*=>\s*\{[\s\S]{0,400}\bshowErr\b",
+        blob,
+    ):
+        return True
+    if re.search(r"catch\s*\([^)]*\)\s*\{[\s\S]{0,400}\bshowErr\b", blob):
+        return True
+    return False
+
+
+def _attached_rustdocs(src: str, name: str) -> str:
+    m = re.search(
+        rf"(?m)^(?:pub\s+)?(?:struct|fn|enum|type)\s+{re.escape(name)}\b",
+        src,
+    )
+    if not m:
+        return ""
+    acc: list[str] = []
+    for line in reversed(src[: m.start()].splitlines()):
+        s = line.strip()
+        if not s or s.startswith("#[") or s.startswith("#!["):
+            continue
+        if s.startswith("///"):
+            acc.append(s)
+            continue
+        break
+    return "\n".join(reversed(acc))
 
 
 def assert_people_rename_notes(crate: Path) -> None:
@@ -563,3 +729,90 @@ def assert_people_rename_notes(crate: Path) -> None:
         r"\bidentity_values\b", _text(crate / "web" / "lib" / "PeopleShell.svelte")
     ):
         fail(f"{_ISSUE}: keep / filter on display_name + identity_values (#138)")
+
+    # 13–19) #367-fold — independent drafts, load err, aria, rustdoc (PR #392).
+    load_fx = _load_effects(inspector_clean)
+    if not load_fx:
+        fail(
+            f"{_FOLD}: load $effect must fill drafts on selectedId "
+            "(do not seed from live personTitle / selectedPerson)"
+        )
+    for body in load_fx:
+        if not re.search(r"\bselectedId\b", body):
+            fail(
+                f"{_FOLD}: load $effect that fills drafts must key only on selectedId"
+            )
+        live = _strip_untrack(body)
+        if _LIVE_DEP.search(live):
+            fail(
+                f"{_FOLD}: load $effect that fills drafts must not read "
+                "personTitle / selectedPerson as live deps "
+                "(only selectedId; untrack if seeding)"
+            )
+
+    rename_body = _joined_fn_bodies(inspector_clean, _RENAME_FNS)
+    if not rename_body.strip():
+        fail(f"{_FOLD}: confirmRename (or equivalent) required")
+    if _NOTES_DRAFT_ASSIGN.search(rename_body):
+        fail(f"{_FOLD}: confirmRename must not assign notesDraft after write")
+
+    save_body = _joined_fn_bodies(inspector_clean, _SAVE_FNS)
+    if not save_body.strip():
+        fail(f"{_FOLD}: saveNotes (or equivalent) required")
+    if _NAME_OR_TITLE_ASSIGN.search(save_body):
+        fail(f"{_FOLD}: saveNotes must not assign nameDraft / personTitle after write")
+
+    load_show = "\n".join(b for b in load_fx if re.search(r"\bpersonShow\s*\(", b))
+    if not load_show.strip():
+        fail(f"{_FOLD}: load $effect must call personShow (notes ride person_show)")
+    if not _catch_calls_show_err(load_show):
+        fail(
+            f"{_FOLD}: load personShow .catch must call showErr "
+            "(do not swallow a failed load with an empty catch)"
+        )
+
+    if not _NOTES_READY.search(inspector_clean):
+        fail(
+            f"{_FOLD}: Save notes stays disabled until notesReady / notesLoaded "
+            "(a failed load must not Save a blank over stored notes)"
+        )
+    save_tag = _notes_save_tag(inspector_mark) or _notes_save_tag(inspector)
+    save_dis = _disabled_expr(save_tag)
+    if not _NOTES_READY.search(save_dis):
+        fail(
+            f"{_FOLD}: Save notes button must be disabled unless "
+            "notesReady / notesLoaded"
+        )
+
+    name_tag = _name_input_tag(inspector_mark) or _name_input_tag(inspector)
+    aria_m = _NAME_ARIA_KEY.search(name_tag)
+    aria_key = aria_m.group(1) if aria_m else ""
+    if not aria_key or _CONFIRM_ARIA.search(aria_key) or not _NAME_KEY_OK.search(aria_key):
+        fail(
+            f"{_FOLD}: rename Input aria-label must be t(\"personName\") "
+            "(or a name key — not renameConfirm)"
+        )
+    if "personName" not in en_keys or "personName" not in tr_keys:
+        fail(f"{_FOLD}: personName must exist in both locales/en.ts and locales/tr.ts")
+    ev, tv = _locale_value(en, "personName"), _locale_value(tr, "personName")
+    if ev and tv and ev == tv:
+        fail(f"{_FOLD}: tr.ts personName must not be an English copy")
+
+    edit_rs = _text(root / "crates" / "interlace-core" / "src" / "people" / "edit.rs")
+    doc_blob = edit_rs if edit_rs.strip() else core_blob
+    for item in ("PersonShow", "person_rename", "person_set_notes", "person_show"):
+        docs_txt = _attached_rustdocs(doc_blob, item)
+        if docs_txt and _FORBIDDEN_DOC.search(docs_txt.replace("`", "")):
+            fail(
+                f"{_FOLD}: people/edit.rs rustdoc on {item} must not narrate "
+                "Notes ride / Today's person_show / whitespace "
+                "(keep a short module //! live-row UPDATE / not a merge)"
+            )
+    if edit_rs.strip():
+        mod = "\n".join(ln for ln in edit_rs.splitlines() if ln.startswith("//!"))
+        if not re.search(r"live[- ]row", mod, re.I) or not re.search(
+            r"not a merge", mod, re.I
+        ):
+            fail(
+                f"{_FOLD}: people/edit.rs //! may keep live-row UPDATE / not a merge"
+            )

@@ -112,6 +112,7 @@ export const en = {
   fromMeThem: "Them",
   fromMeMe: "Me",
   renameConfirm: "Confirm",
+  personName: "Name",
   personNotes: "Notes",
   saveNotes: "Save notes",
 } as const;

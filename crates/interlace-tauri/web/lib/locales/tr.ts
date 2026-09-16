@@ -114,6 +114,7 @@ export const tr: ChromePack = {
   fromMeThem: "Onlar",
   fromMeMe: "Ben",
   renameConfirm: "Onayla",
+  personName: "Ad",
   personNotes: "Notlar",
   saveNotes: "Notları kaydet",
 };

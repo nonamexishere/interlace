@@ -1,4 +1,4 @@
-//! Live-row rename + notes. Not a merge; does not touch identities / senders.
+//! Live-row UPDATE of display_name / notes. Not a merge.
 
 use serde::Serialize;
 
@@ -7,7 +7,6 @@ use crate::model::CoreError;
 
 use super::{person_display_name, person_identities, PersonIdentity};
 
-/// Inspector / IPC body for one live person. Notes ride here, not `PersonSummary`.
 #[derive(Debug, Clone, Serialize)]
 pub struct PersonShow {
     pub id: i64,
@@ -16,7 +15,6 @@ pub struct PersonShow {
     pub identities: Vec<PersonIdentity>,
 }
 
-/// Trim `name`; empty / whitespace → `Parse`. Live row only. Same name is Ok no-op.
 pub fn person_rename(archive: &mut Archive, id: i64, name: &str) -> Result<(), CoreError> {
     let name = name.trim();
     if name.is_empty() {
@@ -37,7 +35,6 @@ pub fn person_rename(archive: &mut Archive, id: i64, name: &str) -> Result<(), C
     Ok(())
 }
 
-/// Live row only. Empty / whitespace stores NULL (clear). Else trimmed text.
 pub fn person_set_notes(archive: &mut Archive, id: i64, notes: &str) -> Result<(), CoreError> {
     let _ = person_display_name(archive, id)?;
     let stored = {
@@ -59,7 +56,6 @@ pub fn person_set_notes(archive: &mut Archive, id: i64, notes: &str) -> Result<(
     Ok(())
 }
 
-/// Today's `person_show` IPC body plus `notes`. Live row only.
 pub fn person_show(archive: &Archive, id: i64) -> Result<PersonShow, CoreError> {
     let (display_name, notes): (String, Option<String>) = archive
         .conn
