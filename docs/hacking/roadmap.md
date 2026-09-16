@@ -12,7 +12,7 @@ Phase 2.1 is **done**. Phase 2.2 polish is **done**. Phase 2.3 coding is **done*
 
 | What | Notes |
 | --- | --- |
-| Phase 2.4 | Epic [#360](https://github.com/nonamexishere/interlace/issues/360). **#361**–**#367** landed (PRs **#381**–**#383**, **#386**, **#388**, **#390**, **#392**). **#384** compact filters and **#385** switcher + locale were tried and **backed out**. Do not start 1.1 / Phase 3 / #80–#82 unprompted. |
+| Phase 2.4 | Epic [#360](https://github.com/nonamexishere/interlace/issues/360). **#361**–**#368** landed (PRs **#381**–**#383**, **#386**, **#388**, **#390**, **#392**, **#394**). **#384** compact filters and **#385** switcher + locale were tried and **backed out**. Do not start 1.1 / Phase 3 / #80–#82 unprompted. |
 | Phase 4 | Epic [#56](https://github.com/nonamexishere/interlace/issues/56) **started**. **#79** is PR **#359** (`--preserve-raw`, default off; 0002 index + transactional migrate; CI green). Next **#80** only if asked. #81 / #82 stay until picked. Do not start 1.1 / Phase 3 export unprompted. |
 | Phase 2.2 | Epic [#197](https://github.com/nonamexishere/interlace/issues/197) / [milestone 7](https://github.com/nonamexishere/interlace/milestone/7). Normative [`UI-DESIGN.md`](../design/UI-DESIGN.md). **Done** (#198–#222 / PRs #225–#262). |
 | Desktop app | **`app-v0.1.2` shipped** ([release](https://github.com/nonamexishere/interlace/releases/tag/app-v0.1.2)). Ask before another `app-v*`. |
