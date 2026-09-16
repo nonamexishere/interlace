@@ -5,10 +5,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use interlace_core::db::init_archive;
 use interlace_core::people::{
-    person_list, person_media_rows_for, person_timeline_rows, person_timeline_rows_for,
-    PersonSummary,
+    person_display_name, person_identities, person_list, person_list_on, person_media_rows_for,
+    person_timeline_rows, person_timeline_rows_for, PersonSummary,
 };
-use interlace_core::{person_merge, person_timeline, person_undo, PersonMergeOpts};
+use interlace_core::{
+    open_archive, person_merge, person_rename, person_set_notes, person_show, person_timeline,
+    person_undo, LockMode, PersonMergeOpts,
+};
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -2230,5 +2233,597 @@ fn person_list_photo_hash_min_id_wins() {
         Some(ADA_PHOTO_LOSE),
         "later contacts_raw.id must not win which-photo"
     );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// #367: SQL plant for inspector rename + notes. Placeholders Ada / Berk only.
+/// Gmail email identities (no WhatsApp JID). One DM each. Ghost is tombstoned.
+
+struct RenamePlant {
+    ada_id: i64,
+    ada_iid: i64,
+    ada_msg: i64,
+    berk_id: i64,
+    berk_iid: i64,
+    berk_msg: i64,
+    ghost_id: i64,
+}
+
+struct IdentitySnap {
+    id: i64,
+    platform: String,
+    kind: String,
+    value_raw: String,
+    value_normalized: String,
+    display_name: Option<String>,
+}
+
+fn plant_rename_ada_berk(arch: &interlace_core::db::Archive) -> RenamePlant {
+    arch.conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('gmail_mbox', 't', '/t.mbox')",
+            [],
+        )
+        .unwrap();
+    let src = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO import_runs(source_id, status) VALUES (?1, 'done')",
+            [src],
+        )
+        .unwrap();
+    let run = arch.conn.last_insert_rowid();
+
+    arch.conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('gmail', 'email', 'ada@example.com', 'ada@example.com', 'Ada')",
+            [],
+        )
+        .unwrap();
+    let ada_iid = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO persons(display_name, is_self) VALUES ('Ada', 0)",
+            [],
+        )
+        .unwrap();
+    let ada_id = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
+             VALUES (?1, ?2, 'auto_email', 0.99, 'system')",
+            rusqlite::params![ada_id, ada_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('gmail', 'email_thread', 'gmail-ada-rename', 'Ada')",
+            [],
+        )
+        .unwrap();
+    let ada_dm = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![ada_dm, ada_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO messages(conversation_id, source_id, import_run_id, sender_identity_id,
+                sent_at, sent_at_precision, kind, body_text, idempotency_key)
+             VALUES (?1, ?2, ?3, ?4, '2024-03-15T14:32:00Z', 'second', 'text', 'ada hi', 'k-ada-rename')",
+            rusqlite::params![ada_dm, src, run, ada_iid],
+        )
+        .unwrap();
+    let ada_msg = arch.conn.last_insert_rowid();
+
+    arch.conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('gmail', 'email', 'berk@example.com', 'berk@example.com', 'Berk')",
+            [],
+        )
+        .unwrap();
+    let berk_iid = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO persons(display_name, is_self) VALUES ('Berk', 0)",
+            [],
+        )
+        .unwrap();
+    let berk_id = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
+             VALUES (?1, ?2, 'auto_email', 0.99, 'system')",
+            rusqlite::params![berk_id, berk_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO conversations(platform, kind, native_id, title)
+             VALUES ('gmail', 'email_thread', 'gmail-berk-rename', 'Berk')",
+            [],
+        )
+        .unwrap();
+    let berk_dm = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO conversation_participants(conversation_id, identity_id, role)
+             VALUES (?1, ?2, 'member')",
+            rusqlite::params![berk_dm, berk_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO messages(conversation_id, source_id, import_run_id, sender_identity_id,
+                sent_at, sent_at_precision, kind, body_text, idempotency_key)
+             VALUES (?1, ?2, ?3, ?4, '2024-03-16T10:00:00Z', 'second', 'text', 'berk hi', 'k-berk-rename')",
+            rusqlite::params![berk_dm, src, run, berk_iid],
+        )
+        .unwrap();
+    let berk_msg = arch.conn.last_insert_rowid();
+
+    arch.conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('gmail', 'email', 'ghost@example.com', 'ghost@example.com', 'Ghost')",
+            [],
+        )
+        .unwrap();
+    let ghost_iid = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO persons(display_name, is_self) VALUES ('Ghost', 0)",
+            [],
+        )
+        .unwrap();
+    let ghost_id = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
+             VALUES (?1, ?2, 'auto_email', 0.99, 'system')",
+            rusqlite::params![ghost_id, ghost_iid],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "UPDATE persons SET tombstoned_at = '2024-03-01T00:00:00Z', merged_into = ?2 WHERE id = ?1",
+            rusqlite::params![ghost_id, berk_id],
+        )
+        .unwrap();
+
+    RenamePlant {
+        ada_id,
+        ada_iid,
+        ada_msg,
+        berk_id,
+        berk_iid,
+        berk_msg,
+        ghost_id,
+    }
+}
+
+fn plant_rename_self_ada(arch: &interlace_core::db::Archive) -> i64 {
+    arch.conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('gmail_mbox', 't', '/t.mbox')",
+            [],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('gmail', 'email', 'ada-self@example.com', 'ada-self@example.com', 'Ada')",
+            [],
+        )
+        .unwrap();
+    let iid = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO persons(display_name, is_self) VALUES ('Ada', 1)",
+            [],
+        )
+        .unwrap();
+    let pid = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO person_identities(person_id, identity_id, link_reason, confidence, created_by)
+             VALUES (?1, ?2, 'self_declared', 1.0, 'user')",
+            rusqlite::params![pid, iid],
+        )
+        .unwrap();
+    pid
+}
+
+fn rename_row<'a>(list: &'a [PersonSummary], id: i64, who: &str) -> &'a PersonSummary {
+    list.iter()
+        .find(|p| p.id == id)
+        .unwrap_or_else(|| panic!("{who} (id={id}) missing from person_list"))
+}
+
+fn identity_snap(arch: &interlace_core::db::Archive, id: i64) -> IdentitySnap {
+    arch.conn
+        .query_row(
+            "SELECT id, platform, kind, value_raw, value_normalized, display_name
+             FROM identities WHERE id = ?1",
+            [id],
+            |r| {
+                Ok(IdentitySnap {
+                    id: r.get(0)?,
+                    platform: r.get(1)?,
+                    kind: r.get(2)?,
+                    value_raw: r.get(3)?,
+                    value_normalized: r.get(4)?,
+                    display_name: r.get(5)?,
+                })
+            },
+        )
+        .unwrap()
+}
+
+fn person_identity_pairs(arch: &interlace_core::db::Archive, pid: i64) -> Vec<(i64, i64)> {
+    let mut stmt = arch
+        .conn
+        .prepare("SELECT person_id, identity_id FROM person_identities WHERE person_id = ?1 ORDER BY identity_id")
+        .unwrap();
+    stmt.query_map([pid], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect()
+}
+
+fn sender_of(arch: &interlace_core::db::Archive, mid: i64) -> i64 {
+    arch.conn
+        .query_row(
+            "SELECT sender_identity_id FROM messages WHERE id = ?1",
+            [mid],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+fn sql_display_name(arch: &interlace_core::db::Archive, id: i64) -> String {
+    arch.conn
+        .query_row(
+            "SELECT display_name FROM persons WHERE id = ?1",
+            [id],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+fn person_updated_at(arch: &interlace_core::db::Archive, id: i64) -> String {
+    arch.conn
+        .query_row("SELECT updated_at FROM persons WHERE id = ?1", [id], |r| {
+            r.get(0)
+        })
+        .unwrap()
+}
+
+fn live_person_count(arch: &interlace_core::db::Archive) -> i64 {
+    arch.conn
+        .query_row(
+            "SELECT COUNT(*) FROM persons WHERE tombstoned_at IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+fn link_event_count(arch: &interlace_core::db::Archive) -> i64 {
+    arch.conn
+        .query_row("SELECT COUNT(*) FROM identity_link_events", [], |r| {
+            r.get(0)
+        })
+        .unwrap()
+}
+
+fn review_open_count(arch: &interlace_core::db::Archive) -> i64 {
+    arch.conn
+        .query_row(
+            "SELECT COUNT(*) FROM merge_review_queue WHERE status = 'open'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+fn tombstone_of(arch: &interlace_core::db::Archive, id: i64) -> (Option<String>, Option<i64>) {
+    arch.conn
+        .query_row(
+            "SELECT tombstoned_at, merged_into FROM persons WHERE id = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap()
+}
+
+fn notes_cleared(notes: &Option<String>) -> bool {
+    notes.as_deref().map(str::trim).unwrap_or("").is_empty()
+}
+
+/// rename-ada-k: plant Ada → person_rename "Ada K." → list + show + person_display_name.
+#[test]
+fn person_rename_ada_k_list_and_show() {
+    let root = tmp();
+    let mut arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_rename_ada_berk(&arch);
+    person_rename(&mut arch, p.ada_id, "Ada K.").expect("rename Ada → Ada K.");
+    assert_eq!(
+        person_display_name(&arch, p.ada_id).expect("live Ada"),
+        "Ada K."
+    );
+    let list = person_list(&arch).expect("person_list after rename");
+    assert_eq!(rename_row(&list, p.ada_id, "Ada").display_name, "Ada K.");
+    let snap = person_list_on(&arch.conn).expect("person_list_on after rename");
+    assert_eq!(rename_row(&snap, p.ada_id, "Ada").display_name, "Ada K.");
+    let show = person_show(&arch, p.ada_id).expect("person_show after rename");
+    assert_eq!(show.id, p.ada_id);
+    assert_eq!(show.display_name, "Ada K.");
+    assert_eq!(rename_row(&list, p.berk_id, "Berk").display_name, "Berk");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// empty-name-no-write: "" and whitespace → Err; Ada stays Ada; updated_at unchanged.
+#[test]
+fn person_rename_empty_name_no_write() {
+    let root = tmp();
+    let mut arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_rename_ada_berk(&arch);
+    let before = person_updated_at(&arch, p.ada_id);
+    assert!(
+        person_rename(&mut arch, p.ada_id, "").is_err(),
+        "empty name must refuse"
+    );
+    assert!(
+        person_rename(&mut arch, p.ada_id, "   ").is_err(),
+        "whitespace name must refuse"
+    );
+    assert_eq!(sql_display_name(&arch, p.ada_id), "Ada");
+    assert_eq!(person_updated_at(&arch, p.ada_id), before);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// same-name: Confirm of Ada → Ada is a no-op Ok; still Ada.
+#[test]
+fn person_rename_same_name_noop() {
+    let root = tmp();
+    let mut arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_rename_ada_berk(&arch);
+    person_rename(&mut arch, p.ada_id, "Ada").expect("same name is a no-op");
+    assert_eq!(sql_display_name(&arch, p.ada_id), "Ada");
+    assert_eq!(
+        person_display_name(&arch, p.ada_id).expect("still live"),
+        "Ada"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// identities-and-senders-unchanged + not-a-merge + Berk untouched.
+#[test]
+fn person_rename_identities_senders_not_merge() {
+    let root = tmp();
+    let mut arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_rename_ada_berk(&arch);
+    let ada_ident = identity_snap(&arch, p.ada_iid);
+    let berk_ident = identity_snap(&arch, p.berk_iid);
+    let ada_pairs = person_identity_pairs(&arch, p.ada_id);
+    let berk_pairs = person_identity_pairs(&arch, p.berk_id);
+    let ada_sender = sender_of(&arch, p.ada_msg);
+    let berk_sender = sender_of(&arch, p.berk_msg);
+    let live = live_person_count(&arch);
+    let events = link_event_count(&arch);
+    person_rename(&mut arch, p.ada_id, "Ada K.").expect("rename Ada → Ada K.");
+    let ada_after = identity_snap(&arch, p.ada_iid);
+    assert_eq!(ada_after.id, ada_ident.id);
+    assert_eq!(ada_after.platform, ada_ident.platform);
+    assert_eq!(ada_after.kind, ada_ident.kind);
+    assert_eq!(ada_after.value_raw, ada_ident.value_raw);
+    assert_eq!(ada_after.value_normalized, ada_ident.value_normalized);
+    assert_eq!(ada_after.display_name, ada_ident.display_name);
+    assert_eq!(person_identity_pairs(&arch, p.ada_id), ada_pairs);
+    assert_eq!(sender_of(&arch, p.ada_msg), ada_sender);
+    assert_eq!(sender_of(&arch, p.ada_msg), p.ada_iid);
+    let ids = person_identities(&arch, p.ada_id).expect("Ada identities");
+    assert_eq!(ids.len(), 1);
+    assert_eq!(ids[0].id, p.ada_iid);
+    assert_eq!(ids[0].value, "ada@example.com");
+    assert_eq!(tombstone_of(&arch, p.ada_id), (None, None));
+    assert_eq!(live_person_count(&arch), live);
+    assert_eq!(link_event_count(&arch), events);
+    let berk_after = identity_snap(&arch, p.berk_iid);
+    assert_eq!(berk_after.value_raw, berk_ident.value_raw);
+    assert_eq!(berk_after.value_normalized, berk_ident.value_normalized);
+    assert_eq!(berk_after.display_name, berk_ident.display_name);
+    assert_eq!(person_identity_pairs(&arch, p.berk_id), berk_pairs);
+    assert_eq!(sender_of(&arch, p.berk_msg), berk_sender);
+    assert_eq!(sql_display_name(&arch, p.berk_id), "Berk");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// i2-duplicate-name-no-automerge: rename Ada to Berk → two live Berks; no review row.
+#[test]
+fn person_rename_i2_duplicate_name_no_automerge() {
+    let root = tmp();
+    let mut arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_rename_ada_berk(&arch);
+    let events = link_event_count(&arch);
+    let reviews = review_open_count(&arch);
+    person_rename(&mut arch, p.ada_id, "Berk").expect("I2 allows a colliding display_name");
+    assert_eq!(sql_display_name(&arch, p.ada_id), "Berk");
+    assert_eq!(sql_display_name(&arch, p.berk_id), "Berk");
+    assert_eq!(tombstone_of(&arch, p.ada_id), (None, None));
+    assert_eq!(tombstone_of(&arch, p.berk_id), (None, None));
+    assert_eq!(live_person_count(&arch), 2);
+    assert_eq!(link_event_count(&arch), events);
+    assert_eq!(review_open_count(&arch), reviews);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// notes-persist-work: person_set_notes "work" then a new Archive on the same path.
+#[test]
+fn person_rename_notes_work_persist_reopen() {
+    let root = tmp();
+    let path = root.join("a");
+    let ada_id;
+    let berk_id;
+    {
+        let mut arch = init_archive(&path).unwrap();
+        let p = plant_rename_ada_berk(&arch);
+        ada_id = p.ada_id;
+        berk_id = p.berk_id;
+        person_set_notes(&mut arch, p.ada_id, "work").expect("set notes work");
+        let show = person_show(&arch, p.ada_id).expect("show after set-notes");
+        assert_eq!(show.notes.as_deref(), Some("work"));
+    }
+    let arch = open_archive(&path, LockMode::Shared).expect("reopen same path");
+    let show = person_show(&arch, ada_id).expect("person_show after reopen");
+    assert_eq!(show.display_name, "Ada");
+    assert_eq!(show.notes.as_deref(), Some("work"));
+    let berk = person_show(&arch, berk_id).expect("Berk show");
+    assert!(
+        notes_cleared(&berk.notes),
+        "Berk notes were never planted: {:?}",
+        berk.notes
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// notes-empty-clears: work then empty → show has null / empty (clear is allowed).
+#[test]
+fn person_rename_notes_empty_clears() {
+    let root = tmp();
+    let mut arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_rename_ada_berk(&arch);
+    person_set_notes(&mut arch, p.ada_id, "work").expect("set work");
+    person_set_notes(&mut arch, p.ada_id, "").expect("empty notes clear");
+    let show = person_show(&arch, p.ada_id).expect("show after clear");
+    assert!(
+        notes_cleared(&show.notes),
+        "empty notes must persist a clear, got {:?}",
+        show.notes
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// tombstoned-refuse + missing-refuse: Ghost / unknown id → Err; no write / no INSERT.
+#[test]
+fn person_rename_tombstoned_and_missing_refuse() {
+    let root = tmp();
+    let mut arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_rename_ada_berk(&arch);
+    let ghost_name = sql_display_name(&arch, p.ghost_id);
+    let ghost_updated = person_updated_at(&arch, p.ghost_id);
+    let live = live_person_count(&arch);
+    assert!(
+        person_rename(&mut arch, p.ghost_id, "Ada K.").is_err(),
+        "tombstoned rename must refuse"
+    );
+    assert!(
+        person_set_notes(&mut arch, p.ghost_id, "work").is_err(),
+        "tombstoned notes must refuse"
+    );
+    assert_eq!(sql_display_name(&arch, p.ghost_id), ghost_name);
+    assert_eq!(person_updated_at(&arch, p.ghost_id), ghost_updated);
+    let missing = p.ghost_id + 9_001;
+    assert!(
+        person_rename(&mut arch, missing, "Ada K.").is_err(),
+        "missing id must refuse"
+    );
+    assert!(
+        person_set_notes(&mut arch, missing, "work").is_err(),
+        "missing id notes must refuse"
+    );
+    let n: i64 = arch
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM persons WHERE id = ?1",
+            [missing],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n, 0, "missing rename must not INSERT a person");
+    assert_eq!(live_person_count(&arch), live);
+    assert_eq!(sql_display_name(&arch, p.ada_id), "Ada");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// self: same live-row UPDATE as anyone else (is_self stays 1).
+#[test]
+fn person_rename_self_same_rule() {
+    let root = tmp();
+    let mut arch = init_archive(&root.join("a")).unwrap();
+    let ada_id = plant_rename_self_ada(&arch);
+    person_rename(&mut arch, ada_id, "Ada K.").expect("self rename uses the same rule");
+    person_set_notes(&mut arch, ada_id, "work").expect("self notes uses the same rule");
+    let show = person_show(&arch, ada_id).expect("self show");
+    assert_eq!(show.display_name, "Ada K.");
+    assert_eq!(show.notes.as_deref(), Some("work"));
+    let is_self: i64 = arch
+        .conn
+        .query_row("SELECT is_self FROM persons WHERE id = ?1", [ada_id], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(is_self, 1);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// no-settings-sidecar: notes live on persons.notes, not settings / a file.
+#[test]
+fn person_rename_notes_not_settings_sidecar() {
+    let root = tmp();
+    let mut arch = init_archive(&root.join("a")).unwrap();
+    let p = plant_rename_ada_berk(&arch);
+    person_set_notes(&mut arch, p.ada_id, "work").expect("set notes work");
+    let stored: Option<String> = arch
+        .conn
+        .query_row("SELECT notes FROM persons WHERE id = ?1", [p.ada_id], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(stored.as_deref(), Some("work"));
+    let settings_hits: i64 = arch
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM settings WHERE key LIKE '%note%' OR value = 'work'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(settings_hits, 0, "notes must not ride the settings table");
+    let archive_notes: Option<String> = arch
+        .conn
+        .query_row("SELECT notes FROM archive_meta WHERE id = 1", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(
+        archive_notes.as_deref(),
+        Some("work"),
+        "person notes must not write archive_meta.notes"
+    );
+    let names: Vec<String> = std::fs::read_dir(&arch.root)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    for banned in [
+        "notes",
+        "notes.txt",
+        "person_notes",
+        "notes.json",
+        "settings.json",
+    ] {
+        assert!(
+            !names.iter().any(|n| n == banned),
+            "notes must not be a sidecar file {banned}; root={names:?}"
+        );
+    }
     let _ = std::fs::remove_dir_all(&root);
 }

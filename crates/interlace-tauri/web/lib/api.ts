@@ -197,10 +197,16 @@ export const api = {
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   people: () => invoke<Person[]>("people"),
   personShow: (id: number) =>
-    invoke<{ id: number; display_name: string; identities: Identity[] }>(
-      "person_show",
-      { id },
-    ),
+    invoke<{
+      id: number;
+      display_name: string;
+      notes?: string | null;
+      identities: Identity[];
+    }>("person_show", { id }),
+  personRename: (id: number, name: string) =>
+    invoke<void>("person_rename_cmd", { id, name }),
+  personSetNotes: (id: number, notes: string) =>
+    invoke<void>("person_set_notes_cmd", { id, notes }),
   personTimeline: (args: {
     id: number;
     includeGroups: boolean;

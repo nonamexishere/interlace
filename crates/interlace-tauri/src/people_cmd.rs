@@ -1,10 +1,13 @@
 //! Person show / timeline / merge / undo IPC. `people` stays in main.rs (#265).
 
 use interlace_core::people::{
-    conversation_participant_names, person_conversations, person_display_name, person_identities,
-    person_media_rows_for, person_timeline_rows_for, recent_link_events,
+    conversation_participant_names, person_conversations, person_media_rows_for,
+    person_timeline_rows_for, recent_link_events,
 };
-use interlace_core::{person_merge, person_undo, person_unlink, PersonMergeOpts};
+use interlace_core::{
+    person_merge, person_rename, person_set_notes, person_show as person_show_core, person_undo,
+    person_unlink, PersonMergeOpts,
+};
 
 use crate::{err, with_arch, with_arch_mut, AppState};
 
@@ -14,13 +17,33 @@ pub(crate) fn person_show(
     id: i64,
 ) -> Result<serde_json::Value, String> {
     with_arch(&state, |arch| {
-        let name = person_display_name(arch, id).map_err(err)?;
-        let identities = person_identities(arch, id).map_err(err)?;
+        let show = person_show_core(arch, id).map_err(err)?;
         Ok(serde_json::json!({
-            "id": id,
-            "display_name": name,
-            "identities": identities,
+            "id": show.id,
+            "display_name": show.display_name,
+            "notes": show.notes,
+            "identities": show.identities,
         }))
+    })
+}
+
+#[tauri::command]
+pub(crate) fn person_rename_cmd(
+    state: tauri::State<AppState>,
+    id: i64,
+    name: String,
+) -> Result<(), String> {
+    with_arch_mut(&state, |arch| person_rename(arch, id, &name).map_err(err))
+}
+
+#[tauri::command]
+pub(crate) fn person_set_notes_cmd(
+    state: tauri::State<AppState>,
+    id: i64,
+    notes: String,
+) -> Result<(), String> {
+    with_arch_mut(&state, |arch| {
+        person_set_notes(arch, id, &notes).map_err(err)
     })
 }
 

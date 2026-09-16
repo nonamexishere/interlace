@@ -84,6 +84,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_people_sidebar_collapse",
     "assert_person_inspector",
     "assert_people_avatar",
+    "assert_people_rename_notes",
     "assert_group_inspector_names",
     "assert_person_media_gallery",
     "assert_person_media_gallery_fold",
