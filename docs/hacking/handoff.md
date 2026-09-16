@@ -277,7 +277,8 @@ Phase 2.1 milestone (#6): **closed**.
 
 Phase 2.3 coding is **done** (epic **#264** / milestone 8 closed). Phase 2.2
 polish (#197) is **done**. Phase 2.4 epic **#360** is **started**: **#361**–**#367**
-landed (PRs **#381**–**#383**, **#386**, **#388**, **#390**, **#392**). **#384** and **#385** were
+landed (PRs **#381**–**#383**, **#386**, **#388**, **#390**, **#392**). **#368** pin people
+is in flight on `feat/ui-pin-people` (no commit). **#384** and **#385** were
 tried locally and **backed out**. Stay on post-#367 chrome.
 Phase 4 epic **#56** is **started** (#79 / PR **#359**).
 Normative [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md).
@@ -312,6 +313,7 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 ## Recommended next steps
 
 1. #303–#322 / #342 / #361–#367 are done. Phase 2.4:
+   **#368** pin people in flight (`feat/ui-pin-people`).
    **#384** / **#385** backed out. Stay at post-#367.
    Phase 4 started: **#79** / PR **#359**. Next Phase 4
    coding **#80** only if asked. #342 follow-up is **D**.

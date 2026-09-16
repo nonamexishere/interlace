@@ -115,6 +115,9 @@ export const en = {
   personName: "Name",
   personNotes: "Notes",
   saveNotes: "Save notes",
+  pinned: "Pinned",
+  pinPerson: "Pin",
+  unpinPerson: "Unpin",
 } as const;
 
 export type ChromeKey = keyof typeof en;

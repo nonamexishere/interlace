@@ -4,7 +4,9 @@ export const LAST_VIEW_PREF = "interlace.lastView";
 export const LAST_PERSON_PREF = "interlace.lastPersonId";
 export const INCLUDE_GROUPS_PREF = "interlace.includeGroups";
 export const PEOPLE_SORT_PREF = "interlace.peopleSort";
+export const PEOPLE_PINS_PREF = "interlace.peoplePins";
 export type PeopleSort = "recent" | "az";
+export type PeoplePinsMap = { [archive_id: string]: number[] };
 export type LastView = "people" | "search" | "review" | "import" | "doctor";
 export const LAST_VIEWS: readonly LastView[] = [
   "people",
@@ -37,6 +39,42 @@ export function readPeopleSortPref(): PeopleSort {
 
 export function writePeopleSortPref(next: PeopleSort) {
   localStorage.setItem(PEOPLE_SORT_PREF, next);
+}
+
+export function readPeoplePinsPref(): PeoplePinsMap {
+  const raw = localStorage.getItem(PEOPLE_PINS_PREF);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: PeoplePinsMap = {};
+    for (const [archive_id, val] of Object.entries(parsed)) {
+      if (!Array.isArray(val)) continue;
+      out[archive_id] = val.filter((id): id is number => typeof id === "number" && Number.isFinite(id));
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function writePeoplePinsPref(next: PeoplePinsMap) {
+  localStorage.setItem(PEOPLE_PINS_PREF, JSON.stringify(next));
+}
+
+export function pinsForArchive(archive_id: string): number[] {
+  if (!archive_id) return [];
+  return readPeoplePinsPref()[archive_id] ?? [];
+}
+
+export function togglePersonPin(archive_id: string, personId: number): number[] {
+  if (!archive_id) return [];
+  const all = readPeoplePinsPref();
+  const cur = all[archive_id] ?? [];
+  const next = cur.includes(personId) ? cur.filter((id) => id !== personId) : [...cur, personId];
+  all[archive_id] = next;
+  writePeoplePinsPref(all);
+  return next;
 }
 
 export function readDensityPref(): Density {

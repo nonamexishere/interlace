@@ -117,4 +117,7 @@ export const tr: ChromePack = {
   personName: "Ad",
   personNotes: "Notlar",
   saveNotes: "Notları kaydet",
+  pinned: "Sabitlenenler",
+  pinPerson: "Sabitle",
+  unpinPerson: "Sabitten çıkar",
 };
