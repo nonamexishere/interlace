@@ -4,9 +4,9 @@
   import TimelineFilters from "./TimelineFilters.svelte";
   import TimelineList from "./TimelineList.svelte";
   import { platformLabel, rowMatchesAttachKind } from "./TimelineMail";
-  import { writeIncludeGroupsPref } from "./PeoplePrefs";
+  import { lastReadFor, persistLastRead as writePersonLastRead, writeIncludeGroupsPref } from "./PeoplePrefs";
   import { findCount, findHitIndices, onFindKey, snapFindHit, stepFindIndex } from "./findHighlight";
-  import { applyJumpScrollPos, jumpToLocalDay, nearestVisibleTlIndex, TIMELINE_PAGE_LIMIT } from "./jumpDay";
+  import { applyJumpScrollPos, jumpToLocalDay, jumpToMessageId, nearestVisibleTlIndex, TIMELINE_PAGE_LIMIT } from "./jumpDay";
   import { Input } from "$lib/components/ui/input/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import PersonMediaDialog from "./PersonMediaDialog.svelte";
@@ -23,6 +23,7 @@
     selectedConversationId = $bindable<number | null>(null),
     timeline = $bindable<TimelineRow[]>([]),
     conversations = $bindable<PersonConversation[]>([]),
+    archive_id = "",
     density,
     persistLastPerson,
     friendly,
@@ -44,6 +45,7 @@
     selectedConversationId?: number | null;
     timeline?: TimelineRow[];
     conversations?: PersonConversation[];
+    archive_id?: string;
     density: string;
     persistLastPerson: (id: number) => void;
     friendly: (raw: string) => string;
@@ -164,6 +166,20 @@
     return null;
   }
 
+  let lastReadEpoch = $state(0);
+  const lastReadMessageId = $derived.by(() => {
+    void lastReadEpoch;
+    if (selectedId == null) return undefined;
+    return lastReadFor(archive_id, selectedId);
+  });
+
+  export function persistLastRead(index: number) {
+    const row = timeline[index];
+    if (!row || selectedId == null) return;
+    writePersonLastRead(archive_id, selectedId, row.message_id);
+    lastReadEpoch += 1;
+  }
+
   const oldestCursor = $derived(oldestSentAt(timeline));
   const selectedConversation = $derived(
     conversations.find((c) => c.id === selectedConversationId),
@@ -206,7 +222,7 @@
     try {
       const show = await api.personShow(id);
       if (gen !== tlGen) return;
-      personTitle = show.display_name || `person ${id}`;
+      personTitle = show.display_name || "person " + id;
       identities = show.identities || [];
       if (!append && !keepConversation) {
         conversations = await api.personConversations({ id, includeGroups: groups });
@@ -287,7 +303,7 @@
     try {
       const show = await api.personShow(personId);
       if (gen !== tlGen) return;
-      personTitle = show.display_name || `person ${personId}`;
+      personTitle = show.display_name || "person " + personId;
       identities = show.identities || [];
       conversations = await api.personConversations({
         id: personId,
@@ -374,6 +390,22 @@
 
   function onPaneFindKey(e: KeyboardEvent) {
     onFindKey(e, findQ, (q) => (findQ = q), stepFind);
+  }
+
+  function goToLastRead() {
+    const messageId = lastReadMessageId;
+    if (messageId == null || selectedId == null) return;
+    const gen = ++jumpGen, id = selectedId, key = jumpDay;
+    void jumpToMessageId({
+      key, gen, selectedId: id, messageId,
+      currentSelectedId: () => selectedId, currentJumpDay: () => jumpDay, currentGen: () => jumpGen,
+      filteredTimeline: () => filteredTimeline,
+      tlLoading: () => tlLoading, oldestCursor: () => oldestCursor, timelineLength: () => timeline.length,
+      selectPerson: async (pid, append) => { if (selectedId !== id || jumpDay !== key || jumpGen !== gen) return; return selectPerson(pid, append); },
+      scrollToPos: () => {},
+      setTlIndex: (n) => { tlIndex = n; },
+      ensureTlIndexVisible: (n) => list?.ensureTlIndexVisible(n),
+    });
   }
 
   function goToJumpDay() {
@@ -477,6 +509,9 @@
         {#if findQ}
           <span data-tl-hit-count class="shrink-0 text-xs tabular-nums text-muted-foreground">{findCount(filteredTimeline, findQ, tlIndex, quotedOpen)}</span>
         {/if}
+        {#if lastReadMessageId}
+          <Button type="button" variant="outline" size="sm" onclick={() => void goToLastRead()}>{t("lastTime")}</Button>
+        {/if}
         <Button type="button" variant="outline" size="sm" data-person-gallery-open onclick={() => (galleryOpen = true)}>{t("media")}</Button>
       </div>
     {/if}
@@ -521,6 +556,8 @@
     {onSearchFromBubble}
     {onCopyFail}
     {findQ}
+    {lastReadMessageId}
+    {persistLastRead}
     onClearDayPin={() => (dayPin = false, jumpGen++)}
   />
   <PersonMediaDialog

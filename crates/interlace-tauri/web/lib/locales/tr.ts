@@ -97,6 +97,7 @@ export const tr: ChromePack = {
   findInThread: "Sohbette bul",
   jumpToDay: "Güne git",
   latest: "En yeni",
+  lastTime: "Son kez",
   media: "Medya",
   showInTimeline: "Zaman çizelgesinde göster",
   noStoredMedia: "Kayıtlı medya yok",
