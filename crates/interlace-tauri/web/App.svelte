@@ -56,7 +56,7 @@
   let visibleTlIndices = $state<number[]>([]);
   const personInspectorAttr = ["data", "person", "inspector"].join("-");
   let peopleShell: {
-    pane: () => { selectPerson: (id: number, append?: boolean, keepConversation?: boolean) => Promise<void>; openPersonAtMessage: (a: number, b: number, c?: string | null) => Promise<void>; ensureTlIndexVisible: (n: number) => void; closeCopyMenu: () => void; scrollToLatest: () => void; copySelected: () => void } | undefined;
+    pane: () => { selectPerson: (id: number, append?: boolean, keepConversation?: boolean) => Promise<void>; openPersonAtMessage: (a: number, b: number, c?: string | null) => Promise<void>; ensureTlIndexVisible: (n: number) => void; closeCopyMenu: () => void; scrollToLatest: () => void; copySelected: () => void; persistLastRead: (index: number) => void } | undefined;
     filteredIds: () => number[];
   } | undefined = $state();
 
@@ -98,6 +98,9 @@
   }
   function persistLastPerson(id: number) {
     writeLastPerson(id);
+  }
+  function persistLastRead(index: number) {
+    peopleShell?.pane()?.persistLastRead(index);
   }
   $effect(() => {
     void view;
@@ -283,7 +286,7 @@
       prependOlder: () => { const append = true; if (selectedId != null) void peopleShell?.pane()?.selectPerson(selectedId, append); },
       visibleTlIndices,
       tlIndex,
-      setTlIndex: (n) => { tlIndex = n; },
+      setTlIndex: (n) => { tlIndex = n; persistLastRead(n); },
       ensureTlIndexVisible: (n) => peopleShell?.pane()?.ensureTlIndexVisible(n),
       scrollToLatest: () => peopleShell?.pane()?.scrollToLatest(), copySelected: () => peopleShell?.pane()?.copySelected(),
     });

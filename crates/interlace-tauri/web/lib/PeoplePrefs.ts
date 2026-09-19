@@ -5,8 +5,10 @@ export const LAST_PERSON_PREF = "interlace.lastPersonId";
 export const INCLUDE_GROUPS_PREF = "interlace.includeGroups";
 export const PEOPLE_SORT_PREF = "interlace.peopleSort";
 export const PEOPLE_PINS_PREF = "interlace.peoplePins";
+export const LAST_READ_PREF = "interlace.lastRead";
 export type PeopleSort = "recent" | "az";
 export type PeoplePinsMap = { [archive_id: string]: number[] };
+export type LastReadMap = { [archive_id: string]: { [personId: string]: number } };
 export type LastView = "people" | "search" | "review" | "import" | "doctor";
 export const LAST_VIEWS: readonly LastView[] = [
   "people",
@@ -75,6 +77,46 @@ export function togglePersonPin(archive_id: string, personId: number): number[] 
   all[archive_id] = next;
   writePeoplePinsPref(all);
   return next;
+}
+
+export function readLastReadPref(): LastReadMap {
+  const raw = localStorage.getItem(LAST_READ_PREF);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: LastReadMap = {};
+    for (const [archive_id, val] of Object.entries(parsed)) {
+      if (!val || typeof val !== "object" || Array.isArray(val)) continue;
+      const inner: { [personId: string]: number } = {};
+      for (const [personId, mid] of Object.entries(val as Record<string, unknown>)) {
+        if (typeof mid === "number" && Number.isFinite(mid)) inner[personId] = mid;
+      }
+      out[archive_id] = inner;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function writeLastReadPref(next: LastReadMap) {
+  localStorage.setItem(LAST_READ_PREF, JSON.stringify(next));
+}
+
+export function lastReadFor(archive_id: string, personId: number): number | undefined {
+  if (!archive_id) return undefined;
+  return readLastReadPref()[archive_id]?.[String(personId)];
+}
+
+export function persistLastRead(archive_id: string, personId: number, message_id: number) {
+  if (!archive_id) return;
+  if (!Number.isFinite(message_id)) return;
+  const all = readLastReadPref();
+  const inner = { ...(all[archive_id] ?? {}) };
+  inner[String(personId)] = message_id;
+  all[archive_id] = inner;
+  writeLastReadPref(all);
 }
 
 export function readDensityPref(): Density {

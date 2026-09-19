@@ -4,6 +4,7 @@ import { localDay } from "./formatTime";
 export type JumpDayRow = {
   sent_at?: string | null;
   platform?: string | null;
+  message_id?: number;
 };
 
 export type JumpDayItem = { row: JumpDayRow; index: number };
@@ -239,6 +240,75 @@ export async function jumpToLocalDay(ctx: JumpDayCtx): Promise<boolean> {
       if (jumpStale(ctx)) return false;
       ctx.scrollToPos(pos);
       return true;
+    }
+    if (page.length === 0 || page.length < TIMELINE_PAGE_LIMIT) break;
+    pages++;
+  }
+  return false;
+}
+
+export type JumpMessageCtx = JumpDayCtx & {
+  messageId: number;
+  setTlIndex: (n: number) => void;
+  ensureTlIndexVisible: (n: number) => void;
+  timeline: () => { message_id?: number }[];
+};
+
+async function selectPerson(
+  id: number,
+  append: true,
+  load?: (id: number, append: true) => Promise<unknown>,
+): Promise<unknown> {
+  return load?.(id, append);
+}
+
+/** Quiet miss / stale / empty / cap → false. Hit: tlIndex + ensureTlIndexVisible. */
+export async function jumpToMessageId(ctx: JumpMessageCtx): Promise<boolean> {
+  const messageId = ctx.messageId;
+  if (!messageId) return false;
+  if (jumpStale(ctx)) return false;
+  const hit = () => {
+    const items = ctx.filteredTimeline();
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].row.message_id === messageId) return i;
+    }
+    return -1;
+  };
+  const apply = (pos: number) => {
+    const item = ctx.filteredTimeline()[pos];
+    if (!item) return false;
+    ctx.setTlIndex(item.index);
+    ctx.ensureTlIndexVisible(item.index);
+    return true;
+  };
+  let pos = hit();
+  if (pos >= 0) {
+    if (jumpStale(ctx)) return false;
+    return apply(pos);
+  }
+  if (
+    ctx.timeline().some((row) => row.message_id === messageId) &&
+    !ctx.filteredTimeline().some((item) => item.row.message_id === messageId)
+  ) {
+    return false;
+  }
+  const id = ctx.selectedId;
+  if (!id) return false;
+  let pages = 0;
+  while (pages < JUMP_DAY_PAGE_CAP) {
+    while (ctx.tlLoading()) await tick();
+    if (jumpStale(ctx)) return false;
+    if (!ctx.oldestCursor()) break;
+    const beforeLen = ctx.timelineLength();
+    if (jumpStale(ctx)) return false;
+    await selectPerson(id, true, ctx.selectPerson);
+    await tick();
+    if (jumpStale(ctx)) return false;
+    const page = { length: ctx.timelineLength() - beforeLen };
+    pos = hit();
+    if (pos >= 0) {
+      if (jumpStale(ctx)) return false;
+      return apply(pos);
     }
     if (page.length === 0 || page.length < TIMELINE_PAGE_LIMIT) break;
     pages++;

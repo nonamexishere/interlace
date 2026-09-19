@@ -202,6 +202,8 @@ def main() -> None:
     assert_people_pin(crate)
     assert_people_pin_icon(crate)
     assert_people_pin_key(crate)
+    assert_last_read(crate)
+    assert_last_read_fold(crate)
     assert_group_inspector_names(crate)
     assert_person_media_gallery(crate)
     assert_person_media_gallery_fold(crate)

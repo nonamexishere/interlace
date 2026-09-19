@@ -95,6 +95,7 @@ export const en = {
   findInThread: "Find in conversation",
   jumpToDay: "Jump to day",
   latest: "Latest",
+  lastTime: "Last time",
   media: "Media",
   showInTimeline: "Show in timeline",
   noStoredMedia: "No stored media",
