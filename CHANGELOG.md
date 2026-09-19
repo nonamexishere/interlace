@@ -47,6 +47,7 @@ unsigned **`app-v0.1.2`**.
 - Latest on a long thread returns you to the newest bubble.
 - ⌘↑ / Home at the top of a long thread loads older messages.
 - ⌘C copies the highlighted bubble’s plain text; fields keep native copy.
+- Shift-click / Shift+j/k selects a range of bubbles; ⌘C pastes N bodies in time order, blank-line separated. Context menu Copy N messages. `#q` / people filter keep native copy.
 - Space play/pause the highlighted voice note; `#q` still types a space.
 - Right-click a stored attachment to Open it with the default app (after confirm; typed temp copy so Preview/QuickTime sees the type).
 

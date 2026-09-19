@@ -4,6 +4,7 @@
   import TimelineFilters from "./TimelineFilters.svelte";
   import TimelineList from "./TimelineList.svelte";
   import { platformLabel, rowMatchesAttachKind } from "./TimelineMail";
+  import { rangeIds, selectionLive } from "./TimelineSelect";
   import { lastReadFor, persistLastRead as writePersonLastRead, writeIncludeGroupsPref } from "./PeoplePrefs";
   import { findCount, findHitIndices, onFindKey, snapFindHit, stepFindIndex } from "./findHighlight";
   import { applyJumpScrollPos, jumpToLocalDay, jumpToMessageId, nearestVisibleTlIndex, TIMELINE_PAGE_LIMIT } from "./jumpDay";
@@ -168,6 +169,25 @@
 
   let lastReadEpoch = $state(0);
   let loadedArchiveId = $state("");
+  let selectedIds = $state(new Set<number>());
+  let anchorId = $state<number | null>(null);
+
+  $effect(() => {
+    if (!selectionLive(loadedArchiveId, archive_id)) {
+      selectedIds = new Set();
+      anchorId = null;
+    }
+  });
+
+  export function extendSelection(targetIndex: number) {
+    const target = filteredTimeline.find((item) => item.index === targetIndex)?.row ?? timeline[targetIndex];
+    if (!target) return;
+    if (anchorId == null) {
+      const cur = filteredTimeline.find((item) => item.index === tlIndex)?.row ?? timeline[tlIndex];
+      if (cur) anchorId = cur.message_id;
+    }
+    selectedIds = rangeIds(filteredTimeline, anchorId, target.message_id);
+  }
   const lastReadMessageId = $derived.by(() => {
     void lastReadEpoch;
     if (selectedId == null) return undefined;
@@ -206,6 +226,8 @@
     if (!append) { dayPin = false; jumpGen++; persistLastPerson(id); }
 
     if (!append && id !== selectedId) {
+      selectedIds = new Set();
+      anchorId = null;
       showPersonChrome = false;
       platformFilter = "all";
       kindFilter = "all";
@@ -250,7 +272,8 @@
       }
       timeline = append ? chrono.concat(timeline) : chrono;
       loadedArchiveId = archive_id;
-      tlIndex = append ? tlIndex + chrono.length : Math.max(0, chrono.length - 1);
+      if (append) tlIndex += chrono.length;
+      else tlIndex = Math.max(0, chrono.length - 1);
       if (append) {
         await tick();
         if (gen !== tlGen) return;
@@ -296,6 +319,8 @@
     attachKindFilter = "all";
     fromMeFilter = "all";
     findQ = ""; dayPin = false; jumpGen++;
+    selectedIds = new Set([messageId]);
+    anchorId = messageId;
     selectedId = personId;
     persistLastPerson(personId);
     selectedConversationId = null;
@@ -342,6 +367,8 @@
 
       timeline = loaded;
       loadedArchiveId = archive_id;
+      selectedIds = new Set([messageId]);
+      anchorId = messageId;
       list?.resetHeights();
       const idx = loaded.findIndex((r) => r.message_id === messageId);
       if (idx < 0) {
@@ -400,6 +427,8 @@
   function goToLastRead() {
     const messageId = lastReadMessageId;
     if (messageId == null || selectedId == null) return;
+    selectedIds = new Set([messageId]);
+    anchorId = messageId;
     const gen = ++jumpGen, id = selectedId, key = jumpDay;
     void jumpToMessageId({
       key, gen, selectedId: id, messageId,
@@ -564,6 +593,9 @@
     {findQ}
     {lastReadMessageId}
     {persistLastRead}
+    bind:selectedIds
+    bind:anchorId
+    {extendSelection}
     onClearDayPin={() => (dayPin = false, jumpGen++)}
   />
   <PersonMediaDialog

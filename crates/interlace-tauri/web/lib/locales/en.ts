@@ -81,6 +81,7 @@ export const en = {
   deleteUnused: "Delete unused",
   casGcFinished: "CAS GC finished.",
   copyText: "Copy text",
+  copyN: "Copy {n} messages",
   open: "Open",
   revealInFinder: "Reveal in Finder",
   copyArchiveTo: "Copy archive to…",

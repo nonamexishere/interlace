@@ -83,6 +83,7 @@ export const tr: ChromePack = {
   deleteUnused: "Kullanılmayanı sil",
   casGcFinished: "CAS GC bitti.",
   copyText: "Metni kopyala",
+  copyN: "{n} mesajı kopyala",
   open: "Aç",
   revealInFinder: "Finder'da göster",
   copyArchiveTo: "Arşivi kopyala…",

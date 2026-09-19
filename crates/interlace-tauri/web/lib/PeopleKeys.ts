@@ -22,6 +22,7 @@ export type PeopleKeyCtx = {
   tlIndex: number;
   setTlIndex: (n: number) => void;
   ensureTlIndexVisible: (n: number) => void;
+  extendSelection: (n: number) => void;
   scrollToLatest: () => void;
 };
 
@@ -151,6 +152,7 @@ export function handleAppKey(e: KeyboardEvent, ctx: PeopleKeyCtx) {
   if (e.key === "j" || (!inPeopleList && e.key === "ArrowDown")) {
     if (pos >= 0 && pos < visible.length - 1) {
       const next = visible[pos + 1];
+      if (e.shiftKey) ctx.extendSelection(next);
       ctx.setTlIndex(next);
       ctx.ensureTlIndexVisible(next);
     }
@@ -159,6 +161,7 @@ export function handleAppKey(e: KeyboardEvent, ctx: PeopleKeyCtx) {
   if (e.key === "k" || (!inPeopleList && !e.metaKey && e.key === "ArrowUp")) {
     if (pos > 0) {
       const next = visible[pos - 1];
+      if (e.shiftKey) ctx.extendSelection(next);
       ctx.setTlIndex(next);
       ctx.ensureTlIndexVisible(next);
     }

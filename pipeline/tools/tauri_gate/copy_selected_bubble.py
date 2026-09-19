@@ -308,7 +308,16 @@ def assert_copy_selected_bubble(crate: Path) -> None:
             "not text/html / innerHTML"
         )
     if _MULTI.search(sel):
-        fail(f"{_ISSUE}: copy one tlIndex row only — not several bubbles")
+        # #370 keep-evolve: a join is allowed only when copying more than one id.
+        join_ok = re.search(
+            r"\b(?:selectedIds|selectedMessageIds|selectedSet|messageIds)\b"
+            r"[\s\S]{0,160}(?:\.size|\.length)\s*(?:>\s*1|>=\s*2|<=\s*1|< \s*2)"
+            r"|(?:\.size|\.length)\s*(?:>\s*1|>=\s*2|<=\s*1)\s*[\s\S]{0,80}"
+            r"\b(?:selectedIds|selectedMessageIds|selectedSet|messageIds)\b",
+            sel,
+        )
+        if not join_ok:
+            fail(f"{_ISSUE}: copy one tlIndex row only — not several bubbles")
     if re.search(r"\bgetSelection\s*\(", sel):
         fail(
             f"{_ISSUE}: no getSelection() rule — copy the highlighted body"
@@ -440,12 +449,13 @@ def assert_copy_selected_bubble(crate: Path) -> None:
         extra = [
             k
             for k in _chrome_pack_entries(en_p.read_text())
-            if re.search(r"copy", k, re.I) and k not in ("copyText", "copyArchiveTo")
+            if re.search(r"copy", k, re.I)
+            and k not in ("copyText", "copyArchiveTo", "copyN")
         ]
         if extra:
             fail(
                 f"{_ISSUE}: no new t() key "
-                f"({', '.join(sorted(extra))} — keep copyText / copyArchiveTo only)"
+                f"({', '.join(sorted(extra))} — keep copyText / copyArchiveTo / copyN only)"
             )
 
     # 11) copy-d24

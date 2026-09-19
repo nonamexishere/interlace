@@ -286,7 +286,7 @@ lightbox or video overlay.
 **Show in timeline** jumps to that message. Empty has a next action
 (include groups, or Import). Include-groups follows the timeline tick.
 Nothing is fetched from the network. Exports that omitted media show a
-placeholder. Right-click a timeline bubble to **Copy text** to the clipboard. A highlighted bubble, ⌘C (Ctrl+C) copies that body's plain text; `#q` / people filter keep native copy.
+placeholder. Shift-click or Shift+j/k selects a range of bubbles. Right-click a timeline bubble to **Copy text** (one) or **Copy N messages**. ⌘C (Ctrl+C) pastes N bodies in time order, blank-line separated; `#q` / people filter keep native copy.
 The same context menu has **Search**: from a timeline bubble you can open Search
 with that person (Ada — the name, not a raw id); hits load. **⌘F** still
 focuses `#q`.

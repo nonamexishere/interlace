@@ -4,11 +4,13 @@
   let {
     x,
     y,
+    n = 1,
     onCopy,
     onSearch,
   }: {
     x: number;
     y: number;
+    n?: number;
     onCopy: () => void;
     onSearch: () => void;
   } = $props();
@@ -25,7 +27,7 @@
     type="button"
     class="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
     role="menuitem"
-    onclick={onCopy}>{t("copyText")}</button
+    onclick={onCopy}>{n > 1 ? t("copyN").replace("{n}", String(n)) : t("copyText")}</button
   >
   <button
     type="button"
