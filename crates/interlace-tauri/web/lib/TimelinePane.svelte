@@ -167,13 +167,16 @@
   }
 
   let lastReadEpoch = $state(0);
+  let loadedArchiveId = $state("");
   const lastReadMessageId = $derived.by(() => {
     void lastReadEpoch;
     if (selectedId == null) return undefined;
+    if (loadedArchiveId !== archive_id) return undefined;
     return lastReadFor(archive_id, selectedId);
   });
 
   export function persistLastRead(index: number) {
+    if (loadedArchiveId !== archive_id) return;
     const row = timeline[index];
     if (!row || selectedId == null) return;
     writePersonLastRead(archive_id, selectedId, row.message_id);
@@ -246,6 +249,7 @@
         list?.resetHeights();
       }
       timeline = append ? chrono.concat(timeline) : chrono;
+      loadedArchiveId = archive_id;
       tlIndex = append ? tlIndex + chrono.length : Math.max(0, chrono.length - 1);
       if (append) {
         await tick();
@@ -337,6 +341,7 @@
       if (gen !== tlGen) return;
 
       timeline = loaded;
+      loadedArchiveId = archive_id;
       list?.resetHeights();
       const idx = loaded.findIndex((r) => r.message_id === messageId);
       if (idx < 0) {
@@ -400,6 +405,7 @@
       key, gen, selectedId: id, messageId,
       currentSelectedId: () => selectedId, currentJumpDay: () => jumpDay, currentGen: () => jumpGen,
       filteredTimeline: () => filteredTimeline,
+      timeline: () => timeline,
       tlLoading: () => tlLoading, oldestCursor: () => oldestCursor, timelineLength: () => timeline.length,
       selectPerson: async (pid, append) => { if (selectedId !== id || jumpDay !== key || jumpGen !== gen) return; return selectPerson(pid, append); },
       scrollToPos: () => {},

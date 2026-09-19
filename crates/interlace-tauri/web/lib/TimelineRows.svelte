@@ -76,7 +76,8 @@
       {/if}
       <div>
         {#each group.rows as item (item.index)}
-          <div class="flex min-w-0 flex-col pb-2" data-tl-index={item.index} use:measureTlRow={item.index}>
+          <div class="flex min-w-0 pb-2" data-tl-index={item.index} use:measureTlRow={item.index}>
+            <div class="flex w-fit max-w-[94%] flex-col" class:ml-auto={item.row.from_me}>
             {#if lastReadMessageId != null && item.row.message_id === lastReadMessageId}
               <p class="text-xs text-muted-foreground">{t("lastTime")}</p>
             {/if}
@@ -198,6 +199,7 @@
               </div>
               <CasAttach data-bubble-attach flush={true} items={item.row.attachments || []} {showToast} />
             </article>
+            </div>
           </div>
         {/each}
       </div>

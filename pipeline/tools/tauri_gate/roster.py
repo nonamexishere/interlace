@@ -64,6 +64,7 @@ from tauri_gate.people_pin import (  # noqa: E402
     assert_people_pin_key,
 )
 from tauri_gate.last_read import assert_last_read  # noqa: E402
+from tauri_gate.last_read_fold import assert_last_read_fold  # noqa: E402
 from tauri_gate.group_inspector_names import assert_group_inspector_names  # noqa: E402
 from tauri_gate.person_media_gallery import assert_person_media_gallery  # noqa: E402
 from tauri_gate.person_media_gallery_fold import assert_person_media_gallery_fold  # noqa: E402

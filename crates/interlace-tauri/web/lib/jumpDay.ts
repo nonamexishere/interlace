@@ -251,6 +251,7 @@ export type JumpMessageCtx = JumpDayCtx & {
   messageId: number;
   setTlIndex: (n: number) => void;
   ensureTlIndexVisible: (n: number) => void;
+  timeline: () => { message_id?: number }[];
 };
 
 async function selectPerson(
@@ -284,6 +285,12 @@ export async function jumpToMessageId(ctx: JumpMessageCtx): Promise<boolean> {
   if (pos >= 0) {
     if (jumpStale(ctx)) return false;
     return apply(pos);
+  }
+  if (
+    ctx.timeline().some((row) => row.message_id === messageId) &&
+    !ctx.filteredTimeline().some((item) => item.row.message_id === messageId)
+  ) {
+    return false;
   }
   const id = ctx.selectedId;
   if (!id) return false;
