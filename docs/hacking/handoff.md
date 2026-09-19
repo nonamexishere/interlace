@@ -1,7 +1,7 @@
 # Agent / session handoff
 
-**Date:** 2026-09-15. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
-HEAD `master` **#368** / PR **#394**. **#361**–**#368** landed.
+**Date:** 2026-09-20. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
+HEAD `master` **#369** / PR **#396**. **#361**–**#369** landed.
 **#384** and **#385** were tried and **backed out**.
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
@@ -273,13 +273,14 @@ Phase 2.1 milestone (#6): **closed**.
 | #366 / PR #390 | Person avatar from Contacts PHOTO (local CAS or two-letter initials) |
 | #367 / PR #392 | Inspector rename + notes (not a merge; notes persist in SQLite) |
 | #368 / PR #394 | Pin people to the top of the sidebar (local per-archive; pin icon) |
+| #369 / PR #396 | Last-read resume marker on the person timeline (local per-archive; Latest still newest) |
 
 ## Open — product now
 
 Phase 2.3 coding is **done** (epic **#264** / milestone 8 closed). Phase 2.2
-polish (#197) is **done**. Phase 2.4 epic **#360** is **started**: **#361**–**#368**
-landed (PRs **#381**–**#383**, **#386**, **#388**, **#390**, **#392**, **#394**). **#384** and **#385** were
-tried locally and **backed out**. Stay on post-#368 chrome.
+polish (#197) is **done**. Phase 2.4 epic **#360** is **started**: **#361**–**#369**
+landed (PRs **#381**–**#383**, **#386**, **#388**, **#390**, **#392**, **#394**, **#396**). **#384** and **#385** were
+tried locally and **backed out**. Stay on post-#369 chrome.
 Phase 4 epic **#56** is **started** (#79 / PR **#359**).
 Normative [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md).
 Do **not** restart **#384** / **#385** unprompted. Do **not** start Phase 1.1
@@ -312,8 +313,8 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 
 ## Recommended next steps
 
-1. #303–#322 / #342 / #361–#368 are done. Phase 2.4:
-   **#384** / **#385** backed out. Stay at post-#368.
+1. #303–#322 / #342 / #361–#369 are done. Phase 2.4:
+   **#384** / **#385** backed out. Stay at post-#369.
    Phase 4 started: **#79** / PR **#359**. Next Phase 4
    coding **#80** only if asked. #342 follow-up is **D**.
 2. Do not start 1.1 / Phase 3 export / #81 / #82 unprompted.
@@ -397,7 +398,7 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > mix into IN.md before test-author. Do not spawn agents from a child. Orchestrator
 > does not implement product code. Ask before commit / push / merge.
 > Phase 2.3 coding is done (epic #264 / milestone 8 closed). Phase 2.4
-> epic #360 started: **#368** landed (PR **#394**; #361–#367 landed). Read
+> epic #360 started: **#369** landed (PR **#396**; #361–#368 landed). Read
 > `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,
 > #297, #300, #303–#322, #342 done (PRs #323–#328, #330, #332, #336, #338, #340,
 > #343, #345, #347, #349, #351, #353, #355, #356, #357, #358). Phase 4 started:
