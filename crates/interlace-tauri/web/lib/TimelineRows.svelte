@@ -7,6 +7,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import CasAttach from "$lib/CasAttach.svelte";
   import { displayBody, isMailRow, platformLabel, splitQuotedBody } from "./TimelineMail";
+  import { t } from "$lib/i18n";
 
   let {
     windowedDayGroups,
@@ -25,6 +26,7 @@
     tlLoading = false,
     onPrepend,
     findQ = "",
+    lastReadMessageId = undefined,
   }: {
     windowedDayGroups: {
       key: string;
@@ -46,6 +48,7 @@
     tlLoading?: boolean;
     onPrepend?: () => void;
     findQ?: string;
+    lastReadMessageId?: number;
   } = $props();
 </script>
 
@@ -73,7 +76,10 @@
       {/if}
       <div>
         {#each group.rows as item (item.index)}
-          <div class="flex min-w-0 pb-2" data-tl-index={item.index} use:measureTlRow={item.index}>
+          <div class="flex min-w-0 flex-col pb-2" data-tl-index={item.index} use:measureTlRow={item.index}>
+            {#if lastReadMessageId != null && item.row.message_id === lastReadMessageId}
+              <p class="text-xs text-muted-foreground">{t("lastTime")}</p>
+            {/if}
             <article
               class="flex min-w-0 max-w-[94%] cursor-pointer flex-col gap-2 rounded-2xl px-3 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring {item.index ===
               tlIndex

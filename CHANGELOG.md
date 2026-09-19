@@ -13,6 +13,7 @@ unsigned **`app-v0.1.2`**.
 
 ### Added
 
+- Quiet **Last time** last-read on the person timeline (localStorage, per archive, not iCloud; not unread). Latest still goes to newest.
 - Person timeline sender filter (All | Them | Me). ANDs with platform, conversation-kind, and attachment-kind. All is default; switching people resets it. Them with no rows is empty + Show all.
 - Person timeline attachment-kind filter (All | Photos | Voice | Video | Files). ANDs with platform and conversation-kind. All is default; switching people resets it. Empty filter has Show all.
 - Person Media gallery (timeline Find / Jump row and inspector): stored CAS images / videos / stickers plus Gmail inline image/video. Photo uses the existing lightbox; video uses the existing overlay (no autoplay). Show in timeline jumps to that bubble. Include-groups follows the timeline tick.

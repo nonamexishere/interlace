@@ -88,6 +88,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_people_pin",
     "assert_people_pin_icon",
     "assert_people_pin_key",
+    "assert_last_read",
     "assert_group_inspector_names",
     "assert_person_media_gallery",
     "assert_person_media_gallery_fold",

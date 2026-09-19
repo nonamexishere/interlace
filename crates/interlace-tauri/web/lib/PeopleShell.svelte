@@ -126,6 +126,7 @@
     closeCopyMenu: () => void;
     scrollToLatest: () => void; copySelected: () => void;
     openGallery: () => void;
+    persistLastRead: (index: number) => void;
   } | undefined = $state();
 
   export function pane() {
@@ -225,6 +226,7 @@
       bind:selectedConversationId
       bind:timeline
       bind:conversations
+      archive_id={st.archive_id ?? ""}
       {density}
       {persistLastPerson}
       {friendly}

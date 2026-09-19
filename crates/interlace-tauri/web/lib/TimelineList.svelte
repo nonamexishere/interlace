@@ -45,6 +45,8 @@
     findQ = "",
     quotedOpen = $bindable<Record<number, boolean>>({}),
     onClearDayPin,
+    lastReadMessageId = undefined,
+    persistLastRead,
   }: {
     timeline: TimelineRow[];
     filteredTimeline: { row: TimelineRow; index: number }[];
@@ -70,6 +72,8 @@
     findQ?: string;
     quotedOpen?: Record<number, boolean>;
     onClearDayPin?: () => void;
+    lastReadMessageId?: number;
+    persistLastRead?: (index: number) => void;
   } = $props();
 
   let tlScrollTop = $state(0);
@@ -483,7 +487,11 @@
     {quotedOpen}
     {measureTlRow}
     {isGroupedFollower}
-    onSelectIndex={(index) => (tlIndex = index)}
+    onSelectIndex={(index) => {
+      tlIndex = index;
+      persistLastRead?.(index);
+    }}
+    {lastReadMessageId}
     onContextMenu={openCopyMenu}
     {toggleQuoted}
     {openUrl}
