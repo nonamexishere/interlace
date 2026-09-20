@@ -225,6 +225,7 @@
       return;
     }
     previewMessageId = h.message_id;
+    previewBody = "";
     const gen = ++previewGen;
     const id = h.message_id;
     try {
@@ -360,6 +361,11 @@
       return;
     }
     if (!hits.length) return;
+    if (e.key === " ") {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (e.key === "j" || e.key === "ArrowDown") {
       e.preventDefault();
       e.stopPropagation();

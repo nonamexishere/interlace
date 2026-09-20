@@ -33,7 +33,7 @@ export const tr: ChromePack = {
   typeAQuery: "Bir sorgu yazın",
   noHits: "Sonuç yok",
   searchPreviewEmpty: "Bir sonuç seçin",
-  searchPreviewFocusQuery: "Soruya odaklan",
+  searchPreviewFocusQuery: "Sorguya odaklan",
   showQuoted: "Alıntıyı göster",
   hideQuoted: "Alıntıyı gizle",
   searchFilters: "Filtreler",
