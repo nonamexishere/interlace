@@ -127,6 +127,7 @@
     scrollToLatest: () => void; copySelected: () => void;
     openGallery: () => void;
     persistLastRead: (index: number) => void;
+    extendSelection: (n: number) => void;
   } | undefined = $state();
 
   export function pane() {

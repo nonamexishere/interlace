@@ -18,6 +18,7 @@
     measureTlRow,
     isGroupedFollower,
     onSelectIndex,
+    selectedIds = new Set<number>(),
     onContextMenu,
     toggleQuoted,
     openUrl,
@@ -39,7 +40,8 @@
     quotedOpen: Record<number, boolean>;
     measureTlRow: (node: HTMLElement, orig: number) => { update: (n: number) => void; destroy: () => void };
     isGroupedFollower: (i: number) => boolean;
-    onSelectIndex: (index: number) => void;
+    onSelectIndex: (index: number, shiftKey?: boolean) => void;
+    selectedIds?: Set<number>;
     onContextMenu: (e: MouseEvent, row: TimelineRow) => void;
     toggleQuoted: (messageId: number, e: Event) => void;
     openUrl: (url: string) => void;
@@ -79,13 +81,15 @@
           <div class="flex min-w-0 pb-2" data-tl-index={item.index} use:measureTlRow={item.index}>
             <div class="flex w-fit max-w-[94%] flex-col" class:ml-auto={item.row.from_me}>
             {#if lastReadMessageId != null && item.row.message_id === lastReadMessageId}
-              <p class="text-xs text-muted-foreground">{t("lastTime")}</p>
+              <p class="px-1 pb-1 text-xs text-muted-foreground">{t("lastTime")}</p>
             {/if}
             <article
               class="flex min-w-0 max-w-[94%] cursor-pointer flex-col gap-2 rounded-2xl px-3 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring {item.index ===
               tlIndex
                 ? 'ring-2 ring-ring'
-                : ''}"
+                : selectedIds.has(item.row.message_id)
+                  ? 'ring-1 ring-ring'
+                  : ''}"
               class:bubble-me={item.row.from_me}
               class:bubble-them={!item.row.from_me}
               class:ml-auto={item.row.from_me}
@@ -93,7 +97,8 @@
               data-grouped={isGroupedFollower(item.index) || undefined}
               tabindex="0"
               aria-label={`${utcTime(item.row.sent_at, item.row.platform)} ${displayBody(item.row.body_text || item.row.subject || "").slice(0, 80)}`}
-              onclick={() => onSelectIndex(item.index)}
+              onclick={(e) => onSelectIndex(item.index, e.shiftKey)}
+              onmousedown={(e) => { if (e.shiftKey) { e.preventDefault(); (e.currentTarget as HTMLElement).focus(); } }}
               oncontextmenu={(e) => onContextMenu(e, item.row)}
             >
               {#if !isGroupedFollower(item.index)}

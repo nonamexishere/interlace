@@ -9,7 +9,7 @@
   import TimelineEmpty from "./TimelineEmpty.svelte";
   import TimelineLatest from "./TimelineLatest.svelte";
   import { t } from "$lib/i18n";
-  import { displayBody, isGroupedFollower as groupedFollower } from "./TimelineMail";
+  import { displayBody, isGroupedFollower as groupedFollower, joinSelectedBodies } from "./TimelineMail";
   import {
     ESTIMATED_ROW_HEIGHT,
     VIRTUALIZE_AFTER,
@@ -47,6 +47,10 @@
     onClearDayPin,
     lastReadMessageId = undefined,
     persistLastRead,
+    selectedIds = $bindable(new Set<number>()),
+    liveSelectedIds = new Set<number>(),
+    anchorId = $bindable<number | null>(null),
+    extendSelection,
   }: {
     timeline: TimelineRow[];
     filteredTimeline: { row: TimelineRow; index: number }[];
@@ -74,6 +78,10 @@
     onClearDayPin?: () => void;
     lastReadMessageId?: number;
     persistLastRead?: (index: number) => void;
+    selectedIds?: Set<number>;
+    liveSelectedIds?: Set<number>;
+    anchorId?: number | null;
+    extendSelection: (index: number) => void;
   } = $props();
 
   let tlScrollTop = $state(0);
@@ -407,6 +415,17 @@
 
   function openCopyMenu(e: MouseEvent, row: TimelineRow) {
     e.preventDefault();
+    if (!selectedIds.has(row.message_id)) {
+      selectedIds = new Set([row.message_id]);
+      anchorId = row.message_id;
+      const index =
+        filteredTimeline.find((item) => item.row.message_id === row.message_id)?.index ??
+        timeline.findIndex((r) => r.message_id === row.message_id);
+      if (index >= 0) {
+        tlIndex = index;
+        persistLastRead?.(index);
+      }
+    }
     copyMenu = { x: e.clientX, y: e.clientY, text: row.body_text || row.subject || "" };
   }
 
@@ -421,6 +440,11 @@
 
   async function copyText() {
     if (!copyMenu) return;
+    if (liveSelectedIds.size > 1) {
+      copyMenu = null;
+      copySelected();
+      return;
+    }
     const text = displayBody(copyMenu.text);
     copyMenu = null;
     try {
@@ -448,7 +472,23 @@
   });
 
   export function closeCopy() { closeCopyMenu(); }
+  function onSelectIndex(index: number, shiftKey = false) {
+    if (!shiftKey) {
+      const row = filteredTimeline.find((item) => item.index === index)?.row ?? timeline[index];
+      selectedIds = new Set(row ? [row.message_id] : []);
+      anchorId = row?.message_id ?? null;
+    } else {
+      extendSelection(index);
+    }
+    tlIndex = index;
+    persistLastRead?.(index);
+  }
+
   export function copySelected() {
+    if (selectedIds.size > 1 && liveSelectedIds.size > 1) {
+      navigator.clipboard.writeText(joinSelectedBodies(timeline, liveSelectedIds)).catch(() => onCopyFail());
+      return;
+    }
     const row = tlIndex < 0 ? null : filteredTimeline.find((item) => item.index === tlIndex)?.row ?? timeline[tlIndex];
     if (!row) return;
     navigator.clipboard.writeText(displayBody(row.body_text || row.subject || "")).catch(() => onCopyFail());
@@ -487,10 +527,8 @@
     {quotedOpen}
     {measureTlRow}
     {isGroupedFollower}
-    onSelectIndex={(index) => {
-      tlIndex = index;
-      persistLastRead?.(index);
-    }}
+    {onSelectIndex}
+    selectedIds={liveSelectedIds}
     {lastReadMessageId}
     onContextMenu={openCopyMenu}
     {toggleQuoted}
@@ -507,6 +545,6 @@
   <TimelineLatest onclick={scrollToLatest}>{t("latest")}</TimelineLatest>
 {/if}
 {#if copyMenu}
-  <TimelineCopyMenu x={copyMenu.x} y={copyMenu.y} onCopy={copyText} onSearch={searchFromBubble} />
+  <TimelineCopyMenu x={copyMenu.x} y={copyMenu.y} n={liveSelectedIds.size} onCopy={copyText} onSearch={searchFromBubble} />
 {/if}
 </div>

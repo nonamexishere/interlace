@@ -12,6 +12,23 @@ export function displayBody(s: string) {
   return s.replace(/<attached:\s*[^>]+>/gi, "").trim();
 }
 
+export function joinSelectedBodies(
+  timeline: { message_id: number; sent_at?: string | null; body_text: string; subject?: string | null }[],
+  selectedIds: Set<number>,
+): string {
+  return timeline
+    .filter((row) => selectedIds.has(row.message_id))
+    .sort((a, b) => {
+      const sa = a.sent_at ?? "";
+      const sb = b.sent_at ?? "";
+      if (sa < sb) return -1;
+      if (sa > sb) return 1;
+      return a.message_id - b.message_id;
+    })
+    .map((row) => displayBody(row.body_text || row.subject || ""))
+    .join("\n\n");
+}
+
 /**
  * Split mail body into main + quoted tail.
  * Markers: a line `On … wrote:` or lines starting with `>`.
