@@ -48,6 +48,7 @@ unsigned **`app-v0.1.2`**.
 - ⌘↑ / Home at the top of a long thread loads older messages.
 - ⌘C copies the highlighted bubble’s plain text; fields keep native copy.
 - Shift-click / Shift+j/k selects a range of bubbles; ⌘C pastes N bodies in time order, blank-line separated. Context menu Copy N messages. `#q` / people filter keep native copy.
+- Search hit preview beside the list (full body, mail quoted-fold, in-window attachments). Click / j/k select; Enter still opens Ada’s timeline. A hit with no person_id still previews and does not jump.
 - Space play/pause the highlighted voice note; `#q` still types a space.
 - Right-click a stored attachment to Open it with the default app (after confirm; typed temp copy so Preview/QuickTime sees the type).
 

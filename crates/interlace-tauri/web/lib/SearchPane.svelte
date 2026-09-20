@@ -4,7 +4,6 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import SearchHits from "./SearchHits.svelte";
   import { t } from "./i18n";
 
@@ -48,8 +47,9 @@
   let hits = $state<SearchHit[]>([]);
   /** Highlighted hit in the results list (j/k and arrow keys). */
   let hitIndex = $state(0);
-  let expanded = $state<number | null>(null);
-  let body = $state("");
+  let previewBody = $state("");
+  let previewMessageId = $state<number | null>(null);
+  let previewGen = 0;
   let empty = $state(false);
   let searched = $state(false);
   let searching = $state(false);
@@ -213,6 +213,31 @@
     }
   }
 
+  function clearPreview() {
+    previewBody = "";
+    previewMessageId = null;
+    previewGen += 1;
+  }
+
+  async function fillPreview(h: SearchHit | undefined) {
+    if (!h) {
+      clearPreview();
+      return;
+    }
+    previewMessageId = h.message_id;
+    const gen = ++previewGen;
+    const id = h.message_id;
+    try {
+      const got = await api.searchBody(id);
+      if (gen !== previewGen || id !== previewMessageId) return;
+      previewBody = got;
+    } catch (e) {
+      if (gen !== previewGen || id !== previewMessageId) return;
+      previewBody = "";
+      onError(e);
+    }
+  }
+
   async function run() {
     cancelDebounce();
     const gen = ++searchGen;
@@ -220,6 +245,9 @@
     searched = true;
     searching = true;
     searchError = "";
+    previewBody = "";
+    previewMessageId = null;
+    previewGen += 1;
     const fromRaw = from.trim();
     const toRaw = to.trim();
     const fromDate = fromRaw ? Date.parse(fromRaw) : Number.NaN;
@@ -232,8 +260,6 @@
       searchError = t("searchDateInvalid");
       searching = false;
       hits = [];
-      expanded = null;
-      body = "";
       hitIndex = 0;
       return;
     }
@@ -241,8 +267,6 @@
       searchError = t("searchLabelInvalid");
       searching = false;
       hits = [];
-      expanded = null;
-      body = "";
       hitIndex = 0;
       return;
     }
@@ -263,15 +287,14 @@
       hits = next;
       empty = hits.length === 0;
       hitIndex = 0;
-      expanded = null;
-      body = "";
+      if (hits[0]) void fillPreview(hits[0]);
+      else clearPreview();
     } catch (e) {
       if (gen === searchGen) {
         searchError = friendly(e instanceof Error ? e.message : String(e ?? ""));
         hits = [];
-        expanded = null;
-        body = "";
         hitIndex = 0;
+        clearPreview();
       }
     } finally {
       if (gen === searchGen) searching = false;
@@ -285,9 +308,8 @@
     searched = false;
     searching = false;
     searchError = "";
-    expanded = null;
-    body = "";
     hitIndex = 0;
+    clearPreview();
   }
 
   // Only `q` is read so filters stay submit-only.
@@ -305,21 +327,7 @@
     return () => cancelDebounce();
   });
 
-  async function toggle(id: number) {
-    if (expanded === id) {
-      expanded = null;
-      body = "";
-      return;
-    }
-    try {
-      body = await api.searchBody(id);
-      expanded = id;
-    } catch (e) {
-      onError(e);
-    }
-  }
-
-  /** With person_id → People timeline at that message; else expand body on Search. */
+  /** With person_id → People timeline at that message; else stay on Search preview. */
   function activateHit(h: SearchHit) {
     if (h.person_id != null) {
       void onJumpToMessage({
@@ -328,9 +336,7 @@
         conversationKind: h.conversation_kind,
         sentAt: h.sent_at,
       });
-      return;
     }
-    void toggle(h.message_id);
   }
 
   function scrollHitIntoView(i: number) {
@@ -360,6 +366,7 @@
       if (hitIndex < hits.length - 1) {
         hitIndex += 1;
         scrollHitIntoView(hitIndex);
+        void fillPreview(hits[hitIndex]);
       }
       return;
     }
@@ -369,10 +376,11 @@
       if (hitIndex > 0) {
         hitIndex -= 1;
         scrollHitIntoView(hitIndex);
+        void fillPreview(hits[hitIndex]);
       }
       return;
     }
-    if (e.key === "Enter" || e.key === " ") {
+    if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
       const h = hits[hitIndex];
@@ -419,10 +427,10 @@
   });
 </script>
 
-<ScrollArea class="p-4">
+<div class="flex min-h-0 min-w-0 flex-1 flex-col p-4">
   <h1 class="mb-3 text-xl font-semibold tracking-tight">Search</h1>
   <form
-    class="mb-4 space-y-3"
+    class="mb-4 shrink-0 space-y-3"
     onsubmit={(e) => {
       e.preventDefault();
       run();
@@ -576,8 +584,8 @@
   <SearchHits
     {hits}
     bind:hitIndex
-    {expanded}
-    {body}
+    {previewBody}
+    {previewMessageId}
     {searching}
     {searched}
     {searchError}
@@ -585,8 +593,8 @@
     onRetry={run}
     onActivate={(h, i) => {
       hitIndex = i;
-      activateHit(h);
+      void fillPreview(h);
     }}
     {onToast}
   />
-</ScrollArea>
+</div>

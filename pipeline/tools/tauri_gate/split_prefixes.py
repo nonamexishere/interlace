@@ -80,6 +80,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_search_as_you_type",
     "assert_keep_search_query",
     "assert_search_date_presets",
+    "assert_search_hit_preview",
     "assert_custom_titlebar",
     "assert_people_sidebar_collapse",
     "assert_person_inspector",
