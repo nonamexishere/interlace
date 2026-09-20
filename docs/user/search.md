@@ -27,7 +27,10 @@ SQLite FTS5 `MATCH` with a thin expander in front:
 Display text always comes from `messages.body_text`, never from the folded
 `search_text` column. Snippets use FTS `snippet(…, '«', '»', '…', 12)`.
 Search hits show a short time + person or conversation title, then a
-highlighted snippet — not a raw ISO dump.
+highlighted snippet — not a raw ISO dump. Selecting a hit (click or j/k)
+fills a Search preview beside the list (full body, mail quoted-fold,
+in-window attachments). Enter still opens Ada’s timeline on that message.
+A hit with no person_id still previews and does not jump.
 
 ## Filters
 

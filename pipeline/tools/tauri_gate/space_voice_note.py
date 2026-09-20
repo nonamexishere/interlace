@@ -527,16 +527,16 @@ def assert_space_voice_note(crate: Path) -> None:
     if not _KEY_C.search(keys_c) or not _COPY_SEL.search(keys_c):
         fail(f"{_ISSUE}: keep ⌘C / Ctrl+C → copySelected")
 
-    # 12) space-keep-210 — Search-tab Space still activateHit.
+    # 12) space-keep-210 — Search-tab Enter still activateHit; Space must not jump (#371).
     if not search_path.is_file():
-        fail(f"{_ISSUE}: keep SearchPane.svelte (Search-tab Space → activateHit)")
+        fail(f"{_ISSUE}: keep SearchPane.svelte (Search-tab keys stay on SearchPane)")
     hits_key = _fn(search_c, "onHitsKey")
     if not hits_key:
-        fail(f"{_ISSUE}: keep onHitsKey — Search-tab Space still activateHit (#210)")
-    if not _KEY_SPACE.search(hits_key):
-        fail(f"{_ISSUE}: onHitsKey must still handle Space → activateHit")
+        fail(f"{_ISSUE}: keep onHitsKey — Search-tab Enter still activateHit (#210)")
+    if not re.search(r"""["']Enter["']""", hits_key):
+        fail(f"{_ISSUE}: onHitsKey Enter must still call activateHit (#124)")
     if not _ACTIVATE.search(hits_key):
-        fail(f"{_ISSUE}: onHitsKey Space must still call activateHit (#210)")
+        fail(f"{_ISSUE}: onHitsKey Enter must still call activateHit (#210)")
 
     # 13) space-not-media-keys + no App / List / Pane wire.
     touched = keys_c + "\n" + cas_c + "\n" + app_c + "\n" + vid_c + "\n" + helper_blob

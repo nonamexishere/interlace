@@ -149,7 +149,7 @@ def assert_search_hit_density(crate: Path) -> None:
             "(DOMParser / srcdoc / htmlMail on search path)"
         )
 
-    # 9) j/k (or arrows) + Enter/Space still activateHit (#124).
+    # 9) j/k (or arrows) + Enter still activateHit (#124). Space is not jump (#371).
     hits_key = _ts_function_body(src, "onHitsKey") or _function_body(src, "onHitsKey")
     if not hits_key:
         fail("#210: keep onHitsKey (#124) — j/k + Enter jump")
@@ -161,12 +161,10 @@ def assert_search_hit_density(crate: Path) -> None:
         r"ArrowUp", hits_key
     ):
         fail("#210: onHitsKey must still handle k / ArrowUp")
-    if not re.search(r"""["']Enter["']""", hits_key) and not re.search(
-        r"""["'] ["']""", hits_key
-    ):
-        fail("#210: onHitsKey must still handle Enter / Space → activateHit")
+    if not re.search(r"""["']Enter["']""", hits_key):
+        fail("#210: onHitsKey must still handle Enter → activateHit")
     if not re.search(r"\bactivateHit\b", hits_key):
-        fail("#210: onHitsKey Enter / Space must still call activateHit (#124)")
+        fail("#210: onHitsKey Enter must still call activateHit (#124)")
 
     # 10) Jump payload still carries ISO sent_at (API, not display).
     act = _ts_function_body(src, "activateHit") or _function_body(src, "activateHit")
