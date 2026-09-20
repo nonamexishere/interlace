@@ -267,7 +267,7 @@
         writeScrollTop(sc, sc.scrollTop + adj);
         if (jumpPinIndex >= 0) pinJump(jumpPinIndex);
       });
-    } else if (pin >= 0) {
+    } else if (pin >= 0 && !pinLatestObs) {
       pinJump(pin);
     }
   }
@@ -304,6 +304,7 @@
   });
 
   function stopPinLatest() {
+    clearJumpPin();
     pinLatestObs?.disconnect();
     pinLatestObs = null;
     if (pinLatestUntil != null) {
@@ -420,6 +421,7 @@
   }
 
   export function pinJump(index: number) {
+    if (pinLatestObs) return;
     jumpPinIndex = index;
     if (jumpPinUntil == null) {
       jumpPinUntil = setTimeout(clearJumpPin, 600);
@@ -433,7 +435,7 @@
       writeScrollTop(sc, Math.max(0, tlChromeHeight + offsetOf(pos) - ESTIMATED_ROW_HEIGHT));
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (jumpPinIndex !== index) return;
+          if (jumpPinIndex !== index || pinLatestObs) return;
           const sc2 = document.getElementById("person-timeline");
           if (!sc2) return;
           const row = sc2.querySelector(`[data-tl-index="${index}"]`);
