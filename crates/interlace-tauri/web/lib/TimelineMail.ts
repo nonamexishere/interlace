@@ -12,7 +12,6 @@ export function displayBody(s: string) {
   return s.replace(/<attached:\s*[^>]+>/gi, "").trim();
 }
 
-/** ⌘C of N ids: in-memory timeline[] by message_id, sent_at then id, blank-line joined. */
 export function joinSelectedBodies(
   timeline: { message_id: number; sent_at?: string | null; body_text: string; subject?: string | null }[],
   selectedIds: Set<number>,

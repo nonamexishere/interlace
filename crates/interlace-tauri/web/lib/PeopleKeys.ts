@@ -149,7 +149,7 @@ export function handleAppKey(e: KeyboardEvent, ctx: PeopleKeyCtx) {
     ctx.setTlIndex(snapped);
     pos = visible.indexOf(snapped);
   }
-  if (e.key === "j" || (!inPeopleList && e.key === "ArrowDown")) {
+  if (e.key === "j" || e.key === "J" || (!inPeopleList && e.key === "ArrowDown")) {
     if (pos >= 0 && pos < visible.length - 1) {
       const next = visible[pos + 1];
       if (e.shiftKey) ctx.extendSelection(next);
@@ -158,7 +158,7 @@ export function handleAppKey(e: KeyboardEvent, ctx: PeopleKeyCtx) {
     }
     e.preventDefault();
   }
-  if (e.key === "k" || (!inPeopleList && !e.metaKey && e.key === "ArrowUp")) {
+  if (e.key === "k" || e.key === "K" || (!inPeopleList && !e.metaKey && e.key === "ArrowUp")) {
     if (pos > 0) {
       const next = visible[pos - 1];
       if (e.shiftKey) ctx.extendSelection(next);

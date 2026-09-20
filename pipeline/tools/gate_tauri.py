@@ -205,6 +205,7 @@ def main() -> None:
     assert_last_read(crate)
     assert_last_read_fold(crate)
     assert_multiselect_copy(crate)
+    assert_multiselect_copy_keys(crate)
     assert_group_inspector_names(crate)
     assert_person_media_gallery(crate)
     assert_person_media_gallery_fold(crate)
