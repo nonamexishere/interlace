@@ -100,6 +100,12 @@ from tauri_gate.search_hit_preview import assert_search_hit_preview  # noqa: E40
 from tauri_gate.search_hit_preview_fold import (  # noqa: E402
     assert_search_hit_preview_fold,
 )
+from tauri_gate.search_jump_onscreen import (  # noqa: E402
+    assert_search_jump_onscreen,
+)
+from tauri_gate.search_jump_onscreen_latest import (  # noqa: E402
+    assert_search_jump_onscreen_latest,
+)
 from tauri_gate.search_hits import (  # noqa: E402
     assert_search_jump_to_message,
     assert_search_safe_highlight,

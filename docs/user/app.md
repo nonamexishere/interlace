@@ -228,7 +228,7 @@ without knowing her numeric id (single person only; no multi-person OR). After
 hits load, **j**/**k** or arrow keys (or click) select a hit and fill a Search
 preview beside the list — full body, mail quoted-fold, and in-window attachments.
 **Enter** still opens Ada’s timeline on that message
-(scroll + highlight once; seeks near the hit’s `sent_at` when present). If the
+(the bubble lands on screen, small inset from the top; seeks near the hit’s `sent_at` when present). If the
 message cannot be placed after a bounded load, the window shows an error instead
 of highlighting an unrelated row. Group hits turn **include groups** on when
 needed so the row can appear. A hit with no `person_id` still previews on Search

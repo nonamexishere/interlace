@@ -57,6 +57,7 @@ unsigned **`app-v0.1.2`**.
 - People list no longer holds the archive mutex while filling (Review /
   Confirm / Undo stay live). Exclusive flock is still held.
 - Attachment Open / Reveal menu stays fully on-screen at the right edge.
+- Search Enter and Show in timeline land the selected bubble on screen (small inset from the top of the person timeline).
 
 ## [0.1.2] - 2026-08-23
 

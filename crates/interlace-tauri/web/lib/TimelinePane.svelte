@@ -78,6 +78,7 @@
     preserveScrollAfterPrepend: (prevHeight: number) => void;
     stopPin: () => void;
     estimateScrollToIndex: (index: number) => void;
+    pinJump: (index: number) => void;
     pinDayAtTop: (filteredPos: number) => void;
     closeCopy: () => void; scrollToLatest: () => void; copySelected: () => void;
   } | undefined = $state();
@@ -390,10 +391,11 @@
       tlLoading = false;
       await tick();
       if (gen !== tlGen) return;
-      list?.ensureTlIndexVisible(tlIndex);
       requestAnimationFrame(() => {
-        if (gen !== tlGen) return;
-        list?.ensureTlIndexVisible(tlIndex);
+        requestAnimationFrame(() => {
+          if (gen !== tlGen) return;
+          list?.pinJump(tlIndex);
+        });
       });
     } catch (e) {
       if (gen === tlGen) {

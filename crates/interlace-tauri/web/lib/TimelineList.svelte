@@ -96,6 +96,8 @@
   let pinLatestObs: ResizeObserver | null = null;
   let pinLatestUntil: ReturnType<typeof setTimeout> | null = null;
   let prependN = $state(0), prependIdx = -1, prependViewOff = 0;
+  let jumpPinIndex = -1;
+  let jumpPinUntil: ReturnType<typeof setTimeout> | null = null;
   let copyMenu = $state<{ x: number; y: number; text: string } | null>(null);
   const showLatest = $derived((() => { void tlScrollTop; void tlViewportHeight; void tlScrollHeight; const sc = document.getElementById("person-timeline"); return !!(sc && sc.scrollTop + sc.clientHeight < sc.scrollHeight - 4); })());
 
@@ -133,6 +135,7 @@
     if (!el) return;
     tlScrollTop = el.scrollTop; tlViewportHeight = el.clientHeight || tlViewportHeight; tlScrollHeight = el.scrollHeight;
     if (programmaticScroll) return;
+    clearJumpPin();
     cancelDayHeadingPin(); onClearDayPin?.();
     if (!pointerOnTimeline) return;
     markUserScrolling();
@@ -142,10 +145,11 @@
   }
 
   function onTimelineWheel() {
+    clearJumpPin();
     cancelDayHeadingPin(); stopPinLatest(); markUserScrolling(); onClearDayPin?.();
   }
 
-  function onTimelinePointerDown() { pointerOnTimeline = true; }
+  function onTimelinePointerDown() { pointerOnTimeline = true; clearJumpPin(); }
   function onTimelinePointerUp() { pointerOnTimeline = false; }
 
   const visibleRange = $derived(
@@ -186,6 +190,7 @@
   });
 
   export function ensureTlIndexVisible(index: number) {
+    if (index !== jumpPinIndex) clearJumpPin();
     const pos = filteredTimeline.findIndex((item) => item.index === index);
     if (pos < 0) return;
     const sc = document.getElementById("person-timeline");
@@ -255,7 +260,16 @@
     );
     if (changed) rowHeights = next;
     const epoch = measureEpoch;
-    if (windowed && adj !== 0 && sc && !pinLatestObs) void tick().then(() => { if (epoch !== measureEpoch || pinLatestObs) return; writeScrollTop(sc, sc.scrollTop + adj); });
+    const pin = jumpPinIndex;
+    if (windowed && adj !== 0 && sc && !pinLatestObs) {
+      void tick().then(() => {
+        if (epoch !== measureEpoch || pinLatestObs) return;
+        writeScrollTop(sc, sc.scrollTop + adj);
+        if (jumpPinIndex >= 0) pinJump(jumpPinIndex);
+      });
+    } else if (pin >= 0 && !pinLatestObs) {
+      pinJump(pin);
+    }
   }
 
   function measureTlRow(node: HTMLElement, orig: number) {
@@ -290,6 +304,7 @@
   });
 
   function stopPinLatest() {
+    clearJumpPin();
     pinLatestObs?.disconnect();
     pinLatestObs = null;
     if (pinLatestUntil != null) {
@@ -386,7 +401,15 @@
     if (sc) writeScrollTop(sc, prependPinScrollTop(sc, idx, off, prevHeight));
   }
 
-  export function stopPin() { stopPinLatest(); cancelDayHeadingPin(); }
+  function clearJumpPin() {
+    jumpPinIndex = -1;
+    if (jumpPinUntil != null) {
+      clearTimeout(jumpPinUntil);
+      jumpPinUntil = null;
+    }
+  }
+
+  export function stopPin() { stopPinLatest(); cancelDayHeadingPin(); clearJumpPin(); }
 
   export function estimateScrollToIndex(index: number) {
     const hitPos = filteredTimeline.findIndex((item) => item.index === index);
@@ -395,6 +418,36 @@
       offsetOf(hitPos >= 0 ? hitPos : index) - ESTIMATED_ROW_HEIGHT * 2,
     );
     tlScrollTop = estTop;
+  }
+
+  export function pinJump(index: number) {
+    if (pinLatestObs) return;
+    jumpPinIndex = index;
+    if (jumpPinUntil == null) {
+      jumpPinUntil = setTimeout(clearJumpPin, 600);
+    }
+    const pos = filteredTimeline.findIndex((item) => item.index === index);
+    if (pos < 0) return;
+    const sc = document.getElementById("person-timeline");
+    if (!sc) return;
+    const mounted = sc.querySelector(`[data-tl-index="${index}"]`);
+    if (!(mounted instanceof HTMLElement)) {
+      writeScrollTop(sc, Math.max(0, tlChromeHeight + offsetOf(pos) - ESTIMATED_ROW_HEIGHT));
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (jumpPinIndex !== index || pinLatestObs) return;
+          const sc2 = document.getElementById("person-timeline");
+          if (!sc2) return;
+          const row = sc2.querySelector(`[data-tl-index="${index}"]`);
+          if (!(row instanceof HTMLElement)) return;
+          const rowTop = rowOffsetInPane(sc2, row);
+          writeScrollTop(sc2, Math.max(0, rowTop - ESTIMATED_ROW_HEIGHT));
+        });
+      });
+      return;
+    }
+    const rowTop = rowOffsetInPane(sc, mounted);
+    writeScrollTop(sc, Math.max(0, rowTop - ESTIMATED_ROW_HEIGHT));
   }
 
   export function pinDayAtTop(filteredPos: number) {
