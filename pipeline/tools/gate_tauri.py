@@ -198,6 +198,7 @@ def main() -> None:
     assert_search_hit_preview_fold(crate)
     assert_search_jump_onscreen(crate)
     assert_search_jump_onscreen_latest(crate)
+    assert_search_jump_peer(crate)
     assert_custom_titlebar(crate)
     assert_people_sidebar_collapse(crate)
     assert_person_inspector(crate)

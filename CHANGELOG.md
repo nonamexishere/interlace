@@ -54,6 +54,7 @@ unsigned **`app-v0.1.2`**.
 
 ### Fixed
 
+- Search Enter on a sent DM opens the other person (Ada), not Self.
 - People list no longer holds the archive mutex while filling (Review /
   Confirm / Undo stay live). Exclusive flock is still held.
 - Attachment Open / Reveal menu stays fully on-screen at the right edge.

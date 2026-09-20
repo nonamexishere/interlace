@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use interlace_core::people::{attachments_for, complete_attachments};
+use interlace_core::people::{attachments_for, complete_attachments, search_hit_person};
 use interlace_core::session::{
     init_owner_archive, read_last_bookmark, read_last_path, record_recent, sandbox_denied_message,
     write_last_bookmark, write_last_path,
@@ -487,23 +487,18 @@ pub(crate) fn search_cmd(
         let atts = attachments_for(arch, &ids).map_err(err)?;
         let mut out = Vec::new();
         for h in hits {
-            let meta: (String, String, Option<String>, Option<i64>, Option<String>) = arch
+            let meta: (String, String, Option<String>) = arch
                 .conn
                 .query_row(
-                    "SELECT c.platform, c.kind, c.title,
-                            (SELECT p.id FROM person_identities pi
-                             JOIN persons p ON p.id = pi.person_id AND p.tombstoned_at IS NULL
-                             WHERE pi.identity_id = m.sender_identity_id LIMIT 1),
-                            (SELECT p.display_name FROM person_identities pi
-                             JOIN persons p ON p.id = pi.person_id AND p.tombstoned_at IS NULL
-                             WHERE pi.identity_id = m.sender_identity_id LIMIT 1)
+                    "SELECT c.platform, c.kind, c.title
                      FROM messages m
                      JOIN conversations c ON c.id = m.conversation_id
                      WHERE m.id = ?1",
                     [h.message_id],
-                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
                 )
-                .unwrap_or_else(|_| ("unknown".into(), "dm".into(), None, None, None));
+                .unwrap_or_else(|_| ("unknown".into(), "dm".into(), None));
+            let (person_id, person_name) = search_hit_person(arch, h.message_id).map_err(err)?;
             let body: String = arch
                 .conn
                 .query_row(
@@ -529,8 +524,8 @@ pub(crate) fn search_cmd(
                 "platform": meta.0,
                 "conversation_kind": meta.1,
                 "conversation_title": meta.2,
-                "person_id": meta.3,
-                "person_name": meta.4,
+                "person_id": person_id,
+                "person_name": person_name,
                 "attachments": attachments,
             }));
         }
