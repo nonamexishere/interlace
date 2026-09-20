@@ -98,7 +98,7 @@
               tabindex="0"
               aria-label={`${utcTime(item.row.sent_at, item.row.platform)} ${displayBody(item.row.body_text || item.row.subject || "").slice(0, 80)}`}
               onclick={(e) => onSelectIndex(item.index, e.shiftKey)}
-              onmousedown={(e) => { if (e.shiftKey) e.preventDefault(); }}
+              onmousedown={(e) => { if (e.shiftKey) { e.preventDefault(); (e.currentTarget as HTMLElement).focus(); } }}
               oncontextmenu={(e) => onContextMenu(e, item.row)}
             >
               {#if !isGroupedFollower(item.index)}

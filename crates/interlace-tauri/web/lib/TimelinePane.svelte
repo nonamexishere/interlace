@@ -171,12 +171,17 @@
   let loadedArchiveId = $state("");
   let selectedIds = $state(new Set<number>());
   let anchorId = $state<number | null>(null);
+  const liveSelectedIds = $derived(
+    selectionLive(loadedArchiveId, archive_id) ? selectedIds : new Set<number>(),
+  );
 
+  let seenArchiveId = archive_id;
   $effect(() => {
-    if (!selectionLive(loadedArchiveId, archive_id)) {
-      selectedIds = new Set();
-      anchorId = null;
-    }
+    if (seenArchiveId === archive_id) return;
+    seenArchiveId = archive_id;
+    ++tlGen;
+    selectedIds = new Set();
+    anchorId = null;
   });
 
   export function extendSelection(targetIndex: number) {
@@ -219,6 +224,7 @@
   }
 
   export async function selectPerson(id: number, append = false, keepConversation = false, groups = includeGroups) {
+    const loadArchiveId = archive_id;
     includeGroups = groups;
     if (append && tlLoading) return;
     const before = append ? oldestSentAt(timeline) : null;
@@ -271,7 +277,7 @@
         list?.resetHeights();
       }
       timeline = append ? chrono.concat(timeline) : chrono;
-      loadedArchiveId = archive_id;
+      if (loadArchiveId === archive_id) loadedArchiveId = archive_id;
       if (append) tlIndex += chrono.length;
       else tlIndex = Math.max(0, chrono.length - 1);
       if (append) {
@@ -313,6 +319,7 @@
     messageId: number,
     sentAt?: string | null,
   ) {
+    const loadArchiveId = archive_id;
     showPersonChrome = false;
     platformFilter = "all";
     kindFilter = "all";
@@ -366,7 +373,7 @@
       if (gen !== tlGen) return;
 
       timeline = loaded;
-      loadedArchiveId = archive_id;
+      if (loadArchiveId === archive_id) loadedArchiveId = archive_id;
       selectedIds = new Set([messageId]);
       anchorId = messageId;
       list?.resetHeights();
@@ -594,6 +601,7 @@
     {lastReadMessageId}
     {persistLastRead}
     bind:selectedIds
+    {liveSelectedIds}
     bind:anchorId
     {extendSelection}
     onClearDayPin={() => (dayPin = false, jumpGen++)}

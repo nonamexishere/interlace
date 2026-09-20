@@ -48,6 +48,7 @@
     lastReadMessageId = undefined,
     persistLastRead,
     selectedIds = $bindable(new Set<number>()),
+    liveSelectedIds = new Set<number>(),
     anchorId = $bindable<number | null>(null),
     extendSelection,
   }: {
@@ -78,6 +79,7 @@
     lastReadMessageId?: number;
     persistLastRead?: (index: number) => void;
     selectedIds?: Set<number>;
+    liveSelectedIds?: Set<number>;
     anchorId?: number | null;
     extendSelection: (index: number) => void;
   } = $props();
@@ -438,7 +440,7 @@
 
   async function copyText() {
     if (!copyMenu) return;
-    if (selectedIds.size > 1) {
+    if (liveSelectedIds.size > 1) {
       copyMenu = null;
       copySelected();
       return;
@@ -483,8 +485,8 @@
   }
 
   export function copySelected() {
-    if (selectedIds.size > 1) {
-      navigator.clipboard.writeText(joinSelectedBodies(timeline, selectedIds)).catch(() => onCopyFail());
+    if (selectedIds.size > 1 && liveSelectedIds.size > 1) {
+      navigator.clipboard.writeText(joinSelectedBodies(timeline, liveSelectedIds)).catch(() => onCopyFail());
       return;
     }
     const row = tlIndex < 0 ? null : filteredTimeline.find((item) => item.index === tlIndex)?.row ?? timeline[tlIndex];
@@ -526,7 +528,7 @@
     {measureTlRow}
     {isGroupedFollower}
     {onSelectIndex}
-    {selectedIds}
+    selectedIds={liveSelectedIds}
     {lastReadMessageId}
     onContextMenu={openCopyMenu}
     {toggleQuoted}
@@ -543,6 +545,6 @@
   <TimelineLatest onclick={scrollToLatest}>{t("latest")}</TimelineLatest>
 {/if}
 {#if copyMenu}
-  <TimelineCopyMenu x={copyMenu.x} y={copyMenu.y} n={selectedIds.size} onCopy={copyText} onSearch={searchFromBubble} />
+  <TimelineCopyMenu x={copyMenu.x} y={copyMenu.y} n={liveSelectedIds.size} onCopy={copyText} onSearch={searchFromBubble} />
 {/if}
 </div>
