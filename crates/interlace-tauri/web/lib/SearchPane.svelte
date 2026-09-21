@@ -16,6 +16,7 @@
     friendly,
     q = $bindable(),
     seedPerson = null,
+    seedConversation = null,
   }: {
     people: Person[];
     archivePath: string;
@@ -30,6 +31,7 @@
     }) => void | Promise<void>;
     q?: string;
     seedPerson?: Person | null;
+    seedConversation?: { id: number; title: string; kind: string } | null;
   } = $props();
   /** Stored person_id for api.search; null when cleared / no pick. */
   let personId = $state<number | null>(null);
@@ -44,6 +46,8 @@
   let labelId = $state("");
   let labels = $state<LabelRef[]>([]);
   let includeGroups = $state(false);
+  let conversationId = $state<number | null>(null);
+  let conversationTitle = $state("");
   let hits = $state<SearchHit[]>([]);
   /** Highlighted hit in the results list (j/k and arrow keys). */
   let hitIndex = $state(0);
@@ -130,6 +134,16 @@
   });
 
   $effect(() => {
+    if (seedConversation) {
+      conversationId = seedConversation.id;
+      conversationTitle = seedConversation.title;
+      if (seedConversation.kind === "group") {
+        includeGroups = true;
+      }
+    }
+  });
+
+  $effect(() => {
     if (personId == null) return;
     const p = people.find((x) => x.id === personId);
     if (p) personFilter = personLabel(p);
@@ -140,6 +154,16 @@
     personFilter = "";
     personHighlight = 0;
     personListOpen = false;
+  }
+
+  function clearConversation() {
+    conversationId = null;
+    conversationTitle = "";
+    if (!q.trim()) {
+      clearHitsIdle();
+      return;
+    }
+    void run();
   }
 
   let personBlurCloseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -240,6 +264,10 @@
   }
 
   async function run() {
+    if (!q.trim()) {
+      clearHitsIdle();
+      return;
+    }
     cancelDebounce();
     const gen = ++searchGen;
     empty = false;
@@ -275,13 +303,14 @@
       const next = await api.search({
         q: q.trim(),
         personId: personId != null ? personId : null,
+        conversationId: conversationId,
         from: from.trim() || null,
         to: !to.trim() ? null : to.trim() + "T23:59:59",
         platform: platform || null,
         conversationKind: conversationKind || null,
         attachmentFilter: attachmentFilter || null,
         labelId: labelId ? Number(labelId) : null,
-        includeGroups,
+        includeGroups: includeGroups,
         limit: 50,
       });
       if (gen !== searchGen) return;
@@ -445,6 +474,21 @@
     <div class="space-y-1.5">
       <Label for="q">Query</Label>
       <Input id="q" bind:value={q} placeholder="FTS — same as CLI search" />
+      {#if conversationId != null}
+        <div
+          class="flex min-w-0 items-center gap-2 rounded-md border border-border bg-muted/40 px-2 py-1 text-sm"
+          data-search-conversation
+        >
+          <span class="min-w-0 truncate">{conversationTitle}</span>
+          <button
+            type="button"
+            class="shrink-0 text-xs text-muted-foreground underline focus-visible:ring-2 focus-visible:ring-ring"
+            onclick={clearConversation}
+          >
+            Clear
+          </button>
+        </div>
+      {/if}
     </div>
     <details
       data-search-filters

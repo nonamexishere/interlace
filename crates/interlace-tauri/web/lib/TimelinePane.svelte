@@ -33,6 +33,7 @@
     openUrl,
     onImport,
     onSearchFromBubble,
+    onSearchThisConversation,
     onCopyFail,
     onFocusInspector,
   }: {
@@ -55,6 +56,7 @@
     openUrl: (url: string) => void;
     onImport: () => void;
     onSearchFromBubble: () => void;
+    onSearchThisConversation: (seed: { id: number; title: string; kind: string }) => void;
     onCopyFail: () => void;
     onFocusInspector: () => void;
   } = $props();
@@ -598,6 +600,8 @@
     {openUrl}
     {showToast}
     {onSearchFromBubble}
+    {onSearchThisConversation}
+    {conversationLabel}
     {onCopyFail}
     {findQ}
     {lastReadMessageId}

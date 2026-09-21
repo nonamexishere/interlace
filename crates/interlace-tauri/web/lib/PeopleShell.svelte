@@ -35,6 +35,7 @@
     onOpenPicker,
     onReveal,
     onSearchFromBubble,
+    onSearchThisConversation,
     onPeopleChanged,
   }: {
     st: Status;
@@ -63,6 +64,7 @@
     onOpenPicker: () => void;
     onReveal: () => void;
     onSearchFromBubble: () => void;
+    onSearchThisConversation: (seed: { id: number; title: string; kind: string }) => void;
     onPeopleChanged: () => Promise<void>;
   } = $props();
 
@@ -236,6 +238,7 @@
       {openUrl}
       {onImport}
       {onSearchFromBubble}
+      {onSearchThisConversation}
       onCopyFail={() => showToast("Could not copy")}
       onFocusInspector={focusPersonInspector}
     />

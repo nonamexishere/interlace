@@ -41,6 +41,8 @@
     openUrl,
     showToast,
     onSearchFromBubble,
+    onSearchThisConversation,
+    conversationLabel,
     onCopyFail,
     findQ = "",
     quotedOpen = $bindable<Record<number, boolean>>({}),
@@ -72,6 +74,8 @@
     openUrl: (url: string) => void;
     showToast: (message: string) => void;
     onSearchFromBubble: () => void;
+    onSearchThisConversation: (seed: { id: number; title: string; kind: string }) => void;
+    conversationLabel: (title: string | null | undefined, platform: string | null | undefined) => string;
     onCopyFail: () => void;
     findQ?: string;
     quotedOpen?: Record<number, boolean>;
@@ -98,7 +102,14 @@
   let prependN = $state(0), prependIdx = -1, prependViewOff = 0;
   let jumpPinIndex = -1;
   let jumpPinUntil: ReturnType<typeof setTimeout> | null = null;
-  let copyMenu = $state<{ x: number; y: number; text: string } | null>(null);
+  let copyMenu = $state<{
+    x: number;
+    y: number;
+    text: string;
+    conversation_id: number;
+    title: string;
+    kind: string;
+  } | null>(null);
   const showLatest = $derived((() => { void tlScrollTop; void tlViewportHeight; void tlScrollHeight; const sc = document.getElementById("person-timeline"); return !!(sc && sc.scrollTop + sc.clientHeight < sc.scrollHeight - 4); })());
 
   $effect(() => {
@@ -479,7 +490,14 @@
         persistLastRead?.(index);
       }
     }
-    copyMenu = { x: e.clientX, y: e.clientY, text: row.body_text || row.subject || "" };
+    copyMenu = {
+      x: e.clientX,
+      y: e.clientY,
+      text: row.body_text || row.subject || "",
+      conversation_id: row.conversation_id,
+      title: conversationLabel(row.conversation_title, row.platform),
+      kind: row.conversation_kind,
+    };
   }
 
   function closeCopyMenu() { copyMenu = null; }
@@ -508,6 +526,15 @@
   }
 
   function searchFromBubble() { closeCopyMenu(); onSearchFromBubble(); }
+
+  function searchThisConversation() {
+    if (!copyMenu) return;
+    const id = copyMenu.conversation_id;
+    const title = copyMenu.title;
+    const kind = copyMenu.kind;
+    closeCopyMenu();
+    onSearchThisConversation({ id, title, kind });
+  }
 
   function onCopyMenuAway(e: MouseEvent) {
     if (!copyMenu) return;
@@ -598,6 +625,6 @@
   <TimelineLatest onclick={scrollToLatest}>{t("latest")}</TimelineLatest>
 {/if}
 {#if copyMenu}
-  <TimelineCopyMenu x={copyMenu.x} y={copyMenu.y} n={liveSelectedIds.size} onCopy={copyText} onSearch={searchFromBubble} />
+  <TimelineCopyMenu x={copyMenu.x} y={copyMenu.y} n={liveSelectedIds.size} onCopy={copyText} onSearch={searchFromBubble} onSearchThisConversation={searchThisConversation} />
 {/if}
 </div>

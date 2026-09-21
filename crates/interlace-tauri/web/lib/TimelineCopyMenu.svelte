@@ -7,12 +7,14 @@
     n = 1,
     onCopy,
     onSearch,
+    onSearchThisConversation,
   }: {
     x: number;
     y: number;
     n?: number;
     onCopy: () => void;
     onSearch: () => void;
+    onSearchThisConversation: () => void;
   } = $props();
 </script>
 
@@ -34,5 +36,11 @@
     class="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
     role="menuitem"
     onclick={onSearch}>{t("search")}</button
+  >
+  <button
+    type="button"
+    class="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+    role="menuitem"
+    onclick={onSearchThisConversation}>{t("searchThisConversation")}</button
   >
 </div>
