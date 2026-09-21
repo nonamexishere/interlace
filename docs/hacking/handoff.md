@@ -1,10 +1,10 @@
 # Agent / session handoff
 
 **Date:** 2026-09-21. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
-HEAD **#374** (To/Cc/Bcc on mail bubbles; this PR). **#372** / PR **#408** and
-**#373** / PR **#409** landed. **#361**–**#374**, **#400**, and **#402** landed.
-**#384** and **#385** were tried and **backed out**. **#403** stays filed.
-Next: **#375**.
+HEAD **#375** (Review queue keyboard map; this PR). **#374** / PR **#410**,
+**#372** / PR **#408**, and **#373** / PR **#409** landed. **#361**–**#375**,
+**#400**, and **#402** landed. **#384** and **#385** were tried and **backed
+out**. **#403** stays filed. Next: **#376**.
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -282,14 +282,15 @@ Phase 2.1 milestone (#6): **closed**.
 | #402 / PR #406 | Search Enter on a sent DM opens Ada (the peer) |
 | #372 / PR #408 | Search this conversation from the bubble menu (scoped `#q` chip) |
 | #373 / PR #409 | Open original rfc822 for a stored mail (`.eml`; preserve-raw) |
-| #374 | Mail To line on bubbles; inspector To / Cc / Bcc (this PR) |
+| #374 / PR #410 | Mail To line on bubbles; inspector To / Cc / Bcc |
+| #375 | Review queue keyboard map (j/k / a/r / Enter; this PR) |
 
 ## Open — product now
 
 Phase 2.3 coding is **done** (epic **#264** / milestone 8 closed). Phase 2.2
-polish (#197) is **done**. Phase 2.4 epic **#360** is **started**: **#361**–**#374**, **#400**, and **#402**
-landed (PRs **#381**–**#383**, **#386**, **#388**, **#390**, **#392**, **#394**, **#396**, **#398**, **#401**, **#404**, **#406**, **#408**, **#409**). **#384** and **#385** were
-tried locally and **backed out**. Stay on post-#374 chrome.
+polish (#197) is **done**. Phase 2.4 epic **#360** is **started**: **#361**–**#375**, **#400**, and **#402**
+landed (PRs **#381**–**#383**, **#386**, **#388**, **#390**, **#392**, **#394**, **#396**, **#398**, **#401**, **#404**, **#406**, **#408**, **#409**, **#410**). **#384** and **#385** were
+tried locally and **backed out**. Stay on post-#375 chrome.
 **#403** (jump must load messages after the hit) stays filed.
 Phase 4 epic **#56** is **started** (#79 / PR **#359**).
 Normative [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md).
@@ -302,7 +303,7 @@ code.
 
 ### Suggested next
 
-1. Next 2.4: **#375**. **#384** / **#385** stay backed out.
+1. Next 2.4: **#376**. **#384** / **#385** stay backed out.
    **#403** stays filed. Next Phase 4 coding **#80** only if
    asked. Do not start #81 / #82 / 1.1 / Phase 3 export
    unprompted.
@@ -323,8 +324,8 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 
 ## Recommended next steps
 
-1. #303–#322 / #342 / #361–#374 / #400 / #402 are done. Phase 2.4:
-   **#384** / **#385** backed out. Stay at post-#374. Next: **#375**.
+1. #303–#322 / #342 / #361–#375 / #400 / #402 are done. Phase 2.4:
+   **#384** / **#385** backed out. Stay at post-#375. Next: **#376**.
    **#403** stays filed. Phase 4 started: **#79** / PR **#359**. Next
    Phase 4 coding **#80** only if asked. #342 follow-up is **D**.
 2. Do not start 1.1 / Phase 3 export / #81 / #82 unprompted.
@@ -408,8 +409,8 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > mix into IN.md before test-author. Do not spawn agents from a child. Orchestrator
 > does not implement product code. Ask before commit / push / merge.
 > Phase 2.3 coding is done (epic #264 / milestone 8 closed). Phase 2.4
-> epic #360 started: **#374** landed (#372 / PR #408, #373 / PR #409;
-> #361–#374 / #400 / #402 landed). Next **#375**. **#403** stays filed.
+> epic #360 started: **#375** this PR (#374 / PR #410, #372 / PR #408,
+> #373 / PR #409; #361–#375 / #400 / #402 landed). Next **#376**. **#403** stays filed.
 > Read
 > `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,
 > #297, #300, #303–#322, #342 done (PRs #323–#328, #330, #332, #336, #338, #340,

@@ -275,7 +275,7 @@
       if (e.key === "Escape") t.blur();
       return;
     }
-    if (e.key === "Escape" && !commandOpen) view = "people";
+    if (e.key === "Escape" && !commandOpen && !e.defaultPrevented && !document.querySelector('[role="dialog"]')) view = "people";
     handleAppKey(e, {
       commandOpen,
       setCommandOpen: (v) => { commandOpen = v; },

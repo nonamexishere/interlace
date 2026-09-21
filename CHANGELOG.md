@@ -13,6 +13,7 @@ unsigned **`app-v0.1.2`**.
 
 ### Added
 
+- Review queue keyboard: first card opens on load; `j`/`k` or arrows move the open card (stop at the ends); Enter opens detail if closed; `a`/`r` open the existing Accept/Reject confirms; Esc on a confirm stays on Review.
 - Mail bubbles show a muted To line (To-role names, first three then `+k`; hidden when empty). Inspector lists To / Cc / Bcc for the highlighted mail. A WhatsApp bubble has no To line.
 - Open original on a mail bubble opens a local `.eml` after confirm (preserve-raw CAS). Missing raw is a disabled calm label; WhatsApp has no item.
 - Search this conversation from a timeline bubble. A dismissible chip next to `#q` shows the chat title; clearing it returns unscoped hits for the same query.

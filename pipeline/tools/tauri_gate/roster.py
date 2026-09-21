@@ -118,6 +118,9 @@ from tauri_gate.open_original_rfc822 import (  # noqa: E402
 from tauri_gate.mail_recipients import (  # noqa: E402
     assert_mail_recipients,
 )
+from tauri_gate.review_keys import (  # noqa: E402
+    assert_review_keys,
+)
 from tauri_gate.search_hits import (  # noqa: E402
     assert_search_jump_to_message,
     assert_search_safe_highlight,
