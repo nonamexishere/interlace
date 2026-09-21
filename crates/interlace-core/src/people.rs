@@ -5,7 +5,7 @@ mod edit;
 mod list;
 mod timeline;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 
 use crate::db::Archive;
@@ -285,4 +285,71 @@ pub fn recent_link_events(archive: &Archive, limit: u32) -> Result<Vec<LinkEvent
         out.push(row?);
     }
     Ok(out)
+}
+
+/// Search-hit jump person: unique live non-self participant on a from-me
+/// `dm` / `email_thread`; otherwise the live sender person.
+pub fn search_hit_person(
+    archive: &Archive,
+    message_id: i64,
+) -> Result<(Option<i64>, Option<String>), CoreError> {
+    let found = archive
+        .conn
+        .query_row(
+            "SELECT m.conversation_id,
+                    c.kind,
+                    (SELECT p.id FROM person_identities pi
+                     JOIN persons p ON p.id = pi.person_id AND p.tombstoned_at IS NULL
+                     WHERE pi.identity_id = m.sender_identity_id LIMIT 1),
+                    (SELECT p.display_name FROM person_identities pi
+                     JOIN persons p ON p.id = pi.person_id AND p.tombstoned_at IS NULL
+                     WHERE pi.identity_id = m.sender_identity_id LIMIT 1),
+                    CASE WHEN m.sender_identity_id IS NOT NULL AND (
+                        EXISTS (SELECT 1 FROM self_identities si
+                                WHERE si.identity_id = m.sender_identity_id)
+                     OR EXISTS (
+                            SELECT 1 FROM person_identities pi
+                            JOIN persons p ON p.id = pi.person_id
+                            WHERE pi.identity_id = m.sender_identity_id
+                              AND p.is_self = 1 AND p.tombstoned_at IS NULL
+                        )
+                    ) THEN 1 ELSE 0 END
+             FROM messages m
+             JOIN conversations c ON c.id = m.conversation_id
+             WHERE m.id = ?1",
+            [message_id],
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, Option<i64>>(2)?,
+                    r.get::<_, Option<String>>(3)?,
+                    r.get::<_, i64>(4)? == 1,
+                ))
+            },
+        )
+        .optional()?;
+    let Some((cid, kind, sender_id, sender_name, sender_is_self)) = found else {
+        return Ok((None, None));
+    };
+
+    if sender_is_self && (kind == "dm" || kind == "email_thread") {
+        let mut stmt = archive.conn.prepare(
+            "SELECT DISTINCT p.id, p.display_name
+             FROM conversation_participants cp
+             JOIN person_identities pi ON pi.identity_id = cp.identity_id
+             JOIN persons p ON p.id = pi.person_id
+             WHERE cp.conversation_id = ?1
+               AND p.tombstoned_at IS NULL
+               AND p.is_self = 0",
+        )?;
+        let peers: Vec<(i64, String)> = stmt
+            .query_map([cid], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?;
+        if peers.len() == 1 {
+            return Ok((Some(peers[0].0), Some(peers[0].1.clone())));
+        }
+    }
+
+    Ok((sender_id, sender_name))
 }
