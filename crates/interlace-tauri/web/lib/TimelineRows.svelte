@@ -171,6 +171,18 @@
                       {/if}
                     </div>
                   {/if}
+                  {@const toNames = item.row.recipients?.to ?? []}
+                  {@const visibleTo = toNames.slice(0, 3)}
+                  {#if toNames.length}
+                    <div
+                      class="mail-to flex min-w-0 flex-nowrap items-center overflow-hidden text-xs text-muted-foreground"
+                      data-mail-to
+                    >
+                      <span class="min-w-0 truncate whitespace-nowrap"
+                        >{t("mailTo")} {visibleTo.join(", ")}{#if toNames.length > 3} +{toNames.length - 3}{/if}</span
+                      >
+                    </div>
+                  {/if}
                   {@const parts = splitQuotedBody(item.row.body_text || "")}
                   {#if parts.main || !parts.quoted}
                     <p class="whitespace-pre-wrap break-words text-sm leading-normal text-foreground">

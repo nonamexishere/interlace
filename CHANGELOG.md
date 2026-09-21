@@ -13,6 +13,7 @@ unsigned **`app-v0.1.2`**.
 
 ### Added
 
+- Mail bubbles show a muted To line (To-role names, first three then `+k`; hidden when empty). Inspector lists To / Cc / Bcc for the highlighted mail. A WhatsApp bubble has no To line.
 - Open original on a mail bubble opens a local `.eml` after confirm (preserve-raw CAS). Missing raw is a disabled calm label; WhatsApp has no item.
 - Search this conversation from a timeline bubble. A dismissible chip next to `#q` shows the chat title; clearing it returns unscoped hits for the same query.
 - Quiet **Last time** last-read on the person timeline (localStorage, per archive, not iCloud; not unread). Latest still goes to newest.

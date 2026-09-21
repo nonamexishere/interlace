@@ -5,7 +5,7 @@ use rusqlite::OptionalExtension;
 use crate::db::Archive;
 use crate::model::CoreError;
 
-use super::{AttachmentRef, TimelineRow};
+use super::{AttachmentRef, TimelineRecipients, TimelineRow};
 
 /// iOS `<attached: file.jpg>` in body (same line or continuation).
 pub fn extract_attached_filenames(body: &str) -> Vec<String> {
@@ -188,6 +188,69 @@ pub(super) fn attach_labels(archive: &Archive, rows: &mut [TimelineRow]) -> Resu
     }
     for row in rows.iter_mut() {
         row.labels = map.remove(&row.message_id).unwrap_or_default();
+    }
+    Ok(())
+}
+
+/// Names from `message_recipients` ⨝ `identities` for the page's `message_id`s.
+/// One `IN` join. Name is identity `display_name` then `value_normalized` /
+/// `value_raw`. Includes Self. Empty roles stay `[]`.
+pub(super) fn attach_recipients(
+    archive: &Archive,
+    rows: &mut [TimelineRow],
+) -> Result<(), CoreError> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<i64> = rows.iter().map(|r| r.message_id).collect();
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let mut stmt = archive.conn.prepare(&format!(
+        "SELECT mr.message_id, mr.role, i.display_name, i.value_normalized, i.value_raw
+         FROM message_recipients mr
+         JOIN identities i ON i.id = mr.identity_id
+         WHERE mr.message_id IN ({placeholders})
+         ORDER BY mr.message_id, mr.role, i.id"
+    ))?;
+    let mapped = stmt.query_map(rusqlite::params_from_iter(&ids), |r| {
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, Option<String>>(2)?,
+            r.get::<_, String>(3)?,
+            r.get::<_, String>(4)?,
+        ))
+    })?;
+    let mut map: HashMap<i64, TimelineRecipients> = HashMap::new();
+    for pair in mapped {
+        let (mid, role, display_name, value_normalized, value_raw) = pair?;
+        let name = match display_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            Some(d) => d.to_string(),
+            None => {
+                let n = value_normalized.trim();
+                if !n.is_empty() {
+                    n.to_string()
+                } else {
+                    value_raw.trim().to_string()
+                }
+            }
+        };
+        if name.is_empty() {
+            continue;
+        }
+        let slot = map.entry(mid).or_default();
+        match role.as_str() {
+            "to" => slot.to.push(name),
+            "cc" => slot.cc.push(name),
+            "bcc" => slot.bcc.push(name),
+            _ => {}
+        }
+    }
+    for row in rows.iter_mut() {
+        row.recipients = map.remove(&row.message_id).unwrap_or_default();
     }
     Ok(())
 }
