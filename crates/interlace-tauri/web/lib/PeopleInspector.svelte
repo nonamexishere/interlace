@@ -16,6 +16,7 @@
   import { chromeMotionMs } from "$lib/motion";
   import { writeIncludeGroupsPref } from "./PeoplePrefs";
   import PersonAvatar from "./PersonAvatar.svelte";
+  import { isMailRow } from "./TimelineMail";
 
   let {
     showPersonChrome = $bindable(false),
@@ -157,11 +158,19 @@
     void tlIndex;
     void loadGroupParticipants();
   });
+
+  let inspectorEl = $state<HTMLElement | undefined>(undefined);
+
+  $effect(() => {
+    void timeline[tlIndex]?.message_id;
+    inspectorEl?.scrollTo(0, 0);
+  });
 </script>
 
 {#if showPersonChrome}
 <aside
   data-person-inspector
+  bind:this={inspectorEl}
   tabindex="-1"
   class="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-l border-border p-4 text-sm"
   aria-label={t("inspector")}
@@ -179,6 +188,43 @@
     {t("lastActivity")}
     {humanTime(selectedPerson?.last_activity_at)}
   </p>
+  {#if timeline[tlIndex] && isMailRow(timeline[tlIndex])}
+    {@const rec = timeline[tlIndex].recipients}
+    {#if rec && (rec.to.length || rec.cc.length || rec.bcc.length)}
+      <div data-mail-recipients class="space-y-2">
+        {#if rec.to.length}
+          <div>
+            <p class="text-xs font-medium">{t("mailTo")}</p>
+            <ul class="space-y-1 text-sm text-muted-foreground">
+              {#each rec.to as name}
+                <li>{name}</li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
+        {#if rec.cc.length}
+          <div>
+            <p class="text-xs font-medium">{t("mailCc")}</p>
+            <ul class="space-y-1 text-sm text-muted-foreground">
+              {#each rec.cc as name}
+                <li>{name}</li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
+        {#if rec.bcc.length}
+          <div>
+            <p class="text-xs font-medium">{t("mailBcc")}</p>
+            <ul class="space-y-1 text-sm text-muted-foreground">
+              {#each rec.bcc as name}
+                <li>{name}</li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
+      </div>
+    {/if}
+  {/if}
   <div class="flex flex-col gap-2">
     <div class="flex items-center gap-2">
       <Input

@@ -56,6 +56,11 @@ export type TimelineRow = {
   attachments?: Attachment[];
   labels?: string[];
   raw_cas_hash: string | null;
+  recipients?: {
+    to: string[];
+    cc: string[];
+    bcc: string[];
+  };
 };
 
 export type PersonMediaRow = {

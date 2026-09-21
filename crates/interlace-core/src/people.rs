@@ -97,6 +97,15 @@ pub struct TimelineRow {
     pub attachments: Vec<AttachmentRef>,
     pub labels: Vec<String>,
     pub raw_cas_hash: Option<String>,
+    pub recipients: TimelineRecipients,
+}
+
+/// Names-only To / Cc / Bcc on a timeline row (identity display_name then value).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct TimelineRecipients {
+    pub to: Vec<String>,
+    pub cc: Vec<String>,
+    pub bcc: Vec<String>,
 }
 
 /// One conversation on a person's switcher. `last_at` is the latest D18
