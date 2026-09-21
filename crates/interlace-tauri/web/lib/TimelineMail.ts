@@ -3,9 +3,9 @@ export function isMailRow(row: {
   platform?: string | null;
   conversation_kind?: string | null;
 }): boolean {
-  const p = (row.platform ?? "").trim().toLowerCase();
-  const k = (row.conversation_kind ?? "").trim().toLowerCase();
-  return p === "gmail" || k === "email_thread";
+  const platform = (row.platform ?? "").trim().toLowerCase();
+  const conversation_kind = (row.conversation_kind ?? "").trim().toLowerCase();
+  return platform === "gmail" || conversation_kind === "email_thread";
 }
 
 export function displayBody(s: string) {

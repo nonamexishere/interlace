@@ -55,6 +55,7 @@ export type TimelineRow = {
   body_text: string;
   attachments?: Attachment[];
   labels?: string[];
+  raw_cas_hash: string | null;
 };
 
 export type PersonMediaRow = {
@@ -193,6 +194,7 @@ export const api = {
   casDataUrl: (hash: string) => invoke<string>("cas_data_url", { hash }),
   revealCas: (hash: string) => invoke<void>("reveal_cas", { hash }),
   openCas: (hash: string) => invoke<void>("open_cas", { hash }),
+  openCasEml: (hash: string) => invoke<void>("open_cas_eml", { hash }),
   revealArchive: () => invoke<void>("reveal_archive"),
   copyArchiveTo: () => invoke<boolean>("copy_archive_to"),
   openUrl: (url: string) => invoke<void>("open_url", { url }),

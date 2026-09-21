@@ -52,6 +52,14 @@
     findQ?: string;
     lastReadMessageId?: number;
   } = $props();
+
+  function onRowContextMenu(e: MouseEvent, row: TimelineRow) {
+    if ((e.target as HTMLElement | null)?.closest("[data-bubble-attach]")) {
+      e.stopPropagation();
+      return;
+    }
+    onContextMenu(e, row);
+  }
 </script>
 
 {#if showLoadOlder}
@@ -99,7 +107,7 @@
               aria-label={`${utcTime(item.row.sent_at, item.row.platform)} ${displayBody(item.row.body_text || item.row.subject || "").slice(0, 80)}`}
               onclick={(e) => onSelectIndex(item.index, e.shiftKey)}
               onmousedown={(e) => { if (e.shiftKey) { e.preventDefault(); (e.currentTarget as HTMLElement).focus(); } }}
-              oncontextmenu={(e) => onContextMenu(e, item.row)}
+              oncontextmenu={(e) => onRowContextMenu(e, item.row)}
             >
               {#if !isGroupedFollower(item.index)}
                 <p

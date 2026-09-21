@@ -8,8 +8,10 @@
   import TimelineCopyMenu from "./TimelineCopyMenu.svelte";
   import TimelineEmpty from "./TimelineEmpty.svelte";
   import TimelineLatest from "./TimelineLatest.svelte";
+  import ConfirmDialog from "$lib/ConfirmDialog.svelte";
   import { t } from "$lib/i18n";
-  import { displayBody, isGroupedFollower as groupedFollower, joinSelectedBodies } from "./TimelineMail";
+  import { api } from "./api";
+  import { displayBody, isGroupedFollower as groupedFollower, isMailRow, joinSelectedBodies } from "./TimelineMail";
   import {
     ESTIMATED_ROW_HEIGHT,
     VIRTUALIZE_AFTER,
@@ -109,7 +111,11 @@
     conversation_id: number;
     title: string;
     kind: string;
+    raw_cas_hash: string | null;
+    mail: boolean;
   } | null>(null);
+  let originalConfirm = $state(false);
+  let originalHash = $state<string | null>(null);
   const showLatest = $derived((() => { void tlScrollTop; void tlViewportHeight; void tlScrollHeight; const sc = document.getElementById("person-timeline"); return !!(sc && sc.scrollTop + sc.clientHeight < sc.scrollHeight - 4); })());
 
   $effect(() => {
@@ -477,7 +483,26 @@
     quotedOpen = { ...quotedOpen, [messageId]: !quotedOpen[messageId] };
   }
 
-  function openCopyMenu(e: MouseEvent, row: TimelineRow) {
+  function clampCopyMenu() {
+    if (!copyMenu) return;
+    const el = document.querySelector("[data-copy-menu]");
+    if (!el) return;
+    const box = el.getBoundingClientRect();
+    const pad = 8;
+    let x = copyMenu.x;
+    let y = copyMenu.y;
+    if (x + box.width > window.innerWidth - pad) {
+      x = Math.max(pad, window.innerWidth - box.width - pad);
+    }
+    if (y + box.height > window.innerHeight - pad) {
+      y = Math.max(pad, window.innerHeight - box.height - pad);
+    }
+    if (x !== copyMenu.x || y !== copyMenu.y) {
+      copyMenu = { ...copyMenu, x, y };
+    }
+  }
+
+  async function openCopyMenu(e: MouseEvent, row: TimelineRow) {
     e.preventDefault();
     if (!selectedIds.has(row.message_id)) {
       selectedIds = new Set([row.message_id]);
@@ -490,14 +515,29 @@
         persistLastRead?.(index);
       }
     }
+    const pad = 8;
+    const guessW = 240;
+    const guessH = 140;
+    let x = e.clientX;
+    let y = e.clientY;
+    if (x + guessW > window.innerWidth - pad) {
+      x = Math.max(pad, window.innerWidth - guessW - pad);
+    }
+    if (y + guessH > window.innerHeight - pad) {
+      y = Math.max(pad, window.innerHeight - guessH - pad);
+    }
     copyMenu = {
-      x: e.clientX,
-      y: e.clientY,
+      x,
+      y,
       text: row.body_text || row.subject || "",
       conversation_id: row.conversation_id,
       title: conversationLabel(row.conversation_title, row.platform),
       kind: row.conversation_kind,
+      raw_cas_hash: row.raw_cas_hash ?? null,
+      mail: isMailRow(row),
     };
+    await tick();
+    clampCopyMenu();
   }
 
   function closeCopyMenu() { copyMenu = null; }
@@ -534,6 +574,25 @@
     const kind = copyMenu.kind;
     closeCopyMenu();
     onSearchThisConversation({ id, title, kind });
+  }
+
+  function openOriginal() {
+    const hash = copyMenu?.raw_cas_hash;
+    if (!hash) return;
+    originalHash = hash;
+    closeCopyMenu();
+    originalConfirm = true;
+  }
+
+  async function confirmOpenOriginal() {
+    const hash = originalHash;
+    originalHash = null;
+    if (!hash) return;
+    try {
+      await api.openCasEml(hash);
+    } catch {
+      showToast("Could not open");
+    }
   }
 
   function onCopyMenuAway(e: MouseEvent) {
@@ -625,6 +684,13 @@
   <TimelineLatest onclick={scrollToLatest}>{t("latest")}</TimelineLatest>
 {/if}
 {#if copyMenu}
-  <TimelineCopyMenu x={copyMenu.x} y={copyMenu.y} n={liveSelectedIds.size} onCopy={copyText} onSearch={searchFromBubble} onSearchThisConversation={searchThisConversation} />
+  <TimelineCopyMenu x={copyMenu.x} y={copyMenu.y} n={liveSelectedIds.size} mail={copyMenu.mail} hash={copyMenu.raw_cas_hash} onCopy={copyText} onSearch={searchFromBubble} onSearchThisConversation={searchThisConversation} onOpenOriginal={openOriginal} />
 {/if}
+<ConfirmDialog
+  bind:open={originalConfirm}
+  title={t("openOriginal")}
+  description={t("openOriginalDesc")}
+  confirmLabel={t("openOriginal")}
+  onconfirm={confirmOpenOriginal}
+/>
 </div>
