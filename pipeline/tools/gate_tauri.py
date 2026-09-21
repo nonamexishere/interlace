@@ -204,6 +204,7 @@ def main() -> None:
     assert_mail_recipients(crate)
     assert_review_keys(crate)
     assert_az_letter_rail(crate)
+    assert_group_participant_open(crate)
     assert_custom_titlebar(crate)
     assert_people_sidebar_collapse(crate)
     assert_person_inspector(crate)

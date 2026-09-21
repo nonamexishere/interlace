@@ -86,6 +86,7 @@ export type ConversationParticipantName = {
   identity_id: number;
   display_name?: string | null;
   value: string;
+  person_id: number | null;
 };
 
 export type LinkEvent = {
