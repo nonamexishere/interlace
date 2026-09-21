@@ -8,6 +8,7 @@
   import { Skeleton } from "$lib/components/ui/skeleton/index.js";
   import EmptyState from "$lib/EmptyState.svelte";
   import PersonAvatar from "./PersonAvatar.svelte";
+  import { azLetter, compareAzLetters, letterRank } from "./azLetter";
   import { t } from "$lib/i18n";
   import PanelLeft from "@lucide/svelte/icons/panel-left";
   import PanelLeftClose from "@lucide/svelte/icons/panel-left-close";
@@ -58,10 +59,42 @@
 
   const pinSet = $derived(new Set(pinIds));
   const pinnedMatching = $derived(filtered.filter((p) => pinSet.has(p.id)));
+  const letterRest = $derived(filtered.filter((p) => !pinSet.has(p.id)));
+  const presentLetters = $derived.by(() => {
+    const seen: string[] = [];
+    for (const p of letterRest) {
+      const L = azLetter(p.display_name);
+      if (!seen.includes(L)) seen.push(L);
+    }
+    return seen.sort(compareAzLetters);
+  });
 
   function setSort(next: "recent" | "az") {
     peopleSort = next;
     writePeopleSortPref(next);
+  }
+
+  function letterHeadingFor(p: Person, i: number): string | null {
+    if (peopleSort !== "az" || sidebarCollapsed || pinSet.has(p.id)) return null;
+    const L = azLetter(p.display_name);
+    for (let j = i - 1; j >= 0; j--) {
+      const prev = filtered[j];
+      if (!prev || pinSet.has(prev.id)) continue;
+      return azLetter(prev.display_name) === L ? null : L;
+    }
+    return L;
+  }
+
+  function jumpToLetter(letter: string) {
+    const rank = letterRank(letter);
+    const nextPresent =
+      presentLetters.find((L) => L === letter) ??
+      presentLetters.find((L) => letterRank(L) >= rank);
+    if (!nextPresent) return;
+    const node = document.querySelector(
+      `[data-people-sidebar] [data-letter-heading][data-letter="${nextPresent}"]`,
+    );
+    node?.scrollIntoView({ block: "start", behavior: "auto" });
   }
 </script>
 
@@ -139,8 +172,17 @@
   {#if !sidebarCollapsed && pinnedMatching.length > 0}
     <p class="mt-2 text-xs text-muted-foreground">{t("pinned")}</p>
   {/if}
-  <ul class="mt-2 min-w-0 space-y-0.5" role="listbox" aria-label="People" aria-busy={peopleLoading}>
-    {#each filtered as p (p.id)}
+  {@render letterRail()}
+  <ul
+    class="mt-2 min-w-0 space-y-0.5 {peopleSort === 'az' && !sidebarCollapsed && presentLetters.length
+      ? 'pr-4'
+      : ''}"
+    role="listbox"
+    aria-label="People"
+    aria-busy={peopleLoading}
+  >
+    {#each filtered as p, i (p.id)}
+      {@render letterHeading(p, i)}
       <li class="min-w-0" role="presentation">
         {#if sidebarCollapsed}
           <button
@@ -255,4 +297,40 @@
       Open other archive…
     </Button>
   {/if}
+  {#snippet letterHeading(p, i)}
+    {#if peopleSort === "az" && !sidebarCollapsed}
+      {@const L = letterHeadingFor(p, i)}
+      {#if L}
+        <li role="presentation">
+          <h3
+            class="letter-heading mb-0.5 px-2 text-xs font-medium text-muted-foreground"
+            data-letter-heading
+            data-letter={L}
+          >
+            {L}
+          </h3>
+        </li>
+      {/if}
+    {/if}
+  {/snippet}
+  {#snippet letterRail()}
+    {#if peopleSort === "az" && !sidebarCollapsed}
+      <nav
+        data-letter-rail
+        tabindex="-1"
+        aria-label={t("letterRail")}
+        class="sticky top-2 z-20 float-right flex w-4 flex-col items-center text-[10px] leading-tight text-muted-foreground"
+      >
+        {#each presentLetters as L (L)}
+          <button
+            type="button"
+            tabindex="-1"
+            data-letter={L}
+            class="px-0 py-0 text-[10px] leading-tight text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            onclick={() => jumpToLetter(L)}>{L}</button
+          >
+        {/each}
+      </nav>
+    {/if}
+  {/snippet}
 </div>

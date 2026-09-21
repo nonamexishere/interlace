@@ -203,6 +203,7 @@ def main() -> None:
     assert_open_original_rfc822(crate)
     assert_mail_recipients(crate)
     assert_review_keys(crate)
+    assert_az_letter_rail(crate)
     assert_custom_titlebar(crate)
     assert_people_sidebar_collapse(crate)
     assert_person_inspector(crate)

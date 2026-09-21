@@ -7,6 +7,7 @@
   import MergeDialog from "./MergeDialog.svelte";
   import { personById as findPerson, personLabel, undoableFrom, undoRowLabel as formatUndoRow } from "./PeopleUndo";
   import { pinsForArchive, togglePersonPin } from "./PeoplePrefs";
+  import { azLetter, letterRank } from "./azLetter";
 
   let {
     st,
@@ -106,7 +107,12 @@
     const rest = rows.filter((p) => !pinSet.has(p.id));
     const sorted =
       peopleSort === "az"
-        ? [...rest].sort((a, b) => a.display_name.localeCompare(b.display_name, undefined, { sensitivity: "base" }) || a.id - b.id)
+        ? [...rest].sort(
+            (a, b) =>
+              letterRank(azLetter(a.display_name)) - letterRank(azLetter(b.display_name)) ||
+              a.display_name.localeCompare(b.display_name, undefined, { sensitivity: "base" }) ||
+              a.id - b.id,
+          )
         : rest;
     return [...pinnedMatching, ...sorted];
   }

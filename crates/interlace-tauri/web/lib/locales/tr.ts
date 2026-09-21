@@ -133,4 +133,5 @@ export const tr: ChromePack = {
   pinned: "Sabitlenenler",
   pinPerson: "Sabitle",
   unpinPerson: "Sabitten çıkar",
+  letterRail: "Harfe atla",
 };

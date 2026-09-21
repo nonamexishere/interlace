@@ -89,6 +89,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_open_original_rfc822",
     "assert_mail_recipients",
     "assert_review_keys",
+    "assert_az_letter_rail",
     "assert_custom_titlebar",
     "assert_people_sidebar_collapse",
     "assert_person_inspector",

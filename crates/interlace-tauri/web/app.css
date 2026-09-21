@@ -123,6 +123,15 @@ body {
   padding-bottom: 0.25rem;
 }
 
+.letter-heading {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-background);
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
 .platform-chip {
   display: inline-block;
   vertical-align: middle;
