@@ -96,6 +96,7 @@ pub struct TimelineRow {
     pub body_text: String,
     pub attachments: Vec<AttachmentRef>,
     pub labels: Vec<String>,
+    pub raw_cas_hash: Option<String>,
 }
 
 /// One conversation on a person's switcher. `last_at` is the latest D18

@@ -20,7 +20,7 @@ use interlace_core::{Archive, CoreError, ImportCancel};
 use rusqlite::{Connection, OpenFlags};
 use tauri::{Emitter, Manager};
 
-use crate::cas::{cas_data_url, cas_response, open_cas, reveal_archive, reveal_cas};
+use crate::cas::{cas_data_url, cas_response, open_cas, open_cas_eml, reveal_archive, reveal_cas};
 use crate::import_cmd::{import_cancel, import_progress, import_start, pick_import_path};
 use crate::ipc::{
     close_archive, copy_archive_to, doctor_issues_cmd, doctor_issues_quick_cmd, doctor_run_cmd,
@@ -208,6 +208,7 @@ fn main() {
             cas_data_url,
             reveal_cas,
             open_cas,
+            open_cas_eml,
             reveal_archive,
             copy_archive_to,
             open_url,

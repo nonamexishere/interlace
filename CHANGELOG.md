@@ -13,6 +13,7 @@ unsigned **`app-v0.1.2`**.
 
 ### Added
 
+- Open original on a mail bubble opens a local `.eml` after confirm (preserve-raw CAS). Missing raw is a disabled calm label; WhatsApp has no item.
 - Search this conversation from a timeline bubble. A dismissible chip next to `#q` shows the chat title; clearing it returns unscoped hits for the same query.
 - Quiet **Last time** last-read on the person timeline (localStorage, per archive, not iCloud; not unread). Latest still goes to newest.
 - Person timeline sender filter (All | Them | Me). ANDs with platform, conversation-kind, and attachment-kind. All is default; switching people resets it. Them with no rows is empty + Show all.
