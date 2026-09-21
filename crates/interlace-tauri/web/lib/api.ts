@@ -244,6 +244,7 @@ export const api = {
   search: (args: {
     q: string;
     personId?: number | null;
+    conversationId?: number | null;
     from?: string | null;
     to?: string | null;
     platform?: string | null;

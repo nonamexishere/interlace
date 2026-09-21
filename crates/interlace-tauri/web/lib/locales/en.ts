@@ -7,6 +7,7 @@ export const en = {
   doctor: "Doctor",
   people: "People",
   search: "Search",
+  searchThisConversation: "Search this conversation",
   searchPlaceholder: "Search messages",
   review: "Review",
   import: "Import",

@@ -48,6 +48,7 @@
   let commandOpen = $state(false);
   let searchQ = $state("");
   let seedPerson = $state<Person | null>(null);
+  let seedConversation = $state<{ id: number; title: string; kind: string } | null>(null);
   let booting = $state(true);
   let opening = $state(false);
   let peopleLoading = $state(true);
@@ -216,6 +217,13 @@
       seedPerson = null;
     });
   }
+  function searchThisConversation(seed: { id: number; title: string; kind: string }) {
+    seedConversation = seed;
+    void whenSearchPaneReady().then((qEl) => {
+      qEl?.focus();
+      seedConversation = null;
+    });
+  }
   async function jumpToMessage(args: {
     personId: number;
     messageId: number;
@@ -310,7 +318,7 @@
       showErr, showToast, get err() { return err; }, set err(v) { err = v; },
       setSetup: (v) => {
         setup = v;
-        if (v) { people = []; selectedId = null; events = []; st = null; doctor = []; filter = ""; searchQ = ""; seedPerson = null; includeGroups = false; identities = []; personTitle = "Select a person"; view = "people"; ++peopleGen; confirmOpen = false; confirmRun = null; }
+        if (v) { people = []; selectedId = null; events = []; st = null; doctor = []; filter = ""; searchQ = ""; seedPerson = null; seedConversation = null; includeGroups = false; identities = []; personTitle = "Select a person"; view = "people"; ++peopleGen; confirmOpen = false; confirmRun = null; }
       },
       setBooting: (v) => { booting = v; },
     });
@@ -407,6 +415,7 @@
       archivePath={st.path}
       {friendly}
       {seedPerson}
+      {seedConversation}
       onError={showErr}
       onToast={showToast}
       onJumpToMessage={jumpToMessage}
@@ -466,6 +475,7 @@
       onOpenPicker={openPicker}
       onReveal={revealArchive}
       onSearchFromBubble={searchFromBubble}
+      onSearchThisConversation={searchThisConversation}
       onPeopleChanged={refreshPeople}
     />
   {/if}

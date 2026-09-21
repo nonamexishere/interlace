@@ -451,6 +451,8 @@ pub(crate) struct SearchArgs {
     from: Option<String>,
     to: Option<String>,
     platform: Option<String>,
+    #[serde(default)]
+    conversation_id: Option<i64>,
     conversation_kind: Option<String>,
     attachment_filter: Option<String>,
     #[serde(default)]
@@ -471,7 +473,7 @@ pub(crate) fn search_cmd(
             from: args.from,
             to: args.to,
             platform: parse_platform(args.platform.as_deref().unwrap_or(""))?,
-            conversation_id: None,
+            conversation_id: args.conversation_id,
             conversation_kind: parse_conversation_kind(
                 args.conversation_kind.as_deref().unwrap_or(""),
             )?,

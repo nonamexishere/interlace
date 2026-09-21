@@ -290,7 +290,11 @@ Nothing is fetched from the network. Exports that omitted media show a
 placeholder. Shift-click or Shift+j/k selects a range of bubbles. Right-click a timeline bubble to **Copy text** (one) or **Copy N messages**. ⌘C (Ctrl+C) pastes N bodies in time order, blank-line separated; `#q` / people filter keep native copy.
 The same context menu has **Search**: from a timeline bubble you can open Search
 with that person (Ada — the name, not a raw id); hits load. **⌘F** still
-focuses `#q`.
+focuses `#q`. The same menu also has **Search this conversation**. On Ada’s
+group chat it opens Search scoped to that chat; a dismissible chip next to `#q`
+shows the group title (not a raw id). Clearing the chip returns unscoped hits
+for the same query. Filters still AND. Empty `#q` stays idle. Person Search and
+People timeline find stays on the thread.
 Right-click a stored attachment to **Open** it with the default app after confirm (local CAS: a typed temp copy so Preview/QuickTime can see the type; the archive CAS blob stays hash-named), or **Reveal in Finder** (selects that hash-named blob). Omitted / missing stay placeholders; still no http(s) / Share.
 Copy, Reveal, and Open failures toast (chrome only — “Could not copy” / “Could not open”).
 Sandbox-denied, archive lock, and not-an-archive stay in-page on the
