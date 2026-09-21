@@ -64,9 +64,14 @@
     try {
       rows = await api.reviewList();
       events = await api.linkEvents();
-      if (detail) {
-        const still = rows.find((r) => r.id === detail?.review.id);
-        applyDetail(still ? await api.reviewShow(still.id) : null);
+      const openId = detail?.review.id;
+      const still = openId != null ? rows.find((r) => r.id === openId) : undefined;
+      if (still) {
+        applyDetail(await api.reviewShow(still.id));
+      } else if (rows.length) {
+        await openRow(rows[0].id);
+      } else {
+        applyDetail(null);
       }
     } catch (e) {
       onError(e);
@@ -78,6 +83,9 @@
   async function openRow(id: number) {
     try {
       applyDetail(await api.reviewShow(id));
+      requestAnimationFrame(() => {
+        document.querySelector("[data-review-open]")?.scrollIntoView({ block: "nearest" });
+      });
     } catch (e) {
       onError(e);
     }
@@ -181,8 +189,54 @@
     }
   }
 
+  function onReviewKey(e: KeyboardEvent) {
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+    if (t?.closest("[data-command-palette]")) return;
+    if (confirmOpen || document.querySelector('[role="dialog"]')) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (resolving || undoing) return;
+    const openId = detail?.review.id;
+    const pos = openId != null ? rows.findIndex((r) => r.id === openId) : -1;
+    if (e.key === "j" || e.key === "J" || e.key === "ArrowDown") {
+      e.preventDefault();
+      if (pos >= 0 && pos < rows.length - 1) {
+        void openRow(rows[pos + 1].id);
+      }
+      return;
+    }
+    if (e.key === "k" || e.key === "K" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (pos > 0) {
+        void openRow(rows[pos - 1].id);
+      }
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (!detail && rows.length) {
+        void openRow(rows[0].id);
+      }
+      return;
+    }
+    if (e.key === "a" || e.key === "A") {
+      e.preventDefault();
+      accept();
+      return;
+    }
+    if (e.key === "r" || e.key === "R") {
+      e.preventDefault();
+      reject();
+      return;
+    }
+  }
+
   onMount(() => {
-    reload();
+    void reload();
+    window.addEventListener("keydown", onReviewKey);
+    return () => {
+      window.removeEventListener("keydown", onReviewKey);
+    };
   });
 
   function platformLabel(p: string): string {
@@ -236,6 +290,7 @@
             class="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring {detail?.review.id === r.id
               ? 'bg-accent'
               : ''}"
+            data-review-open={detail?.review.id === r.id || undefined}
             onclick={() => openRow(r.id)}
           >
             {r.left_name} → {r.right_name || "—"}

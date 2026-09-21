@@ -85,6 +85,7 @@ export function handleAppKey(e: KeyboardEvent, ctx: PeopleKeyCtx) {
       ctx.setShowPersonChrome(showPersonChrome);
       return;
     }
+    if (e.defaultPrevented || document.querySelector('[role="dialog"]')) return;
     const view = "people";
     ctx.setView(view);
     return;
