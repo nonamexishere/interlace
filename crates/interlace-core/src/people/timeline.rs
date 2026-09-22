@@ -1,3 +1,5 @@
+use serde::Serialize;
+
 use crate::db::Archive;
 use crate::model::CoreError;
 
@@ -164,6 +166,70 @@ pub fn person_timeline_rows_for(
     attach_labels(archive, &mut out)?;
     attach_recipients(archive, &mut out)?;
     enrich_from_body_tokens(archive, &mut out)?;
+    Ok(out)
+}
+
+/// Counts-only year buckets. WhatsApp, null, or blank platform keeps stored
+/// date digits; any other platform uses host `localtime`. No message bodies.
+/// An unknown person id is an empty vec.
+#[derive(Debug, Clone, Serialize)]
+pub struct PersonYearCount {
+    pub year: i64,
+    pub count: i64,
+    pub first_local_day: String,
+}
+
+pub fn person_year_counts(
+    archive: &Archive,
+    person_id: i64,
+    include_groups: bool,
+) -> Result<Vec<PersonYearCount>, CoreError> {
+    let mut sql = String::from(
+        "SELECT CAST(substr(day, 1, 4) AS INTEGER) AS year, \
+                COUNT(*) AS count, \
+                MIN(day) AS first_local_day \
+         FROM ( \
+           SELECT CASE \
+             WHEN c.platform IS NULL \
+               OR trim(c.platform) = '' \
+               OR lower(c.platform) = 'whatsapp' \
+             THEN CASE \
+               WHEN substr(m.sent_at, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' \
+               THEN substr(m.sent_at, 1, 10) \
+               ELSE NULL \
+             END \
+             ELSE strftime('%Y-%m-%d', m.sent_at, 'localtime') \
+           END AS day \
+           FROM messages m \
+           JOIN conversations c ON c.id = m.conversation_id \
+           WHERE ( \
+                  m.sender_identity_id IN ( \
+                      SELECT identity_id FROM person_identities WHERE person_id = :pid \
+                  ) \
+               OR m.conversation_id IN ( \
+                      SELECT cp.conversation_id \
+                      FROM conversation_participants cp \
+                      JOIN person_identities pi ON pi.identity_id = cp.identity_id \
+                      WHERE pi.person_id = :pid \
+                  ) \
+                )",
+    );
+    if !include_groups {
+        sql.push_str(" AND c.kind IN ('dm', 'email_thread')");
+    }
+    sql.push_str(" ) dated WHERE day IS NOT NULL GROUP BY substr(day, 1, 4) ORDER BY year DESC");
+    let mut stmt = archive.conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::named_params! { ":pid": person_id }, |r| {
+        Ok(PersonYearCount {
+            year: r.get(0)?,
+            count: r.get(1)?,
+            first_local_day: r.get(2)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
     Ok(out)
 }
 

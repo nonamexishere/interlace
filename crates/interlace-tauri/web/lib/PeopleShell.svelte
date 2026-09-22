@@ -134,8 +134,12 @@
     closeCopyMenu: () => void;
     scrollToLatest: () => void; copySelected: () => void;
     openGallery: () => void;
+    jumpToDayKey: (day: string) => void;
     persistLastRead: (index: number) => void;
     extendSelection: (n: number) => void;
+  } | undefined = $state();
+  let inspector: {
+    loadActivityYears: (groups: boolean) => Promise<void>;
   } | undefined = $state();
 
   export function pane() {
@@ -247,9 +251,11 @@
       {onSearchThisConversation}
       onCopyFail={() => showToast("Could not copy")}
       onFocusInspector={focusPersonInspector}
+      loadActivityYears={(groups) => inspector?.loadActivityYears(groups)}
     />
     {#if showPersonChrome}
       <PeopleInspector
+        bind:this={inspector}
         bind:showPersonChrome
         bind:personTitle
         {selectedPerson}
@@ -269,6 +275,7 @@
         {showErr}
         {showToast}
         onSelectPerson={loadPerson}
+        onJumpToDay={(day) => timelinePane?.jumpToDayKey(day)}
       />
     {/if}
   </div>

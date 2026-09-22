@@ -127,6 +127,9 @@ from tauri_gate.people_az_rail import (  # noqa: E402
 from tauri_gate.group_participant_open import (  # noqa: E402
     assert_group_participant_open,
 )
+from tauri_gate.inspector_year_jump import (  # noqa: E402
+    assert_inspector_year_jump,
+)
 from tauri_gate.search_hits import (  # noqa: E402
     assert_search_jump_to_message,
     assert_search_safe_highlight,

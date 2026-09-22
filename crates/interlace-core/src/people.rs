@@ -18,6 +18,7 @@ pub use list::{
 };
 pub use timeline::{
     person_conversations, person_media_rows_for, person_timeline_rows, person_timeline_rows_for,
+    person_year_counts, PersonYearCount,
 };
 
 #[derive(Debug, Clone, Serialize)]

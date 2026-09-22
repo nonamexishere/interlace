@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { fly } from "svelte/transition";
   import {
     api,
@@ -7,16 +7,20 @@
     type Identity,
     type Person,
     type PersonConversation,
+    type PersonYearCount,
     type TimelineRow,
   } from "./api";
   import { humanTime } from "./formatTime";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
+  import { Skeleton } from "$lib/components/ui/skeleton/index.js";
   import { t } from "$lib/i18n";
   import { chromeMotionMs } from "$lib/motion";
   import { writeIncludeGroupsPref } from "./PeoplePrefs";
   import PersonAvatar from "./PersonAvatar.svelte";
   import { isMailRow } from "./TimelineMail";
+
+  type YearJump = (day: string) => void;
 
   let {
     showPersonChrome = $bindable(false),
@@ -38,6 +42,7 @@
     showErr,
     showToast,
     onSelectPerson,
+    onJumpToDay,
   }: {
     showPersonChrome?: boolean;
     personTitle: string;
@@ -58,6 +63,7 @@
     showErr: (e: unknown) => void;
     showToast: (message: string) => void;
     onSelectPerson: (id: number) => void;
+    onJumpToDay: YearJump;
   } = $props();
 
   let nameDraft = $state("");
@@ -178,6 +184,40 @@
     if (person_id === selectedId) return;
     onSelectPerson(person_id);
   }
+
+  let years = $state<PersonYearCount[]>([]);
+  let yearsLoading = $state(false);
+  let yearsError = $state(false);
+  let yearsGen = 0;
+
+  export async function loadActivityYears(groups: boolean) {
+    const gen = ++yearsGen;
+    years = [];
+    yearsError = false;
+    yearsLoading = true;
+    if (selectedId == null) {
+      yearsLoading = false;
+      return;
+    }
+    try {
+      const rows = await api.personYearCounts({
+        id: selectedId,
+        includeGroups: groups,
+      });
+      if (gen !== yearsGen) return;
+      years = rows;
+      yearsLoading = false;
+    } catch {
+      if (gen !== yearsGen) return;
+      years = [];
+      yearsError = true;
+      yearsLoading = false;
+    }
+  }
+
+  onMount(() => {
+    void loadActivityYears(includeGroups);
+  });
 </script>
 
 {#if showPersonChrome}
@@ -201,6 +241,31 @@
     {t("lastActivity")}
     {humanTime(selectedPerson?.last_activity_at)}
   </p>
+  {#if yearsLoading || yearsError || years.length}
+    <div data-activity-years class="flex flex-col items-start gap-1" aria-busy={yearsLoading}>
+      {#if yearsLoading}
+        <Skeleton class="h-3 w-24" />
+        <Skeleton class="h-3 w-16" />
+      {:else if yearsError}
+        <p class="text-xs text-muted-foreground">{t("activityYearsFailed")}</p>
+        <button
+          type="button"
+          class="text-left text-xs text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          onclick={() => void loadActivityYears(includeGroups)}
+        >{t("activityYearsRetry")}</button>
+      {:else}
+        <p class="text-xs font-medium">{t("activityYears")}</p>
+        {#each years as row (row.year)}
+          <button
+            type="button"
+            data-activity-year
+            class="text-left text-xs tabular-nums text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            onclick={() => onJumpToDay(row.first_local_day)}
+          >{row.year} {row.count}</button>
+        {/each}
+      {/if}
+    </div>
+  {/if}
   {#if timeline[tlIndex] && isMailRow(timeline[tlIndex])}
     {@const rec = timeline[tlIndex].recipients}
     {#if rec && (rec.to.length || rec.cc.length || rec.bcc.length)}
@@ -290,7 +355,11 @@
         type="checkbox"
         class="focus-visible:ring-2 focus-visible:ring-ring"
         bind:checked={includeGroups}
-        onchange={() => { writeIncludeGroupsPref(includeGroups); onReloadPerson(includeGroups); }}
+        onchange={() => {
+          writeIncludeGroupsPref(includeGroups);
+          onReloadPerson(includeGroups);
+          void loadActivityYears(includeGroups);
+        }}
       />
       include groups
     </label>
