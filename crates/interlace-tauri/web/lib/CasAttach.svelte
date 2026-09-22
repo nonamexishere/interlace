@@ -24,10 +24,12 @@
     items,
     showToast,
     flush = false,
+    onOpenImage,
   }: {
     items: Attachment[];
     showToast?: (message: string) => void;
     flush?: boolean;
+    onOpenImage?: (a: Attachment) => void;
   } = $props();
 
   function isImage(a: Attachment) {
@@ -331,6 +333,10 @@
             class="block cursor-pointer border-0 bg-transparent p-0 text-left focus-visible:ring-2 focus-visible:ring-ring"
             onclick={(e) => {
               e.stopPropagation();
+              if (onOpenImage) {
+                onOpenImage(a);
+                return;
+              }
               openLightbox(a);
             }}
             aria-label={`Open ${a.filename || "image"} full size`}

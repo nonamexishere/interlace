@@ -1,8 +1,10 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import { api, type Identity, type Person, type PersonConversation, type TimelineRow } from "./api";
+  import { api, type Attachment, type Identity, type Person, type PersonConversation, type TimelineRow } from "./api";
   import TimelineFilters from "./TimelineFilters.svelte";
+  import TimelineLightbox from "./TimelineLightbox.svelte";
   import TimelineList from "./TimelineList.svelte";
+  import { collectOlderThreadRows, readThreadPhoto, threadImages, threadIndex, type ThreadTarget } from "./threadWalk";
   import { platformLabel, rowMatchesAttachKind } from "./TimelineMail";
   import { rangeIds, selectionLive } from "./TimelineSelect";
   import { lastReadFor, persistLastRead as writePersonLastRead, writeIncludeGroupsPref } from "./PeoplePrefs";
@@ -71,6 +73,20 @@
   let tlAppending = $state(false);
   let tlError = $state("");
   let tlGen = 0;
+  let threadTarget = $state<ThreadTarget | null>(null);
+  let threadSrc = $state<string | null>(null);
+  let threadBroken = $state<string[]>([]);
+  let threadOlderExhausted = $state(false);
+  let threadWalkGen = 0;
+  let threadPrevToken = 0;
+  let threadPrevBusy = false;
+  const threadPhotoCache = new Map<string, string | null>();
+
+  function invalidateThreadWalk() {
+    threadWalkGen += 1;
+    threadPrevToken += 1;
+    threadPrevBusy = false;
+  }
   let findQ = $state(""), jumpDay = $state(""), jumpGen = 0, dayPin = false;
   let galleryOpen = $state(false);
   let quotedOpen = $state<Record<number, boolean>>({});
@@ -214,6 +230,23 @@
   }
 
   const oldestCursor = $derived(oldestSentAt(timeline));
+  const threadSteps = $derived(threadImages(filteredTimeline).filter((step) => !threadBroken.includes(step.hash)));
+  const threadAt = $derived(threadTarget ? threadIndex(threadSteps, threadTarget) : -1);
+  const nextAtEnd = $derived(threadAt < 0 || threadAt >= threadSteps.length - 1);
+  const prevExhausted = $derived(threadAt < 0 ? true : threadAt === 0 && (!oldestCursor || threadOlderExhausted));
+  const threadAlt = $derived.by(() => {
+    if (!threadTarget) return "image";
+    const pools = [filteredTimeline.map((item) => item.row), timeline];
+    for (const pool of pools) {
+      for (const row of pool) {
+        if (row.message_id !== threadTarget.message_id) continue;
+        for (const a of row.attachments ?? []) {
+          if (a.id === threadTarget.attachment_id) return a.filename || "image";
+        }
+      }
+    }
+    return "image";
+  });
   const selectedConversation = $derived(
     conversations.find((c) => c.id === selectedConversationId),
   );
@@ -229,6 +262,10 @@
   }
 
   export async function selectPerson(id: number, append = false, keepConversation = false, groups = includeGroups) {
+    if (!append) threadTarget = null
+    if (!append) threadSrc = null
+    if (!append) threadOlderExhausted = false
+    if (!append) invalidateThreadWalk()
     const loadArchiveId = archive_id;
     includeGroups = groups;
     if (append && tlLoading) return;
@@ -276,18 +313,28 @@
       const pane = document.getElementById("person-timeline");
       const prevHeight = pane?.scrollHeight ?? 0;
       const chrono = page.toReversed();
+      let added = chrono;
       if (append) {
-        list?.shiftHeightsForPrepend(chrono.length);
+        const seen = new Set(timeline.map((row) => row.message_id));
+        added = chrono.filter((row) => !seen.has(row.message_id));
+        if (added.length === 0) {
+          list?.abandonPrependShift();
+          return;
+        }
+        list?.shiftHeightsForPrepend(added.length);
       } else {
         list?.resetHeights();
       }
-      timeline = append ? chrono.concat(timeline) : chrono;
+      timeline = append ? added.concat(timeline) : chrono;
       if (loadArchiveId === archive_id) loadedArchiveId = archive_id;
-      if (append) tlIndex += chrono.length;
+      if (append) tlIndex += added.length;
       else tlIndex = Math.max(0, chrono.length - 1);
       if (append) {
         await tick();
-        if (gen !== tlGen) return;
+        if (gen !== tlGen) {
+          list?.abandonPrependShift();
+          return;
+        }
         list?.preserveScrollAfterPrepend(prevHeight);
       } else {
         // Loading line still in the pane makes one rAF land short after wrap.
@@ -324,6 +371,10 @@
     messageId: number,
     sentAt?: string | null,
   ) {
+    threadTarget = null
+    threadSrc = null
+    threadOlderExhausted = false
+    invalidateThreadWalk()
     const loadArchiveId = archive_id;
     showPersonChrome = false;
     platformFilter = "all";
@@ -474,13 +525,174 @@
     }).then((scrolled) => { if (jumpGen === gen && !scrolled) dayPin = false; });
   }
 
+  async function cachedPhoto(hash: string): Promise<string | null> {
+    if (!hash) return null;
+    if (threadPhotoCache.has(hash)) return threadPhotoCache.get(hash) ?? null;
+    const url = await readThreadPhoto(hash);
+    threadPhotoCache.set(hash, url);
+    if (!url && !threadBroken.includes(hash)) threadBroken = [...threadBroken, hash];
+    return url;
+  }
+
+  function noteBroken(hash: string) {
+    if (!hash) return;
+    threadPhotoCache.set(hash, null);
+    if (!threadBroken.includes(hash)) threadBroken = [...threadBroken, hash];
+  }
+
+  function hashForTarget(target: ThreadTarget): string {
+    const steps = threadImages(filteredTimeline);
+    const at = threadIndex(steps, target);
+    if (at >= 0) return steps[at].hash;
+    for (const row of timeline) {
+      if (row.message_id !== target.message_id) continue;
+      for (const a of row.attachments ?? []) {
+        if (a.id === target.attachment_id) return a.cas_hash || "";
+      }
+    }
+    return "";
+  }
+
+  async function stepLoaded(dir: 1 | -1, gen: number): Promise<boolean> {
+    if (!threadTarget) return false;
+    const target = { message_id: threadTarget.message_id, attachment_id: threadTarget.attachment_id };
+    const steps = threadImages(filteredTimeline);
+    const at = threadIndex(steps, target);
+    if (at < 0) return false;
+    const ordered = dir < 0 ? steps.slice(0, at).reverse() : steps.slice(at + 1);
+    for (const step of ordered) {
+      if (gen !== threadWalkGen || selectedId == null || !threadTarget) return false;
+      const url = await cachedPhoto(step.hash);
+      if (gen !== threadWalkGen || selectedId == null || !threadTarget) return false;
+      if (!url) continue;
+      threadSrc = url;
+      threadTarget = { message_id: step.message_id, attachment_id: step.attachment_id };
+      return true;
+    }
+    return false;
+  }
+
+  function closeThread() {
+    threadTarget = null;
+    threadSrc = null;
+    invalidateThreadWalk();
+  }
+
+  async function openThreadImage(messageId: number, attachment: Attachment) {
+    const gen = ++threadWalkGen;
+    const token = ++threadPrevToken;
+    threadPrevBusy = true;
+    try {
+      const hash = attachment.cas_hash ?? "";
+      if (!hash) return;
+      const url = await cachedPhoto(hash);
+      if (gen !== threadWalkGen || selectedId == null) return;
+      if (url) {
+        threadSrc = url;
+        threadTarget = { message_id: messageId, attachment_id: attachment.id };
+        return;
+      }
+      const steps = threadImages(filteredTimeline);
+      const at = threadIndex(steps, { message_id: messageId, attachment_id: attachment.id });
+      const newer = at < 0 ? [] : steps.slice(at + 1);
+      const older = at <= 0 ? [] : steps.slice(0, at).reverse();
+      for (const step of [...newer, ...older]) {
+        const nextUrl = await cachedPhoto(step.hash);
+        if (gen !== threadWalkGen || selectedId == null) return;
+        if (!nextUrl) continue;
+        threadSrc = nextUrl;
+        threadTarget = { message_id: step.message_id, attachment_id: step.attachment_id };
+        return;
+      }
+    } finally {
+      if (threadPrevToken === token) threadPrevBusy = false;
+    }
+  }
+
+  async function onThreadNext() {
+    if (!threadTarget || nextAtEnd) return;
+    const gen = ++threadWalkGen;
+    await stepLoaded(1, gen);
+  }
+
+  async function applyOlderThreadRows(rows: TimelineRow[]) {
+    if (rows.length === 0) return;
+    const sc = document.getElementById("person-timeline");
+    const prevHeight = sc?.scrollHeight ?? 0;
+    const prevTop = sc?.scrollTop ?? 0;
+    timeline = rows.concat(timeline);
+    tlIndex += rows.length;
+    list?.resetHeights();
+    await tick();
+    list?.holdScrollAfterGrowth(prevHeight, prevTop);
+  }
+
+  async function onThreadPrev() {
+    if (threadPrevBusy || !threadTarget || prevExhausted || selectedId == null) return;
+    const token = ++threadPrevToken;
+    threadPrevBusy = true;
+    const gen = ++threadWalkGen;
+    const person = selectedId;
+    try {
+      const moved = await stepLoaded(-1, gen);
+      if (threadPrevToken !== token || gen !== threadWalkGen || selectedId !== person || !threadTarget) return;
+      if (moved || threadAt < 0) return;
+      if (!oldestCursor || threadOlderExhausted) {
+        threadOlderExhausted = true;
+        return;
+      }
+      const result = await collectOlderThreadRows({
+        oldestCursor: () => oldestCursor,
+        knownIds: () => timeline.map((row) => row.message_id),
+        fetchPage: (before) =>
+          api.personTimeline({
+            id: person,
+            includeGroups,
+            limit: TIMELINE_PAGE_LIMIT,
+            before,
+            conversationId: selectedConversationId,
+            ...(attachKindFilter !== "all" ? { attachKind: attachKindFilter } : {}),
+          }),
+        keeps: (row) =>
+          (platformFilter === "all" || row.platform === platformFilter) &&
+          (kindFilter === "all" || row.conversation_kind === kindFilter) &&
+          (attachKindFilter === "all" || rowMatchesAttachKind(row, attachKindFilter)) &&
+          (fromMeFilter === "all" ||
+            (fromMeFilter === "me" && row.from_me === true) ||
+            (fromMeFilter === "them" && row.from_me === false)),
+        alive: () => threadWalkGen === gen && threadPrevToken === token && threadTarget != null && selectedId === person,
+      });
+      if (threadPrevToken !== token || gen !== threadWalkGen || selectedId !== person || !threadTarget) return;
+      if (result.cancelled) return;
+      if (result.rows.length > 0) await applyOlderThreadRows(result.rows);
+      if (threadPrevToken !== token || gen !== threadWalkGen || selectedId !== person || !threadTarget) return;
+      const landed = await stepLoaded(-1, gen);
+      if (!landed && result.exhausted) threadOlderExhausted = true;
+    } finally {
+      if (threadPrevToken === token) threadPrevBusy = false;
+    }
+  }
+
+  async function onThreadBroken() {
+    if (!threadTarget) return;
+    const gen = ++threadWalkGen;
+    const hash = hashForTarget(threadTarget);
+    noteBroken(hash);
+    const moved = await stepLoaded(1, gen);
+    if (gen !== threadWalkGen || !threadTarget) return;
+    if (moved) return;
+    const back = await stepLoaded(-1, gen);
+    if (gen !== threadWalkGen) return;
+    if (!back) closeThread();
+  }
+
   export function closeCopyMenu() { list?.closeCopy(); }
   export function scrollToLatest() { list?.scrollToLatest(); }
   export function copySelected() { list?.copySelected(); }
   export function openGallery() { galleryOpen = true; }
 </script>
 
-<div class="flex min-h-0 min-w-0 flex-1 flex-col">
+<div class="flex min-h-0 min-w-0 flex-1 overflow-hidden flex-col">
   <div class="relative z-20 shrink-0 bg-background px-4 pt-4">
     <div class="mb-3 flex items-baseline justify-between gap-3">
       <h1 class="text-xl font-semibold tracking-tight">
@@ -621,7 +833,20 @@
     bind:anchorId
     {extendSelection}
     onClearDayPin={() => (dayPin = false, jumpGen++)}
+    onOpenImage={(messageId, attachment) => void openThreadImage(messageId, attachment)}
   />
+  {#if threadTarget && threadSrc}
+    <TimelineLightbox
+      src={threadSrc}
+      alt={threadAlt}
+      {nextAtEnd}
+      {prevExhausted}
+      onClose={closeThread}
+      onPrev={() => void onThreadPrev()}
+      onNext={() => void onThreadNext()}
+      onBroken={() => void onThreadBroken()}
+    />
+  {/if}
   <PersonMediaDialog
     bind:open={galleryOpen}
     {selectedId}

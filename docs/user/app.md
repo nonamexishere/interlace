@@ -270,7 +270,10 @@ Platform chips and banners use owned Badge and Card primitives, not one-off chro
 Photos, stickers, voice notes, videos, and PDFs stored in the archive
 `cas/` folder open in the timeline (and search). Click a photo thumbnail
 for a full-size in-window lightbox (Esc or backdrop to close; arrow keys
-when a message has several images). A photo thumbnail reserves its slot so
+when a message has several images). In the People timeline, next and prev
+walk photos across messages; next stops at the last loaded photo, and prev
+loads older pages when that photo is not loaded yet (a miss stays quiet).
+A photo thumbnail reserves its slot so
 the timeline does not jump. Stickers that are images still
 lightbox. Voice notes play in-app with play/pause, elapsed/duration, and a
 progress track you can scrub; audio is loaded only from local CAS bytes

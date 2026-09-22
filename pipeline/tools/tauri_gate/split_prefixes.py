@@ -92,6 +92,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_az_letter_rail",
     "assert_group_participant_open",
     "assert_inspector_year_jump",
+    "assert_lightbox_thread",
     "assert_custom_titlebar",
     "assert_people_sidebar_collapse",
     "assert_person_inspector",

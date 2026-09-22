@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { TimelineRow } from "./api";
+  import type { Attachment, TimelineRow } from "./api";
   import { localDay, utcTime } from "./formatTime";
   import { splitUrls } from "./linkify";
   import LinkifyBody from "./LinkifyBody.svelte";
@@ -28,6 +28,7 @@
     onPrepend,
     findQ = "",
     lastReadMessageId = undefined,
+    onOpenImage,
   }: {
     windowedDayGroups: {
       key: string;
@@ -51,6 +52,7 @@
     onPrepend?: () => void;
     findQ?: string;
     lastReadMessageId?: number;
+    onOpenImage: (messageId: number, a: Attachment) => void;
   } = $props();
 
   function onRowContextMenu(e: MouseEvent, row: TimelineRow) {
@@ -222,7 +224,7 @@
                   </p>
                 {/if}
               </div>
-              <CasAttach data-bubble-attach flush={true} items={item.row.attachments || []} {showToast} />
+              <CasAttach data-bubble-attach flush={true} items={item.row.attachments || []} {showToast} onOpenImage={(a) => onOpenImage(item.row.message_id, a)} />
             </article>
             </div>
           </div>
