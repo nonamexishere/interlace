@@ -36,6 +36,7 @@
     onSearchThisConversation,
     onCopyFail,
     onFocusInspector,
+    loadActivityYears,
   }: {
     selectedId?: number | null;
     personTitle?: string;
@@ -59,6 +60,7 @@
     onSearchThisConversation: (seed: { id: number; title: string; kind: string }) => void;
     onCopyFail: () => void;
     onFocusInspector: () => void;
+    loadActivityYears: (groups: boolean) => void;
   } = $props();
 
   let platformFilter = $state("all");
@@ -454,6 +456,13 @@
     });
   }
 
+  export function jumpToDayKey(day: string) {
+    const key = (day ?? "").trim();
+    if (!key || selectedId == null) return;
+    jumpDay = key;
+    goToJumpDay();
+  }
+
   function goToJumpDay() {
     const gen = ++jumpGen, id = selectedId, key = jumpDay; dayPin = true;
     void jumpToLocalDay({
@@ -596,6 +605,7 @@
       includeGroups = true;
       writeIncludeGroupsPref(true);
       void selectPerson(selectedId);
+      loadActivityYears(true);
     }}
     {openUrl}
     {showToast}
@@ -621,6 +631,7 @@
       includeGroups = true;
       writeIncludeGroupsPref(true);
       void selectPerson(selectedId);
+      loadActivityYears(true);
     }}
     {onImport}
     {openPersonAtMessage}

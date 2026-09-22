@@ -82,6 +82,12 @@ export type PersonConversation = {
   last_at?: string | null;
 };
 
+export type PersonYearCount = {
+  year: number;
+  count: number;
+  first_local_day: string;
+};
+
 export type ConversationParticipantName = {
   identity_id: number;
   display_name?: string | null;
@@ -224,6 +230,8 @@ export const api = {
     conversationId?: number | null;
     attachKind?: string | null;
   }) => invoke<TimelineRow[]>("person_timeline", args),
+  personYearCounts: (args: { id: number; includeGroups: boolean }) =>
+    invoke<PersonYearCount[]>("person_year_counts", args),
   personConversations: (args: { id: number; includeGroups: boolean }) =>
     invoke<PersonConversation[]>("person_conversations_cmd", args),
   personMedia: (args: {

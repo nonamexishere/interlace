@@ -73,6 +73,18 @@ pub(crate) fn person_timeline(
 }
 
 #[tauri::command]
+pub(crate) fn person_year_counts(
+    state: tauri::State<AppState>,
+    id: i64,
+    include_groups: bool,
+) -> Result<serde_json::Value, String> {
+    with_arch(&state, |arch| {
+        let rows = interlace_core::person_year_counts(arch, id, include_groups).map_err(err)?;
+        serde_json::to_value(rows).map_err(err)
+    })
+}
+
+#[tauri::command]
 pub(crate) fn person_media(
     state: tauri::State<AppState>,
     id: i64,

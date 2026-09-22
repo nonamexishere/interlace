@@ -169,7 +169,7 @@ spinner. Caption grouping stays on the filtered set. Each bubble
 shows a small text **platform chip** (not a brand logo). An **optional right inspector**
 (off by default) opens when you click the person name at the top of the
 conversation: identities and last activity, with Merge, include groups, and
-unlink there. The inspector can rename a person (rename is not a merge —
+unlink there. With the inspector open, years with counts sit under last activity; a year with no messages is absent, and a click jumps to that day the way the day control does. The inspector can rename a person (rename is not a merge —
 identities and message senders stay put) and save a notes field that persists
 in the archive SQLite. When include groups is on and the open conversation is a group,
 the inspector lists participant names as controls; click Berk to open that
