@@ -172,8 +172,9 @@ conversation: identities and last activity, with Merge, include groups, and
 unlink there. The inspector can rename a person (rename is not a merge —
 identities and message senders stay put) and save a notes field that persists
 in the archive SQLite. When include groups is on and the open conversation is a group,
-the inspector lists participant names; DMs do not grow a member list. Names
-are text, not ids. It is not a second timeline. The person timeline is a **chat**, not a log:
+the inspector lists participant names as controls; click Berk to open that
+person. A leftover name with no live person stays put with a calm toast.
+DMs do not grow a member list. Names are text, not ids. It is not a second timeline. The person timeline is a **chat**, not a log:
 messages you sent sit on the right, the other person on the left. Each
 bubble caption is **hour:minute** (host timezone) plus the platform chip — not the
 calendar date again. Consecutive same-side, same-conversation, same calendar day

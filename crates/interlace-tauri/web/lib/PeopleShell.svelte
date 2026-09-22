@@ -267,6 +267,8 @@
         onOpenGallery={() => timelinePane?.openGallery()}
         {onPeopleChanged}
         {showErr}
+        {showToast}
+        onSelectPerson={loadPerson}
       />
     {/if}
   </div>

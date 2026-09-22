@@ -43,11 +43,13 @@ pub struct PersonIdentity {
 }
 
 /// Identity name on one conversation (`conversation_participants` ⨝ `identities`).
+/// `person_id` is the live person for that identity, or `None` if unlinked / tombstoned.
 #[derive(Debug, Clone, Serialize)]
 pub struct ConversationParticipantName {
     pub identity_id: i64,
     pub display_name: Option<String>,
     pub value: String,
+    pub person_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]

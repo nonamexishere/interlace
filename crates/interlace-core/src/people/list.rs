@@ -167,9 +167,11 @@ pub fn conversation_participant_names(
     conversation_id: i64,
 ) -> Result<Vec<ConversationParticipantName>, CoreError> {
     let mut stmt = archive.conn.prepare(
-        "SELECT cp.identity_id, i.display_name, COALESCE(i.value_normalized, i.value_raw)
+        "SELECT cp.identity_id, i.display_name, COALESCE(i.value_normalized, i.value_raw), p.id
          FROM conversation_participants cp
          JOIN identities i ON i.id = cp.identity_id
+         LEFT JOIN person_identities pi ON pi.identity_id = cp.identity_id
+         LEFT JOIN persons p ON p.id = pi.person_id AND p.tombstoned_at IS NULL
          WHERE cp.conversation_id = ?1
          ORDER BY cp.identity_id",
     )?;
@@ -178,6 +180,7 @@ pub fn conversation_participant_names(
             identity_id: r.get(0)?,
             display_name: r.get(1)?,
             value: r.get(2)?,
+            person_id: r.get(3)?,
         })
     })?;
     let mut out = Vec::new();

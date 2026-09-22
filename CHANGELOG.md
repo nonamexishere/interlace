@@ -13,6 +13,7 @@ unsigned **`app-v0.1.2`**.
 
 ### Added
 
+- Click a group participant name in the inspector to open that person. A leftover name stays put with a toast. DMs still have no member list.
 - A–Z people list shows sticky letter headings on the unpinned rest and a quiet present-letters rail (click jumps without changing the open person). Recent and the collapsed sidebar have neither; `/` reduces both. Names that start with punctuation sit under # (end of the rest / rail).
 - Review queue keyboard: first card opens on load; `j`/`k` or arrows move the open card (stop at the ends); Enter opens detail if closed; `a`/`r` open the existing Accept/Reject confirms; Esc on a confirm stays on Review.
 - Mail bubbles show a muted To line (To-role names, first three then `+k`; hidden when empty). Inspector lists To / Cc / Bcc for the highlighted mail. A WhatsApp bubble has no To line.

@@ -132,6 +132,8 @@ export const en = {
   pinPerson: "Pin",
   unpinPerson: "Unpin",
   letterRail: "Jump to letter",
+  self: "(self)",
+  noLivePerson: "No live person for that name",
 } as const;
 
 export type ChromeKey = keyof typeof en;

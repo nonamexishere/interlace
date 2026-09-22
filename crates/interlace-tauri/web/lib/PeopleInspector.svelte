@@ -36,6 +36,8 @@
     onOpenGallery,
     onPeopleChanged,
     showErr,
+    showToast,
+    onSelectPerson,
   }: {
     showPersonChrome?: boolean;
     personTitle: string;
@@ -54,6 +56,8 @@
     onOpenGallery: () => void;
     onPeopleChanged: () => Promise<void>;
     showErr: (e: unknown) => void;
+    showToast: (message: string) => void;
+    onSelectPerson: (id: number) => void;
   } = $props();
 
   let nameDraft = $state("");
@@ -165,6 +169,15 @@
     void timeline[tlIndex]?.message_id;
     inspectorEl?.scrollTo(0, 0);
   });
+
+  function openParticipant(person_id: number | null) {
+    if (person_id == null) {
+      showToast(t("noLivePerson"));
+      return;
+    }
+    if (person_id === selectedId) return;
+    onSelectPerson(person_id);
+  }
 </script>
 
 {#if showPersonChrome}
@@ -294,8 +307,16 @@
   {#if includeGroups && conversation_kind === "group"}
     <p class="text-xs font-medium">{t("inThisGroup")}</p>
     <ul data-group-participants class="space-y-1 text-sm text-muted-foreground">
-      {#each participants as participant}
-        <li>{participant.display_name || participant.value}</li>
+      {#each participants as participant (participant.identity_id)}
+        <li>
+          <button
+            type="button"
+            class="text-left focus-visible:ring-2 focus-visible:ring-ring"
+            onclick={() => openParticipant(participant.person_id)}
+          >
+            {participant.display_name || participant.value}{#if personById(participant.person_id)?.is_self} {t("self")}{/if}
+          </button>
+        </li>
       {/each}
     </ul>
   {/if}

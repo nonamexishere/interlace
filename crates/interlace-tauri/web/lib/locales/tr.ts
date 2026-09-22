@@ -134,4 +134,6 @@ export const tr: ChromePack = {
   pinPerson: "Sabitle",
   unpinPerson: "Sabitten çıkar",
   letterRail: "Harfe atla",
+  self: "(ben)",
+  noLivePerson: "Bu ad için canlı kişi yok",
 };

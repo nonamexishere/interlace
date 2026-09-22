@@ -90,6 +90,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_mail_recipients",
     "assert_review_keys",
     "assert_az_letter_rail",
+    "assert_group_participant_open",
     "assert_custom_titlebar",
     "assert_people_sidebar_collapse",
     "assert_person_inspector",
