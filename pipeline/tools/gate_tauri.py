@@ -207,6 +207,7 @@ def main() -> None:
     assert_group_participant_open(crate)
     assert_inspector_year_jump(crate)
     assert_lightbox_thread(crate)
+    assert_voice_next(crate)
     assert_custom_titlebar(crate)
     assert_people_sidebar_collapse(crate)
     assert_person_inspector(crate)

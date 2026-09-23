@@ -133,6 +133,9 @@ from tauri_gate.inspector_year_jump import (  # noqa: E402
 from tauri_gate.lightbox_thread import (  # noqa: E402
     assert_lightbox_thread,
 )
+from tauri_gate.voice_next import (  # noqa: E402
+    assert_voice_next,
+)
 from tauri_gate.search_hits import (  # noqa: E402
     assert_search_jump_to_message,
     assert_search_safe_highlight,
