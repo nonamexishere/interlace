@@ -193,7 +193,7 @@
       publishVoice({ playing: false });
       return;
     }
-    startVoiceHost(host, next.message_id, next.key, next.casDataUrl);
+    startVoiceHost(host, next.message_id, next.key, next.casDataUrl, filteredTimeline);
   }
 
   function stopVoiceIfFilteredOut() {

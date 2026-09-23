@@ -67,11 +67,16 @@ export function clearVoiceHost(host: HTMLAudioElement | null | undefined) {
   publishVoice({ playing: false, messageId: 0, key: "", time: 0, duration: 0 });
 }
 
+function playErrorName(err: unknown): string {
+  return err && typeof err === "object" && "name" in err ? String((err as { name: string }).name) : "";
+}
+
 export function startVoiceHost(
   host: HTMLAudioElement,
   message_id: number,
   key: string,
   casDataUrl: string,
+  filteredTimeline: VoiceRow[],
 ) {
   if (!casDataUrl) return;
   host.src = casDataUrl;
@@ -81,9 +86,22 @@ export function startVoiceHost(
     if (!row.paused) row.pause();
   });
   publishVoice({ messageId: message_id, key, playing: true, time: 0 });
-  void host.play().catch(() => {
+  void host.play().catch((err: unknown) => {
+    const name = playErrorName(err);
+    if (name === "AbortError") return;
+    if (name === "NotAllowedError") {
+      if (host.dataset.voiceKey === key && host.dataset.voiceMsg === String(message_id)) {
+        publishVoice({ playing: false });
+      }
+      return;
+    }
     voiceBroken[key] = true;
-    publishVoice({ playing: false });
+    const next = nextPlayableVoice(filteredTimeline, message_id, key);
+    if (!next) {
+      publishVoice({ playing: false });
+      return;
+    }
+    startVoiceHost(host, next.message_id, next.key, next.casDataUrl, filteredTimeline);
   });
 }
 
