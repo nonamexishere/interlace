@@ -14,6 +14,14 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import PersonMediaDialog from "./PersonMediaDialog.svelte";
   import { t } from "$lib/i18n";
+  import {
+    clearVoiceHost,
+    consumeSeekEnded,
+    nextPlayableVoice,
+    publishVoice,
+    startVoiceHost,
+    warmVoiceUrls,
+  } from "./voiceHost";
 
   let {
     selectedId = $bindable<number | null>(null),
@@ -89,6 +97,7 @@
   }
   let findQ = $state(""), jumpDay = $state(""), jumpGen = 0, dayPin = false;
   let galleryOpen = $state(false);
+  let voiceHostEl = $state<HTMLAudioElement | null>(null);
   let quotedOpen = $state<Record<number, boolean>>({});
   let list: {
     ensureTlIndexVisible: (index: number) => void;
@@ -171,6 +180,61 @@
 
   $effect(() => {
     visibleTlIndices = filteredTimeline.map((item) => item.index);
+  });
+
+  function onVoiceHostEnded() {
+    if (consumeSeekEnded()) return;
+    const host = voiceHostEl;
+    if (!host) return;
+    const message_id = Number(host.dataset.voiceMsg || "0");
+    const key = host.dataset.voiceKey || "";
+    const next = nextPlayableVoice(filteredTimeline, message_id, key);
+    if (!next) {
+      publishVoice({ playing: false });
+      return;
+    }
+    startVoiceHost(host, next.message_id, next.key, next.casDataUrl, filteredTimeline);
+  }
+
+  function stopVoiceIfFilteredOut() {
+    const host = voiceHostEl;
+    if (!host) return;
+    const message_id = Number(host.dataset.voiceMsg || "0");
+    if (!message_id) return;
+    const live = filteredTimeline.some((item) => item.row.message_id === message_id);
+    if (live) return;
+    host.pause();
+    host.src = "";
+    publishVoice({ playing: false, messageId: 0, key: "" });
+  }
+
+  $effect(() => {
+    warmVoiceUrls(filteredTimeline);
+    stopVoiceIfFilteredOut();
+  });
+
+  $effect(() => {
+    const host = voiceHostEl;
+    if (!host) return;
+    const sync = () => {
+      publishVoice({
+        time: host.currentTime || 0,
+        duration: Number.isFinite(host.duration) ? host.duration : 0,
+        playing: !host.paused && !host.ended,
+      });
+    };
+    host.addEventListener("timeupdate", sync);
+    host.addEventListener("play", sync);
+    host.addEventListener("pause", sync);
+    host.addEventListener("loadedmetadata", sync);
+    host.addEventListener("durationchange", sync);
+    return () => {
+      host.removeEventListener("timeupdate", sync);
+      host.removeEventListener("play", sync);
+      host.removeEventListener("pause", sync);
+      host.removeEventListener("loadedmetadata", sync);
+      host.removeEventListener("durationchange", sync);
+    };
   });
 
   $effect(() => {
@@ -263,6 +327,7 @@
   }
 
   export async function selectPerson(id: number, append = false, keepConversation = false, groups = includeGroups) {
+    if (!append) clearVoiceHost(voiceHostEl);
     if (!append) threadTarget = null
     if (!append) threadSrc = null
     if (!append) threadOlderExhausted = false
@@ -373,6 +438,7 @@
     messageId: number,
     sentAt?: string | null,
   ) {
+    clearVoiceHost(voiceHostEl);
     threadTarget = null
     threadSrc = null
     threadOlderExhausted = false
@@ -786,6 +852,9 @@
         <Button type="button" variant="outline" size="sm" data-person-gallery-open onclick={() => (galleryOpen = true)}>{t("media")}</Button>
       </div>
     {/if}
+  </div>
+  <div data-voice-note data-voice-host class="hidden" hidden>
+    <audio bind:this={voiceHostEl} hidden preload="metadata" onended={onVoiceHostEnded}></audio>
   </div>
   <TimelineList
     bind:this={list}

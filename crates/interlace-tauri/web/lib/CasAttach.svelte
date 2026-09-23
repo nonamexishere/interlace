@@ -6,6 +6,7 @@
   import { api } from "./api";
   import { t } from "./i18n";
   import { togglePlay } from "./CasVoice";
+  import { armVoiceSeek, publishVoice, readVoice, subscribeVoice, voiceBroken, voiceUrls, type VoiceSnap } from "./voiceHost";
   import CasPdf from "./CasPdf.svelte";
   import CasVideo from "./CasVideo.svelte";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
@@ -25,11 +26,13 @@
     showToast,
     flush = false,
     onOpenImage,
+    messageId = undefined,
   }: {
     items: Attachment[];
     showToast?: (message: string) => void;
     flush?: boolean;
     onOpenImage?: (a: Attachment) => void;
+    messageId?: number;
   } = $props();
 
   function isImage(a: Attachment) {
@@ -88,9 +91,11 @@
         .casDataUrl(hash)
         .then((url) => {
           srcs = { ...srcs, [k]: url };
+          voiceUrls[k] = url;
         })
         .catch(() => {
           broken = { ...broken, [k]: true };
+          voiceBroken[k] = true;
         });
     }
   });
@@ -270,6 +275,11 @@
   let playing = $state<Record<string, boolean>>({});
   let currentTimes = $state<Record<string, number>>({});
   let durations = $state<Record<string, number>>({});
+  let voiceSnap = $state<VoiceSnap>(readVoice());
+
+  $effect(() => subscribeVoice(() => {
+    voiceSnap = readVoice();
+  }));
 
   function formatTime(sec: number): string {
     if (!Number.isFinite(sec) || sec < 0) return "0:00";
@@ -307,6 +317,12 @@
     if (!Number.isFinite(next) || next < 0) return;
     el.currentTime = next;
     currentTimes = { ...currentTimes, [key]: next };
+    const host = document.querySelector<HTMLAudioElement>("[data-voice-host] audio");
+    if (host && messageId != null && host.dataset.voiceKey === key && host.dataset.voiceMsg === String(messageId)) {
+      armVoiceSeek();
+      host.currentTime = next;
+      publishVoice({ time: next });
+    }
   }
 </script>
 
@@ -374,14 +390,20 @@
           />
         {:else if isAudio(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
           {@const key = keyOf(a)}
-          {@const dur = durations[key] ?? 0}
+          {@const hosted = messageId != null && voiceSnap.messageId === messageId && voiceSnap.key === key}
+          {@const showPause = hosted ? voiceSnap.playing : !!playing[key]}
+          {@const dur = hosted && voiceSnap.duration > 0 ? voiceSnap.duration : (durations[key] ?? 0)}
+          {@const shown = hosted ? voiceSnap.time : (currentTimes[key] ?? 0)}
           <div
-            class="voice-note flex max-w-xs items-center gap-2 rounded-full border border-border bg-muted/40 px-2 py-1.5"
+            class="voice-note flex max-w-xs items-center gap-2 rounded-full border border-border bg-muted/40 px-2 py-1.5 {showPause ? 'ring-1 ring-ring' : ''}"
             data-voice-note
+            data-voice-now={showPause}
           >
             <audio
               class="hidden"
               src={srcs[key]}
+              data-voice-key={key}
+              data-voice-msg={messageId ?? ""}
               preload="metadata"
               ontimeupdate={(e) => {
                 const t = (e.currentTarget as HTMLAudioElement).currentTime;
@@ -394,7 +416,11 @@
                 // Opus/Ogg often reports duration only after this event.
                 setDuration(key, (e.currentTarget as HTMLAudioElement).duration);
               }}
-              onplay={() => {
+              onplay={(e) => {
+                if (messageId != null) {
+                  (e.currentTarget as HTMLAudioElement).pause();
+                  return;
+                }
                 playing = { ...playing, [key]: true };
               }}
               onpause={() => {
@@ -407,16 +433,17 @@
               }}
               onerror={() => {
                 broken = { ...broken, [key]: true };
+                voiceBroken[key] = true;
               }}
             ></audio>
             <button
               type="button"
               class="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label={playing[key] ? "Pause voice note" : "Play voice note"}
+              aria-label={showPause ? "Pause voice note" : "Play voice note"}
               data-voice-play
               onclick={(e) => onVoicePlay(e, key)}
             >
-              {#if playing[key]}
+              {#if showPause}
                 <Pause class="size-4" />
               {:else}
                 <Play class="size-4" />
@@ -428,10 +455,10 @@
               min="0"
               max={Number.isFinite(dur) && dur > 0 ? dur : 0}
               step="any"
-              value={currentTimes[key] ?? 0}
+              value={shown}
               disabled={!(Number.isFinite(dur) && dur > 0)}
               aria-label="Seek voice note"
-              aria-valuenow={currentTimes[key] ?? 0}
+              aria-valuenow={shown}
               data-voice-seek
               oninput={(e) => seekVoice(e, key)}
               onchange={(e) => seekVoice(e, key)}
@@ -442,7 +469,7 @@
               class="shrink-0 font-mono text-xs tabular-nums text-muted-foreground"
               data-voice-time
             >
-              {formatTime(currentTimes[key] ?? 0)}{#if Number.isFinite(dur) && dur > 0}
+              {formatTime(shown)}{#if Number.isFinite(dur) && dur > 0}
                 {" "}/ {formatTime(dur)}{/if}
             </span>
           </div>
