@@ -96,6 +96,7 @@
     shiftHeightsForPrepend: (n: number) => void;
     resetHeights: () => void;
     preserveScrollAfterPrepend: (prevHeight: number) => void;
+    holdAnchorAfterPrepend: (addedCount: number, apply: () => void) => Promise<void>;
     stopPin: () => void;
     estimateScrollToIndex: (index: number) => void;
     pinJump: (index: number) => void;
@@ -321,6 +322,7 @@
           list?.abandonPrependShift();
           return;
         }
+        threadOlderExhausted = false;
         list?.shiftHeightsForPrepend(added.length);
       } else {
         list?.resetHeights();
@@ -616,15 +618,17 @@
   }
 
   async function applyOlderThreadRows(rows: TimelineRow[]) {
-    if (rows.length === 0) return;
-    const sc = document.getElementById("person-timeline");
-    const prevHeight = sc?.scrollHeight ?? 0;
-    const prevTop = sc?.scrollTop ?? 0;
-    timeline = rows.concat(timeline);
-    tlIndex += rows.length;
-    list?.resetHeights();
-    await tick();
-    list?.holdScrollAfterGrowth(prevHeight, prevTop);
+    if (tlLoading) return;
+    const seen = new Set(timeline.map((row) => row.message_id));
+    const added = rows.filter((row) => !seen.has(row.message_id));
+    if (added.length === 0) return;
+    const apply = () => {
+      timeline = added.concat(timeline);
+      tlIndex += added.length;
+      list?.resetHeights();
+    };
+    if (list) await list.holdAnchorAfterPrepend(added.length, apply);
+    else apply();
   }
 
   async function onThreadPrev() {

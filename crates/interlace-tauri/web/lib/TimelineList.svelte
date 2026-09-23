@@ -420,12 +420,24 @@
     if (sc) writeScrollTop(sc, prependPinScrollTop(sc, idx, off, prevHeight));
   }
 
-  /** Keep the viewport on the same messages after rows were inserted above them. */
-  export function holdScrollAfterGrowth(prevHeight: number, prevTop: number) {
+  /** Keep the anchored row in view after a front insert. A height reset makes scrollHeight delta the wrong pin. */
+  export async function holdAnchorAfterPrepend(addedCount: number, apply: () => void) {
+    const anchor = capturePrependAnchor(document.getElementById("person-timeline"), tlIndex);
+    apply();
+    const newIndex = anchor ? anchor.index + addedCount : -1;
+    const viewOffset = anchor ? anchor.viewOffset : 0;
+    await tick();
     const sc = document.getElementById("person-timeline");
-    if (!sc) return;
-    const growth = sc.scrollHeight - prevHeight;
-    writeScrollTop(sc, prevTop + Math.max(0, growth));
+    if (sc && newIndex >= 0) {
+      const pos = filteredTimeline.findIndex((item) => item.index === newIndex);
+      if (pos >= 0) writeScrollTop(sc, Math.max(0, offsetOf(pos) - viewOffset));
+    }
+    await tick();
+    if (newIndex < 0) return;
+    const sc2 = document.getElementById("person-timeline");
+    if (!sc2) return;
+    const el = sc2.querySelector(`[data-tl-index="${newIndex}"]`);
+    if (el instanceof HTMLElement) writeScrollTop(sc2, rowOffsetInPane(sc2, el) - viewOffset);
   }
 
   /** Drop a prepend scroll shift when the append was cancelled before pin. */

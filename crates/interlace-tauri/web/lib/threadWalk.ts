@@ -19,6 +19,10 @@ export async function collectOlderThreadRows<T extends ThreadRow>(
     if (!before) return { rows: older, exhausted: true, cancelled: false };
     const page = await args.fetchPage(before);
     if (!args.alive()) return { rows: older, exhausted: false, cancelled: true };
+    const live = new Set(args.knownIds());
+    if (args.oldestCursor() !== origin || page.some((row) => live.has(row.message_id))) {
+      return { rows: [], exhausted: false, cancelled: true };
+    }
     if (page.length === 0) return { rows: older, exhausted: true, cancelled: false };
     const chrono = page.toReversed().filter((row) => !seen.has(row.message_id));
     if (chrono.length === 0) return { rows: older, exhausted: true, cancelled: false };
@@ -37,7 +41,7 @@ export async function collectOlderThreadRows<T extends ThreadRow>(
     if (page.length < TIMELINE_PAGE_LIMIT) return { rows: older, exhausted: true, cancelled: false };
     pages += 1;
   }
-  return { rows: older, exhausted: true, cancelled: false };
+  return { rows: older, exhausted: false, cancelled: false };
 }
 
 function oldestSentAt(rows: { sent_at?: string | null }[]): string | null {
