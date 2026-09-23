@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import type { TimelineRow } from "./api";
+  import type { Attachment, TimelineRow } from "./api";
   import { localDay, localDayLabel } from "./formatTime";
   import { cancelDayHeadingPin, dayHeadingOffset, scrollDayHeadingToTop } from "./jumpDay";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
@@ -55,6 +55,7 @@
     liveSelectedIds = new Set<number>(),
     anchorId = $bindable<number | null>(null),
     extendSelection,
+    onOpenImage,
   }: {
     timeline: TimelineRow[];
     filteredTimeline: { row: TimelineRow; index: number }[];
@@ -88,6 +89,7 @@
     liveSelectedIds?: Set<number>;
     anchorId?: number | null;
     extendSelection: (index: number) => void;
+    onOpenImage: (messageId: number, a: Attachment) => void;
   } = $props();
 
   let tlScrollTop = $state(0);
@@ -418,6 +420,33 @@
     if (sc) writeScrollTop(sc, prependPinScrollTop(sc, idx, off, prevHeight));
   }
 
+  /** Keep the anchored row in view after a front insert. A height reset makes scrollHeight delta the wrong pin. */
+  export async function holdAnchorAfterPrepend(addedCount: number, apply: () => void) {
+    const anchor = capturePrependAnchor(document.getElementById("person-timeline"), tlIndex);
+    apply();
+    const newIndex = anchor ? anchor.index + addedCount : -1;
+    const viewOffset = anchor ? anchor.viewOffset : 0;
+    await tick();
+    const sc = document.getElementById("person-timeline");
+    if (sc && newIndex >= 0) {
+      const pos = filteredTimeline.findIndex((item) => item.index === newIndex);
+      if (pos >= 0) writeScrollTop(sc, Math.max(0, offsetOf(pos) - viewOffset));
+    }
+    await tick();
+    if (newIndex < 0) return;
+    const sc2 = document.getElementById("person-timeline");
+    if (!sc2) return;
+    const el = sc2.querySelector(`[data-tl-index="${newIndex}"]`);
+    if (el instanceof HTMLElement) writeScrollTop(sc2, rowOffsetInPane(sc2, el) - viewOffset);
+  }
+
+  /** Drop a prepend scroll shift when the append was cancelled before pin. */
+  export function abandonPrependShift() {
+    prependN = 0;
+    prependIdx = -1;
+    prependViewOff = 0;
+  }
+
   function clearJumpPin() {
     jumpPinIndex = -1;
     if (jumpPinUntil != null) {
@@ -634,7 +663,7 @@
   }
 </script>
 
-<div class="relative min-h-0 flex-1 flex min-w-0 flex-col">
+<div class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 <ScrollArea
   id="person-timeline"
   class="min-h-0 min-w-0 flex-1 px-4 pb-8{filteredTimeline.length > VIRTUALIZE_AFTER ? ' tl-windowed' : ''}"
@@ -677,6 +706,7 @@
     {tlLoading}
     {onPrepend}
     {findQ}
+    {onOpenImage}
   />
   <div id="timeline-end"></div>
 </ScrollArea>
