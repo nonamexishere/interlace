@@ -19,6 +19,7 @@ export const voiceBroken: Record<string, boolean> = {};
 
 let snap: VoiceSnap = { messageId: 0, key: "", playing: false, time: 0, duration: 0 };
 let seekHold = 0;
+let loadedRows: VoiceRow[] = [];
 const listeners = new Set<() => void>();
 const warmed = new Set<string>();
 
@@ -79,30 +80,35 @@ export function startVoiceHost(
   filteredTimeline: VoiceRow[],
 ) {
   if (!casDataUrl) return;
+  loadedRows = filteredTimeline;
   host.src = casDataUrl;
   host.dataset.voiceMsg = String(message_id);
   host.dataset.voiceKey = key;
   document.querySelectorAll<HTMLAudioElement>("#person-timeline [data-voice-note] audio").forEach((row) => {
     if (!row.paused) row.pause();
   });
-  publishVoice({ messageId: message_id, key, playing: true, time: 0 });
-  void host.play().catch((err: unknown) => {
+  publishVoice({ messageId: message_id, key, playing: false, time: 0 });
+  void host.play().then(() => {
+    if (host.dataset.voiceKey !== key || host.dataset.voiceMsg !== String(message_id)) return;
+    publishVoice({ messageId: message_id, key, playing: true });
+  }).catch((err: unknown) => {
     const name = playErrorName(err);
-    if (name === "AbortError") return;
-    if (name === "NotAllowedError") {
-      if (host.dataset.voiceKey === key && host.dataset.voiceMsg === String(message_id)) {
-        publishVoice({ playing: false });
-      }
-      return;
-    }
-    voiceBroken[key] = true;
-    const next = nextPlayableVoice(filteredTimeline, message_id, key);
-    if (!next) {
+    if (host.dataset.voiceKey === key && host.dataset.voiceMsg === String(message_id)) {
       publishVoice({ playing: false });
-      return;
     }
-    startVoiceHost(host, next.message_id, next.key, next.casDataUrl, filteredTimeline);
+    if (name === "AbortError" || name === "NotAllowedError") return;
+    voiceBroken[key] = true;
+    continueAfterVoiceBreak(host, message_id, key);
   });
+}
+
+export function continueAfterVoiceBreak(host: HTMLAudioElement, messageId: number, key: string) {
+  const next = nextPlayableVoice(loadedRows, messageId, key);
+  if (!next) {
+    publishVoice({ playing: false });
+    return;
+  }
+  startVoiceHost(host, next.message_id, next.key, next.casDataUrl, loadedRows);
 }
 
 /** Next playable note below `currentKey` on this message. No wrap, no fetch. */
@@ -136,6 +142,7 @@ export function nextPlayableVoice(
 }
 
 export function warmVoiceUrls(filteredTimeline: VoiceRow[]) {
+  loadedRows = filteredTimeline;
   for (const item of filteredTimeline) {
     for (const a of item.row.attachments || []) {
       if (a.omitted || a.missing || !a.cas_hash) continue;

@@ -1,4 +1,4 @@
-import { armVoiceSeek, publishVoice, voiceBroken } from "./voiceHost";
+import { armVoiceSeek, continueAfterVoiceBreak, publishVoice, voiceBroken } from "./voiceHost";
 
 let offsetGen = 0;
 let offsetHost: HTMLAudioElement | null = null;
@@ -55,6 +55,7 @@ export function togglePlay(el: HTMLAudioElement, onBroken?: () => void): void {
       if (name === "AbortError" || name === "NotAllowedError") return;
       voiceBroken[key] = true;
       onBroken?.();
+      continueAfterVoiceBreak(host, messageId, key);
     });
     if (!same) {
       const at = el.currentTime;
