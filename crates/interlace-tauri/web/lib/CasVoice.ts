@@ -36,7 +36,6 @@ export function togglePlay(el: HTMLAudioElement, onBroken?: () => void): void {
       publishVoice({ playing: false });
       return;
     }
-    const at = el.currentTime;
     if (!same) {
       host.src = el.src;
       host.dataset.voiceMsg = String(messageId);
@@ -57,19 +56,22 @@ export function togglePlay(el: HTMLAudioElement, onBroken?: () => void): void {
       voiceBroken[key] = true;
       onBroken?.();
     });
-    if (Number.isFinite(at) && at > 0) {
-      const wantMsg = String(messageId);
-      const applyAt = () => {
-        if (gen !== offsetGen) return;
-        if (host.dataset.voiceKey !== key || host.dataset.voiceMsg !== wantMsg) return;
-        armVoiceSeek();
-        host.currentTime = at;
-      };
-      if (host.readyState >= 1) applyAt();
-      else {
-        offsetListener = applyAt;
-        offsetHost = host;
-        host.addEventListener("loadedmetadata", applyAt, { once: true });
+    if (!same) {
+      const at = el.currentTime;
+      if (Number.isFinite(at) && at > 0) {
+        const wantMsg = String(messageId);
+        const applyAt = () => {
+          if (gen !== offsetGen) return;
+          if (host.dataset.voiceKey !== key || host.dataset.voiceMsg !== wantMsg) return;
+          armVoiceSeek();
+          host.currentTime = at;
+        };
+        if (host.readyState >= 1) applyAt();
+        else {
+          offsetListener = applyAt;
+          offsetHost = host;
+          host.addEventListener("loadedmetadata", applyAt, { once: true });
+        }
       }
     }
     return;
