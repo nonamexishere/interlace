@@ -1452,8 +1452,9 @@ fn media_kind_core_voice() {
     let root = tmp();
     let arch = init_archive(&root.join("a")).unwrap();
     let p = plant_ada_media_kind(&arch);
-    let rows = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("voice"), None)
-        .expect("Voice must be Ok");
+    let rows =
+        person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("voice"), None)
+            .expect("Voice must be Ok");
     let ids = media_kind_ids(&rows);
     assert!(
         ids.contains(&p.ada_voice),
@@ -1517,8 +1518,9 @@ fn media_kind_core_photos_not_voice() {
     let root = tmp();
     let arch = init_archive(&root.join("a")).unwrap();
     let p = plant_ada_media_kind(&arch);
-    let rows = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("photos"), None)
-        .expect("Photos must be Ok");
+    let rows =
+        person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("photos"), None)
+            .expect("Photos must be Ok");
     let ids = media_kind_ids(&rows);
     assert!(
         ids.contains(&p.ada_image),
@@ -1565,8 +1567,9 @@ fn media_kind_core_photos_not_voice() {
         "body-token synthetic must not match Photos (attachments table only): {ids:?}"
     );
 
-    let files = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("files"), None)
-        .expect("Files must be Ok");
+    let files =
+        person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("files"), None)
+            .expect("Files must be Ok");
     let file_ids = media_kind_ids(&files);
     assert!(
         file_ids.contains(&p.ada_file_pdf),
@@ -1593,8 +1596,9 @@ fn media_kind_core_photos_not_voice() {
         "kind=video leaked into Files: {file_ids:?}"
     );
 
-    let video = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("video"), None)
-        .expect("Video must be Ok");
+    let video =
+        person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("video"), None)
+            .expect("Video must be Ok");
     let video_ids = media_kind_ids(&video);
     assert!(
         video_ids.contains(&p.ada_video),
@@ -1712,8 +1716,9 @@ fn media_kind_core_berk() {
     let ada = person_timeline_rows_for(&arch, p.ada_id, true, 50, None, None, Some("voice"), None)
         .expect("Ada Voice must be Ok");
     let ada_ids = media_kind_ids(&ada);
-    let berk = person_timeline_rows_for(&arch, p.berk_id, true, 50, None, None, Some("voice"), None)
-        .expect("Berk Voice must be Ok");
+    let berk =
+        person_timeline_rows_for(&arch, p.berk_id, true, 50, None, None, Some("voice"), None)
+            .expect("Berk Voice must be Ok");
     let berk_ids = media_kind_ids(&berk);
     assert!(
         !berk_ids.contains(&p.ada_voice),
@@ -1746,8 +1751,9 @@ fn media_kind_core_files_null_mime() {
     let root = tmp();
     let arch = init_archive(&root.join("a")).unwrap();
     let p = plant_ada_media_kind(&arch);
-    let files = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("files"), None)
-        .expect("Files must be Ok");
+    let files =
+        person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, Some("files"), None)
+            .expect("Files must be Ok");
     let ids = media_kind_ids(&files);
     assert!(
         ids.contains(&p.ada_file_null_mime),
