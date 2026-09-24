@@ -78,6 +78,26 @@ pub(crate) fn person_timeline(
 }
 
 #[tauri::command]
+pub(crate) fn person_day_message(
+    state: tauri::State<AppState>,
+    id: i64,
+    day: String,
+    include_groups: bool,
+) -> Result<serde_json::Value, String> {
+    with_arch(&state, |arch| {
+        let row =
+            interlace_core::person_day_message(arch, id, &day, include_groups).map_err(err)?;
+        Ok(match row {
+            Some((message_id, sent_at)) => serde_json::json!({
+                "message_id": message_id,
+                "sent_at": sent_at,
+            }),
+            None => serde_json::Value::Null,
+        })
+    })
+}
+
+#[tauri::command]
 pub(crate) fn person_year_counts(
     state: tauri::State<AppState>,
     id: i64,

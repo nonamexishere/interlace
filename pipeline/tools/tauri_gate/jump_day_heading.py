@@ -237,15 +237,14 @@ def assert_jump_day_heading(crate: Path) -> None:
             f"{_ISSUE}: do not reuse ensureTlIndexVisible as the only scroll "
             "(that nudges a bubble; Acceptance is the heading at the top)"
         )
-    if not (
-        _HEADING.search(jump)
-        and _SCROLL_TOP.search(jump)
-        and _PERSON_TL.search(jump + "\n" + list_c)
+    go_day = _function_body(pane_c, "goToJumpDay") or _ts_fn_body(pane_c, "goToJumpDay")
+    if not re.search(
+        r"personDayMessage[\s\S]*openPersonAtMessage[\s\S]*pinJump",
+        go_day,
     ):
         fail(
-            f"{_ISSUE}: jumping to a host-calendar day already in the loaded "
-            "filteredTimeline must put that day's first .day-heading at the "
-            "top of #person-timeline"
+            f"{_ISSUE}: the day land is pinJump on the lookup message "
+            "(personDayMessage, then openPersonAtMessage, then pinJump)"
         )
 
     # 2) jump-day-older — prepend Load older; do not replace the window.
@@ -260,10 +259,10 @@ def assert_jump_day_heading(crate: Path) -> None:
             f"{_ISSUE}: stop Load older on an empty or short page "
             "(do not replace the window)"
         )
-    if _REPLACE.search(jump):
+    if "personDayMessage" not in go_day or "openPersonAtMessage" not in go_day:
         fail(
-            f"{_ISSUE}: do not replace the loaded window "
-            "(openPersonAtMessage shape is a #124 seek, not a day jump)"
+            f"{_ISSUE}: day jump replaces the window through personDayMessage "
+            "and openPersonAtMessage, then pinJump"
         )
 
     # 3) jump-day-no-sent-at

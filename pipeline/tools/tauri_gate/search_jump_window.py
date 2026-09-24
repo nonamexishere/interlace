@@ -566,8 +566,13 @@ def assert_search_jump_window(crate: Path) -> None:
         fail(f"{_ISSUE}: End stays scrollToLatest and must not call the jump")
     if not last_read or "jumpToMessageId" not in last_read or "openPersonAtMessage" in last_read:
         fail(f"{_ISSUE}: last-read stays jumpToMessageId, not openPersonAtMessage")
-    if not jump_day or "jumpToLocalDay" not in jump_day or "openPersonAtMessage" in jump_day:
-        fail(f"{_ISSUE}: year/day jump stays jumpToLocalDay, not openPersonAtMessage")
+    if not jump_day or not re.search(
+        r"personDayMessage[\s\S]*openPersonAtMessage[\s\S]*pinJump",
+        jump_day,
+    ):
+        fail(
+            f"{_ISSUE}: day jump calls personDayMessage, then openPersonAtMessage, then pinJump"
+        )
     if not fill or "onJumpToMessage" in fill or "openPersonAtMessage" in fill:
         fail(f"{_ISSUE}: Search preview must not select or jump by itself")
     if not activate or "onJumpToMessage" not in activate:

@@ -292,7 +292,10 @@
     if (windowed && adj !== 0 && sc && !pinLatestObs) {
       void tick().then(() => {
         if (epoch !== measureEpoch || pinLatestObs) return;
-        writeScrollTop(sc, sc.scrollTop + adj);
+        const gap = sc.scrollHeight - sc.scrollTop - sc.clientHeight;
+        if (!(adj < 0 && gap < sc.clientHeight)) {
+          writeScrollTop(sc, sc.scrollTop + adj);
+        }
         if (jumpPinIndex >= 0) pinJump(jumpPinIndex);
       });
     } else if (pin >= 0 && !pinLatestObs) {

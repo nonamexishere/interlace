@@ -127,6 +127,7 @@
   );
   const selectedPerson = $derived(findPerson(people, selectedId));
   const personInspectorAttr = ["data", "person", "inspector"].join("-");
+  type JumpToDay = (day: string) => void;
   let timelinePane: {
     selectPerson: (id: number, append?: boolean, keepConversation?: boolean, includeGroups?: boolean) => Promise<void>;
     openPersonAtMessage: (personId: number, messageId: number, sentAt?: string | null) => Promise<void>;
@@ -134,7 +135,7 @@
     closeCopyMenu: () => void;
     scrollToLatest: () => void; copySelected: () => void;
     openGallery: () => void;
-    jumpToDayKey: (day: string) => void;
+    jumpToDayKey: JumpToDay;
     persistLastRead: (index: number) => void;
     extendSelection: (n: number) => void;
   } | undefined = $state();

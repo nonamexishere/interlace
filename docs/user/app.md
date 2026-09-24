@@ -189,7 +189,7 @@ the viewport. ⌘↑ / Home at the top of a long thread prepends without jumping
 inserted when the host calendar day of `sent_at` changes and **sticks**
 to the top of the message list until the next day replaces it. WhatsApp
 export times display as wall-clock; Gmail / zoned times follow the Mac
-timezone. Display follows the host / Mac timezone; storage / archive JSON stay UTC. A row with no `sent_at` gets no heading. A date control next to Find jumps to the sticky day heading. Jumping to an older day runs Load older until the heading exists or the thread starts. A newer day or a gap in the already-loaded days stays put (does not walk the thread). A later date pick or person switch cancels an in-flight jump. Find leaves that heading at the top when the day has no hit. Bodies stay visible plain-text
+timezone. Display follows the host / Mac timezone; storage / archive JSON stay UTC. A row with no `sent_at` gets no heading. A date control next to Find opens that day's first message with messages after it, under the sticky day heading. Jumping to an older day runs Load older until the heading exists or the thread starts. A newer day or a gap in the already-loaded days stays put (does not walk the thread). A later date pick or person switch cancels an in-flight jump. Find leaves that heading at the top when the day has no hit. Bodies stay visible plain-text
 nodes (`whitespace-pre-wrap`) so a screen reader still hears them — never
 HTML. **Gmail / email-thread** bubbles show the subject as a title when present
 and fold quoted reply tails (`On … wrote:`, lines starting with `>`) behind

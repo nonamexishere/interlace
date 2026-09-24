@@ -646,14 +646,23 @@
   }
 
   function goToJumpDay() {
-    const gen = ++jumpGen, id = selectedId, key = jumpDay; dayPin = true;
-    void jumpToLocalDay({
-      key, gen, selectedId: id, filteredTimeline: () => filteredTimeline,
-      currentSelectedId: () => selectedId, currentJumpDay: () => jumpDay, currentGen: () => jumpGen,
-      tlLoading: () => tlLoading, oldestCursor: () => oldestCursor, timelineLength: () => timeline.length,
-      selectPerson: async (pid, append) => { if (selectedId !== id || jumpDay !== key || jumpGen !== gen) return; return selectPerson(pid, append); },
-      scrollToPos: (pos) => applyJumpScrollPos(pos, filteredTimeline, findQ, quotedOpen, key, findHitIndices, () => selectedId === id && jumpDay === key && jumpGen === gen, (n) => (tlIndex = n), () => list?.stopPin(), (p) => list?.pinDayAtTop(p)),
-    }).then((scrolled) => { if (jumpGen === gen && !scrolled) dayPin = false; });
+    const gen = ++jumpGen, id = selectedId, key = jumpDay;
+    dayPin = false;
+    if (id == null || !key) return;
+    void applyJumpScrollPos;
+    void (async () => {
+      let hit: { message_id: number; sent_at: string } | null = null;
+      try {
+        hit = await api.personDayMessage({ id, day: key, includeGroups });
+      } catch {
+        return;
+      }
+      if (jumpGen !== gen || selectedId !== id || jumpDay !== key || !hit) return;
+      const pinnedGen = jumpGen;
+      await openPersonAtMessage(id, hit.message_id, hit.sent_at);
+      if (jumpGen !== pinnedGen + 1 || selectedId !== id) return;
+      list?.pinJump(tlIndex);
+    })();
   }
 
   async function cachedPhoto(hash: string): Promise<string | null> {

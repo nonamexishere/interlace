@@ -1,3 +1,4 @@
+use rusqlite::OptionalExtension;
 use serde::Serialize;
 
 use crate::db::Archive;
@@ -279,6 +280,60 @@ pub fn person_year_counts(
         out.push(row?);
     }
     Ok(out)
+}
+
+/// Earliest message on one local day (lowest `sent_at`, then lowest id).
+/// Same calendar and membership as `person_year_counts`. No message bodies.
+/// A missing day or unknown person is `None`.
+pub fn person_day_message(
+    archive: &Archive,
+    person_id: i64,
+    day: &str,
+    include_groups: bool,
+) -> Result<Option<(i64, String)>, CoreError> {
+    let mut sql = String::from(
+        "SELECT m.id, m.sent_at \
+         FROM messages m \
+         JOIN conversations c ON c.id = m.conversation_id \
+         WHERE ( \
+                m.sender_identity_id IN ( \
+                    SELECT identity_id FROM person_identities WHERE person_id = :pid \
+                ) \
+             OR m.conversation_id IN ( \
+                    SELECT cp.conversation_id \
+                    FROM conversation_participants cp \
+                    JOIN person_identities pi ON pi.identity_id = cp.identity_id \
+                    WHERE pi.person_id = :pid \
+                ) \
+              ) \
+           AND (CASE \
+             WHEN c.platform IS NULL \
+               OR trim(c.platform) = '' \
+               OR lower(c.platform) = 'whatsapp' \
+             THEN CASE \
+               WHEN substr(m.sent_at, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' \
+               THEN substr(m.sent_at, 1, 10) \
+               ELSE NULL \
+             END \
+             ELSE strftime('%Y-%m-%d', m.sent_at, 'localtime') \
+           END) = :day",
+    );
+    if !include_groups {
+        sql.push_str(" AND c.kind IN ('dm', 'email_thread')");
+    }
+    sql.push_str(" ORDER BY m.sent_at ASC, m.id ASC LIMIT 1");
+    let mut stmt = archive.conn.prepare(&sql)?;
+    let row = stmt
+        .query_row(
+            rusqlite::named_params! { ":pid": person_id, ":day": day },
+            |r| {
+                let id: i64 = r.get(0)?;
+                let sent_at: Option<String> = r.get(1)?;
+                Ok(sent_at.map(|sent| (id, sent)))
+            },
+        )
+        .optional()?;
+    Ok(row.flatten())
 }
 
 /// Stored CAS image / video / sticker rows for one person (same membership
