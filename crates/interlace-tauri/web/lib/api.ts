@@ -236,6 +236,7 @@ export const api = {
     attachKind?: string | null;
     after?: string | null;
     afterId?: number | null;
+    beforeId?: number | null;
   }) => invoke<TimelineRow[]>("person_timeline", args),
   personYearCounts: (args: { id: number; includeGroups: boolean }) =>
     invoke<PersonYearCount[]>("person_year_counts", args),

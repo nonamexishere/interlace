@@ -1462,6 +1462,7 @@ fn media_kind_core_voice() {
         Some("voice"),
         None,
         None,
+        None,
     )
     .expect("Voice must be Ok");
     let ids = media_kind_ids(&rows);
@@ -1537,6 +1538,7 @@ fn media_kind_core_photos_not_voice() {
         Some("photos"),
         None,
         None,
+        None,
     )
     .expect("Photos must be Ok");
     let ids = media_kind_ids(&rows);
@@ -1595,6 +1597,7 @@ fn media_kind_core_photos_not_voice() {
         Some("files"),
         None,
         None,
+        None,
     )
     .expect("Files must be Ok");
     let file_ids = media_kind_ids(&files);
@@ -1633,6 +1636,7 @@ fn media_kind_core_photos_not_voice() {
         Some("video"),
         None,
         None,
+        None,
     )
     .expect("Video must be Ok");
     let video_ids = media_kind_ids(&video);
@@ -1657,7 +1661,7 @@ fn media_kind_core_all() {
     let root = tmp();
     let arch = init_archive(&root.join("a")).unwrap();
     let p = plant_ada_media_kind(&arch);
-    let rows = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, None, None, None)
+    let rows = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, None, None, None, None)
         .expect("All (omit attach-kind) must be Ok");
     let ids = media_kind_ids(&rows);
     assert!(
@@ -1701,7 +1705,7 @@ fn media_kind_core_empty() {
         )
         .unwrap();
     let rows =
-        person_timeline_rows_for(&arch, ada, false, 50, None, None, Some("video"), None, None)
+        person_timeline_rows_for(&arch, ada, false, 50, None, None, Some("video"), None, None, None)
             .expect("Video on Ada with no video must be Ok, not Err");
     assert!(
         rows.is_empty(),
@@ -1728,6 +1732,7 @@ fn media_kind_core_groups() {
         Some("voice"),
         None,
         None,
+        None,
     )
     .expect("Voice include_groups=false must be Ok");
     let off_ids = media_kind_ids(&off);
@@ -1747,6 +1752,7 @@ fn media_kind_core_groups() {
         None,
         None,
         Some("voice"),
+        None,
         None,
         None,
     )
@@ -1780,6 +1786,7 @@ fn media_kind_core_berk() {
         Some("voice"),
         None,
         None,
+        None,
     )
     .expect("Ada Voice must be Ok");
     let ada_ids = media_kind_ids(&ada);
@@ -1791,6 +1798,7 @@ fn media_kind_core_berk() {
         None,
         None,
         Some("voice"),
+        None,
         None,
         None,
     )
@@ -1835,6 +1843,7 @@ fn media_kind_core_files_null_mime() {
         None,
         None,
         Some("files"),
+        None,
         None,
         None,
     )
@@ -2074,7 +2083,7 @@ fn tl_labels_core_mail() {
     let root = tmp();
     let arch = init_archive(&root.join("a")).unwrap();
     let p = plant_ada_gmail_labels(&arch);
-    let rows = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, None, None, None)
+    let rows = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, None, None, None, None)
         .expect("Ada timeline must be Ok");
     let names = labels_of(&rows, p.ada_labeled);
     assert!(
@@ -2104,7 +2113,7 @@ fn tl_labels_core_mail_empty() {
     let root = tmp();
     let arch = init_archive(&root.join("a")).unwrap();
     let p = plant_ada_gmail_labels(&arch);
-    let rows = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, None, None, None)
+    let rows = person_timeline_rows_for(&arch, p.ada_id, false, 50, None, None, None, None, None, None)
         .expect("Ada timeline must be Ok");
     let names = labels_of(&rows, p.ada_unlabeled);
     assert!(
@@ -2121,7 +2130,7 @@ fn tl_labels_core_wa() {
     let root = tmp();
     let arch = init_archive(&root.join("a")).unwrap();
     let p = plant_ada_gmail_labels(&arch);
-    let rows = person_timeline_rows_for(&arch, p.berk_id, false, 50, None, None, None, None, None)
+    let rows = person_timeline_rows_for(&arch, p.berk_id, false, 50, None, None, None, None, None, None)
         .expect("Berk timeline must be Ok");
     let names = labels_of(&rows, p.berk_wa);
     assert!(

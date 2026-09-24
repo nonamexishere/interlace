@@ -57,6 +57,7 @@ pub fn person_timeline_rows(
         None,
         None,
         None,
+        None,
     )
 }
 
@@ -66,7 +67,9 @@ pub fn person_timeline_rows(
 /// then reversed so callers still `toReversed()` under the hit.
 /// `after_id` Some keeps the rest of that `sent_at` (`id` greater than it).
 /// `after_id` None keeps strict `sent_at > :after`.
-/// `after` unset keeps the `before` SQL. Both cursors on one call is an error.
+/// `before_id` Some (with `before`) keeps the rest of that `sent_at`
+/// (`id` less than it). `before_id` None keeps strict `sent_at < :before`,
+/// including the `sentAt~` cursor. Both cursors on one call is an error.
 #[allow(clippy::too_many_arguments)]
 pub fn person_timeline_rows_for(
     archive: &Archive,
@@ -78,6 +81,7 @@ pub fn person_timeline_rows_for(
     attach_kind: Option<&str>,
     after: Option<&str>,
     after_id: Option<i64>,
+    before_id: Option<i64>,
 ) -> Result<Vec<TimelineRow>, CoreError> {
     if before.is_some() && after.is_some() {
         return Err(CoreError::Fatal(
@@ -95,6 +99,8 @@ pub fn person_timeline_rows_for(
         "AND m.sent_at IS NOT NULL AND (m.sent_at > :after OR (m.sent_at = :after AND m.id > :after_id))"
     } else if after.is_some() {
         "AND m.sent_at IS NOT NULL AND m.sent_at > :after"
+    } else if before.is_some() && before_id.is_some() {
+        "AND m.sent_at IS NOT NULL AND (m.sent_at < :before OR (m.sent_at = :before AND m.id < :before_id))"
     } else if before.is_some() {
         "AND m.sent_at IS NOT NULL AND m.sent_at < :before"
     } else {
@@ -165,41 +171,49 @@ pub fn person_timeline_rows_for(
         })
     };
     let lim = limit as i64;
-    let rows = match (before, after, after_id, conversation_id) {
-        (Some(_), Some(_), _, _) => {
+    let rows = match (before, before_id, after, after_id, conversation_id) {
+        (Some(_), _, Some(_), _, _) => {
             return Err(CoreError::Fatal(
                 "person timeline accepts before or after, not both".into(),
             ));
         }
-        (Some(b), None, _, Some(cid)) => stmt.query_map(
+        (Some(b), Some(bid), None, _, Some(cid)) => stmt.query_map(
+            rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":before": b, ":before_id": bid, ":conv": cid },
+            map_row,
+        )?,
+        (Some(b), Some(bid), None, _, None) => stmt.query_map(
+            rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":before": b, ":before_id": bid },
+            map_row,
+        )?,
+        (Some(b), None, None, _, Some(cid)) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":before": b, ":conv": cid },
             map_row,
         )?,
-        (Some(b), None, _, None) => stmt.query_map(
+        (Some(b), None, None, _, None) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":before": b },
             map_row,
         )?,
-        (None, Some(a), Some(aid), Some(cid)) => stmt.query_map(
+        (None, _, Some(a), Some(aid), Some(cid)) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":after": a, ":after_id": aid, ":conv": cid },
             map_row,
         )?,
-        (None, Some(a), Some(aid), None) => stmt.query_map(
+        (None, _, Some(a), Some(aid), None) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":after": a, ":after_id": aid },
             map_row,
         )?,
-        (None, Some(a), None, Some(cid)) => stmt.query_map(
+        (None, _, Some(a), None, Some(cid)) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":after": a, ":conv": cid },
             map_row,
         )?,
-        (None, Some(a), None, None) => stmt.query_map(
+        (None, _, Some(a), None, None) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":after": a },
             map_row,
         )?,
-        (None, None, _, Some(cid)) => stmt.query_map(
+        (None, _, None, _, Some(cid)) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":conv": cid },
             map_row,
         )?,
-        (None, None, _, None) => stmt.query_map(
+        (None, _, None, _, None) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim },
             map_row,
         )?,

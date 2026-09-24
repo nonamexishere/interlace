@@ -111,6 +111,7 @@ from tauri_gate.search_jump_window import (  # noqa: E402
 )
 from tauri_gate.around_message import assert_around_message  # noqa: E402
 from tauri_gate.around_scroll import assert_around_scroll  # noqa: E402
+from tauri_gate.around_land import assert_around_land  # noqa: E402
 from tauri_gate.search_jump_peer import (  # noqa: E402
     assert_search_jump_peer,
 )

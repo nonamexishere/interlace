@@ -201,6 +201,7 @@ def main() -> None:
     assert_search_jump_window(crate)
     assert_around_message(crate)
     assert_around_scroll(crate)
+    assert_around_land(crate)
     assert_search_jump_peer(crate)
     assert_search_this_conversation(crate)
     assert_open_original_rfc822(crate)

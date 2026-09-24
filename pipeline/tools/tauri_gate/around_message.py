@@ -35,7 +35,7 @@ def _order(body: str, *needles: str) -> bool:
 
 
 def assert_around_message(crate: Path) -> None:
-    """#418: day jump still uses jumpToLocalDay; the shared window is openPersonAtMessage."""
+    """#418: day jump order is personDayMessage, then openPersonAtMessage, then pinJump."""
     pane = _without_comments(_read(crate, "TimelinePane.svelte"))
     app = _without_comments(_read(crate, "App.svelte"))
     rows = _without_comments(_read(crate, "TimelineRows.svelte"))
