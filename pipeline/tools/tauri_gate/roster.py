@@ -136,6 +136,7 @@ from tauri_gate.inspector_year_jump import (  # noqa: E402
 from tauri_gate.lightbox_thread import (  # noqa: E402
     assert_lightbox_thread,
 )
+from tauri_gate.timeline_row_key import assert_timeline_row_key  # noqa: E402
 from tauri_gate.voice_next import (  # noqa: E402
     assert_voice_next,
 )

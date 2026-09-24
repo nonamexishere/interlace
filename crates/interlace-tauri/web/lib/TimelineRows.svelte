@@ -41,7 +41,7 @@
     spacerBottom: number;
     tlIndex: number;
     quotedOpen: Record<number, boolean>;
-    measureTlRow: (node: HTMLElement, orig: number) => { update: (n: number) => void; destroy: () => void };
+    measureTlRow: (node: HTMLElement, messageId: number) => { update: (n: number) => void; destroy: () => void };
     isGroupedFollower: (i: number) => boolean;
     onSelectIndex: (index: number, shiftKey?: boolean) => void;
     selectedIds?: Set<number>;
@@ -83,7 +83,7 @@
   {#if spacerTop > 0}
     <li class="timeline-spacer-top pointer-events-none" style="height: {spacerTop}px" aria-hidden="true"></li>
   {/if}
-  {#each windowedDayGroups as group (group.rows[0]?.index ?? group.key)}
+  {#each windowedDayGroups as group (group.rows[0]?.row.message_id ?? group.key)}
     <li class="day-group min-w-0">
       {#if group.rows[0]?.row.sent_at && localDay(group.rows[0].row.sent_at, group.rows[0].row.platform)}
         <h3 class="day-heading mb-2 text-center text-xs font-medium text-muted-foreground">
@@ -91,8 +91,8 @@
         </h3>
       {/if}
       <div>
-        {#each group.rows as item (item.index)}
-          <div class="flex min-w-0 pb-2" data-tl-index={item.index} use:measureTlRow={item.index}>
+        {#each group.rows as item (item.row.message_id)}
+          <div class="flex min-w-0 pb-2" data-tl-index={item.index} use:measureTlRow={item.row.message_id}>
             <div class="flex w-fit max-w-[94%] flex-col" class:ml-auto={item.row.from_me}>
             {#if lastReadMessageId != null && item.row.message_id === lastReadMessageId}
               <p class="px-1 pb-1 text-xs text-muted-foreground">{t("lastTime")}</p>

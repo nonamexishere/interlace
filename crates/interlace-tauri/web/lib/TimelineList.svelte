@@ -182,7 +182,7 @@
 
   const visibleRange = $derived(
     computeVisibleRange(filteredTimeline.length, tlViewportHeight, tlScrollTop + prependN * ESTIMATED_ROW_HEIGHT, (i) =>
-      heightOf(filteredTimeline[i].index),
+      heightOf(filteredTimeline[i].row.message_id),
     ),
   );
 
@@ -231,7 +231,7 @@
     const rowH =
       mounted instanceof HTMLElement
         ? mounted.getBoundingClientRect().height
-        : heightOf(filteredTimeline[pos]?.index ?? index);
+        : heightOf(filteredTimeline[pos].row.message_id);
     const rowBottom = rowTop + rowH;
     const viewTop = sc.scrollTop;
     const viewBottom = viewTop + sc.clientHeight;
@@ -300,21 +300,19 @@
     }
   }
 
-  function measureTlRow(node: HTMLElement, orig: number) {
+  function measureTlRow(node: HTMLElement, messageId: number) {
     const read = () => {
-      const raw = node.getAttribute("data-tl-index");
-      const idx = raw != null ? Number(raw) : orig;
-      if (!Number.isFinite(idx)) return;
+      if (!Number.isFinite(messageId)) return;
       const h = Math.round(node.getBoundingClientRect().height);
-      applyRowMeasure(idx, h);
+      applyRowMeasure(messageId, h);
       scheduleChromeMeasure();
     };
     const obs = new ResizeObserver(read);
     obs.observe(node);
     read();
     return {
-      update(nextOrig: number) {
-        orig = nextOrig;
+      update(nextId: number) {
+        messageId = nextId;
         read();
       },
       destroy() {
@@ -407,14 +405,8 @@
   }
 
   export function shiftHeightsForPrepend(n: number) {
-    const next: Record<number, number> = {};
-    for (const [k, v] of Object.entries(rowHeights)) {
-      next[Number(k) + n] = v;
-    }
     const a = capturePrependAnchor(document.getElementById("person-timeline"), tlIndex);
     prependN = n; prependIdx = a ? a.index + n : -1; prependViewOff = a ? a.viewOffset : 0;
-    clearPendingMeasures();
-    rowHeights = next;
   }
 
   export function resetHeights() {

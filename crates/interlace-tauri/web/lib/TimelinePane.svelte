@@ -754,7 +754,6 @@
     const apply = () => {
       timeline = added.concat(timeline);
       tlIndex += added.length;
-      list?.resetHeights();
     };
     if (list) await list.holdAnchorAfterPrepend(added.length, apply);
     else apply();
