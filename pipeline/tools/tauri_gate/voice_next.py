@@ -280,8 +280,8 @@ def assert_voice_next(crate: Path) -> None:
         fail(f"{_ISSUE}: no PeoplePrefs key for chain play")
     if "VIRTUALIZE_AFTER" not in list_c or "filteredTimeline.slice" not in list_c:
         fail(f"{_ISSUE}: the virtual window still unmounts rows outside the slice")
-    if not re.search(r"as item \(item\.index\)", rows):
-        fail(f"{_ISSUE}: row each stays keyed by item.index (prepend may destroy the row audio)")
+    if not re.search(r"as item \([^)]*\bmessage_id\b", rows):
+        fail(f"{_ISSUE}: row each stays keyed by message_id (prepend may destroy the row audio)")
     if "id=\"person-timeline\"" not in list_raw and "id='person-timeline'" not in list_raw:
         fail(f"{_ISSUE}: #person-timeline stays on the list, not on the host")
     if "filteredTimeline" in search or "data-thread-lightbox" in search:

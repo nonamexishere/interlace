@@ -7,14 +7,14 @@ export function heightOf(rowHeights: Record<number, number>, orig: number): numb
 }
 
 export function offsetOf(
-  filteredTimeline: { index: number }[],
+  filteredTimeline: { row: { message_id: number } }[],
   rowHeights: Record<number, number>,
   filteredPos: number,
 ): number {
   const n = Math.max(0, Math.min(filteredPos, filteredTimeline.length));
   let sum = 0;
   for (let k = 0; k < n; k++) {
-    sum += heightOf(rowHeights, filteredTimeline[k].index);
+    sum += heightOf(rowHeights, filteredTimeline[k].row.message_id);
   }
   return sum;
 }
@@ -84,7 +84,7 @@ export type ScrollHeightAdj = {
 };
 
 export function scrollAdjForHeightChanges(
-  filteredTimeline: { index: number }[],
+  filteredTimeline: { row: { message_id: number } }[],
   rowHeights: Record<number, number>,
   pending: Record<number, number>,
   listScroll: number,
@@ -98,7 +98,7 @@ export function scrollAdjForHeightChanges(
     if (!(h > 0) || !Number.isFinite(h)) continue;
     if (rowHeights[orig] === h) continue;
     const prev = rowHeights[orig] ?? ESTIMATED_ROW_HEIGHT;
-    const pos = filteredTimeline.findIndex((it) => it.index === orig);
+    const pos = filteredTimeline.findIndex((it) => it.row.message_id === orig);
     if (pos >= 0) {
       const oldTop = offsetOf(filteredTimeline, rowHeights, pos);
       if (oldTop < listScroll) adj += h - prev;

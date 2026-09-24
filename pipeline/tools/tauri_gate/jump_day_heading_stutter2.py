@@ -41,11 +41,11 @@ from tauri_gate.scan import _without_comments
 
 _ROW_EACH_KEYED = re.compile(
     r"\{#each\s+(?:\w+\.)?rows\s+as\s+\w+\s*\(\s*"
-    r"(?:\w+\.)?index\s*\)"
-    r"|\{#each\s+group\.rows\s+as\s+item\s*\([^)]*index[^)]*\)"
+    r"(?:\w+\.)?(?:row\.)?message_id\s*\)"
+    r"|\{#each\s+group\.rows\s+as\s+item\s*\([^)]*message_id[^)]*\)"
 )
 _ROW_EACH_KEYED_LOOSE = re.compile(
-    r"\{#each\s+(?:group\.)?rows\s+as\s+\w+\s*\([^)]*\bindex\b[^)]*\)"
+    r"\{#each\s+(?:group\.)?rows\s+as\s+\w+\s*\([^)]*\bmessage_id\b[^)]*\)"
 )
 _GROUP_KEY_OK = re.compile(
     r"\{#each\s+(?:windowedDayGroups|windowedGroups|visibleDayGroups|"
@@ -86,7 +86,7 @@ def _rows_src(crate: Path) -> str:
 
 
 def _has_keyed_eaches(blob: str) -> bool:
-    """windowedDayGroups each keyed + group.rows each keyed by item.index."""
+    """windowedDayGroups each keyed + group.rows each keyed by message_id."""
     gm = _GROUP_KEY_OK.search(blob)
     if not gm:
         return False
@@ -353,7 +353,7 @@ def assert_jump_day_heading_stutter2(crate: Path) -> None:
         fail(
             f"{_ISSUE}: {{#each windowedDayGroups as group (…)}} must be keyed "
             f"(first row index or group.key) and {{#each group.rows as item "
-            f"(item.index)}} keyed by item.index — unkeyed each reuses the wrong "
+            f"(message_id)}} keyed by message_id — unkeyed each reuses the wrong "
             "bubble when the window slides"
         )
 
