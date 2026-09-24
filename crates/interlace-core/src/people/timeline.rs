@@ -55,13 +55,16 @@ pub fn person_timeline_rows(
         None,
         None,
         None,
+        None,
     )
 }
 
 /// D18 timeline; `conversation_id = None` is All (merged stream).
 /// `attach_kind = None` / All omits the attachments EXISTS filter.
-/// `after` set (and `before` unset) is the strict-newer page: oldest-first
-/// limit, then reversed so callers still `toReversed()` under the hit.
+/// `after` set (and `before` unset) is the newer page: oldest-first limit,
+/// then reversed so callers still `toReversed()` under the hit.
+/// `after_id` Some keeps the rest of that `sent_at` (`id` greater than it).
+/// `after_id` None keeps strict `sent_at > :after`.
 /// `after` unset keeps the `before` SQL. Both cursors on one call is an error.
 #[allow(clippy::too_many_arguments)]
 pub fn person_timeline_rows_for(
@@ -73,6 +76,7 @@ pub fn person_timeline_rows_for(
     conversation_id: Option<i64>,
     attach_kind: Option<&str>,
     after: Option<&str>,
+    after_id: Option<i64>,
 ) -> Result<Vec<TimelineRow>, CoreError> {
     if before.is_some() && after.is_some() {
         return Err(CoreError::Fatal(
@@ -86,7 +90,9 @@ pub fn person_timeline_rows_for(
     } else {
         "AND c.kind IN ('dm','email_thread')"
     };
-    let cursor_sql = if after.is_some() {
+    let cursor_sql = if after.is_some() && after_id.is_some() {
+        "AND m.sent_at IS NOT NULL AND (m.sent_at > :after OR (m.sent_at = :after AND m.id > :after_id))"
+    } else if after.is_some() {
         "AND m.sent_at IS NOT NULL AND m.sent_at > :after"
     } else if before.is_some() {
         "AND m.sent_at IS NOT NULL AND m.sent_at < :before"
@@ -158,33 +164,41 @@ pub fn person_timeline_rows_for(
         })
     };
     let lim = limit as i64;
-    let rows = match (before, after, conversation_id) {
-        (Some(_), Some(_), _) => {
+    let rows = match (before, after, after_id, conversation_id) {
+        (Some(_), Some(_), _, _) => {
             return Err(CoreError::Fatal(
                 "person timeline accepts before or after, not both".into(),
             ));
         }
-        (Some(b), None, Some(cid)) => stmt.query_map(
+        (Some(b), None, _, Some(cid)) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":before": b, ":conv": cid },
             map_row,
         )?,
-        (Some(b), None, None) => stmt.query_map(
+        (Some(b), None, _, None) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":before": b },
             map_row,
         )?,
-        (None, Some(a), Some(cid)) => stmt.query_map(
+        (None, Some(a), Some(aid), Some(cid)) => stmt.query_map(
+            rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":after": a, ":after_id": aid, ":conv": cid },
+            map_row,
+        )?,
+        (None, Some(a), Some(aid), None) => stmt.query_map(
+            rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":after": a, ":after_id": aid },
+            map_row,
+        )?,
+        (None, Some(a), None, Some(cid)) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":after": a, ":conv": cid },
             map_row,
         )?,
-        (None, Some(a), None) => stmt.query_map(
+        (None, Some(a), None, None) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":after": a },
             map_row,
         )?,
-        (None, None, Some(cid)) => stmt.query_map(
+        (None, None, _, Some(cid)) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":conv": cid },
             map_row,
         )?,
-        (None, None, None) => stmt.query_map(
+        (None, None, _, None) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim },
             map_row,
         )?,

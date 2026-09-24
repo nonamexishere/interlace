@@ -255,9 +255,10 @@
     return null;
   }
 
-  function newestSentAt(rows: TimelineRow[]): string | null {
+  function newestCursor(rows: TimelineRow[]): { sent_at: string; message_id: number } | null {
     for (let i = rows.length - 1; i >= 0; i--) {
-      if (rows[i].sent_at) return rows[i].sent_at;
+      const sent_at = rows[i].sent_at;
+      if (sent_at) return { sent_at, message_id: rows[i].message_id };
     }
     return null;
   }
@@ -561,7 +562,8 @@
   async function loadNewerPage() {
     if (newerInFlight) return;
     if (!loadNewerVisible || selectedId == null) return;
-    if (!newestSentAt(timeline)) {
+    const cursor = newestCursor(timeline);
+    if (!cursor) {
       loadNewerVisible = false;
       return;
     }
@@ -572,7 +574,8 @@
         id: selectedId,
         includeGroups,
         conversationId: selectedConversationId,
-        after: newestSentAt(timeline),
+        after: cursor.sent_at,
+        afterId: cursor.message_id,
         limit: TIMELINE_PAGE_LIMIT,
       });
       if (gen !== tlGen) return;
@@ -583,10 +586,8 @@
       }
       if (!fresh.length) return;
       timeline = timeline.concat(fresh.toReversed());
-    } catch (e) {
-      if (gen === tlGen) {
-        tlError = friendly(e instanceof Error ? e.message : String(e ?? ""));
-      }
+    } catch {
+      return;
     } finally {
       newerInFlight = false;
     }
@@ -821,6 +822,8 @@
   export function closeCopyMenu() { list?.closeCopy(); }
   export function scrollToLatest() {
     ++tlGen;
+    tlLoading = false;
+    tlAppending = false;
     list?.scrollToLatest();
   }
   export function copySelected() { list?.copySelected(); }
@@ -976,6 +979,8 @@
     loadNewerPage={loadNewerPage}
     cancelNewerFetch={() => {
       ++tlGen;
+      tlLoading = false;
+      tlAppending = false;
     }}
   />
   {#if threadTarget && threadSrc}
