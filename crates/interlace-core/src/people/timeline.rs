@@ -1,3 +1,4 @@
+use rusqlite::OptionalExtension;
 use serde::Serialize;
 
 use crate::db::Archive;
@@ -56,6 +57,7 @@ pub fn person_timeline_rows(
         None,
         None,
         None,
+        None,
     )
 }
 
@@ -65,7 +67,9 @@ pub fn person_timeline_rows(
 /// then reversed so callers still `toReversed()` under the hit.
 /// `after_id` Some keeps the rest of that `sent_at` (`id` greater than it).
 /// `after_id` None keeps strict `sent_at > :after`.
-/// `after` unset keeps the `before` SQL. Both cursors on one call is an error.
+/// `before_id` Some (with `before`) keeps the rest of that `sent_at`
+/// (`id` less than it). `before_id` None keeps strict `sent_at < :before`,
+/// including the `sentAt~` cursor. Both cursors on one call is an error.
 #[allow(clippy::too_many_arguments)]
 pub fn person_timeline_rows_for(
     archive: &Archive,
@@ -77,6 +81,7 @@ pub fn person_timeline_rows_for(
     attach_kind: Option<&str>,
     after: Option<&str>,
     after_id: Option<i64>,
+    before_id: Option<i64>,
 ) -> Result<Vec<TimelineRow>, CoreError> {
     if before.is_some() && after.is_some() {
         return Err(CoreError::Fatal(
@@ -94,6 +99,8 @@ pub fn person_timeline_rows_for(
         "AND m.sent_at IS NOT NULL AND (m.sent_at > :after OR (m.sent_at = :after AND m.id > :after_id))"
     } else if after.is_some() {
         "AND m.sent_at IS NOT NULL AND m.sent_at > :after"
+    } else if before.is_some() && before_id.is_some() {
+        "AND m.sent_at IS NOT NULL AND (m.sent_at < :before OR (m.sent_at = :before AND m.id < :before_id))"
     } else if before.is_some() {
         "AND m.sent_at IS NOT NULL AND m.sent_at < :before"
     } else {
@@ -164,41 +171,49 @@ pub fn person_timeline_rows_for(
         })
     };
     let lim = limit as i64;
-    let rows = match (before, after, after_id, conversation_id) {
-        (Some(_), Some(_), _, _) => {
+    let rows = match (before, before_id, after, after_id, conversation_id) {
+        (Some(_), _, Some(_), _, _) => {
             return Err(CoreError::Fatal(
                 "person timeline accepts before or after, not both".into(),
             ));
         }
-        (Some(b), None, _, Some(cid)) => stmt.query_map(
+        (Some(b), Some(bid), None, _, Some(cid)) => stmt.query_map(
+            rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":before": b, ":before_id": bid, ":conv": cid },
+            map_row,
+        )?,
+        (Some(b), Some(bid), None, _, None) => stmt.query_map(
+            rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":before": b, ":before_id": bid },
+            map_row,
+        )?,
+        (Some(b), None, None, _, Some(cid)) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":before": b, ":conv": cid },
             map_row,
         )?,
-        (Some(b), None, _, None) => stmt.query_map(
+        (Some(b), None, None, _, None) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":before": b },
             map_row,
         )?,
-        (None, Some(a), Some(aid), Some(cid)) => stmt.query_map(
+        (None, _, Some(a), Some(aid), Some(cid)) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":after": a, ":after_id": aid, ":conv": cid },
             map_row,
         )?,
-        (None, Some(a), Some(aid), None) => stmt.query_map(
+        (None, _, Some(a), Some(aid), None) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":after": a, ":after_id": aid },
             map_row,
         )?,
-        (None, Some(a), None, Some(cid)) => stmt.query_map(
+        (None, _, Some(a), None, Some(cid)) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":after": a, ":conv": cid },
             map_row,
         )?,
-        (None, Some(a), None, None) => stmt.query_map(
+        (None, _, Some(a), None, None) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":after": a },
             map_row,
         )?,
-        (None, None, _, Some(cid)) => stmt.query_map(
+        (None, _, None, _, Some(cid)) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":conv": cid },
             map_row,
         )?,
-        (None, None, _, None) => stmt.query_map(
+        (None, _, None, _, None) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim },
             map_row,
         )?,
@@ -279,6 +294,60 @@ pub fn person_year_counts(
         out.push(row?);
     }
     Ok(out)
+}
+
+/// Earliest message on one local day (lowest `sent_at`, then lowest id).
+/// Same calendar and membership as `person_year_counts`. No message bodies.
+/// A missing day or unknown person is `None`.
+pub fn person_day_message(
+    archive: &Archive,
+    person_id: i64,
+    day: &str,
+    include_groups: bool,
+) -> Result<Option<(i64, String)>, CoreError> {
+    let mut sql = String::from(
+        "SELECT m.id, m.sent_at \
+         FROM messages m \
+         JOIN conversations c ON c.id = m.conversation_id \
+         WHERE ( \
+                m.sender_identity_id IN ( \
+                    SELECT identity_id FROM person_identities WHERE person_id = :pid \
+                ) \
+             OR m.conversation_id IN ( \
+                    SELECT cp.conversation_id \
+                    FROM conversation_participants cp \
+                    JOIN person_identities pi ON pi.identity_id = cp.identity_id \
+                    WHERE pi.person_id = :pid \
+                ) \
+              ) \
+           AND (CASE \
+             WHEN c.platform IS NULL \
+               OR trim(c.platform) = '' \
+               OR lower(c.platform) = 'whatsapp' \
+             THEN CASE \
+               WHEN substr(m.sent_at, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' \
+               THEN substr(m.sent_at, 1, 10) \
+               ELSE NULL \
+             END \
+             ELSE strftime('%Y-%m-%d', m.sent_at, 'localtime') \
+           END) = :day",
+    );
+    if !include_groups {
+        sql.push_str(" AND c.kind IN ('dm', 'email_thread')");
+    }
+    sql.push_str(" ORDER BY m.sent_at ASC, m.id ASC LIMIT 1");
+    let mut stmt = archive.conn.prepare(&sql)?;
+    let row = stmt
+        .query_row(
+            rusqlite::named_params! { ":pid": person_id, ":day": day },
+            |r| {
+                let id: i64 = r.get(0)?;
+                let sent_at: Option<String> = r.get(1)?;
+                Ok(sent_at.map(|sent| (id, sent)))
+            },
+        )
+        .optional()?;
+    Ok(row.flatten())
 }
 
 /// Stored CAS image / video / sticker rows for one person (same membership

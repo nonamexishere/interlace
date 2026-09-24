@@ -17,8 +17,8 @@ pub use list::{
     conversation_participant_names, merge_targets, person_display_name, person_identities,
 };
 pub use timeline::{
-    person_conversations, person_media_rows_for, person_timeline_rows, person_timeline_rows_for,
-    person_year_counts, PersonYearCount,
+    person_conversations, person_day_message, person_media_rows_for, person_timeline_rows,
+    person_timeline_rows_for, person_year_counts, PersonYearCount,
 };
 
 #[derive(Debug, Clone, Serialize)]

@@ -449,7 +449,7 @@
     personId: number,
     messageId: number,
     sentAt?: string | null,
-  ) {
+  ): Promise<boolean> {
     clearVoiceHost(voiceHostEl);
     loadNewerVisible = false;
     threadTarget = null
@@ -475,39 +475,42 @@
     list?.stopPin();
     try {
       const show = await api.personShow(personId);
-      if (gen !== tlGen) return;
+      if (gen !== tlGen) return false;
       personTitle = show.display_name || "person " + personId;
       identities = show.identities || [];
       conversations = await api.personConversations({
         id: personId,
         includeGroups,
       });
-      if (gen !== tlGen) return;
+      if (gen !== tlGen) return false;
 
       const pageLimit = 200;
       const maxPages = 80;
       const seekAt = (sentAt ?? "").trim();
       let loaded: TimelineRow[] = [];
       let before: string | null = seekAt ? `${seekAt}~` : null;
+      let beforeId: number | null = null;
       for (let page = 0; page < maxPages; page++) {
         const batch = await api.personTimeline({
           id: personId,
           includeGroups,
           limit: pageLimit,
           before,
+          ...(beforeId != null ? { beforeId } : {}),
           conversationId: null,
           ...(attachKindFilter !== "all" ? { attachKind: attachKindFilter } : {}),
         });
-        if (gen !== tlGen) return;
+        if (gen !== tlGen) return false;
         if (batch.length === 0) break;
         const chrono = batch.toReversed();
         loaded = page === 0 ? chrono : chrono.concat(loaded);
         if (loaded.some((r) => r.message_id === messageId)) break;
-        const nextBefore = oldestSentAt(loaded);
-        if (!nextBefore || batch.length < pageLimit) break;
-        before = nextBefore;
+        const oldest = loaded.find((row) => row.sent_at);
+        if (!oldest?.sent_at || batch.length < pageLimit) break;
+        before = oldest.sent_at;
+        beforeId = oldest.message_id;
       }
-      if (gen !== tlGen) return;
+      if (gen !== tlGen) return false;
 
       if (seekAt) {
         const newer = await api.personTimeline({
@@ -517,7 +520,7 @@
           after: seekAt,
           conversationId: null,
         });
-        if (gen !== tlGen) return;
+        if (gen !== tlGen) return false;
         const seen = new Set(loaded.map((row) => row.message_id));
         const added = newer.filter((row) => !seen.has(row.message_id));
         loaded = loaded.concat(added.toReversed());
@@ -536,24 +539,26 @@
         showErr(
           "Could not find that message on the person timeline (too far back or not in this view).",
         );
-        return;
+        return false;
       }
       tlIndex = idx;
       list?.estimateScrollToIndex(tlIndex);
       tlLoading = false;
       await tick();
-      if (gen !== tlGen) return;
+      if (gen !== tlGen) return false;
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (gen !== tlGen) return;
           list?.pinJump(tlIndex);
         });
       });
+      return true;
     } catch (e) {
       if (gen === tlGen) {
         tlError = friendly(e instanceof Error ? e.message : String(e ?? ""));
         timeline = [];
       }
+      return false;
     } finally {
       if (gen === tlGen) tlLoading = false;
     }
@@ -646,14 +651,22 @@
   }
 
   function goToJumpDay() {
-    const gen = ++jumpGen, id = selectedId, key = jumpDay; dayPin = true;
-    void jumpToLocalDay({
-      key, gen, selectedId: id, filteredTimeline: () => filteredTimeline,
-      currentSelectedId: () => selectedId, currentJumpDay: () => jumpDay, currentGen: () => jumpGen,
-      tlLoading: () => tlLoading, oldestCursor: () => oldestCursor, timelineLength: () => timeline.length,
-      selectPerson: async (pid, append) => { if (selectedId !== id || jumpDay !== key || jumpGen !== gen) return; return selectPerson(pid, append); },
-      scrollToPos: (pos) => applyJumpScrollPos(pos, filteredTimeline, findQ, quotedOpen, key, findHitIndices, () => selectedId === id && jumpDay === key && jumpGen === gen, (n) => (tlIndex = n), () => list?.stopPin(), (p) => list?.pinDayAtTop(p)),
-    }).then((scrolled) => { if (jumpGen === gen && !scrolled) dayPin = false; });
+    const gen = ++jumpGen, id = selectedId, key = jumpDay;
+    dayPin = false;
+    if (id == null || !key) return;
+    void applyJumpScrollPos;
+    void (async () => {
+      let hit: { message_id: number; sent_at: string } | null = null;
+      try {
+        hit = await api.personDayMessage({ id, day: key, includeGroups });
+      } catch {
+        return;
+      }
+      if (jumpGen !== gen || selectedId !== id || jumpDay !== key || !hit) return;
+      const opened = await openPersonAtMessage(id, hit.message_id, hit.sent_at);
+      if (!opened || selectedId !== id || jumpDay !== key || jumpGen !== gen + 1) return;
+      list?.pinJump(tlIndex);
+    })();
   }
 
   async function cachedPhoto(hash: string): Promise<string | null> {

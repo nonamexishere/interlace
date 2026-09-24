@@ -1214,8 +1214,14 @@ def assert_inspector_year_jump(crate: Path) -> None:
             f"{_ISSUE}: do not pass ${{year}}-01-01 unless that string is "
             "the payload first_local_day"
         )
-    if "openPersonAtMessage" in click:
-        fail(f"{_ISSUE}: a year click does not call openPersonAtMessage")
+    if click.find("first_local_day") < 0 or not re.search(
+        r"first_local_day[\s\S]*personDayMessage[\s\S]*openPersonAtMessage",
+        click,
+    ):
+        fail(
+            f"{_ISSUE}: a year click passes first_local_day, then personDayMessage, "
+            "then openPersonAtMessage"
+        )
     if re.search(r"showPersonChrome\s*=\s*true", click):
         fail(f"{_ISSUE}: a year click does not set showPersonChrome = true (#213)")
     if re.search(r"jumpDay\s*===|===?\s*jumpDay", "\n".join(click_exprs)):
@@ -1278,10 +1284,16 @@ def assert_inspector_year_jump(crate: Path) -> None:
         )
     if _JAN1.search(jump_key):
         fail(f"{_ISSUE}: jumpToDayKey does not invent YYYY-01-01")
-    if "openPersonAtMessage" in jump_key or re.search(
-        r"showPersonChrome\s*=\s*true", jump_key
+    if re.search(r"showPersonChrome\s*=\s*true", jump_key):
+        fail(f"{_ISSUE}: jumpToDayKey does not force the inspector")
+    year_path = jump_key + "\n" + _fn_body(tl, "goToJumpDay")
+    if not re.search(
+        r"personDayMessage[\s\S]*openPersonAtMessage",
+        year_path,
     ):
-        fail(f"{_ISSUE}: jumpToDayKey does not open a message or force the inspector")
+        fail(
+            f"{_ISSUE}: jumpToDayKey reaches personDayMessage, then openPersonAtMessage"
+        )
     tl_markup = _svelte_markup(tl_raw)
     if any(_is_month_input(tag) for tag in _date_tags(tl_markup)):
         fail(f"{_ISSUE}: do not add type=\"month\" or a year control on the date field")
@@ -1313,12 +1325,24 @@ def assert_inspector_year_jump(crate: Path) -> None:
             fail(f"{_ISSUE}: keep {name} (#311 quiet day jump)")
         if re.search(r"\bshowToast\s*\(|\bshowErr\s*\(", body):
             fail(f"{_ISSUE}: {name} stays a quiet miss (no showToast, no showErr)")
-        if "openPersonAtMessage" in body:
+        if name == "jumpToLocalDay" and "openPersonAtMessage" in body:
             fail(f"{_ISSUE}: {name} must not call openPersonAtMessage")
-    if "shouldLoadOlderForJump" not in local:
+        if name == "goToJumpDay" and (
+            "jumpToLocalDay" in body
+            or "pinDayAtTop" in body
+            or "shouldLoadOlderForJump" in body
+            or not re.search(
+                r"personDayMessage[\s\S]*openPersonAtMessage[\s\S]*pinJump",
+                body,
+            )
+        ):
+            fail(
+                f"{_ISSUE}: goToJumpDay calls personDayMessage, then "
+                "openPersonAtMessage, then pinJump — not the older-only walk"
+            )
+    if "shouldLoadOlderForJump" in go or "jumpToLocalDay" in go:
         fail(
-            f"{_ISSUE}: jumpToLocalDay still prepends older pages only "
-            "(shouldLoadOlderForJump; no newer-page loop)"
+            f"{_ISSUE}: the year window is the day lookup, not an older-only walk"
         )
     if re.search(r"selectPerson\s*\([^)]*\bfalse\b", local):
         fail(f"{_ISSUE}: the day jump must not load a page newer than the hit (#403)")

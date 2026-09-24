@@ -184,12 +184,12 @@ to the bottom while heights settle, so the newest bubble is fully
 visible above the text-only footer even on a narrow pane or a long
 calendar day). Older rows sit above; newest at
 the bottom. **Load older**
-is at the top of the list and prepends earlier pages without jumping
+is at the top of the list and prepends earlier pages until the thread starts, without jumping
 the viewport. ⌘↑ / Home at the top of a long thread prepends without jumping; no older page is a no-op; j/k and End are unchanged. After you scroll up a long thread, a quiet Latest returns you to the newest bubble above the footer; it hides at the bottom; reduced motion is instant; not unread; not auto-stick. A quiet **Last time** last-read on the person timeline is local (localStorage, not iCloud) and per archive; it is not unread. **Latest** still goes to newest. Large threads **virtualize**: only the rows in (and near) the viewport are in the DOM, so a long DM stays scrollable. The person timeline virtualizes with **measured row heights** so two-sided DMs scroll without jumping. A **day heading** (`15/03/2024`, day/month/year) is
 inserted when the host calendar day of `sent_at` changes and **sticks**
 to the top of the message list until the next day replaces it. WhatsApp
 export times display as wall-clock; Gmail / zoned times follow the Mac
-timezone. Display follows the host / Mac timezone; storage / archive JSON stay UTC. A row with no `sent_at` gets no heading. A date control next to Find jumps to the sticky day heading. Jumping to an older day runs Load older until the heading exists or the thread starts. A newer day or a gap in the already-loaded days stays put (does not walk the thread). A later date pick or person switch cancels an in-flight jump. Find leaves that heading at the top when the day has no hit. Bodies stay visible plain-text
+timezone. Display follows the host / Mac timezone; storage / archive JSON stay UTC. A row with no `sent_at` gets no heading. A date control next to Find looks up that day's first message and opens it with messages after it, under the sticky day heading. A day with no messages stays on the current timeline, with no toast. A later date pick or person switch still cancels an in-flight jump. Find leaves that heading at the top when the day has no hit. Bodies stay visible plain-text
 nodes (`whitespace-pre-wrap`) so a screen reader still hears them — never
 HTML. **Gmail / email-thread** bubbles show the subject as a title when present
 and fold quoted reply tails (`On … wrote:`, lines starting with `>`) behind

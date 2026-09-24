@@ -59,6 +59,7 @@ pub(crate) fn person_timeline(
     attach_kind: Option<String>,
     after: Option<String>,
     after_id: Option<i64>,
+    before_id: Option<i64>,
 ) -> Result<serde_json::Value, String> {
     with_arch(&state, |arch| {
         let rows = person_timeline_rows_for(
@@ -71,9 +72,30 @@ pub(crate) fn person_timeline(
             attach_kind.as_deref(),
             after.as_deref(),
             after_id,
+            before_id,
         )
         .map_err(err)?;
         serde_json::to_value(rows).map_err(err)
+    })
+}
+
+#[tauri::command]
+pub(crate) fn person_day_message(
+    state: tauri::State<AppState>,
+    id: i64,
+    day: String,
+    include_groups: bool,
+) -> Result<serde_json::Value, String> {
+    with_arch(&state, |arch| {
+        let row =
+            interlace_core::person_day_message(arch, id, &day, include_groups).map_err(err)?;
+        Ok(match row {
+            Some((message_id, sent_at)) => serde_json::json!({
+                "message_id": message_id,
+                "sent_at": sent_at,
+            }),
+            None => serde_json::Value::Null,
+        })
     })
 }
 

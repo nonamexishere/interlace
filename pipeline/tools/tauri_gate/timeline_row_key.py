@@ -88,9 +88,13 @@ def assert_timeline_row_key(crate: Path) -> None:
         "Load newer must stay a tail concat with no prepend shift and no wipe",
     )
     _keep("resetHeights" in opened, "search jump must stay a replace plus resetHeights")
+    go_day = _fn(pane, "goToJumpDay")
     _keep(
-        bool(re.search(r"selectPerson\(\s*id\s*,\s*true\s*\)", jump)),
-        "day jump must still call selectPerson(id, true)",
+        bool(re.search(
+            r"personDayMessage[\s\S]*openPersonAtMessage[\s\S]*pinJump",
+            go_day,
+        )),
+        "day jump must call personDayMessage, then openPersonAtMessage, then pinJump",
     )
     _keep(
         "selectPerson" not in walk and "shiftHeightsForPrepend" not in walk,
