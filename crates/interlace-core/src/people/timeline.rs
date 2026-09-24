@@ -54,11 +54,16 @@ pub fn person_timeline_rows(
         before,
         None,
         None,
+        None,
     )
 }
 
 /// D18 timeline; `conversation_id = None` is All (merged stream).
 /// `attach_kind = None` / All omits the attachments EXISTS filter.
+/// `after` set (and `before` unset) is the strict-newer page: oldest-first
+/// limit, then reversed so callers still `toReversed()` under the hit.
+/// `after` unset keeps the `before` SQL. Both cursors on one call is an error.
+#[allow(clippy::too_many_arguments)]
 pub fn person_timeline_rows_for(
     archive: &Archive,
     person_id: i64,
@@ -67,7 +72,13 @@ pub fn person_timeline_rows_for(
     before: Option<&str>,
     conversation_id: Option<i64>,
     attach_kind: Option<&str>,
+    after: Option<&str>,
 ) -> Result<Vec<TimelineRow>, CoreError> {
+    if before.is_some() && after.is_some() {
+        return Err(CoreError::Fatal(
+            "person timeline accepts before or after, not both".into(),
+        ));
+    }
     let limit = limit.clamp(1, TIMELINE_MAX);
     let limit = if limit == 0 { TIMELINE_DEFAULT } else { limit };
     let group_sql = if include_groups {
@@ -75,10 +86,17 @@ pub fn person_timeline_rows_for(
     } else {
         "AND c.kind IN ('dm','email_thread')"
     };
-    let cursor_sql = if before.is_some() {
+    let cursor_sql = if after.is_some() {
+        "AND m.sent_at IS NOT NULL AND m.sent_at > :after"
+    } else if before.is_some() {
         "AND m.sent_at IS NOT NULL AND m.sent_at < :before"
     } else {
         ""
+    };
+    let order_sql = if after.is_some() {
+        "ORDER BY m.sent_at ASC, m.id ASC"
+    } else {
+        "ORDER BY m.sent_at IS NULL, m.sent_at DESC, m.id DESC"
     };
     let conv_sql = if conversation_id.is_some() {
         "AND m.conversation_id = :conv"
@@ -117,7 +135,7 @@ pub fn person_timeline_rows_for(
            {cursor_sql}
            {conv_sql}
            {attach_sql}
-         ORDER BY m.sent_at IS NULL, m.sent_at DESC, m.id DESC
+         {order_sql}
          LIMIT :lim"
     );
     let mut stmt = archive.conn.prepare(&sql)?;
@@ -140,20 +158,33 @@ pub fn person_timeline_rows_for(
         })
     };
     let lim = limit as i64;
-    let rows = match (before, conversation_id) {
-        (Some(b), Some(cid)) => stmt.query_map(
+    let rows = match (before, after, conversation_id) {
+        (Some(_), Some(_), _) => {
+            return Err(CoreError::Fatal(
+                "person timeline accepts before or after, not both".into(),
+            ));
+        }
+        (Some(b), None, Some(cid)) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":before": b, ":conv": cid },
             map_row,
         )?,
-        (Some(b), None) => stmt.query_map(
+        (Some(b), None, None) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":before": b },
             map_row,
         )?,
-        (None, Some(cid)) => stmt.query_map(
+        (None, Some(a), Some(cid)) => stmt.query_map(
+            rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":after": a, ":conv": cid },
+            map_row,
+        )?,
+        (None, Some(a), None) => stmt.query_map(
+            rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":after": a },
+            map_row,
+        )?,
+        (None, None, Some(cid)) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim, ":conv": cid },
             map_row,
         )?,
-        (None, None) => stmt.query_map(
+        (None, None, None) => stmt.query_map(
             rusqlite::named_params! { ":pid": person_id, ":lim": lim },
             map_row,
         )?,
@@ -161,6 +192,9 @@ pub fn person_timeline_rows_for(
     let mut out = Vec::new();
     for row in rows {
         out.push(row?);
+    }
+    if after.is_some() {
+        out.reverse();
     }
     attach_attachments(archive, &mut out)?;
     attach_labels(archive, &mut out)?;

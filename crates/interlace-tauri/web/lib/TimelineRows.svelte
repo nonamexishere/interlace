@@ -29,6 +29,8 @@
     findQ = "",
     lastReadMessageId = undefined,
     onOpenImage,
+    loadNewerVisible = false,
+    loadNewerPage = () => {},
   }: {
     windowedDayGroups: {
       key: string;
@@ -53,6 +55,8 @@
     findQ?: string;
     lastReadMessageId?: number;
     onOpenImage: (messageId: number, a: Attachment) => void;
+    loadNewerVisible?: boolean;
+    loadNewerPage?: () => void;
   } = $props();
 
   function onRowContextMenu(e: MouseEvent, row: TimelineRow) {
@@ -236,3 +240,13 @@
     <li class="timeline-spacer-bottom pointer-events-none" style="height: {spacerBottom}px" aria-hidden="true"></li>
   {/if}
 </ol>
+{#if loadNewerVisible}
+  <Button
+    variant="outline"
+    size="sm"
+    class="mb-4 mt-4"
+    data-load-newer
+    onclick={() => loadNewerPage()}
+    >Load newer</Button
+  >
+{/if}

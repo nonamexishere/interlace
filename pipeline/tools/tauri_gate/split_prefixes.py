@@ -84,6 +84,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_search_hit_preview_fold",
     "assert_search_jump_onscreen",
     "assert_search_jump_onscreen_latest",
+    "assert_search_jump_window",
     "assert_search_jump_peer",
     "assert_search_this_conversation",
     "assert_open_original_rfc822",

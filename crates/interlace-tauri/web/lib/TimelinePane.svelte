@@ -81,6 +81,8 @@
   let tlAppending = $state(false);
   let tlError = $state("");
   let tlGen = 0;
+  let loadNewerVisible = $state(false);
+  let newerInFlight = $state(false);
   let threadTarget = $state<ThreadTarget | null>(null);
   let threadSrc = $state<string | null>(null);
   let threadBroken = $state<string[]>([]);
@@ -253,6 +255,13 @@
     return null;
   }
 
+  function newestSentAt(rows: TimelineRow[]): string | null {
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (rows[i].sent_at) return rows[i].sent_at;
+    }
+    return null;
+  }
+
   let lastReadEpoch = $state(0);
   let loadedArchiveId = $state("");
   let selectedIds = $state(new Set<number>());
@@ -266,6 +275,7 @@
     if (seenArchiveId === archive_id) return;
     seenArchiveId = archive_id;
     ++tlGen;
+    loadNewerVisible = false;
     selectedIds = new Set();
     anchorId = null;
   });
@@ -328,6 +338,7 @@
 
   export async function selectPerson(id: number, append = false, keepConversation = false, groups = includeGroups) {
     if (!append) clearVoiceHost(voiceHostEl);
+    if (!append) loadNewerVisible = false;
     if (!append) threadTarget = null
     if (!append) threadSrc = null
     if (!append) threadOlderExhausted = false
@@ -439,6 +450,7 @@
     sentAt?: string | null,
   ) {
     clearVoiceHost(voiceHostEl);
+    loadNewerVisible = false;
     threadTarget = null
     threadSrc = null
     threadOlderExhausted = false
@@ -496,6 +508,21 @@
       }
       if (gen !== tlGen) return;
 
+      if (seekAt) {
+        const newer = await api.personTimeline({
+          id: personId,
+          includeGroups,
+          limit: TIMELINE_PAGE_LIMIT,
+          after: seekAt,
+          conversationId: null,
+        });
+        if (gen !== tlGen) return;
+        const seen = new Set(loaded.map((row) => row.message_id));
+        const added = newer.filter((row) => !seen.has(row.message_id));
+        loaded = loaded.concat(added.toReversed());
+        loadNewerVisible = newer.length === TIMELINE_PAGE_LIMIT && added.length > 0;
+      }
+
       timeline = loaded;
       if (loadArchiveId === archive_id) loadedArchiveId = archive_id;
       selectedIds = new Set([messageId]);
@@ -504,6 +531,7 @@
       const idx = loaded.findIndex((r) => r.message_id === messageId);
       if (idx < 0) {
         tlIndex = -1;
+        loadNewerVisible = false;
         showErr(
           "Could not find that message on the person timeline (too far back or not in this view).",
         );
@@ -527,6 +555,40 @@
       }
     } finally {
       if (gen === tlGen) tlLoading = false;
+    }
+  }
+
+  async function loadNewerPage() {
+    if (newerInFlight) return;
+    if (!loadNewerVisible || selectedId == null) return;
+    if (!newestSentAt(timeline)) {
+      loadNewerVisible = false;
+      return;
+    }
+    newerInFlight = true;
+    const gen = tlGen;
+    try {
+      const page = await api.personTimeline({
+        id: selectedId,
+        includeGroups,
+        conversationId: selectedConversationId,
+        after: newestSentAt(timeline),
+        limit: TIMELINE_PAGE_LIMIT,
+      });
+      if (gen !== tlGen) return;
+      const seen = new Set(timeline.map((row) => row.message_id));
+      const fresh = page.filter((row) => !seen.has(row.message_id));
+      if (page.length === 0 || page.length < TIMELINE_PAGE_LIMIT || !fresh.length) {
+        loadNewerVisible = false;
+      }
+      if (!fresh.length) return;
+      timeline = timeline.concat(fresh.toReversed());
+    } catch (e) {
+      if (gen === tlGen) {
+        tlError = friendly(e instanceof Error ? e.message : String(e ?? ""));
+      }
+    } finally {
+      newerInFlight = false;
     }
   }
 
@@ -757,7 +819,10 @@
   }
 
   export function closeCopyMenu() { list?.closeCopy(); }
-  export function scrollToLatest() { list?.scrollToLatest(); }
+  export function scrollToLatest() {
+    ++tlGen;
+    list?.scrollToLatest();
+  }
   export function copySelected() { list?.copySelected(); }
   export function openGallery() { galleryOpen = true; }
 </script>
@@ -907,6 +972,11 @@
     {extendSelection}
     onClearDayPin={() => (dayPin = false, jumpGen++)}
     onOpenImage={(messageId, attachment) => void openThreadImage(messageId, attachment)}
+    {loadNewerVisible}
+    loadNewerPage={loadNewerPage}
+    cancelNewerFetch={() => {
+      ++tlGen;
+    }}
   />
   {#if threadTarget && threadSrc}
     <TimelineLightbox

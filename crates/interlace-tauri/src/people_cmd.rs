@@ -47,6 +47,7 @@ pub(crate) fn person_set_notes_cmd(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub(crate) fn person_timeline(
     state: tauri::State<AppState>,
@@ -56,6 +57,7 @@ pub(crate) fn person_timeline(
     before: Option<String>,
     conversation_id: Option<i64>,
     attach_kind: Option<String>,
+    after: Option<String>,
 ) -> Result<serde_json::Value, String> {
     with_arch(&state, |arch| {
         let rows = person_timeline_rows_for(
@@ -66,6 +68,7 @@ pub(crate) fn person_timeline(
             before.as_deref(),
             conversation_id,
             attach_kind.as_deref(),
+            after.as_deref(),
         )
         .map_err(err)?;
         serde_json::to_value(rows).map_err(err)
