@@ -27,9 +27,9 @@ pub use people::{
     merge_targets, person_conversations, person_day_message, person_display_name,
     person_identities, person_list, person_list_on, person_list_with_groups, person_media_rows_for,
     person_rename, person_set_notes, person_show, person_timeline_rows, person_timeline_rows_for,
-    person_year_counts, recent_link_events, search_hit_person, AttachmentRef,
-    ConversationParticipantName, LabelRef, LinkEvent, PersonConversation, PersonIdentity,
-    PersonMediaRow, PersonShow, PersonSummary, PersonYearCount, TimelineRow,
+    person_year_counts, rebuild_activity_years, recent_link_events, search_hit_person,
+    AttachmentRef, ConversationParticipantName, LabelRef, LinkEvent, PersonConversation,
+    PersonIdentity, PersonMediaRow, PersonShow, PersonSummary, PersonYearCount, TimelineRow,
 };
 pub use search::{
     build_search_text, expand_query, extra_ascii_fold, index_import_run, person_timeline,

@@ -96,6 +96,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_az_letter_rail",
     "assert_group_participant_open",
     "assert_inspector_year_jump",
+    "assert_year_index",
     "assert_lightbox_thread",
     "assert_timeline_row_key",
     "assert_voice_next",

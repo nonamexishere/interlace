@@ -259,9 +259,12 @@
           <button
             type="button"
             data-activity-year
-            class="text-left text-xs tabular-nums text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            class="flex w-full items-baseline justify-between text-left text-xs text-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             onclick={() => onJumpToDay(row.first_local_day)}
-          >{row.year} {row.count}</button>
+          >
+            {row.year}
+            <span class="tabular-nums text-muted-foreground">{row.count} {t("activityYearMessages")}</span>
+          </button>
         {/each}
       {/if}
     </div>

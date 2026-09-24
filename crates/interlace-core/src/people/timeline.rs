@@ -232,9 +232,8 @@ pub fn person_timeline_rows_for(
     Ok(out)
 }
 
-/// Counts-only year buckets. WhatsApp, null, or blank platform keeps stored
-/// date digits; any other platform uses host `localtime`. No message bodies.
-/// An unknown person id is an empty vec.
+/// Counts-only year buckets. `count` is stored `message_count`.
+/// No rows is an empty vec. No live scan.
 #[derive(Debug, Clone, Serialize)]
 pub struct PersonYearCount {
     pub year: i64,
@@ -247,53 +246,97 @@ pub fn person_year_counts(
     person_id: i64,
     include_groups: bool,
 ) -> Result<Vec<PersonYearCount>, CoreError> {
-    let mut sql = String::from(
-        "SELECT CAST(substr(day, 1, 4) AS INTEGER) AS year, \
-                COUNT(*) AS count, \
-                MIN(day) AS first_local_day \
-         FROM ( \
-           SELECT CASE \
-             WHEN c.platform IS NULL \
-               OR trim(c.platform) = '' \
-               OR lower(c.platform) = 'whatsapp' \
-             THEN CASE \
-               WHEN substr(m.sent_at, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' \
-               THEN substr(m.sent_at, 1, 10) \
-               ELSE NULL \
-             END \
-             ELSE strftime('%Y-%m-%d', m.sent_at, 'localtime') \
-           END AS day \
-           FROM messages m \
-           JOIN conversations c ON c.id = m.conversation_id \
-           WHERE ( \
-                  m.sender_identity_id IN ( \
-                      SELECT identity_id FROM person_identities WHERE person_id = :pid \
-                  ) \
-               OR m.conversation_id IN ( \
-                      SELECT cp.conversation_id \
-                      FROM conversation_participants cp \
-                      JOIN person_identities pi ON pi.identity_id = cp.identity_id \
-                      WHERE pi.person_id = :pid \
-                  ) \
-                )",
-    );
-    if !include_groups {
-        sql.push_str(" AND c.kind IN ('dm', 'email_thread')");
-    }
-    sql.push_str(" ) dated WHERE day IS NOT NULL GROUP BY substr(day, 1, 4) ORDER BY year DESC");
-    let mut stmt = archive.conn.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::named_params! { ":pid": person_id }, |r| {
-        Ok(PersonYearCount {
-            year: r.get(0)?,
-            count: r.get(1)?,
-            first_local_day: r.get(2)?,
-        })
-    })?;
+    let mut stmt = archive.conn.prepare(
+        "SELECT year, message_count, first_local_day \
+         FROM person_year_index \
+         WHERE person_id = :pid AND include_groups = :include_groups \
+         ORDER BY year DESC",
+    )?;
+    let flag = if include_groups { 1i64 } else { 0 };
+    let rows = stmt.query_map(
+        rusqlite::named_params! { ":pid": person_id, ":include_groups": flag },
+        |r| {
+            Ok(PersonYearCount {
+                year: r.get(0)?,
+                count: r.get(1)?,
+                first_local_day: r.get(2)?,
+            })
+        },
+    )?;
     let mut out = Vec::new();
     for row in rows {
         out.push(row?);
     }
     Ok(out)
+}
+
+/// Full replace of stored year rows. `None` replaces every person.
+/// One flag is `dm` / `email_thread` only; the other includes groups.
+/// A person or year with no dated messages stores no row.
+pub fn rebuild_activity_years(archive: &Archive, person_id: Option<i64>) -> Result<(), CoreError> {
+    let ids: Vec<i64> = if let Some(id) = person_id {
+        vec![id]
+    } else {
+        archive.conn.execute("DELETE FROM person_year_index", [])?;
+        let mut stmt = archive.conn.prepare("SELECT id FROM persons")?;
+        let rows = stmt.query_map([], |r| r.get(0))?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+    for id in ids {
+        if person_id.is_some() {
+            archive
+                .conn
+                .execute("DELETE FROM person_year_index WHERE person_id = ?1", [id])?;
+        }
+        for include_groups in [false, true] {
+            let mut sql = String::from(
+                "INSERT INTO person_year_index( \
+                    person_id, include_groups, year, message_count, first_local_day \
+                 ) \
+                 SELECT :pid, :include_groups, year, count, first_local_day FROM ( \
+                   SELECT CAST(substr(day, 1, 4) AS INTEGER) AS year, \
+                          COUNT(*) AS count, \
+                          MIN(day) AS first_local_day \
+                   FROM ( \
+                     SELECT CASE \
+                       WHEN c.platform IS NULL \
+                         OR trim(c.platform) = '' \
+                         OR lower(c.platform) = 'whatsapp' \
+                       THEN CASE \
+                         WHEN substr(m.sent_at, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' \
+                         THEN substr(m.sent_at, 1, 10) \
+                         ELSE NULL \
+                       END \
+                       ELSE strftime('%Y-%m-%d', m.sent_at, 'localtime') \
+                     END AS day \
+                     FROM messages m \
+                     JOIN conversations c ON c.id = m.conversation_id \
+                     WHERE ( \
+                            m.sender_identity_id IN ( \
+                                SELECT identity_id FROM person_identities WHERE person_id = :pid \
+                            ) \
+                         OR m.conversation_id IN ( \
+                                SELECT cp.conversation_id \
+                                FROM conversation_participants cp \
+                                JOIN person_identities pi ON pi.identity_id = cp.identity_id \
+                                WHERE pi.person_id = :pid \
+                            ) \
+                          )",
+            );
+            if !include_groups {
+                sql.push_str(" AND c.kind IN ('dm', 'email_thread')");
+            }
+            sql.push_str(
+                " ) dated WHERE day IS NOT NULL GROUP BY substr(day, 1, 4) ORDER BY year DESC)",
+            );
+            let flag = if include_groups { 1i64 } else { 0 };
+            archive.conn.execute(
+                &sql,
+                rusqlite::named_params! { ":pid": id, ":include_groups": flag },
+            )?;
+        }
+    }
+    Ok(())
 }
 
 /// Earliest message on one local day (lowest `sent_at`, then lowest id).

@@ -11,7 +11,15 @@ pub fn person_merge(
     b: i64,
     opts: PersonMergeOpts,
 ) -> Result<i64, CoreError> {
-    merge_persons(archive, a, b, opts.keep, "user", "manual", 1.0)
+    with_immediate(archive, || {
+        let keep = merge_persons(archive, a, b, opts.keep, "user", "manual", 1.0)?;
+        let loser = if keep == a { b } else { a };
+        crate::people::rebuild_activity_years(archive, Some(keep))?;
+        if loser != keep {
+            crate::people::rebuild_activity_years(archive, Some(loser))?;
+        }
+        Ok(keep)
+    })
 }
 
 pub fn person_unlink(archive: &mut Archive, identity_id: i64) -> Result<(), CoreError> {
@@ -27,23 +35,26 @@ pub fn person_unlink(archive: &mut Archive, identity_id: i64) -> Result<(), Core
     let Some((person_id, reason, conf, created_by)) = row else {
         return Ok(());
     };
-    archive.conn.execute(
-        "DELETE FROM person_identities WHERE identity_id = ?1",
-        [identity_id],
-    )?;
-    log_event(
-        archive,
-        "user",
-        "unlink",
-        serde_json::json!({
-            "identity_id": identity_id,
-            "person_id": person_id,
-            "link_reason": reason,
-            "confidence": conf,
-            "created_by": created_by,
-        }),
-    )?;
-    Ok(())
+    with_immediate(archive, || {
+        archive.conn.execute(
+            "DELETE FROM person_identities WHERE identity_id = ?1",
+            [identity_id],
+        )?;
+        log_event(
+            archive,
+            "user",
+            "unlink",
+            serde_json::json!({
+                "identity_id": identity_id,
+                "person_id": person_id,
+                "link_reason": reason,
+                "confidence": conf,
+                "created_by": created_by,
+            }),
+        )?;
+        crate::people::rebuild_activity_years(archive, Some(person_id))?;
+        Ok(())
+    })
 }
 
 pub fn person_undo(archive: &mut Archive, event_id: i64) -> Result<(), CoreError> {
@@ -54,47 +65,104 @@ pub fn person_undo(archive: &mut Archive, event_id: i64) -> Result<(), CoreError
     )?;
     let p: serde_json::Value = serde_json::from_str(&payload_raw)
         .map_err(|e| CoreError::Parse(format!("undo payload: {e}")))?;
-    match op.as_str() {
-        "merge_persons" => undo_merge(archive, &p)?,
-        "link" => {
-            let iid = p["identity_id"]
-                .as_i64()
-                .ok_or_else(|| CoreError::Parse("undo link missing identity_id".into()))?;
-            archive.conn.execute(
-                "DELETE FROM person_identities WHERE identity_id = ?1",
-                [iid],
-            )?;
+    with_immediate(archive, || {
+        match op.as_str() {
+            "merge_persons" => {
+                let mut people = Vec::new();
+                if let Some(prev) = p["prev"].as_object() {
+                    for iid_s in prev.keys() {
+                        let iid: i64 = iid_s.parse().map_err(|_| {
+                            CoreError::Parse(format!("bad identity id in undo payload: {iid_s}"))
+                        })?;
+                        if let Some(holder) = current_holder(archive, iid)? {
+                            queue_person(&mut people, holder);
+                        }
+                    }
+                }
+                undo_merge(archive, &p)?;
+                let keep = p["keep"]
+                    .as_i64()
+                    .ok_or_else(|| CoreError::Parse("undo merge missing keep".into()))?;
+                let loser = p["loser"]
+                    .as_i64()
+                    .ok_or_else(|| CoreError::Parse("undo merge missing loser".into()))?;
+                queue_person(&mut people, keep);
+                queue_person(&mut people, loser);
+                rebuild_queued(archive, &people)?;
+            }
+            "link" => {
+                let iid = p["identity_id"]
+                    .as_i64()
+                    .ok_or_else(|| CoreError::Parse("undo link missing identity_id".into()))?;
+                let payload_pid = p["person_id"].as_i64();
+                let holder = current_holder(archive, iid)?;
+                archive.conn.execute(
+                    "DELETE FROM person_identities WHERE identity_id = ?1",
+                    [iid],
+                )?;
+                let mut people = Vec::new();
+                if let Some(pid) = holder {
+                    queue_person(&mut people, pid);
+                }
+                if let Some(pid) = payload_pid {
+                    queue_person(&mut people, pid);
+                } else if people.is_empty() {
+                    return Err(CoreError::Parse("undo link missing person_id".into()));
+                }
+                rebuild_queued(archive, &people)?;
+            }
+            "unlink" => {
+                let iid = p["identity_id"]
+                    .as_i64()
+                    .ok_or_else(|| CoreError::Parse("undo unlink missing identity_id".into()))?;
+                let pid = p["person_id"]
+                    .as_i64()
+                    .ok_or_else(|| CoreError::Parse("undo unlink missing person_id".into()))?;
+                let reason = p["link_reason"].as_str().unwrap_or("manual");
+                let conf = p["confidence"].as_f64().unwrap_or(1.0);
+                let by = p["created_by"].as_str().unwrap_or("user");
+                archive.conn.execute(
+                    "INSERT OR IGNORE INTO person_identities(
+                        person_id, identity_id, link_reason, confidence, created_by
+                     ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![pid, iid, reason, conf, by],
+                )?;
+                crate::people::rebuild_activity_years(archive, Some(pid))?;
+            }
+            other => {
+                return Err(CoreError::Config(format!(
+                    "cannot undo identity event op={other}"
+                )))
+            }
         }
-        "unlink" => {
-            let iid = p["identity_id"]
-                .as_i64()
-                .ok_or_else(|| CoreError::Parse("undo unlink missing identity_id".into()))?;
-            let pid = p["person_id"]
-                .as_i64()
-                .ok_or_else(|| CoreError::Parse("undo unlink missing person_id".into()))?;
-            let reason = p["link_reason"].as_str().unwrap_or("manual");
-            let conf = p["confidence"].as_f64().unwrap_or(1.0);
-            let by = p["created_by"].as_str().unwrap_or("user");
-            archive.conn.execute(
-                "INSERT OR IGNORE INTO person_identities(
-                    person_id, identity_id, link_reason, confidence, created_by
-                 ) VALUES (?1, ?2, ?3, ?4, ?5)",
-                rusqlite::params![pid, iid, reason, conf, by],
-            )?;
-        }
-        other => {
-            return Err(CoreError::Config(format!(
-                "cannot undo identity event op={other}"
-            )))
+        log_event(
+            archive,
+            "user",
+            "split_person",
+            serde_json::json!({"undo_of": event_id, "op": op}),
+        )?;
+        Ok(())
+    })
+}
+
+pub(crate) fn with_immediate<T>(
+    archive: &Archive,
+    body: impl FnOnce() -> Result<T, CoreError>,
+) -> Result<T, CoreError> {
+    archive.conn.execute_batch("BEGIN IMMEDIATE")?;
+    match body() {
+        Ok(value) => match archive.conn.execute_batch("COMMIT") {
+            Ok(()) => Ok(value),
+            Err(e) => {
+                let _ = archive.conn.execute_batch("ROLLBACK");
+                Err(e.into())
+            }
+        },
+        Err(e) => {
+            let _ = archive.conn.execute_batch("ROLLBACK");
+            Err(e)
         }
     }
-    log_event(
-        archive,
-        "user",
-        "split_person",
-        serde_json::json!({"undo_of": event_id, "op": op}),
-    )?;
-    Ok(())
 }
 
 pub(super) fn merge_persons(
@@ -173,6 +241,31 @@ pub(super) fn merge_persons(
         }),
     )?;
     Ok(keep_id)
+}
+
+fn current_holder(archive: &Archive, identity_id: i64) -> Result<Option<i64>, CoreError> {
+    archive
+        .conn
+        .query_row(
+            "SELECT person_id FROM person_identities WHERE identity_id = ?1",
+            [identity_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(CoreError::from)
+}
+
+fn queue_person(ids: &mut Vec<i64>, id: i64) {
+    if !ids.contains(&id) {
+        ids.push(id);
+    }
+}
+
+fn rebuild_queued(archive: &Archive, ids: &[i64]) -> Result<(), CoreError> {
+    for id in ids {
+        crate::people::rebuild_activity_years(archive, Some(*id))?;
+    }
+    Ok(())
 }
 
 fn undo_merge(archive: &Archive, p: &serde_json::Value) -> Result<(), CoreError> {

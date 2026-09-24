@@ -249,7 +249,34 @@ pub fn run_import(
         return Err(e);
     }
 
-    mark_run(archive, run_id, "done", Some(&stats), None)?;
+    archive.conn.execute_batch("BEGIN IMMEDIATE")?;
+    let marked = (|| -> Result<(), CoreError> {
+        crate::people::rebuild_activity_years(archive, None)?;
+        mark_run(archive, run_id, "done", Some(&stats), None)?;
+        Ok(())
+    })();
+    if let Err(e) = marked {
+        let _ = archive.conn.execute_batch("ROLLBACK");
+        mark_run(
+            archive,
+            run_id,
+            "failed",
+            Some(&stats),
+            Some(&e.to_string()),
+        )?;
+        return Err(e);
+    }
+    if let Err(e) = archive.conn.execute_batch("COMMIT") {
+        let _ = archive.conn.execute_batch("ROLLBACK");
+        mark_run(
+            archive,
+            run_id,
+            "failed",
+            Some(&stats),
+            Some(&e.to_string()),
+        )?;
+        return Err(e.into());
+    }
     let spill = archive
         .root
         .join("imports")
