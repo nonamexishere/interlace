@@ -106,6 +106,7 @@ export const en = {
   activityYears: "Years",
   activityYearsFailed: "Could not load years",
   activityYearsRetry: "Retry",
+  activityYearMessages: "messages",
   inThisGroup: "In this group",
   findInThread: "Find in conversation",
   jumpToDay: "Jump to day",

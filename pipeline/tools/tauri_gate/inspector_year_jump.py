@@ -47,6 +47,7 @@ _COPY = {
     "activityYears": ("Years", "Yıllar"),
     "activityYearsFailed": ("Could not load years", "Yıllar yüklenemedi"),
     "activityYearsRetry": ("Retry", "Yeniden dene"),
+    "activityYearMessages": ("messages", "mesaj"),
 }
 _PLACEHOLDER = re.compile(r"\bAda\b|\bBerk\b|\bSelf\b")
 _T_KEY = re.compile(r"""\bt\(\s*["']([A-Za-z_][A-Za-z0-9_]*)["']\s*\)""")
@@ -134,6 +135,62 @@ def _end_of_tag(src: str, start: int) -> int:
             return i + 1
         i += 1
     return -1
+
+
+def _interp_pos(src: str, pred) -> int:
+    """Start index of the first `{…}` interpolation for which pred(expr) is true."""
+    i = 0
+    n = len(src)
+    while i < n:
+        j = src.find("{", i)
+        if j < 0:
+            return -1
+        if src[j + 1 : j + 2] in {"#", "/", ":", "@"}:
+            i = j + 1
+            continue
+        end = _match_closer(src, j)
+        if end < 0:
+            return -1
+        if pred(src[j + 1 : end]):
+            return j
+        i = end + 1
+    return -1
+
+
+def _owning_element(markup: str, pos: int) -> tuple[str, int]:
+    """Innermost element that contains pos, as (element, start index)."""
+    stack: list[int] = []
+    best: tuple[int, int] | None = None
+    i = 0
+    n = len(markup)
+    while i < n:
+        if markup.startswith("</", i):
+            gt = markup.find(">", i)
+            if gt < 0:
+                break
+            if stack:
+                start = stack.pop()
+                if start <= pos <= gt and best is None:
+                    best = (start, gt + 1)
+            i = gt + 1
+            continue
+        if markup[i] == "<" and i + 1 < n and markup[i + 1].isalpha():
+            end_open = _end_of_tag(markup, i)
+            if end_open < 0:
+                break
+            tag = markup[i:end_open]
+            if tag.rstrip().endswith("/>"):
+                if i <= pos < end_open and best is None:
+                    best = (i, end_open)
+                i = end_open
+                continue
+            stack.append(i)
+            i = end_open
+            continue
+        i += 1
+    if best is None:
+        return markup, 0
+    return markup[best[0] : best[1]], best[0]
 
 
 def _elements(markup: str, name: str) -> list[str]:
@@ -501,8 +558,8 @@ def _kind_limit(blob: str) -> bool:
 def _groups_filter_problem(body: str) -> str | None:
     if "include_groups" not in body:
         return (
-            "person_year_counts must take include_groups and apply the D18 "
-            "kind filter (groups only when the flag is true)"
+            "the function that fills person_year_index must take include_groups "
+            "and apply the D18 kind filter (groups only when the flag is true)"
         )
     if "sender_identity_id" not in body or "conversation_participants" not in body:
         return (
@@ -606,10 +663,43 @@ def _bucket_problem(body: str) -> str | None:
     return None
 
 
+def _year_index_writer_body(root: Path) -> str:
+    """Body of the function that fills person_year_index, not person_year_counts.
+
+    The CASE stays on that filler. A pure reader must not be the scan lock.
+    """
+    src_root = root / "crates" / "interlace-core" / "src"
+    if not src_root.is_dir():
+        return ""
+    parts = [(path, _text(path)) for path in sorted(src_root.rglob("*.rs"))]
+    combined = "\n".join(text for _path, text in parts)
+    found: list[str] = []
+    for path, raw in parts:
+        for match in re.finditer(
+            r"(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)\b",
+            raw,
+        ):
+            name = match.group(1)
+            if name == "person_year_counts":
+                continue
+            body = _rust_function_body(raw, name)
+            if "person_year_index" not in body:
+                continue
+            if not re.search(r"\b(?:INSERT|REPLACE|DELETE)\b", body, re.I):
+                continue
+            expanded = _without_rust_comments(
+                _rust_body_with_callees(combined, name, depth=2)
+            )
+            if expanded.strip():
+                found.append(expanded)
+    return "\n".join(found)
+
+
 def _year_sql_problem(body: str) -> str | None:
     if not body.strip():
         return (
-            "person_year_counts must live in people/timeline.rs or people.rs "
+            "the function that fills person_year_index must live in "
+            "people/timeline.rs or people.rs "
             "(counts only; no person_timeline paging)"
         )
     if re.search(r"\bperson_timeline", body):
@@ -981,21 +1071,36 @@ def assert_inspector_year_jump(crate: Path) -> None:
                 f"{_ISSUE}: year button needs focus-visible:ring-2 "
                 "focus-visible:ring-ring"
             )
-        if "tabular-nums" not in button or "text-muted-foreground" not in button:
-            fail(
-                f"{_ISSUE}: the count in the year button uses "
-                "tabular-nums text-muted-foreground (plain digits, no grouping)"
-            )
-        if re.search(r"\bmessages\b|toLocaleString|Intl\.NumberFormat", button):
-            fail(
-                f"{_ISSUE}: the year count is plain integer digits, "
-                "not a “messages” word and not grouped"
-            )
         interps = _svelte_interpolations(button)
         if not any(re.search(r"(?:^|\.)year\b", expr) for expr in interps):
             fail(f"{_ISSUE}: the year button shows the year digits")
         if not any(re.search(r"(?:^|\.)count\b", expr) for expr in interps):
             fail(f"{_ISSUE}: the same year button shows the count")
+        count_at = _interp_pos(
+            button, lambda expr: re.search(r"(?:^|\.)count\b", expr)
+        )
+        count_el, count_el_at = (
+            _owning_element(button, count_at) if count_at >= 0 else (button, 0)
+        )
+        after_count = count_el[max(0, count_at - count_el_at) :]
+        if not re.search(
+            r"""t\(\s*["']activityYearMessages["']\s*\)""",
+            after_count,
+        ):
+            fail(
+                '#419: the year count is followed by t("activityYearMessages")'
+            )
+        count_open_end = _end_of_tag(count_el, 0)
+        count_open = count_el[:count_open_end] if count_open_end > 0 else count_el
+        if "tabular-nums" not in count_open or "text-muted-foreground" not in count_open:
+            fail(
+                f"{_ISSUE}: the count in the year button uses "
+                "tabular-nums text-muted-foreground (plain digits, no grouping)"
+            )
+        if re.search(r"toLocaleString|Intl\.NumberFormat", button):
+            fail(
+                f"{_ISSUE}: the year count is plain integer digits, not grouped"
+            )
         if re.search(r"\bdisabled\b", open_tag):
             fail(
                 f"{_ISSUE}: the year button stays enabled "
@@ -1367,9 +1472,14 @@ def assert_inspector_year_jump(crate: Path) -> None:
                 "loadActivityYears(true)"
             )
 
-    # 11) Counts-only command. Host-local year. No bodies. No tz crate.
+    # 11) Scan lock is the function that fills person_year_index, not
+    # person_year_counts. WhatsApp substr, localtime, COUNT(*), MIN(day),
+    # and no January 1 stay on that filler. Until it exists, the CASE is
+    # still in person_year_counts, and those checks still run there.
     _core_src, sig, year_body = _core_year_blob(root)
-    sql_problem = _year_sql_problem(year_body)
+    writer_body = _year_index_writer_body(root)
+    scan_body = writer_body if writer_body.strip() else year_body
+    sql_problem = _year_sql_problem(scan_body)
     if sql_problem:
         fail(f"{_ISSUE}: {sql_problem}")
     if re.search(r"\bconversation_id\b|\battach_kind\b|\bplatform\b", sig):

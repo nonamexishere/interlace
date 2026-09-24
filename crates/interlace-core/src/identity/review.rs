@@ -13,7 +13,7 @@ use super::helpers::{
     person_is_contacts_or_vcard, person_is_live, person_platform_rank, review_pair_fold,
     review_queued_fold, review_side_panel,
 };
-use super::merge::{link_identity, merge_persons};
+use super::merge::{link_identity, merge_persons, with_immediate};
 use super::score::name_score;
 
 pub fn review_resolve(
@@ -59,52 +59,67 @@ pub fn review_resolve_selected(
                 .filter(|pid| ids.contains(pid))
                 .collect(),
         };
-        let survivor = if chosen.len() >= 2 {
-            let survivor = pick_cluster_survivor(archive, queued_right_person, &chosen)?;
-            for pid in &chosen {
-                if *pid != survivor {
-                    merge_persons(
-                        archive,
-                        *pid,
-                        survivor,
-                        Some(survivor),
-                        "user",
-                        "manual",
-                        1.0,
-                    )?;
+        with_immediate(archive, || {
+            let mut touched: Vec<i64> = Vec::new();
+            let note = |id: i64, touched: &mut Vec<i64>| {
+                if !touched.contains(&id) {
+                    touched.push(id);
+                }
+            };
+            let survivor = if chosen.len() >= 2 {
+                let survivor = pick_cluster_survivor(archive, queued_right_person, &chosen)?;
+                for pid in &chosen {
+                    if *pid != survivor {
+                        merge_persons(
+                            archive,
+                            *pid,
+                            survivor,
+                            Some(survivor),
+                            "user",
+                            "manual",
+                            1.0,
+                        )?;
+                        note(*pid, &mut touched);
+                        note(survivor, &mut touched);
+                    }
+                }
+                Some(survivor)
+            } else if live_person_of(archive, left)?.is_none() {
+                // I3 / name-only: link the unlinked left identity onto the
+                // suggested person. Not a person-person merge.
+                match pick_cluster_survivor(archive, queued_right_person, &chosen)
+                    .ok()
+                    .or(right_pid)
+                {
+                    Some(pid) => Some(pid),
+                    None => {
+                        return Err(CoreError::Config("review has no right side".into()));
+                    }
+                }
+            } else {
+                return Err(CoreError::Config(
+                    "select at least two people to merge".into(),
+                ));
+            };
+            if let Some(survivor) = survivor {
+                if live_person_of(archive, left)?.is_none() {
+                    link_identity(archive, survivor, left, "review_accepted", 0.90, "user")?;
+                    note(survivor, &mut touched);
                 }
             }
-            Some(survivor)
-        } else if live_person_of(archive, left)?.is_none() {
-            // I3 / name-only: link the unlinked left identity onto the
-            // suggested person. Not a person-person merge.
-            match pick_cluster_survivor(archive, queued_right_person, &chosen)
-                .ok()
-                .or(right_pid)
-            {
-                Some(pid) => Some(pid),
-                None => {
-                    return Err(CoreError::Config("review has no right side".into()));
-                }
+            archive.conn.execute(
+                "UPDATE merge_review_queue SET status = 'accepted',
+                        resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+                        resolved_by = 'user'
+                 WHERE id = ?1",
+                [review_id],
+            )?;
+            close_sibling_fold_reviews(archive, review_id, left, left_pid, right_pid, "accepted")?;
+            for pid in touched {
+                crate::people::rebuild_activity_years(archive, Some(pid))?;
             }
-        } else {
-            return Err(CoreError::Config(
-                "select at least two people to merge".into(),
-            ));
-        };
-        if let Some(survivor) = survivor {
-            if live_person_of(archive, left)?.is_none() {
-                link_identity(archive, survivor, left, "review_accepted", 0.90, "user")?;
-            }
-        }
-        archive.conn.execute(
-            "UPDATE merge_review_queue SET status = 'accepted',
-                    resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-                    resolved_by = 'user'
-             WHERE id = ?1",
-            [review_id],
-        )?;
-        close_sibling_fold_reviews(archive, review_id, left, left_pid, right_pid, "accepted")?;
+            Ok(())
+        })?;
     } else {
         archive.conn.execute(
             "UPDATE merge_review_queue SET status = 'rejected',

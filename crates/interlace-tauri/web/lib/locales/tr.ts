@@ -108,6 +108,7 @@ export const tr: ChromePack = {
   activityYears: "Yıllar",
   activityYearsFailed: "Yıllar yüklenemedi",
   activityYearsRetry: "Yeniden dene",
+  activityYearMessages: "mesaj",
   inThisGroup: "Bu grupta",
   findInThread: "Sohbette bul",
   jumpToDay: "Güne git",

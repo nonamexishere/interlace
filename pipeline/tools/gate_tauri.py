@@ -210,6 +210,7 @@ def main() -> None:
     assert_az_letter_rail(crate)
     assert_group_participant_open(crate)
     assert_inspector_year_jump(crate)
+    assert_year_index(crate)
     assert_lightbox_thread(crate)
     assert_timeline_row_key(crate)
     assert_voice_next(crate)

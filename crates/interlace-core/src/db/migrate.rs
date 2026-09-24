@@ -5,11 +5,18 @@ use super::Result;
 const INIT_SQL: &str = include_str!("../../migrations/0001_init.sql");
 
 /// Numbered files after 0001.
-const MIGRATIONS: &[(i64, &str, &str)] = &[(
-    2,
-    "0002_raw_cas_hash",
-    include_str!("../../migrations/0002_raw_cas_hash.sql"),
-)];
+const MIGRATIONS: &[(i64, &str, &str)] = &[
+    (
+        2,
+        "0002_raw_cas_hash",
+        include_str!("../../migrations/0002_raw_cas_hash.sql"),
+    ),
+    (
+        3,
+        "0003_person_year_index",
+        include_str!("../../migrations/0003_person_year_index.sql"),
+    ),
+];
 
 /// Apply pending numbered SQL migrations. `0001_init.sql` is version 1.
 pub fn migrate(conn: &Connection) -> Result<()> {
