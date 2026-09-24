@@ -56,6 +56,9 @@
     anchorId = $bindable<number | null>(null),
     extendSelection,
     onOpenImage,
+    loadNewerVisible = false,
+    loadNewerPage = () => {},
+    cancelNewerFetch = () => {},
   }: {
     timeline: TimelineRow[];
     filteredTimeline: { row: TimelineRow; index: number }[];
@@ -90,6 +93,9 @@
     anchorId?: number | null;
     extendSelection: (index: number) => void;
     onOpenImage: (messageId: number, a: Attachment) => void;
+    loadNewerVisible?: boolean;
+    loadNewerPage?: () => void;
+    cancelNewerFetch?: () => void;
   } = $props();
 
   let tlScrollTop = $state(0);
@@ -154,6 +160,9 @@
     if (!el) return;
     tlScrollTop = el.scrollTop; tlViewportHeight = el.clientHeight || tlViewportHeight; tlScrollHeight = el.scrollHeight;
     if (programmaticScroll) return;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 48) {
+      loadNewerPage();
+    }
     clearJumpPin();
     cancelDayHeadingPin(); onClearDayPin?.();
     if (!pointerOnTimeline) return;
@@ -572,6 +581,7 @@
   function closeCopyMenu() { copyMenu = null; }
 
   export function scrollToLatest() {
+    cancelNewerFetch();
     const sc = document.getElementById("person-timeline");
     if (!sc) return;
     cancelDayHeadingPin(); onClearDayPin?.();
@@ -707,6 +717,8 @@
     {onPrepend}
     {findQ}
     {onOpenImage}
+    {loadNewerVisible}
+    {loadNewerPage}
   />
   <div id="timeline-end"></div>
 </ScrollArea>
