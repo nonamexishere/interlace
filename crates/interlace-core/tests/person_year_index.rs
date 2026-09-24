@@ -336,3 +336,94 @@ fn person_year_index_stores_timeline_day_key() {
         "gmail America/Los_Angeles stores the local day, not the UTC digits"
     );
 }
+
+/// Link an identity to Ada, merge Ada into Berk, then undo the link.
+/// The identity now sits on Berk. Undo deletes that row and must rebuild
+/// Berk. Today it rebuilds only the historical Ada id, so Berk stays at 1.
+#[test]
+fn person_undo_link_drops_year_on_current_holder() {
+    let dir = tmp();
+    let mut arch = init_archive(&dir).unwrap();
+    require_year_index(&arch);
+
+    let ada = person(&arch, "Ada", 0);
+    let berk = person(&arch, "Berk", 0);
+    let iid = ident(&arch, "whatsapp", "Ada", "ada");
+
+    arch.conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('whatsapp_android_zip', 't', '/t.zip')",
+            [],
+        )
+        .unwrap();
+    let src = arch.conn.last_insert_rowid();
+    arch.conn
+        .execute(
+            "INSERT INTO import_runs(source_id, status) VALUES (?1, 'done')",
+            [src],
+        )
+        .unwrap();
+    let run = arch.conn.last_insert_rowid();
+    let dm = conv(&arch, "whatsapp", "dm", "whatsapp:ada");
+    msg(&arch, dm, src, run, iid, "2020-06-16T12:00:00Z", "ada-dm");
+    link(&arch, ada, iid);
+    arch.conn
+        .execute(
+            "INSERT INTO identity_link_events(actor, op, payload_json)
+             VALUES ('user', 'link', ?1)",
+            [format!(
+                r#"{{"person_id":{ada},"identity_id":{iid},"link_reason":"manual","confidence":1.0}}"#
+            )],
+        )
+        .unwrap();
+
+    interlace_core::rebuild_activity_years(&arch, Some(ada)).unwrap();
+    let ada_before = person_year_counts(&arch, ada, false).unwrap();
+    assert_eq!(ada_before.len(), 1, "Ada's rebuilt year count is 1");
+    assert_eq!(ada_before[0].count, 1);
+
+    interlace_core::person_merge(
+        &mut arch,
+        ada,
+        berk,
+        interlace_core::PersonMergeOpts { keep: Some(berk) },
+    )
+    .unwrap();
+    let berk_after_merge = person_year_counts(&arch, berk, false).unwrap();
+    assert_eq!(
+        berk_after_merge.len(),
+        1,
+        "merge moves the identity onto Berk and rebuilds Berk"
+    );
+    assert_eq!(berk_after_merge[0].count, 1);
+
+    let link_event: i64 = arch
+        .conn
+        .query_row(
+            "SELECT id FROM identity_link_events WHERE op = 'link' ORDER BY id DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    interlace_core::person_undo(&mut arch, link_event).unwrap();
+
+    let still_linked: i64 = arch
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM person_identities WHERE identity_id = ?1",
+            [iid],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        still_linked, 0,
+        "undo deletes the identity link wherever it is"
+    );
+
+    let berk_after_undo = person_year_counts(&arch, berk, false).unwrap();
+    let berk_count: i64 = berk_after_undo.iter().map(|row| row.count).sum();
+    assert_eq!(
+        berk_count, 0,
+        "undo of the link must drop that message from Berk, who holds the identity after the merge; person_undo rebuilt only Ada"
+    );
+}
