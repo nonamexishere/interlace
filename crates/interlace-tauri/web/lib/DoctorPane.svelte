@@ -28,6 +28,7 @@
   let scanError = $state("");
   let scanGen = 0;
   let lastOk = $state("");
+  let lastImport = $state<{ inserted_messages?: number } | null>(null);
   let confirmOpen = $state(false);
   let confirmTitle = $state("");
   let confirmDesc = $state("");
@@ -47,6 +48,13 @@
       const next = await api.doctorIssues();
       if (gen !== scanGen) return;
       issues = next;
+      try {
+        const st = await api.status();
+        if (gen !== scanGen) return;
+        lastImport = st.last_import ?? null;
+      } catch {
+        if (gen === scanGen) lastImport = null;
+      }
     } catch (e) {
       if (gen === scanGen) {
         scanError = friendly(e instanceof Error ? e.message : String(e ?? ""));
@@ -150,6 +158,12 @@
   <h1 class="mb-1 text-xl font-semibold tracking-tight">{t("doctor")}</h1>
   <p class="mb-4 text-sm text-muted-foreground">
     {t("doctorPaneLead")}
+  </p>
+  <p class="mb-4 text-sm text-muted-foreground">
+    {t("doctorLastInserted").replace(
+      "{n}",
+      String(lastImport?.inserted_messages ?? 0),
+    )}
   </p>
 
   {#if scanning}

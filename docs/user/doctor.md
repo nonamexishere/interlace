@@ -37,6 +37,11 @@ parallel with import.
 Stale `status=running` rows with heartbeat older than 15 minutes are marked
 `interrupted` during doctor.
 
+The Doctor tab shows how many message rows the newest finished import added
+(`inserted_messages` on that `done` run). A newer `running` or `interrupted`
+row is skipped. `interlace doctor` still prints `ok` and does not print that
+count.
+
 ## Exit 3
 
 Doctor prints each problem to stderr and exits **3**. Fix the row in the table,

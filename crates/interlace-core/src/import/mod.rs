@@ -251,8 +251,9 @@ pub fn run_import(
 
     archive.conn.execute_batch("BEGIN IMMEDIATE")?;
     let marked = (|| -> Result<(), CoreError> {
-        crate::people::rebuild_activity_years(archive, None)?;
+        // Mark done first so this run's rows are visible to the year rebuild.
         mark_run(archive, run_id, "done", Some(&stats), None)?;
+        crate::people::rebuild_activity_years(archive, None)?;
         Ok(())
     })();
     if let Err(e) = marked {
@@ -419,9 +420,19 @@ fn upsert_source(
     Ok(archive.conn.last_insert_rowid())
 }
 
+fn reopen_run(archive: &Archive, rid: i64) -> Result<(), CoreError> {
+    archive.conn.execute(
+        "UPDATE import_runs SET status = 'running', error = NULL,
+                heartbeat_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id = ?1",
+        [rid],
+    )?;
+    Ok(())
+}
+
 fn open_run(archive: &Archive, source_id: i64, resume: Option<i64>) -> Result<i64, CoreError> {
     if let Some(rid) = resume {
-        let (sid, _status): (i64, String) = archive.conn.query_row(
+        let (sid, status): (i64, String) = archive.conn.query_row(
             "SELECT source_id, status FROM import_runs WHERE id = ?1",
             [rid],
             |r| Ok((r.get(0)?, r.get(1)?)),
@@ -431,12 +442,31 @@ fn open_run(archive: &Archive, source_id: i64, resume: Option<i64>) -> Result<i6
                 "resume run_id belongs to a different source".into(),
             ));
         }
-        archive.conn.execute(
-            "UPDATE import_runs SET status = 'running', error = NULL,
-                    heartbeat_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-             WHERE id = ?1",
-            [rid],
-        )?;
+        if status == "done" {
+            return Err(CoreError::Config("cannot resume a done run".into()));
+        }
+        reopen_run(archive, rid)?;
+        return Ok(rid);
+    }
+    // Same source only. Done stays closed. A live running row is not stale.
+    let existing: Option<i64> = archive
+        .conn
+        .query_row(
+            "SELECT id FROM import_runs
+             WHERE source_id = ?1
+               AND (
+                    status = 'interrupted'
+                 OR (status = 'running'
+                     AND heartbeat_at < strftime('%Y-%m-%dT%H:%M:%fZ','now','-15 minutes'))
+               )
+             ORDER BY id DESC
+             LIMIT 1",
+            [source_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(rid) = existing {
+        reopen_run(archive, rid)?;
         return Ok(rid);
     }
     archive.conn.execute(

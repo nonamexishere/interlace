@@ -9,7 +9,11 @@ export type Status = {
   identities: number;
   persons_live: number;
   review_open: number;
-  last_import?: { id: number; status: string } | null;
+  last_import?: {
+    id: number;
+    status: string;
+    inserted_messages?: number;
+  } | null;
   warnings?: string[];
 };
 
