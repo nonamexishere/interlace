@@ -127,6 +127,13 @@ interlace import whatsapp ./chat.zip --resume <run_id>
 Interrupted runs (`SIGINT`, or `running` with heartbeat older than 15 minutes)
 are safe to resume. Kill -9 leaves `status=running` until doctor/import notices.
 
+Omitting `--resume` reuses the latest `interrupted` or stale `running` row for
+that same source (same file hash, else the same path). A `done` run is never
+reopened. A `--resume` id from a different source still errors. The resumed
+run skips `line_no` at or below its checkpoint and still walks `seq` on the
+lines it skips. The desktop Import button does not pass a run id; it uses
+that same reuse.
+
 ## Ceiling warning
 
 WhatsApp’s own export often stops around **~40 000** recent messages (less with
@@ -146,9 +153,11 @@ A later official export of the **same** chat (old lines plus newer ones)
 - overlapping messages keep the same `messages.id`
 - you still have **one** conversation
 
-Importing the **same ZIP twice** is unchanged: the `sources` row is reused, a
-new `import_runs` row is recorded, and every message hits
-`UNIQUE(idempotency_key)` and is counted as `skipped_dupes`.
+Importing the **same ZIP twice** after a finished run reuses the `sources`
+row, records a new `import_runs` row, and every message hits
+`UNIQUE(idempotency_key)` and is counted as `skipped_dupes`. Year counts
+include a message only after its import run is `done`, so a later contacts
+or Gmail import does not publish an interrupted WhatsApp prefix.
 
 Sameness is the folded chat title after stripping locale prefixes
 (`WhatsApp Chat with `, `WhatsApp Sohbeti: `, …), or `--conversation-name` if

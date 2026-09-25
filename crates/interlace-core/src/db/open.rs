@@ -102,15 +102,26 @@ impl Archive {
         let last_import = self
             .conn
             .query_row(
-                "SELECT id, status, finished_at, stats_json FROM import_runs ORDER BY id DESC LIMIT 1",
+                "SELECT id, status, finished_at, stats_json FROM import_runs
+                 WHERE status = 'done' ORDER BY id DESC LIMIT 1",
                 [],
                 |r| {
-                    Ok(serde_json::json!({
+                    let stats_json: Option<String> = r.get(3)?;
+                    let inserted_messages = stats_json.as_deref().and_then(|raw| {
+                        serde_json::from_str::<serde_json::Value>(raw)
+                            .ok()
+                            .and_then(|v| v.get("inserted_messages").and_then(|n| n.as_u64()))
+                    });
+                    let mut obj = serde_json::json!({
                         "id": r.get::<_, i64>(0)?,
                         "status": r.get::<_, String>(1)?,
                         "finished_at": r.get::<_, Option<String>>(2)?,
-                        "stats_json": r.get::<_, Option<String>>(3)?,
-                    }))
+                        "stats_json": stats_json,
+                    });
+                    if let Some(n) = inserted_messages {
+                        obj["inserted_messages"] = serde_json::json!(n);
+                    }
+                    Ok(obj)
                 },
             )
             .optional()?;

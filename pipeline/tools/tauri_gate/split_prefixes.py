@@ -97,6 +97,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_group_participant_open",
     "assert_inspector_year_jump",
     "assert_year_index",
+    "assert_wa_reimport_doctor",
     "assert_lightbox_thread",
     "assert_timeline_row_key",
     "assert_voice_next",

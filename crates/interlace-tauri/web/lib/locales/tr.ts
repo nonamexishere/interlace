@@ -74,6 +74,7 @@ export const tr: ChromePack = {
     "Bu arşiv iCloud, Dropbox veya Google Drive üzerinde duruyor gibi görünüyor.",
   doctorPaneLead:
     "Aynı kontroller interlace doctor. Bu pencere arşiv kilidini tutuyor — terminalde doctor çalıştırmadan önce kapatın.",
+  doctorLastInserted: "Son biten içe aktarma {n} mesaj ekledi.",
   doctorEmptyBody:
     "SQLite, FTS ve başvurulan CAS blob'ları sağlıklı görünüyor. Başvurulmayan dosyalar silinsin istiyorsanız hâlâ CAS GC gerekir.",
   runIntegrityCheck: "Bütünlük denetimi çalıştır?",

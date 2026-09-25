@@ -181,7 +181,7 @@ pub fn run_import(
         probe.bytes,
         blake3.as_deref(),
     )?;
-    let run_id = open_run(archive, source_id, opts.resume_run_id)?;
+    let (run_id, reopened) = open_run(archive, source_id, opts.resume_run_id)?;
 
     if opts.cancel.as_ref().is_some_and(|c| c.is_cancelled()) {
         let e = CoreError::Cancelled;
@@ -189,9 +189,28 @@ pub fn run_import(
         return Err(e);
     }
 
+    // Reopened runs already have committed rows. Count them before this pass
+    // increments so done stats are the whole run, not only the tail.
+    let inserted_messages = if reopened {
+        let n: i64 = archive.conn.query_row(
+            "SELECT COUNT(*) FROM messages WHERE import_run_id = ?1",
+            [run_id],
+            |r| r.get(0),
+        )?;
+        u64::try_from(n).unwrap_or(0)
+    } else {
+        0
+    };
+
     let import_err;
     let mut stats = {
-        let mut ctx = DbImportContext::new(archive, run_id, source_id, opts.cancel.clone())?;
+        let mut ctx = DbImportContext::new(
+            archive,
+            run_id,
+            source_id,
+            opts.cancel.clone(),
+            inserted_messages,
+        )?;
         match dispatch_import(kind, path, opts, &mut ctx) {
             Ok(_) => {
                 let s = ctx.stats.clone();
@@ -251,8 +270,9 @@ pub fn run_import(
 
     archive.conn.execute_batch("BEGIN IMMEDIATE")?;
     let marked = (|| -> Result<(), CoreError> {
-        crate::people::rebuild_activity_years(archive, None)?;
+        // Mark done first so this run's rows are visible to the year rebuild.
         mark_run(archive, run_id, "done", Some(&stats), None)?;
+        crate::people::rebuild_activity_years(archive, None)?;
         Ok(())
     })();
     if let Err(e) = marked {
@@ -335,7 +355,7 @@ fn abort_cancelled(
         .unwrap_or("import")
         .to_string();
     let source_id = upsert_source(archive, source_kind_sql(kind), &label, &origin, None, None)?;
-    let run_id = open_run(archive, source_id, opts.resume_run_id)?;
+    let (run_id, _) = open_run(archive, source_id, opts.resume_run_id)?;
     mark_run(archive, run_id, "interrupted", None, Some(&e.to_string()))?;
     Err(e)
 }
@@ -419,9 +439,23 @@ fn upsert_source(
     Ok(archive.conn.last_insert_rowid())
 }
 
-fn open_run(archive: &Archive, source_id: i64, resume: Option<i64>) -> Result<i64, CoreError> {
+fn reopen_run(archive: &Archive, rid: i64) -> Result<(), CoreError> {
+    archive.conn.execute(
+        "UPDATE import_runs SET status = 'running', error = NULL,
+                heartbeat_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id = ?1",
+        [rid],
+    )?;
+    Ok(())
+}
+
+fn open_run(
+    archive: &Archive,
+    source_id: i64,
+    resume: Option<i64>,
+) -> Result<(i64, bool), CoreError> {
     if let Some(rid) = resume {
-        let (sid, _status): (i64, String) = archive.conn.query_row(
+        let (sid, status): (i64, String) = archive.conn.query_row(
             "SELECT source_id, status FROM import_runs WHERE id = ?1",
             [rid],
             |r| Ok((r.get(0)?, r.get(1)?)),
@@ -431,19 +465,40 @@ fn open_run(archive: &Archive, source_id: i64, resume: Option<i64>) -> Result<i6
                 "resume run_id belongs to a different source".into(),
             ));
         }
-        archive.conn.execute(
-            "UPDATE import_runs SET status = 'running', error = NULL,
-                    heartbeat_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-             WHERE id = ?1",
-            [rid],
-        )?;
-        return Ok(rid);
+        if status == "done" {
+            return Err(CoreError::Config("cannot resume a done run".into()));
+        }
+        reopen_run(archive, rid)?;
+        return Ok((rid, true));
+    }
+    // Same source only. Done stays closed. A live running row is not stale.
+    // Failed is reused like interrupted; it is not counted until it reaches done.
+    let existing: Option<i64> = archive
+        .conn
+        .query_row(
+            "SELECT id FROM import_runs
+             WHERE source_id = ?1
+               AND (
+                    status = 'interrupted'
+                 OR status = 'failed'
+                 OR (status = 'running'
+                     AND heartbeat_at < strftime('%Y-%m-%dT%H:%M:%fZ','now','-15 minutes'))
+               )
+             ORDER BY id DESC
+             LIMIT 1",
+            [source_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(rid) = existing {
+        reopen_run(archive, rid)?;
+        return Ok((rid, true));
     }
     archive.conn.execute(
         "INSERT INTO import_runs(source_id, status) VALUES (?1, 'running')",
         [source_id],
     )?;
-    Ok(archive.conn.last_insert_rowid())
+    Ok((archive.conn.last_insert_rowid(), false))
 }
 
 fn mark_run(

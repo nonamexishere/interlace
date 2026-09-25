@@ -36,12 +36,16 @@ impl<'a> DbImportContext<'a> {
         run_id: i64,
         source_id: i64,
         cancel: Option<ImportCancel>,
+        inserted_messages: u64,
     ) -> Result<Self, CoreError> {
         let mut ctx = Self {
             archive,
             run_id,
             source_id,
-            stats: ImportStats::default(),
+            stats: ImportStats {
+                inserted_messages,
+                ..ImportStats::default()
+            },
             msgs_since: 0,
             cas_since: 0,
             in_tx: false,

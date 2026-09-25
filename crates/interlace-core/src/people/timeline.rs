@@ -273,6 +273,7 @@ pub fn person_year_counts(
 /// Full replace of stored year rows. `None` replaces every person.
 /// One flag is `dm` / `email_thread` only; the other includes groups.
 /// A person or year with no dated messages stores no row.
+/// Messages whose `import_run_id` is not a `done` run are ignored.
 pub fn rebuild_activity_years(archive: &Archive, person_id: Option<i64>) -> Result<(), CoreError> {
     let ids: Vec<i64> = if let Some(id) = person_id {
         vec![id]
@@ -311,6 +312,7 @@ pub fn rebuild_activity_years(archive: &Archive, person_id: Option<i64>) -> Resu
                      END AS day \
                      FROM messages m \
                      JOIN conversations c ON c.id = m.conversation_id \
+                     JOIN import_runs ir ON ir.id = m.import_run_id AND ir.status = 'done' \
                      WHERE ( \
                             m.sender_identity_id IN ( \
                                 SELECT identity_id FROM person_identities WHERE person_id = :pid \

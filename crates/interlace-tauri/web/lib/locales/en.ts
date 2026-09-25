@@ -72,6 +72,7 @@ export const en = {
     "This archive looks like it sits on iCloud, Dropbox, or Google Drive.",
   doctorPaneLead:
     "Same checks as interlace doctor. This window already holds the archive lock — close it before running doctor in a terminal.",
+  doctorLastInserted: "Last finished import added {n} messages.",
   doctorEmptyBody:
     "SQLite, FTS, and referenced CAS blobs look healthy. Unreferenced files still need GC CAS if you want them gone.",
   runIntegrityCheck: "Run integrity check?",
