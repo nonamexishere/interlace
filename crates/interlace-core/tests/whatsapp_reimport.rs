@@ -5,6 +5,8 @@
 //! wa_reimport_second_zip_again_inserts_nothing wa_reimport_year_index_rises_then_flat
 //! wa_interrupted_second_zip_does_not_publish_years wa_quit_second_zip_resumes_same_run
 //! wa_resume_rejects_other_source wa_reimport_doctor_inserted_messages
+//! wa_failed_prefix_reused_and_year_includes_it
+//! wa_resumed_inserted_messages_counts_whole_run
 //! wa_reimport_display_name_does_not_merge people-no-name-merge
 //! doctor_pane_shows_last_done_inserted
 //!
@@ -472,5 +474,138 @@ fn wa_reimport_display_name_does_not_merge() {
     };
     assert_eq!(ada_ids.len(), 2);
     assert_ne!(ada_ids[0], ada_ids[1]);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+fn messages_on_run(arch: &interlace_core::db::Archive, run_id: i64) -> i64 {
+    arch.conn
+        .query_row(
+            "SELECT COUNT(*) FROM messages WHERE import_run_id = ?1",
+            [run_id],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+/// Commit a prefix, mark that run failed without deleting its rows, then
+/// import the same zip with `resume_run_id` omitted.
+#[test]
+fn wa_failed_prefix_reused_and_year_includes_it() {
+    const EXTRA: usize = 1_200;
+    let root = tmp_root();
+    let (_, zip_b, _, _) = zip_pair(&root.join("zips"), EXTRA);
+    let arch_path = root.join("arch");
+    let db = arch_path.join("archive.sqlite");
+    let mut arch = init_archive(&arch_path).unwrap();
+
+    let token = ImportCancel::new();
+    let opts = wa_opts(Some(token.clone()));
+    let zip_t = zip_b.clone();
+    let handle = std::thread::spawn(move || {
+        let result = arch.run_import(SourceKind::WhatsappIosZip, &zip_t, &opts);
+        (result, arch)
+    });
+    assert!(
+        wait_committed_messages(&db, 1_000, Duration::from_secs(60)),
+        "zip must commit a prefix before it is marked failed"
+    );
+    token.cancel();
+    let (result, mut arch) = join_import(handle, Duration::from_secs(20));
+    assert!(
+        matches!(result, Err(CoreError::Cancelled)),
+        "prefix cancel must be Cancelled, got {result:?}"
+    );
+    let (failed_id, status) = latest_run(&arch);
+    assert_eq!(
+        status, "interrupted",
+        "cancel leaves the prefix run interrupted"
+    );
+    let prefix = messages_on_run(&arch, failed_id);
+    assert!(
+        prefix >= 1_000,
+        "failed run must keep its committed prefix (got {prefix})"
+    );
+    arch.conn
+        .execute(
+            "UPDATE import_runs SET status = 'failed' WHERE id = ?1",
+            [failed_id],
+        )
+        .unwrap();
+    assert_eq!(messages_on_run(&arch, failed_id), prefix);
+
+    let stats = arch
+        .run_import(SourceKind::WhatsappIosZip, &zip_b, &wa_opts(None))
+        .expect("retry of the failed zip with resume_run_id None");
+    let _ = stats;
+    let (after_id, after_status) = latest_run(&arch);
+    let (year_after, _) = ada_year(&arch);
+    let still_on_failed = messages_on_run(&arch, failed_id);
+    assert!(
+        after_id == failed_id && after_status == "done" && year_after >= prefix,
+        "#420: open_run starts a new run and the year count omits the failed run's rows \
+         (failed={failed_id} latest={after_id} status={after_status} \
+         prefix={prefix} still_on_failed_run={still_on_failed} year={year_after})"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Cancel only after a committed prefix, resume to done, and require
+/// `inserted_messages` to count every row stored on that run.
+#[test]
+fn wa_resumed_inserted_messages_counts_whole_run() {
+    const EXTRA: usize = 1_200;
+    let root = tmp_root();
+    let (_, zip_b, _, _) = zip_pair(&root.join("zips"), EXTRA);
+    let arch_path = root.join("arch");
+    let db = arch_path.join("archive.sqlite");
+    let mut arch = init_archive(&arch_path).unwrap();
+
+    let token = ImportCancel::new();
+    let opts = wa_opts(Some(token.clone()));
+    let zip_t = zip_b.clone();
+    let handle = std::thread::spawn(move || {
+        let result = arch.run_import(SourceKind::WhatsappIosZip, &zip_t, &opts);
+        (result, arch)
+    });
+    assert!(
+        wait_committed_messages(&db, 1_000, Duration::from_secs(60)),
+        "zip must commit a prefix before cancel"
+    );
+    token.cancel();
+    let (result, mut arch) = join_import(handle, Duration::from_secs(20));
+    assert!(
+        matches!(result, Err(CoreError::Cancelled)),
+        "prefix cancel must be Cancelled, got {result:?}"
+    );
+    let (run_id, status) = latest_run(&arch);
+    assert_eq!(status, "interrupted");
+    let prefix = messages_on_run(&arch, run_id);
+    assert!(
+        prefix >= 1,
+        "interrupt must leave at least one message row on the run (got {prefix})"
+    );
+
+    arch.run_import(SourceKind::WhatsappIosZip, &zip_b, &wa_opts(None))
+        .expect("resume of the same zip with resume_run_id None");
+    let (after_id, after_status) = latest_run(&arch);
+    assert_eq!(after_id, run_id, "resume must finish the interrupted run");
+    assert_eq!(after_status, "done");
+    let stored = messages_on_run(&arch, run_id) as u64;
+    assert!(
+        stored > prefix as u64,
+        "resume must store the tail as well as the prefix (prefix={prefix} stored={stored})"
+    );
+    let st = arch.status().unwrap();
+    let n = st["last_import"]
+        .get("inserted_messages")
+        .and_then(|v| v.as_u64());
+    assert_eq!(
+        n,
+        Some(stored),
+        "#420: status().last_import.inserted_messages is only the tail after the checkpoint, \
+         not every message stored on the resumed run \
+         (inserted={n:?} stored={stored} prefix={prefix} last_import={})",
+        st["last_import"]
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
