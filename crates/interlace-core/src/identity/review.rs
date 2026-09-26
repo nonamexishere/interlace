@@ -239,6 +239,12 @@ fn refresh_near_conversations(
     Ok(())
 }
 
+fn push_person(persons: &mut Vec<i64>, pid: i64) {
+    if !persons.contains(&pid) {
+        persons.push(pid);
+    }
+}
+
 fn rebuild_near_persons(
     archive: &Archive,
     keep: Option<&NearMessageSide>,
@@ -246,13 +252,21 @@ fn rebuild_near_persons(
 ) -> Result<(), CoreError> {
     let mut persons = Vec::new();
     for side in [keep, drop].into_iter().flatten() {
-        let Some(sid) = side.sender_identity_id else {
-            continue;
-        };
-        if let Some(pid) = live_person_of(archive, sid)? {
-            if !persons.contains(&pid) {
-                persons.push(pid);
+        if let Some(sid) = side.sender_identity_id {
+            if let Some(pid) = live_person_of(archive, sid)? {
+                push_person(&mut persons, pid);
             }
+        }
+        let mut stmt = archive.conn.prepare(
+            "SELECT DISTINCT pi.person_id
+             FROM conversation_participants cp
+             JOIN person_identities pi ON pi.identity_id = cp.identity_id
+             JOIN persons p ON p.id = pi.person_id
+             WHERE cp.conversation_id = ?1 AND p.tombstoned_at IS NULL",
+        )?;
+        let ids = stmt.query_map([side.conversation_id], |r| r.get::<_, i64>(0))?;
+        for pid in ids {
+            push_person(&mut persons, pid?);
         }
     }
     for pid in persons {

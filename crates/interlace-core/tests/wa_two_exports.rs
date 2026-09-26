@@ -789,6 +789,67 @@ fn wa_two_exports_two_near_lines_accept_one_pair_then_the_other() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+fn year_counts_for(arch: &interlace_core::db::Archive, name: &str) -> Vec<(i64, i64)> {
+    let mut stmt = arch
+        .conn
+        .prepare(
+            "SELECT py.include_groups, py.message_count
+             FROM person_year_index py
+             JOIN persons p ON p.id = py.person_id
+             WHERE p.display_name = ?1 AND py.year = 2024
+             ORDER BY py.include_groups",
+        )
+        .unwrap();
+    stmt.query_map([name], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect()
+}
+
+/// Accept drops the deleted message from every participant's year count.
+#[test]
+fn wa_two_exports_near_accept_refreshes_other_participant_year() {
+    let root = tmp_root();
+    let android = android_zip(
+        &root.join("a"),
+        &[
+            "3/15/24, 2:30 PM - You: alpha-shared",
+            "3/15/24, 2:31 PM - Ada: beta-shared",
+            "3/15/24, 2:40 PM - Ada: ada blue note",
+        ],
+    );
+    let ios = ios_zip(
+        &root.join("b"),
+        &[
+            "[3/15/24, 2:30:18 PM] Self: alpha-shared",
+            "[3/15/24, 2:31:18 PM] Ada: beta-shared",
+            "[3/15/24, 2:40:30 PM] Ada: ada red note",
+        ],
+        &[],
+    );
+    let (mut arch, _berk) = archive_with_self_and_berk(&root.join("arch"));
+    import_android(&mut arch, &android);
+    import_ios(&mut arch, &ios);
+    let before_you = year_counts_for(&arch, "You");
+    let before_ada = year_counts_for(&arch, "Ada");
+    assert!(!before_you.is_empty(), "You year row must exist");
+    assert!(!before_ada.is_empty(), "Ada year row must exist");
+    let rid = open_pair_id(&arch, "ada blue note", "ada red note");
+    review_resolve(&mut arch, rid, true).unwrap();
+    for (name, before) in [("You", before_you), ("Ada", before_ada)] {
+        let after = year_counts_for(&arch, name);
+        assert_eq!(after.len(), before.len(), "{name} year rows stay");
+        for ((flag, prev), (_, next)) in before.iter().zip(after.iter()) {
+            assert_eq!(
+                *next,
+                prev - 1,
+                "{name} message_count must drop the deleted message (include_groups={flag})"
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// Accept of a near pair deletes the newest message. Derived rows follow.
 #[test]
 fn wa_two_exports_near_accept_refreshes_last_message_and_year_count() {
