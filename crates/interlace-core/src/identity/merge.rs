@@ -5,6 +5,8 @@ use rusqlite::OptionalExtension;
 use crate::db::Archive;
 use crate::model::{CoreError, PersonMergeOpts};
 
+use super::helpers::reason_is_phone_replaced;
+
 pub fn person_merge(
     archive: &mut Archive,
     a: i64,
@@ -89,6 +91,7 @@ pub fn person_undo(archive: &mut Archive, event_id: i64) -> Result<(), CoreError
                 queue_person(&mut people, keep);
                 queue_person(&mut people, loser);
                 rebuild_queued(archive, &people)?;
+                reopen_phone_replaced(archive, keep, &p)?;
             }
             "link" => {
                 let iid = p["identity_id"]
@@ -241,6 +244,43 @@ pub(super) fn merge_persons(
         }),
     )?;
     Ok(keep_id)
+}
+
+/// Accepting a replaced-phone suggestion merges two people. Undo puts that
+/// suggestion back on the open list so Review shows it again.
+fn reopen_phone_replaced(
+    archive: &Archive,
+    keep: i64,
+    payload: &serde_json::Value,
+) -> Result<(), CoreError> {
+    let moved: Vec<i64> = payload["moved_identity_ids"]
+        .as_array()
+        .map(|ids| ids.iter().filter_map(|v| v.as_i64()).collect())
+        .unwrap_or_default();
+    if moved.is_empty() {
+        return Ok(());
+    }
+    let rows: Vec<(i64, i64, String)> = {
+        let mut stmt = archive.conn.prepare(
+            "SELECT id, left_identity_id, reason_summary
+             FROM merge_review_queue
+             WHERE status = 'accepted' AND right_person_id = ?1",
+        )?;
+        let it = stmt.query_map([keep], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        it.collect::<Result<Vec<_>, _>>()?
+    };
+    for (id, left_identity, reason) in rows {
+        if !reason_is_phone_replaced(&reason) || !moved.contains(&left_identity) {
+            continue;
+        }
+        archive.conn.execute(
+            "UPDATE merge_review_queue
+             SET status = 'open', resolved_at = NULL, resolved_by = NULL
+             WHERE id = ?1",
+            [id],
+        )?;
+    }
+    Ok(())
 }
 
 fn current_holder(archive: &Archive, identity_id: i64) -> Result<Option<i64>, CoreError> {
