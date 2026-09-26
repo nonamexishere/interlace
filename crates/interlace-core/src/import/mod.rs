@@ -25,6 +25,14 @@ pub use whatsapp::WhatsappImporter;
 
 use context::source_kind_sql;
 
+/// Stored message that shares a minute and canonical sender but not a content hash.
+pub struct WaNearHit {
+    pub message_id: i64,
+    pub sent_at: String,
+    pub body: String,
+    pub sender_identity_id: Option<i64>,
+}
+
 pub trait ImportContext {
     fn run_id(&self) -> i64;
     fn source_id(&self) -> i64;
@@ -67,6 +75,52 @@ pub trait ImportContext {
         _identity_id: i64,
         _role: &str,
     ) -> Result<(), CoreError> {
+        Ok(())
+    }
+
+    /// `messages.id` for an existing `wa-v1` key, if this line was already stored.
+    fn message_id_for_idempotency(&self, _key: &str) -> Result<Option<i64>, CoreError> {
+        Ok(None)
+    }
+
+    /// Existing message on another source with this `wa-content-v1` hash.
+    /// `(message_id, conversation_id)`.
+    fn wa_content_lookup(&self, _hash: &str) -> Result<Option<(i64, i64)>, CoreError> {
+        Ok(None)
+    }
+
+    fn wa_content_put(
+        &mut self,
+        _message_id: i64,
+        _hash: &str,
+        _minute: &str,
+        _sender_canon: &str,
+    ) -> Result<(), CoreError> {
+        Ok(())
+    }
+
+    /// Other-source row with the same minute and canonical sender, different hash.
+    fn wa_near_existing(
+        &self,
+        _minute: &str,
+        _sender_canon: &str,
+        _hash: &str,
+    ) -> Result<Option<WaNearHit>, CoreError> {
+        Ok(None)
+    }
+
+    fn wa_near_enqueue(
+        &mut self,
+        _left_identity: i64,
+        _right_identity: i64,
+        _reason: &str,
+    ) -> Result<(), CoreError> {
+        Ok(())
+    }
+
+    /// Later zip whose user lines were retargeted. Drop it when nothing but
+    /// system rows remain. System rows go first so `messages` can release the FK.
+    fn wa_drop_shell_conversation(&mut self, _conversation_id: i64) -> Result<(), CoreError> {
         Ok(())
     }
 }

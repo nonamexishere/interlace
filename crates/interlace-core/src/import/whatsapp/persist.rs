@@ -3,7 +3,10 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use super::parse::{body_without_media_token, conversation_title, parse_chat, sender_matches_self};
+use super::parse::{
+    body_for_content_hash, body_without_media_token, conversation_title, parse_chat,
+    sender_matches_self,
+};
 use super::zip::{
     attach_kind_from_name, basename, decode_chat, find_chat_entry, list_zip, mime_from_name,
     read_zip_entry, read_zip_entry_capped,
@@ -181,7 +184,41 @@ pub(super) fn import(
     let name_index: HashMap<String, String> =
         listed.iter().map(|n| (basename(n), n.clone())).collect();
 
-    for m in &parsed {
+    let content_keys: Vec<Option<ContentKey>> = parsed
+        .iter()
+        .map(|m| {
+            if m.kind == MessageKind::System {
+                return None;
+            }
+            let minute = minute_key(m.sent_at.as_deref().unwrap_or(""));
+            let sender = content_sender(&pack, m.sender_raw.as_deref(), &self_folds);
+            let body = body_for_content_hash(&pack, &m.body);
+            let hash = wa_content_hash(&minute, &sender, &body);
+            Some(ContentKey {
+                hash,
+                minute,
+                sender,
+            })
+        })
+        .collect();
+    let mut hits: HashMap<String, (i64, i64)> = HashMap::new();
+    let mut per_conv: HashMap<i64, HashSet<String>> = HashMap::new();
+    for key in content_keys.iter().flatten() {
+        if hits.contains_key(&key.hash) {
+            continue;
+        }
+        if let Some((mid, cid)) = ctx.wa_content_lookup(&key.hash)? {
+            hits.insert(key.hash.clone(), (mid, cid));
+            per_conv.entry(cid).or_default().insert(key.hash.clone());
+        }
+    }
+    let retarget = per_conv
+        .iter()
+        .filter(|(_, set)| set.len() >= 2)
+        .max_by_key(|(cid, set)| (set.len(), -**cid))
+        .map(|(cid, _)| *cid);
+
+    for (idx, m) in parsed.iter().enumerate() {
         let sender_norm = match m.sender_raw.as_deref() {
             Some(s) if is_you_token(&pack, s) => name_fold_join(s),
             Some(s) => {
@@ -209,56 +246,109 @@ pub(super) fn import(
             continue;
         }
 
+        if retarget.is_some() && m.kind == MessageKind::System {
+            ctx.checkpoint(Checkpoint {
+                cursor_kind: "wa_line".into(),
+                cursor_value: serde_json::json!({
+                    "entry": chat_name,
+                    "line_no": m.line_no,
+                    "seq_bucket": sent_key,
+                    "seq": seq,
+                }),
+            })?;
+            ctx.maybe_commit()?;
+            continue;
+        }
+
+        let content = content_keys.get(idx).and_then(|k| k.as_ref());
+        let kept = content.and_then(|k| hits.get(&k.hash).map(|(mid, _)| *mid));
+        let idem = wa_idempotency(&native_id, &sent_key, &sender_norm, &body_stripped, seq);
+        // Same-chat overlap still has this wa-v1 key. Count it as a duplicate.
+        // A content hit with no wa-v1 key is a different export (#421), not a dupe.
+        let wa_v1_exists = ctx.message_id_for_idempotency(&idem)?.is_some();
+
         let sender_is_me = m
             .sender_raw
             .as_deref()
             .is_some_and(|s| is_you_token(&pack, s) || owner_self_token.as_deref() == Some(s));
-        let sender_id = if let Some(ref s) = m.sender_raw {
-            let id = persist_sender(
-                ctx,
-                &pack,
-                s,
-                conv_kind,
-                dm_phone.as_deref(),
-                region,
-                &mut ident_cache,
-            )?;
-            if owner_self_token.as_deref() == Some(s.as_str()) {
-                ctx.link_identity_to_self_person(id)?;
-            }
-            Some(id)
+        let message_id = if let (Some(kept_id), false) = (kept, wa_v1_exists) {
+            kept_id
         } else {
-            None
-        };
+            let sender_id = if let Some(ref s) = m.sender_raw {
+                let id = persist_sender(
+                    ctx,
+                    &pack,
+                    s,
+                    conv_kind,
+                    dm_phone.as_deref(),
+                    region,
+                    &mut ident_cache,
+                )?;
+                if owner_self_token.as_deref() == Some(s.as_str()) {
+                    ctx.link_identity_to_self_person(id)?;
+                }
+                Some(id)
+            } else {
+                None
+            };
 
-        let idem = wa_idempotency(&native_id, &sent_key, &sender_norm, &body_stripped, seq);
-        let kind = m.kind;
-        let outcome = ctx.persist_message(NewMessage {
-            conversation_id: conv_id,
-            sender_identity_id: sender_id,
-            sent_at: m.sent_at.clone(),
-            sent_at_precision: m.precision,
-            kind,
-            subject: None,
-            body_text: Some(m.body.clone()),
-            body_html: None,
-            native_id: Some(format!("wa-line:{}", m.line_no)),
-            idempotency_key: idem,
-            gm_thrid: None,
-            in_reply_to: None,
-            payload_json: m.payload_json.clone(),
-            recipients: Vec::new(),
-            labels: Vec::new(),
-        })?;
-        let message_id = match outcome {
-            PersistOutcome::Inserted { message_id } => message_id,
-            PersistOutcome::Duplicate { message_id } => message_id,
-        };
-        if sender_is_me {
-            if let Some(sid) = sender_id {
-                ctx.set_participant_role(conv_id, sid, "me")?;
+            let kind = m.kind;
+            let insert_conv = retarget.unwrap_or(conv_id);
+            let outcome = ctx.persist_message(NewMessage {
+                conversation_id: insert_conv,
+                sender_identity_id: sender_id,
+                sent_at: m.sent_at.clone(),
+                sent_at_precision: m.precision,
+                kind,
+                subject: None,
+                body_text: Some(m.body.clone()),
+                body_html: None,
+                native_id: Some(format!("wa-line:{}", m.line_no)),
+                idempotency_key: idem,
+                gm_thrid: None,
+                in_reply_to: None,
+                payload_json: m.payload_json.clone(),
+                recipients: Vec::new(),
+                labels: Vec::new(),
+            })?;
+            let message_id = match outcome {
+                PersistOutcome::Inserted { message_id } => {
+                    if let Some(k) = content {
+                        ctx.wa_content_put(message_id, &k.hash, &k.minute, &k.sender)?;
+                        if let Some(prev) = ctx.wa_near_existing(&k.minute, &k.sender, &k.hash)? {
+                            enqueue_near(
+                                ctx,
+                                NearEnd {
+                                    id: prev.message_id,
+                                    at: &prev.sent_at,
+                                    body: &prev.body,
+                                    sender: prev.sender_identity_id,
+                                },
+                                NearEnd {
+                                    id: message_id,
+                                    at: m.sent_at.as_deref().unwrap_or(""),
+                                    body: &m.body,
+                                    sender: sender_id,
+                                },
+                            )?;
+                        }
+                    }
+                    message_id
+                }
+                PersistOutcome::Duplicate { message_id } => {
+                    if let Some(k) = content {
+                        ctx.wa_content_put(message_id, &k.hash, &k.minute, &k.sender)?;
+                    }
+                    message_id
+                }
+            };
+            if sender_is_me {
+                if let Some(sid) = sender_id {
+                    ctx.set_participant_role(insert_conv, sid, "me")?;
+                }
             }
-        }
+            message_id
+        };
 
         match &m.media {
             MediaMatch::None => {}
@@ -369,6 +459,10 @@ pub(super) fn import(
         ctx.maybe_commit()?;
     }
 
+    if retarget.is_some() {
+        ctx.wa_drop_shell_conversation(conv_id)?;
+    }
+
     if parsed
         .iter()
         .filter(|m| m.kind != MessageKind::System)
@@ -459,6 +553,77 @@ fn upsert(
     })?;
     cache.insert((kind, norm.to_string()), id);
     Ok(id)
+}
+
+struct ContentKey {
+    hash: String,
+    minute: String,
+    sender: String,
+}
+
+fn minute_key(sent_at: &str) -> String {
+    if sent_at.len() >= 16 && sent_at.as_bytes().get(10) == Some(&b'T') {
+        sent_at[..16].to_string()
+    } else {
+        sent_at.to_string()
+    }
+}
+
+fn content_sender(pack: &LocalePack, sender: Option<&str>, self_folds: &[String]) -> String {
+    let Some(s) = sender else {
+        return String::new();
+    };
+    if is_you_token(pack, s) || sender_matches_self(s, self_folds) {
+        return "self".into();
+    }
+    if let Some(e164) = parse_phone(s, None) {
+        return e164;
+    }
+    name_fold_join(s)
+}
+
+fn wa_content_hash(minute: &str, sender: &str, body: &str) -> String {
+    let mut h = blake3::Hasher::new();
+    h.update(b"wa-content-v1");
+    h.update(&[0]);
+    h.update(minute.as_bytes());
+    h.update(&[0]);
+    h.update(sender.as_bytes());
+    h.update(&[0]);
+    h.update(body.as_bytes());
+    h.finalize().to_hex().to_string()
+}
+
+struct NearEnd<'a> {
+    id: i64,
+    at: &'a str,
+    body: &'a str,
+    sender: Option<i64>,
+}
+
+fn enqueue_near(
+    ctx: &mut dyn ImportContext,
+    old: NearEnd<'_>,
+    new: NearEnd<'_>,
+) -> Result<(), CoreError> {
+    let (Some(old_sender), Some(new_sender)) = (old.sender, new.sender) else {
+        return Ok(());
+    };
+    let old_earlier = old.at < new.at || (old.at == new.at && old.id <= new.id);
+    let (keep, drop, keep_body, drop_body, left, right) = if old_earlier {
+        (old.id, new.id, old.body, new.body, old_sender, new_sender)
+    } else {
+        (new.id, old.id, new.body, old.body, new_sender, old_sender)
+    };
+    let reason = serde_json::json!({
+        "wa_near": true,
+        "keep": keep,
+        "drop": drop,
+        "keep_body": keep_body,
+        "drop_body": drop_body,
+    })
+    .to_string();
+    ctx.wa_near_enqueue(left, right, &reason)
 }
 
 fn wa_idempotency(

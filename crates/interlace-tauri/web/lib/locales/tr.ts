@@ -30,6 +30,9 @@ export const tr: ChromePack = {
   loadingReviewQueue: "İnceleme kuyruğu yükleniyor…",
   linkThesePeople: "Bu kişileri bağla?",
   linkThesePeopleDesc: "{n} kişiyi tek kişide birleştir. Mesajlar yerinde kalır.",
+  joinTheseMessages: "Bu mesajları birleştir?",
+  joinTheseMessagesDesc:
+    "Önceki mesaj kalır, sonraki silinir. Kişiler ayrı kalır.",
   stopSuggesting: "Bu çifti önermeyi bırak?",
   stopSuggestingDesc: "Bu kişiler bir daha önerilmez.",
   undoLastLink: "Son bağlantıyı geri al",

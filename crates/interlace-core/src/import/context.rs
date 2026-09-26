@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use super::ImportContext;
+use super::{ImportContext, WaNearHit};
 use crate::cas::cas_put;
 use crate::db::Archive;
 use crate::model::*;
@@ -377,6 +377,125 @@ impl ImportContext for DbImportContext<'_> {
             "UPDATE messages SET raw_cas_hash = ?1 WHERE id = ?2 AND raw_cas_hash IS NULL",
             rusqlite::params![hash, message_id],
         )?;
+        Ok(())
+    }
+
+    fn message_id_for_idempotency(&self, key: &str) -> Result<Option<i64>, CoreError> {
+        let mut stmt = self
+            .archive
+            .conn
+            .prepare("SELECT id FROM messages WHERE idempotency_key = ?1")?;
+        let mut rows = stmt.query([key])?;
+        match rows.next()? {
+            Some(r) => Ok(Some(r.get(0)?)),
+            None => Ok(None),
+        }
+    }
+
+    fn wa_content_lookup(&self, hash: &str) -> Result<Option<(i64, i64)>, CoreError> {
+        let mut stmt = self.archive.conn.prepare(
+            "SELECT c.message_id, m.conversation_id
+             FROM wa_message_content c
+             JOIN messages m ON m.id = c.message_id
+             WHERE c.content_hash = ?1 AND m.source_id != ?2
+             ORDER BY m.id
+             LIMIT 1",
+        )?;
+        let mut rows = stmt.query(rusqlite::params![hash, self.source_id])?;
+        match rows.next()? {
+            Some(r) => Ok(Some((r.get(0)?, r.get(1)?))),
+            None => Ok(None),
+        }
+    }
+
+    fn wa_content_put(
+        &mut self,
+        message_id: i64,
+        hash: &str,
+        minute: &str,
+        sender_canon: &str,
+    ) -> Result<(), CoreError> {
+        self.archive.conn.execute(
+            "INSERT OR IGNORE INTO wa_message_content(message_id, content_hash, minute, sender_canon)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![message_id, hash, minute, sender_canon],
+        )?;
+        Ok(())
+    }
+
+    fn wa_near_existing(
+        &self,
+        minute: &str,
+        sender_canon: &str,
+        hash: &str,
+    ) -> Result<Option<WaNearHit>, CoreError> {
+        let mut stmt = self.archive.conn.prepare(
+            "SELECT m.id, COALESCE(m.sent_at, ''), COALESCE(m.body_text, ''), m.sender_identity_id
+             FROM wa_message_content c
+             JOIN messages m ON m.id = c.message_id
+             WHERE c.minute = ?1 AND c.sender_canon = ?2 AND c.content_hash != ?3
+               AND m.source_id != ?4
+               AND NOT EXISTS (
+                 SELECT 1 FROM merge_review_queue q
+                 WHERE q.status = 'open'
+                   AND json_extract(q.reason_summary, '$.wa_near') = 1
+                   AND (
+                     json_extract(q.reason_summary, '$.keep') = m.id
+                     OR json_extract(q.reason_summary, '$.drop') = m.id
+                   )
+               )
+             ORDER BY m.sent_at, m.id
+             LIMIT 1",
+        )?;
+        let mut rows = stmt.query(rusqlite::params![
+            minute,
+            sender_canon,
+            hash,
+            self.source_id
+        ])?;
+        match rows.next()? {
+            Some(r) => Ok(Some(WaNearHit {
+                message_id: r.get(0)?,
+                sent_at: r.get(1)?,
+                body: r.get(2)?,
+                sender_identity_id: r.get(3)?,
+            })),
+            None => Ok(None),
+        }
+    }
+
+    fn wa_near_enqueue(
+        &mut self,
+        left_identity: i64,
+        right_identity: i64,
+        reason: &str,
+    ) -> Result<(), CoreError> {
+        self.archive.conn.execute(
+            "INSERT OR IGNORE INTO merge_review_queue(
+                left_identity_id, right_identity_id, suggested_score, reason_summary
+             ) VALUES (?1, ?2, 0.0, ?3)",
+            rusqlite::params![left_identity, right_identity, reason],
+        )?;
+        Ok(())
+    }
+
+    fn wa_drop_shell_conversation(&mut self, conversation_id: i64) -> Result<(), CoreError> {
+        let nonsystem: i64 = self.archive.conn.query_row(
+            "SELECT COUNT(*) FROM messages
+             WHERE conversation_id = ?1 AND kind != 'system'",
+            [conversation_id],
+            |r| r.get(0),
+        )?;
+        if nonsystem > 0 {
+            return Ok(());
+        }
+        self.archive.conn.execute(
+            "DELETE FROM messages WHERE conversation_id = ?1 AND kind = 'system'",
+            [conversation_id],
+        )?;
+        self.archive
+            .conn
+            .execute("DELETE FROM conversations WHERE id = ?1", [conversation_id])?;
         Ok(())
     }
 }

@@ -99,8 +99,9 @@
     confirmOpen = true;
   }
 
-  function canAccept(): boolean {
+  function canAccept() {
     if (!detail) return false;
+    if (detail.review.reason.includes("wa_near")) return true;
     if (selected.length >= 2) return true;
     // I3 / unlinked left: link onto one checked person.
     return detail.left.person_id == null && selected.length >= 1;
@@ -111,6 +112,26 @@
     const id = detail.review.id;
     const ids = [...selected];
     const n = ids.length;
+    const waNear = detail.review.reason.includes("wa_near");
+    if (waNear) {
+      ask(
+        t("joinTheseMessages"),
+        t("joinTheseMessagesDesc"),
+        async () => {
+          resolving = true;
+          try {
+            await api.reviewAccept(id, ids);
+            await reload();
+            void onChanged();
+          } catch (e) {
+            onError(e);
+          } finally {
+            resolving = false;
+          }
+        },
+      );
+      return;
+    }
     ask(
       t("linkThesePeople"),
       t("linkThesePeopleDesc").replace("{n}", String(n)),
@@ -361,9 +382,13 @@
         {/each}
       </div>
       <Separator />
-      <p class="text-xs text-muted-foreground">
-        Accept links these people and can be undone. Reject only stops suggesting this pair.
-      </p>
+      {#if !detail.review.reason.includes("wa_near")}
+        <p class="text-xs text-muted-foreground">
+          Accept links these people and can be undone. Reject only stops suggesting this pair.
+        </p>
+      {:else}
+        <p class="text-xs text-muted-foreground">{t("joinTheseMessagesDesc")}</p>
+      {/if}
       <div class="flex gap-2">
         <Button onclick={accept} disabled={resolving || undoing || !canAccept()}>Accept</Button>
         <Button variant="outline" onclick={reject} disabled={resolving || undoing}>Reject</Button>
