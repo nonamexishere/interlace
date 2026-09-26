@@ -435,6 +435,15 @@ impl ImportContext for DbImportContext<'_> {
              JOIN messages m ON m.id = c.message_id
              WHERE c.minute = ?1 AND c.sender_canon = ?2 AND c.content_hash != ?3
                AND m.source_id != ?4
+               AND NOT EXISTS (
+                 SELECT 1 FROM merge_review_queue q
+                 WHERE q.status = 'open'
+                   AND json_extract(q.reason_summary, '$.wa_near') = 1
+                   AND (
+                     json_extract(q.reason_summary, '$.keep') = m.id
+                     OR json_extract(q.reason_summary, '$.drop') = m.id
+                   )
+               )
              ORDER BY m.sent_at, m.id
              LIMIT 1",
         )?;
@@ -467,6 +476,26 @@ impl ImportContext for DbImportContext<'_> {
              ) VALUES (?1, ?2, 0.0, ?3)",
             rusqlite::params![left_identity, right_identity, reason],
         )?;
+        Ok(())
+    }
+
+    fn wa_drop_shell_conversation(&mut self, conversation_id: i64) -> Result<(), CoreError> {
+        let nonsystem: i64 = self.archive.conn.query_row(
+            "SELECT COUNT(*) FROM messages
+             WHERE conversation_id = ?1 AND kind != 'system'",
+            [conversation_id],
+            |r| r.get(0),
+        )?;
+        if nonsystem > 0 {
+            return Ok(());
+        }
+        self.archive.conn.execute(
+            "DELETE FROM messages WHERE conversation_id = ?1 AND kind = 'system'",
+            [conversation_id],
+        )?;
+        self.archive
+            .conn
+            .execute("DELETE FROM conversations WHERE id = ?1", [conversation_id])?;
         Ok(())
     }
 }

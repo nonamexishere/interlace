@@ -625,3 +625,395 @@ fn wa_two_exports_same_android_zip_twice_does_not_duplicate() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+fn reason_text(row: &serde_json::Value) -> String {
+    row.get("reason")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn live_person_count(arch: &interlace_core::db::Archive) -> i64 {
+    count(
+        arch,
+        "SELECT COUNT(*) FROM persons WHERE tombstoned_at IS NULL",
+    )
+}
+
+fn review_ids_for_pair(arch: &interlace_core::db::Archive, a: &str, b: &str) -> Vec<i64> {
+    review_list(arch)
+        .unwrap()
+        .into_iter()
+        .filter(|row| {
+            let reason = reason_text(row);
+            reason.contains("\"wa_near\":true") && reason.contains(a) && reason.contains(b)
+        })
+        .map(|row| row["id"].as_i64().expect("review id"))
+        .collect()
+}
+
+fn open_pair_id(arch: &interlace_core::db::Archive, a: &str, b: &str) -> i64 {
+    let ids = review_ids_for_pair(arch, a, b);
+    assert_eq!(
+        ids.len(),
+        1,
+        "expected one open wa_near row naming {a:?} and {b:?}, got {:?}",
+        review_list(arch).unwrap()
+    );
+    ids[0]
+}
+
+fn ada_year_counts(arch: &interlace_core::db::Archive) -> Vec<(i64, i64)> {
+    let mut stmt = arch
+        .conn
+        .prepare(
+            "SELECT py.include_groups, py.message_count
+             FROM person_year_index py
+             JOIN persons p ON p.id = py.person_id
+             WHERE p.display_name = 'Ada' AND py.year = 2024
+             ORDER BY py.include_groups",
+        )
+        .unwrap();
+    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect()
+}
+
+fn assert_last_message_at_matches_remaining(arch: &interlace_core::db::Archive) {
+    let mut stmt = arch
+        .conn
+        .prepare(
+            "SELECT c.id, c.last_message_at,
+                    (SELECT MAX(m.sent_at) FROM messages m WHERE m.conversation_id = c.id)
+             FROM conversations c
+             ORDER BY c.id",
+        )
+        .unwrap();
+    let rows: Vec<(i64, Option<String>, Option<String>)> = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert!(!rows.is_empty(), "conversation row missing");
+    for (id, stored, latest) in rows {
+        assert_eq!(
+            stored, latest,
+            "conversations.last_message_at for {id} must be the latest remaining sent_at"
+        );
+    }
+}
+
+/// Two different near lines from Ada in one minute are two open reviews.
+/// Accepting one joins only that pair; the other stays open and joins later.
+#[test]
+fn wa_two_exports_two_near_lines_accept_one_pair_then_the_other() {
+    let root = tmp_root();
+    let android = android_zip(
+        &root.join("a"),
+        &[
+            "3/15/24, 2:32 PM - Ada: linen note",
+            "3/15/24, 2:32 PM - Ada: basket note",
+        ],
+    );
+    let ios = ios_zip(
+        &root.join("b"),
+        &[
+            "[3/15/24, 2:32:18 PM] Ada: canvas note",
+            "[3/15/24, 2:32:18 PM] Ada: cooler note",
+        ],
+        &[],
+    );
+    let (mut arch, berk) = archive_with_self_and_berk(&root.join("arch"));
+    import_android(&mut arch, &android);
+    import_ios(&mut arch, &ios);
+
+    let rows = review_list(&arch).unwrap();
+    let near: Vec<&serde_json::Value> = rows
+        .iter()
+        .filter(|row| reason_text(row).contains("\"wa_near\":true"))
+        .collect();
+    assert_eq!(
+        near.len(),
+        2,
+        "two near lines in one minute are two open rows, got {rows:?}"
+    );
+    let linen = open_pair_id(&arch, "linen note", "canvas note");
+    let basket = open_pair_id(&arch, "basket note", "cooler note");
+    assert_ne!(linen, basket, "the two pairs must not share one review row");
+    for row in &near {
+        let reason = reason_text(row);
+        let linen_pair = reason.contains("linen note") && reason.contains("canvas note");
+        let basket_pair = reason.contains("basket note") && reason.contains("cooler note");
+        assert!(
+            linen_pair ^ basket_pair,
+            "each wa_near row names one pair only, got {reason}"
+        );
+    }
+
+    let people = live_person_count(&arch);
+    let ops = link_ops(&arch);
+    review_resolve(&mut arch, linen, true).unwrap();
+
+    let left = user_rows(&arch);
+    assert_eq!(rows_with_body(&left, "linen note").len(), 1);
+    assert!(
+        rows_with_body(&left, "canvas note").is_empty(),
+        "Accept joins only the linen/canvas pair, got {left:?}"
+    );
+    assert_eq!(rows_with_body(&left, "basket note").len(), 1);
+    assert_eq!(rows_with_body(&left, "cooler note").len(), 1);
+    let still = review_list(&arch).unwrap();
+    let still_near: Vec<&serde_json::Value> = still
+        .iter()
+        .filter(|row| reason_text(row).contains("\"wa_near\":true"))
+        .collect();
+    assert_eq!(
+        still_near.len(),
+        1,
+        "the other near row stays open, got {still:?}"
+    );
+    assert_eq!(open_pair_id(&arch, "basket note", "cooler note"), basket);
+
+    review_resolve(&mut arch, basket, true).unwrap();
+    let done = user_rows(&arch);
+    assert_eq!(rows_with_body(&done, "basket note").len(), 1);
+    assert!(
+        rows_with_body(&done, "cooler note").is_empty(),
+        "the later Accept joins the basket/cooler pair, got {done:?}"
+    );
+    assert_eq!(rows_with_body(&done, "linen note").len(), 1);
+    assert_eq!(live_person_count(&arch), people, "people count stays put");
+    assert_eq!(link_ops(&arch), ops, "Accept does not merge or link people");
+    assert_berk_untouched(&arch, berk);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Accept of a near pair deletes the newest message. Derived rows follow.
+#[test]
+fn wa_two_exports_near_accept_refreshes_last_message_and_year_count() {
+    let root = tmp_root();
+    let android = android_zip(
+        &root.join("a"),
+        &[
+            "3/15/24, 2:30 PM - Ada: ada earlier note",
+            "3/15/24, 2:40 PM - Ada: ada blue note",
+        ],
+    );
+    let ios = ios_zip(
+        &root.join("b"),
+        &["[3/15/24, 2:40:30 PM] Ada: ada red note"],
+        &[],
+    );
+    let (mut arch, _berk) = archive_with_self_and_berk(&root.join("arch"));
+    import_android(&mut arch, &android);
+    import_ios(&mut arch, &ios);
+
+    let not_done = count(
+        &arch,
+        "SELECT COUNT(*) FROM import_runs WHERE status != 'done'",
+    );
+    assert_eq!(not_done, 0, "import finished with status=done");
+    let before = ada_year_counts(&arch);
+    assert!(
+        !before.is_empty(),
+        "person_year_index row for Ada must exist because the import finished"
+    );
+    let rid = open_pair_id(&arch, "ada blue note", "ada red note");
+    let people = live_person_count(&arch);
+    review_resolve(&mut arch, rid, true).unwrap();
+
+    let rows = user_rows(&arch);
+    assert_eq!(rows_with_body(&rows, "ada blue note").len(), 1);
+    assert!(
+        rows_with_body(&rows, "ada red note").is_empty(),
+        "Accept deletes the later near message, got {rows:?}"
+    );
+    let after = ada_year_counts(&arch);
+    assert_eq!(
+        after.len(),
+        before.len(),
+        "year rows stay, counts drop the deleted message, before {before:?} after {after:?}"
+    );
+    for ((flag, prev), (flag_after, next)) in before.iter().zip(after.iter()) {
+        assert_eq!(flag_after, flag);
+        assert_eq!(
+            *next,
+            prev - 1,
+            "Ada message_count must not include the deleted message (include_groups={flag})"
+        );
+    }
+    assert_last_message_at_matches_remaining(&arch);
+    assert_eq!(live_person_count(&arch), people);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+fn encrypted_on(arch: &interlace_core::db::Archive, conversation_id: i64) -> i64 {
+    arch.conn
+        .query_row(
+            "SELECT COUNT(*) FROM messages
+             WHERE conversation_id = ?1
+               AND COALESCE(body_text, '') LIKE '%end-to-end encrypted%'",
+            [conversation_id],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+/// Two shared hashes skip the later encryption line and drop the empty chat.
+/// One shared hash still leaves the iOS user line and the iOS system line.
+#[test]
+fn wa_two_exports_two_hashes_skip_system_line_and_drop_empty_chat() {
+    let root = tmp_root();
+    let android = android_zip(
+        &root.join("a"),
+        &[
+            "3/15/24, 2:32 PM - Ada: alpha-shared",
+            "3/15/24, 2:33 PM - You: beta-shared",
+        ],
+    );
+    let ios = ios_zip(
+        &root.join("b"),
+        &[
+            "[3/15/24, 2:32:18 PM] Ada: alpha-shared",
+            "[3/15/24, 2:33:18 PM] Self: beta-shared",
+        ],
+        &[],
+    );
+    let (mut arch, _berk) = archive_with_self_and_berk(&root.join("arch"));
+    import_android(&mut arch, &android);
+    let kept: i64 = arch
+        .conn
+        .query_row("SELECT id FROM conversations", [], |r| r.get(0))
+        .unwrap();
+    import_ios(&mut arch, &ios);
+
+    assert_eq!(
+        encrypted_on(&arch, kept),
+        1,
+        "the later zip encryption line must not be stored on the kept conversation"
+    );
+    assert_eq!(
+        count(&arch, "SELECT COUNT(*) FROM conversations"),
+        1,
+        "later conversation with no non-system messages must not remain"
+    );
+    let rows = user_rows(&arch);
+    assert_eq!(rows_with_body(&rows, "alpha-shared").len(), 1);
+    assert_eq!(rows_with_body(&rows, "beta-shared").len(), 1);
+
+    let control_android = android_zip(&root.join("c"), &["3/15/24, 2:41 PM - You: shared-plain"]);
+    let control_ios = ios_zip(
+        &root.join("d"),
+        &[
+            "[3/15/24, 2:41:18 PM] Self: shared-plain",
+            "[3/15/24, 2:42:18 PM] Ada: only-ios-line",
+        ],
+        &[],
+    );
+    let (mut control, _) = archive_with_self_and_berk(&root.join("arch-one"));
+    import_android(&mut control, &control_android);
+    let android_conv: i64 = control
+        .conn
+        .query_row("SELECT id FROM conversations", [], |r| r.get(0))
+        .unwrap();
+    import_ios(&mut control, &control_ios);
+    let later: i64 = control
+        .conn
+        .query_row(
+            "SELECT conversation_id FROM messages WHERE body_text = 'only-ios-line'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_ne!(
+        later, android_conv,
+        "one shared hash leaves the iOS-only user line on the later conversation"
+    );
+    assert_eq!(
+        encrypted_on(&control, later),
+        1,
+        "one shared hash leaves the iOS system line on the later conversation"
+    );
+    assert_eq!(count(&control, "SELECT COUNT(*) FROM conversations"), 2);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Same Android zip again must store the content hash on the wa-v1 duplicate,
+/// so a later iOS zip collapses the shared line. skipped_dupes still counts.
+#[test]
+fn wa_two_exports_reimport_stores_content_hash_then_ios_collapses() {
+    let root = tmp_root();
+    let android = android_zip(&root.join("a"), &["3/15/24, 2:41 PM - You: shared-plain"]);
+    let ios = ios_zip(
+        &root.join("b"),
+        &["[3/15/24, 2:41:18 PM] Self: shared-plain"],
+        &[],
+    );
+    let (mut arch, _berk) = archive_with_self_and_berk(&root.join("arch"));
+    import_android(&mut arch, &android);
+    // First insert already wrote the content row. Clear it so the same-file
+    // wa-v1 hit is the path that must store the hash.
+    arch.conn
+        .execute("DELETE FROM wa_message_content", [])
+        .unwrap();
+    let again = arch
+        .run_import(SourceKind::WhatsappAndroidZip, &android, &opts())
+        .unwrap();
+    assert!(
+        again.skipped_dupes > 0,
+        "same-file reimport still counts skipped_dupes, got {}",
+        again.skipped_dupes
+    );
+    import_ios(&mut arch, &ios);
+    let rows = user_rows(&arch);
+    assert_eq!(
+        rows_with_body(&rows, "shared-plain").len(),
+        1,
+        "reimport must store the content hash so the later zip collapses the line, got {rows:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A caption plus the Android file phrase hashes as the caption, same as iOS.
+#[test]
+fn wa_two_exports_caption_and_file_phrase_are_one_message_not_near() {
+    let root = tmp_root();
+    let android = android_zip(
+        &root.join("a"),
+        &[
+            "3/15/24, 2:51 PM - Ada: picnic caption",
+            "picnic.jpg (file attached)",
+        ],
+    );
+    let jpeg = b"\xFF\xD8fakejpeg";
+    let ios = ios_zip(
+        &root.join("b"),
+        &["[3/15/24, 2:51:18 PM] Ada: picnic caption <attached: picnic.jpg>"],
+        &[("picnic.jpg", jpeg)],
+    );
+    let (mut arch, _berk) = archive_with_self_and_berk(&root.join("arch"));
+    import_android(&mut arch, &android);
+    import_ios(&mut arch, &ios);
+
+    let rows = user_rows(&arch);
+    assert_eq!(
+        rows.len(),
+        1,
+        "caption plus file-attached phrase is one message, got {rows:?}"
+    );
+    let listed = review_list(&arch).unwrap();
+    let near: Vec<&serde_json::Value> = listed
+        .iter()
+        .filter(|row| {
+            let reason = reason_text(row);
+            reason.contains("\"wa_near\":true")
+                && (reason.contains("picnic caption") || reason.contains("picnic.jpg"))
+        })
+        .collect();
+    assert!(
+        near.is_empty(),
+        "that caption pair must not be a near review, got {listed:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

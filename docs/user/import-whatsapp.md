@@ -178,19 +178,29 @@ rows and does not merge people by display name.
 A second hash, `wa-content-v1`, ignores title, per-file sequence, filename,
 and attachment bytes. It uses the clock truncated to the minute, a canonical
 sender (`self` for a pack you-token or the archive owner name, otherwise an
-E.164 or the folded display name), and the body after the omitted token,
-`<attached: …>`, and the Android `(file attached)` phrase are removed.
+E.164 or the folded display name), and the body after the omitted token and
+`<attached: …>` are removed. An Android `(file attached)` line drops that
+filename phrase; a caption on the lines above it stays in the hash, so it
+matches an iOS caption with `<attached: …>`.
+
+Importing the same ZIP again still counts those lines as `skipped_dupes`. If
+the stored message has no `wa-content-v1` row yet, that reimport writes one.
+A later export can then collapse the shared line.
 
 - One shared hash: that line stays a single `messages` row on the conversation
-  that already held it. The rest of the later zip stays on its own conversation.
-  A photo that exists only in the later zip is attached to the kept row. The
-  earlier omitted placeholder is left in place. `body_text` is not rewritten.
-- Two or more distinct shared hashes: the later zip's other lines land on that
-  same existing conversation.
+  that already held it. The rest of the later zip, including its encryption
+  line, stays on its own conversation. A photo that exists only in the later
+  zip is attached to the kept row. The earlier omitted placeholder is left in
+  place. `body_text` is not rewritten.
+- Two or more distinct shared hashes: the later zip's user lines land on that
+  same existing conversation. Its encryption / system line is not copied.
+  If the later conversation then has no user messages, that chat row is removed.
 - Same minute and same canonical sender, but a different stripped body: both
-  rows stay. The pair is one open Review item. Accept joins them onto the
-  earlier message (the photo follows). Reject leaves both rows. Accept does
-  not merge the people and does not link identities for that pair.
+  rows stay. Each such pair is its own open Review item (an earlier person-merge
+  row for those identities does not hide them). Accept joins that pair onto the
+  earlier message (the photo follows) and does not merge the people. Reject
+  leaves both messages. A second pair in the same minute stays open until you
+  accept it.
 
 ## Limits
 

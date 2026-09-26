@@ -162,6 +162,8 @@ fn resolve_wa_near(
             .get("drop")
             .and_then(|x| x.as_i64())
             .ok_or_else(|| CoreError::Config("wa near review missing drop".into()))?;
+        let keep_side = near_message_side(archive, keep)?;
+        let drop_side = near_message_side(archive, drop)?;
         with_immediate(archive, || {
             archive.conn.execute(
                 "UPDATE attachments SET message_id = ?1 WHERE message_id = ?2",
@@ -170,6 +172,8 @@ fn resolve_wa_near(
             archive
                 .conn
                 .execute("DELETE FROM messages WHERE id = ?1", [drop])?;
+            refresh_near_conversations(archive, keep_side.as_ref(), drop_side.as_ref())?;
+            rebuild_near_persons(archive, keep_side.as_ref(), drop_side.as_ref())?;
             archive.conn.execute(
                 "UPDATE merge_review_queue SET status = 'accepted',
                         resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
@@ -189,6 +193,72 @@ fn resolve_wa_near(
         )?;
     }
     Ok(true)
+}
+
+struct NearMessageSide {
+    conversation_id: i64,
+    sender_identity_id: Option<i64>,
+}
+
+fn near_message_side(
+    archive: &Archive,
+    message_id: i64,
+) -> Result<Option<NearMessageSide>, CoreError> {
+    let mut stmt = archive
+        .conn
+        .prepare("SELECT conversation_id, sender_identity_id FROM messages WHERE id = ?1")?;
+    let mut rows = stmt.query([message_id])?;
+    match rows.next()? {
+        Some(r) => Ok(Some(NearMessageSide {
+            conversation_id: r.get(0)?,
+            sender_identity_id: r.get(1)?,
+        })),
+        None => Ok(None),
+    }
+}
+
+fn refresh_near_conversations(
+    archive: &Archive,
+    keep: Option<&NearMessageSide>,
+    drop: Option<&NearMessageSide>,
+) -> Result<(), CoreError> {
+    let mut convs = Vec::new();
+    for side in [keep, drop].into_iter().flatten() {
+        if !convs.contains(&side.conversation_id) {
+            convs.push(side.conversation_id);
+        }
+    }
+    for cid in convs {
+        archive.conn.execute(
+            "UPDATE conversations SET last_message_at = (
+                SELECT MAX(m.sent_at) FROM messages m WHERE m.conversation_id = ?1
+             ) WHERE id = ?1",
+            [cid],
+        )?;
+    }
+    Ok(())
+}
+
+fn rebuild_near_persons(
+    archive: &Archive,
+    keep: Option<&NearMessageSide>,
+    drop: Option<&NearMessageSide>,
+) -> Result<(), CoreError> {
+    let mut persons = Vec::new();
+    for side in [keep, drop].into_iter().flatten() {
+        let Some(sid) = side.sender_identity_id else {
+            continue;
+        };
+        if let Some(pid) = live_person_of(archive, sid)? {
+            if !persons.contains(&pid) {
+                persons.push(pid);
+            }
+        }
+    }
+    for pid in persons {
+        crate::people::rebuild_activity_years(archive, Some(pid))?;
+    }
+    Ok(())
 }
 
 pub fn review_list(archive: &Archive) -> Result<Vec<serde_json::Value>, CoreError> {

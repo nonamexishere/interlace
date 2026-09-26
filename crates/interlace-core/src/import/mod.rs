@@ -117,6 +117,12 @@ pub trait ImportContext {
     ) -> Result<(), CoreError> {
         Ok(())
     }
+
+    /// Later zip whose user lines were retargeted. Drop it when nothing but
+    /// system rows remain. System rows go first so `messages` can release the FK.
+    fn wa_drop_shell_conversation(&mut self, _conversation_id: i64) -> Result<(), CoreError> {
+        Ok(())
+    }
 }
 
 pub trait SourceImporter: Send + Sync {

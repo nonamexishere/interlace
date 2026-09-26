@@ -246,6 +246,20 @@ pub(super) fn import(
             continue;
         }
 
+        if retarget.is_some() && m.kind == MessageKind::System {
+            ctx.checkpoint(Checkpoint {
+                cursor_kind: "wa_line".into(),
+                cursor_value: serde_json::json!({
+                    "entry": chat_name,
+                    "line_no": m.line_no,
+                    "seq_bucket": sent_key,
+                    "seq": seq,
+                }),
+            })?;
+            ctx.maybe_commit()?;
+            continue;
+        }
+
         let content = content_keys.get(idx).and_then(|k| k.as_ref());
         let kept = content.and_then(|k| hits.get(&k.hash).map(|(mid, _)| *mid));
         let idem = wa_idempotency(&native_id, &sent_key, &sender_norm, &body_stripped, seq);
@@ -321,7 +335,12 @@ pub(super) fn import(
                     }
                     message_id
                 }
-                PersistOutcome::Duplicate { message_id } => message_id,
+                PersistOutcome::Duplicate { message_id } => {
+                    if let Some(k) = content {
+                        ctx.wa_content_put(message_id, &k.hash, &k.minute, &k.sender)?;
+                    }
+                    message_id
+                }
             };
             if sender_is_me {
                 if let Some(sid) = sender_id {
@@ -438,6 +457,10 @@ pub(super) fn import(
             }),
         })?;
         ctx.maybe_commit()?;
+    }
+
+    if retarget.is_some() {
+        ctx.wa_drop_shell_conversation(conv_id)?;
     }
 
     if parsed

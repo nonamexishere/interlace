@@ -28,6 +28,9 @@ export const en = {
   loadingReviewQueue: "Loading review queue…",
   linkThesePeople: "Link these people?",
   linkThesePeopleDesc: "Merge {n} people into one. Messages stay put.",
+  joinTheseMessages: "Join these messages?",
+  joinTheseMessagesDesc:
+    "Keep the earlier message and drop the later one. People stay separate.",
   stopSuggesting: "Stop suggesting this pair?",
   stopSuggestingDesc: "These people will not be suggested again.",
   undoLastLink: "Undo last link",

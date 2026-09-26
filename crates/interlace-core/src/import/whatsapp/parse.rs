@@ -212,7 +212,12 @@ fn strip_file_attached_phrase(pat: &str, body: &str) -> String {
         return body.to_string();
     }
     if let Some(idx) = body.rfind(&lit) {
-        if idx + lit.len() == body.len() && !body[..idx].trim().is_empty() {
+        if idx + lit.len() == body.len() {
+            let before = body[..idx].trim_end();
+            // Filename sits on the phrase line. A caption above that line stays.
+            if let Some(nl) = before.rfind('\n') {
+                return before[..nl].trim().to_string();
+            }
             return String::new();
         }
     }
