@@ -438,7 +438,12 @@ impl ImportContext for DbImportContext<'_> {
              ORDER BY m.sent_at, m.id
              LIMIT 1",
         )?;
-        let mut rows = stmt.query(rusqlite::params![minute, sender_canon, hash, self.source_id])?;
+        let mut rows = stmt.query(rusqlite::params![
+            minute,
+            sender_canon,
+            hash,
+            self.source_id
+        ])?;
         match rows.next()? {
             Some(r) => Ok(Some((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))),
             None => Ok(None),
