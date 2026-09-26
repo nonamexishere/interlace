@@ -25,6 +25,14 @@ pub use whatsapp::WhatsappImporter;
 
 use context::source_kind_sql;
 
+/// Stored message that shares a minute and canonical sender but not a content hash.
+pub struct WaNearHit {
+    pub message_id: i64,
+    pub sent_at: String,
+    pub body: String,
+    pub sender_identity_id: Option<i64>,
+}
+
 pub trait ImportContext {
     fn run_id(&self) -> i64;
     fn source_id(&self) -> i64;
@@ -92,13 +100,12 @@ pub trait ImportContext {
     }
 
     /// Other-source row with the same minute and canonical sender, different hash.
-    /// `(message_id, sent_at, body_text, sender_identity_id)`.
     fn wa_near_existing(
         &self,
         _minute: &str,
         _sender_canon: &str,
         _hash: &str,
-    ) -> Result<Option<(i64, String, String, Option<i64>)>, CoreError> {
+    ) -> Result<Option<WaNearHit>, CoreError> {
         Ok(None)
     }
 

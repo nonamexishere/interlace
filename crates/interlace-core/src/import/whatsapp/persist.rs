@@ -257,8 +257,8 @@ pub(super) fn import(
             .sender_raw
             .as_deref()
             .is_some_and(|s| is_you_token(&pack, s) || owner_self_token.as_deref() == Some(s));
-        let message_id = if kept.is_some() && !wa_v1_exists {
-            kept.expect("content hit")
+        let message_id = if let (Some(kept_id), false) = (kept, wa_v1_exists) {
+            kept_id
         } else {
             let sender_id = if let Some(ref s) = m.sender_raw {
                 let id = persist_sender(
@@ -301,19 +301,21 @@ pub(super) fn import(
                 PersistOutcome::Inserted { message_id } => {
                     if let Some(k) = content {
                         ctx.wa_content_put(message_id, &k.hash, &k.minute, &k.sender)?;
-                        if let Some((old_id, old_at, old_body, old_sender)) =
-                            ctx.wa_near_existing(&k.minute, &k.sender, &k.hash)?
-                        {
+                        if let Some(prev) = ctx.wa_near_existing(&k.minute, &k.sender, &k.hash)? {
                             enqueue_near(
                                 ctx,
-                                old_id,
-                                &old_at,
-                                &old_body,
-                                old_sender,
-                                message_id,
-                                m.sent_at.as_deref().unwrap_or(""),
-                                &m.body,
-                                sender_id,
+                                NearEnd {
+                                    id: prev.message_id,
+                                    at: &prev.sent_at,
+                                    body: &prev.body,
+                                    sender: prev.sender_identity_id,
+                                },
+                                NearEnd {
+                                    id: message_id,
+                                    at: m.sent_at.as_deref().unwrap_or(""),
+                                    body: &m.body,
+                                    sender: sender_id,
+                                },
                             )?;
                         }
                     }
@@ -569,25 +571,26 @@ fn wa_content_hash(minute: &str, sender: &str, body: &str) -> String {
     h.finalize().to_hex().to_string()
 }
 
+struct NearEnd<'a> {
+    id: i64,
+    at: &'a str,
+    body: &'a str,
+    sender: Option<i64>,
+}
+
 fn enqueue_near(
     ctx: &mut dyn ImportContext,
-    old_id: i64,
-    old_at: &str,
-    old_body: &str,
-    old_sender: Option<i64>,
-    new_id: i64,
-    new_at: &str,
-    new_body: &str,
-    new_sender: Option<i64>,
+    old: NearEnd<'_>,
+    new: NearEnd<'_>,
 ) -> Result<(), CoreError> {
-    let (Some(old_sender), Some(new_sender)) = (old_sender, new_sender) else {
+    let (Some(old_sender), Some(new_sender)) = (old.sender, new.sender) else {
         return Ok(());
     };
-    let old_earlier = old_at < new_at || (old_at == new_at && old_id <= new_id);
+    let old_earlier = old.at < new.at || (old.at == new.at && old.id <= new.id);
     let (keep, drop, keep_body, drop_body, left, right) = if old_earlier {
-        (old_id, new_id, old_body, new_body, old_sender, new_sender)
+        (old.id, new.id, old.body, new.body, old_sender, new_sender)
     } else {
-        (new_id, old_id, new_body, old_body, new_sender, old_sender)
+        (new.id, old.id, new.body, old.body, new_sender, old_sender)
     };
     let reason = serde_json::json!({
         "wa_near": true,

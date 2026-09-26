@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use super::ImportContext;
+use super::{ImportContext, WaNearHit};
 use crate::cas::cas_put;
 use crate::db::Archive;
 use crate::model::*;
@@ -428,7 +428,7 @@ impl ImportContext for DbImportContext<'_> {
         minute: &str,
         sender_canon: &str,
         hash: &str,
-    ) -> Result<Option<(i64, String, String, Option<i64>)>, CoreError> {
+    ) -> Result<Option<WaNearHit>, CoreError> {
         let mut stmt = self.archive.conn.prepare(
             "SELECT m.id, COALESCE(m.sent_at, ''), COALESCE(m.body_text, ''), m.sender_identity_id
              FROM wa_message_content c
@@ -445,7 +445,12 @@ impl ImportContext for DbImportContext<'_> {
             self.source_id
         ])?;
         match rows.next()? {
-            Some(r) => Ok(Some((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))),
+            Some(r) => Ok(Some(WaNearHit {
+                message_id: r.get(0)?,
+                sent_at: r.get(1)?,
+                body: r.get(2)?,
+                sender_identity_id: r.get(3)?,
+            })),
             None => Ok(None),
         }
     }
