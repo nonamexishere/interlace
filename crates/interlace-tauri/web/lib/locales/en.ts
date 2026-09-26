@@ -31,6 +31,9 @@ export const en = {
   joinTheseMessages: "Join these messages?",
   joinTheseMessagesDesc:
     "Keep the earlier message and drop the later one. People stay separate.",
+  attachNewNumber: "Attach this new number?",
+  attachNewNumberDesc:
+    "The new number joins the existing person. You can undo this. Messages stay where they are.",
   stopSuggesting: "Stop suggesting this pair?",
   stopSuggestingDesc: "These people will not be suggested again.",
   undoLastLink: "Undo last link",

@@ -139,6 +139,7 @@ from tauri_gate.inspector_year_jump import (  # noqa: E402
 from tauri_gate.year_index import assert_year_index  # noqa: E402
 from tauri_gate.wa_reimport_doctor import assert_wa_reimport_doctor  # noqa: E402
 from tauri_gate.wa_near_review import assert_wa_near_review  # noqa: E402
+from tauri_gate.phone_replaced_review import assert_phone_replaced_review  # noqa: E402
 from tauri_gate.lightbox_thread import (  # noqa: E402
     assert_lightbox_thread,
 )

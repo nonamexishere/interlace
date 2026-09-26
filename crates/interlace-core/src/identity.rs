@@ -3,6 +3,7 @@
 mod auto;
 mod helpers;
 mod merge;
+mod phone;
 mod review;
 mod score;
 

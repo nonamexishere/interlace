@@ -102,6 +102,7 @@
   function canAccept() {
     if (!detail) return false;
     if (detail.review.reason.includes("wa_near")) return true;
+    if (detail.review.reason.includes("phone_replaced")) return true;
     if (selected.length >= 2) return true;
     // I3 / unlinked left: link onto one checked person.
     return detail.left.person_id == null && selected.length >= 1;
@@ -113,6 +114,26 @@
     const ids = [...selected];
     const n = ids.length;
     const waNear = detail.review.reason.includes("wa_near");
+    const phoneReplaced = detail.review.reason.includes("phone_replaced");
+    if (phoneReplaced) {
+      ask(
+        t("attachNewNumber"),
+        t("attachNewNumberDesc"),
+        async () => {
+          resolving = true;
+          try {
+            await api.reviewAccept(id, ids);
+            await reload();
+            void onChanged();
+          } catch (e) {
+            onError(e);
+          } finally {
+            resolving = false;
+          }
+        },
+      );
+      return;
+    }
     if (waNear) {
       ask(
         t("joinTheseMessages"),
@@ -345,14 +366,16 @@
           <li>{e.type} · {e.score} · {e.detail}</li>
         {/each}
       </ul>
-      <div class="flex flex-wrap gap-2 text-xs">
-        <button type="button" class="text-muted-foreground underline focus-visible:ring-2 focus-visible:ring-ring" onclick={selectAll}>Select all</button>
-        <button type="button" class="text-muted-foreground underline focus-visible:ring-2 focus-visible:ring-ring" onclick={selectNone}>Select none</button>
-      </div>
+      {#if !detail.review.reason.includes("phone_replaced")}
+        <div class="flex flex-wrap gap-2 text-xs">
+          <button type="button" class="text-muted-foreground underline focus-visible:ring-2 focus-visible:ring-ring" onclick={selectAll}>Select all</button>
+          <button type="button" class="text-muted-foreground underline focus-visible:ring-2 focus-visible:ring-ring" onclick={selectNone}>Select none</button>
+        </div>
+      {/if}
       <div class="grid grid-cols-2 gap-3">
         {#each panelsOf(detail) as panel}
           <label class="min-w-0 cursor-pointer">
-            {#if panel.person_id != null}
+            {#if panel.person_id != null && !detail.review.reason.includes("phone_replaced")}
               <input
                 type="checkbox"
                 class="mb-1 mr-1 align-middle focus-visible:ring-2 focus-visible:ring-ring"
@@ -382,12 +405,14 @@
         {/each}
       </div>
       <Separator />
-      {#if !detail.review.reason.includes("wa_near")}
+      {#if !detail.review.reason.includes("phone_replaced") && !detail.review.reason.includes("wa_near")}
         <p class="text-xs text-muted-foreground">
           Accept links these people and can be undone. Reject only stops suggesting this pair.
         </p>
-      {:else}
+      {:else if detail.review.reason.includes("wa_near")}
         <p class="text-xs text-muted-foreground">{t("joinTheseMessagesDesc")}</p>
+      {:else}
+        <p class="text-xs text-muted-foreground">{t("attachNewNumberDesc")}</p>
       {/if}
       <div class="flex gap-2">
         <Button onclick={accept} disabled={resolving || undoing || !canAccept()}>Accept</Button>
