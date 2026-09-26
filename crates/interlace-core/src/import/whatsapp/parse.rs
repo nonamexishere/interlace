@@ -184,6 +184,41 @@ pub(super) fn body_without_media_token(pack: &LocalePack, body: &str) -> String 
     }
 }
 
+/// Body for `wa-content-v1`: omitted token, `<attached: …>`, and the Android
+/// `(file attached)` phrase (filename included) are removed. Not used by `wa-v1`.
+pub(super) fn body_for_content_hash(pack: &LocalePack, body: &str) -> String {
+    let stripped = body_without_media_token(pack, body);
+    strip_file_attached_phrase(&pack.file_attached_pattern, &stripped)
+        .trim()
+        .to_string()
+}
+
+fn strip_file_attached_phrase(pat: &str, body: &str) -> String {
+    let Some(rest) = pat.strip_prefix("^(?P<filename>.+) ") else {
+        return body.to_string();
+    };
+    let Some(rest) = rest.strip_suffix('$') else {
+        return body.to_string();
+    };
+    let mut lit = rest.to_string();
+    // Packs store the phrase with one or two backslashes before ( ) .
+    while lit.contains("\\(") || lit.contains("\\)") || lit.contains("\\.") {
+        lit = lit
+            .replace("\\(", "(")
+            .replace("\\)", ")")
+            .replace("\\.", ".");
+    }
+    if lit.is_empty() {
+        return body.to_string();
+    }
+    if let Some(idx) = body.rfind(&lit) {
+        if idx + lit.len() == body.len() && !body[..idx].trim().is_empty() {
+            return String::new();
+        }
+    }
+    body.to_string()
+}
+
 pub(super) fn conversation_title(
     opts: &ImportOpts,
     zip_path: &Path,

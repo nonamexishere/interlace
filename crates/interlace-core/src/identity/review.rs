@@ -33,17 +33,20 @@ pub fn review_resolve_selected(
     accept: bool,
     selected: Option<&[i64]>,
 ) -> Result<(), CoreError> {
-    let row: (String, i64, Option<i64>, Option<i64>) = archive.conn.query_row(
-        "SELECT status, left_identity_id, right_person_id, right_identity_id
+    let row: (String, i64, Option<i64>, Option<i64>, String) = archive.conn.query_row(
+        "SELECT status, left_identity_id, right_person_id, right_identity_id, reason_summary
          FROM merge_review_queue WHERE id = ?1",
         [review_id],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
     )?;
     if row.0 != "open" {
         return Err(CoreError::Config(format!(
             "review {review_id} is not open ({})",
             row.0
         )));
+    }
+    if resolve_wa_near(archive, review_id, accept, &row.4)? {
+        return Ok(());
     }
     if accept {
         let left = row.1;
@@ -134,6 +137,58 @@ pub fn review_resolve_selected(
         close_sibling_fold_reviews(archive, review_id, left, left_pid, right_pid, "rejected")?;
     }
     Ok(())
+}
+
+/// Message near-pair queued by a WhatsApp content import. Accept joins the
+/// later message onto the earlier id. Reject leaves both rows. Not a person merge.
+fn resolve_wa_near(
+    archive: &mut Archive,
+    review_id: i64,
+    accept: bool,
+    reason: &str,
+) -> Result<bool, CoreError> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(reason) else {
+        return Ok(false);
+    };
+    if v.get("wa_near").and_then(|x| x.as_bool()) != Some(true) {
+        return Ok(false);
+    }
+    if accept {
+        let keep = v
+            .get("keep")
+            .and_then(|x| x.as_i64())
+            .ok_or_else(|| CoreError::Config("wa near review missing keep".into()))?;
+        let drop = v
+            .get("drop")
+            .and_then(|x| x.as_i64())
+            .ok_or_else(|| CoreError::Config("wa near review missing drop".into()))?;
+        with_immediate(archive, || {
+            archive.conn.execute(
+                "UPDATE attachments SET message_id = ?1 WHERE message_id = ?2",
+                rusqlite::params![keep, drop],
+            )?;
+            archive
+                .conn
+                .execute("DELETE FROM messages WHERE id = ?1", [drop])?;
+            archive.conn.execute(
+                "UPDATE merge_review_queue SET status = 'accepted',
+                        resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+                        resolved_by = 'user'
+                 WHERE id = ?1",
+                [review_id],
+            )?;
+            Ok(())
+        })?;
+    } else {
+        archive.conn.execute(
+            "UPDATE merge_review_queue SET status = 'rejected',
+                    resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+                    resolved_by = 'user'
+             WHERE id = ?1",
+            [review_id],
+        )?;
+    }
+    Ok(true)
 }
 
 pub fn review_list(archive: &Archive) -> Result<Vec<serde_json::Value>, CoreError> {

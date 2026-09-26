@@ -69,6 +69,47 @@ pub trait ImportContext {
     ) -> Result<(), CoreError> {
         Ok(())
     }
+
+    /// `messages.id` for an existing `wa-v1` key, if this line was already stored.
+    fn message_id_for_idempotency(&self, _key: &str) -> Result<Option<i64>, CoreError> {
+        Ok(None)
+    }
+
+    /// Existing message on another source with this `wa-content-v1` hash.
+    /// `(message_id, conversation_id)`.
+    fn wa_content_lookup(&self, _hash: &str) -> Result<Option<(i64, i64)>, CoreError> {
+        Ok(None)
+    }
+
+    fn wa_content_put(
+        &mut self,
+        _message_id: i64,
+        _hash: &str,
+        _minute: &str,
+        _sender_canon: &str,
+    ) -> Result<(), CoreError> {
+        Ok(())
+    }
+
+    /// Other-source row with the same minute and canonical sender, different hash.
+    /// `(message_id, sent_at, body_text, sender_identity_id)`.
+    fn wa_near_existing(
+        &self,
+        _minute: &str,
+        _sender_canon: &str,
+        _hash: &str,
+    ) -> Result<Option<(i64, String, String, Option<i64>)>, CoreError> {
+        Ok(None)
+    }
+
+    fn wa_near_enqueue(
+        &mut self,
+        _left_identity: i64,
+        _right_identity: i64,
+        _reason: &str,
+    ) -> Result<(), CoreError> {
+        Ok(())
+    }
 }
 
 pub trait SourceImporter: Send + Sync {

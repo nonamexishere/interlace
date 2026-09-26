@@ -169,6 +169,29 @@ Interlace falls back to the ZIP stem unless you pass `--conversation-name`.
 `<Media omitted>` later replaced by a real file is W9 / #60 (attachment
 upgrade on the same `messages.id`), not this union.
 
+## Two exports, different titles
+
+An Android zip and an iOS zip of one chat often do not share a folded title
+(iOS `_chat.txt` uses the zip stem). Interlace then keeps **two** `sources`
+rows and does not merge people by display name.
+
+A second hash, `wa-content-v1`, ignores title, per-file sequence, filename,
+and attachment bytes. It uses the clock truncated to the minute, a canonical
+sender (`self` for a pack you-token or the archive owner name, otherwise an
+E.164 or the folded display name), and the body after the omitted token,
+`<attached: …>`, and the Android `(file attached)` phrase are removed.
+
+- One shared hash: that line stays a single `messages` row on the conversation
+  that already held it. The rest of the later zip stays on its own conversation.
+  A photo that exists only in the later zip is attached to the kept row. The
+  earlier omitted placeholder is left in place. `body_text` is not rewritten.
+- Two or more distinct shared hashes: the later zip's other lines land on that
+  same existing conversation.
+- Same minute and same canonical sender, but a different stripped body: both
+  rows stay. The pair is one open Review item. Accept joins them onto the
+  earlier message (the photo follows). Reject leaves both rows. Accept does
+  not merge the people and does not link identities for that pair.
+
 ## Limits
 
 | Cap | Value |
