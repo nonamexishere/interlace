@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use crate::db::Archive;
 use crate::model::CoreError;
@@ -176,6 +176,77 @@ pub fn conversation_participant_names(
          ORDER BY cp.identity_id",
     )?;
     let rows = stmt.query_map([conversation_id], |r| {
+        Ok(ConversationParticipantName {
+            identity_id: r.get(0)?,
+            display_name: r.get(1)?,
+            value: r.get(2)?,
+            person_id: r.get(3)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
+/// Names in `conversation_id` at `at` (RFC3339). `None` and a group with no
+/// spans return today's list. DM and email threads stay empty.
+pub fn conversation_participant_names_at(
+    archive: &Archive,
+    conversation_id: i64,
+    at: Option<&str>,
+) -> Result<Vec<ConversationParticipantName>, CoreError> {
+    let kind: Option<String> = archive
+        .conn
+        .query_row(
+            "SELECT kind FROM conversations WHERE id = ?1",
+            [conversation_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if kind.as_deref() != Some("group") {
+        return Ok(Vec::new());
+    }
+    let Some(at) = at.filter(|s| !s.is_empty()) else {
+        return conversation_participant_names(archive, conversation_id);
+    };
+    let spans: i64 = archive.conn.query_row(
+        "SELECT COUNT(*) FROM group_membership
+         WHERE conversation_id = ?1
+           AND NOT (joined_at IS NULL AND left_at IS NULL)",
+        [conversation_id],
+        |r| r.get(0),
+    )?;
+    if spans == 0 {
+        return conversation_participant_names(archive, conversation_id);
+    }
+    let mut stmt = archive.conn.prepare(
+        "SELECT i.id, i.display_name, COALESCE(i.value_normalized, i.value_raw), p.id
+         FROM (
+             SELECT cp.identity_id AS identity_id
+             FROM conversation_participants cp
+             WHERE cp.conversation_id = ?1
+               AND NOT EXISTS (
+                   SELECT 1 FROM group_membership gm
+                   WHERE gm.conversation_id = cp.conversation_id
+                     AND gm.identity_id = cp.identity_id
+                     AND NOT (gm.joined_at IS NULL AND gm.left_at IS NULL)
+               )
+             UNION
+             SELECT gm.identity_id AS identity_id
+             FROM group_membership gm
+             WHERE gm.conversation_id = ?1
+               AND NOT (gm.joined_at IS NULL AND gm.left_at IS NULL)
+               AND (gm.joined_at IS NULL OR gm.joined_at <= ?2)
+               AND (gm.left_at IS NULL OR ?2 < gm.left_at)
+         ) picked
+         JOIN identities i ON i.id = picked.identity_id
+         LEFT JOIN person_identities pi ON pi.identity_id = i.id
+         LEFT JOIN persons p ON p.id = pi.person_id AND p.tombstoned_at IS NULL
+         ORDER BY i.id",
+    )?;
+    let rows = stmt.query_map(rusqlite::params![conversation_id, at], |r| {
         Ok(ConversationParticipantName {
             identity_id: r.get(0)?,
             display_name: r.get(1)?,

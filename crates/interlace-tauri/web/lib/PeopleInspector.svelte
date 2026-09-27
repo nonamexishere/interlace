@@ -152,7 +152,10 @@
       return;
     }
     try {
-      const names = await api.conversationParticipants(cid);
+      const focused = timeline[tlIndex];
+      const messageId =
+        focused && focused.conversation_id === cid ? focused.message_id : null;
+      const names = await api.conversationParticipants(cid, messageId);
       if (gen !== loadGen) return;
       participants = names;
     } catch {

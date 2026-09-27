@@ -1,7 +1,7 @@
 //! Person show / timeline / merge / undo IPC. `people` stays in main.rs (#265).
 
 use interlace_core::people::{
-    conversation_participant_names, person_conversations, person_media_rows_for,
+    conversation_participant_names_at, person_conversations, person_media_rows_for,
     person_timeline_rows_for, recent_link_events,
 };
 use interlace_core::{
@@ -136,10 +136,25 @@ pub(crate) fn person_media(
 pub(crate) fn conversation_participants_cmd(
     state: tauri::State<AppState>,
     conversation_id: i64,
+    message_id: Option<i64>,
 ) -> Result<serde_json::Value, String> {
     with_arch(&state, |arch| {
-        serde_json::to_value(conversation_participant_names(arch, conversation_id).map_err(err)?)
-            .map_err(err)
+        let at = match message_id {
+            None => None,
+            Some(id) => match arch.conn.query_row(
+                "SELECT sent_at FROM messages WHERE id = ?1 AND conversation_id = ?2",
+                rusqlite::params![id, conversation_id],
+                |r| r.get::<_, Option<String>>(0),
+            ) {
+                Ok(sent) => sent,
+                Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                Err(e) => return Err(err(e)),
+            },
+        };
+        serde_json::to_value(
+            conversation_participant_names_at(arch, conversation_id, at.as_deref()).map_err(err)?,
+        )
+        .map_err(err)
     })
 }
 

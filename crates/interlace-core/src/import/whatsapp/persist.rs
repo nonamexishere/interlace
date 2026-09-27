@@ -246,6 +246,22 @@ pub(super) fn import(
             continue;
         }
 
+        let insert_conv = retarget.unwrap_or(conv_id);
+        if m.kind == MessageKind::System {
+            if let Some(at) = m.sent_at.as_deref() {
+                if conv_kind == ConversationKind::Group && pack.id == "en-US" {
+                    apply_en_us_membership(
+                        ctx,
+                        &pack,
+                        insert_conv,
+                        &m.rest_raw,
+                        at,
+                        &mut ident_cache,
+                    )?;
+                }
+            }
+        }
+
         if retarget.is_some() && m.kind == MessageKind::System {
             ctx.checkpoint(Checkpoint {
                 cursor_kind: "wa_line".into(),
@@ -293,7 +309,6 @@ pub(super) fn import(
             };
 
             let kind = m.kind;
-            let insert_conv = retarget.unwrap_or(conv_id);
             let outcome = ctx.persist_message(NewMessage {
                 conversation_id: insert_conv,
                 sender_identity_id: sender_id,
@@ -479,6 +494,69 @@ pub(super) fn import(
     }
 
     Ok(ImportStats::default())
+}
+
+fn apply_en_us_membership(
+    ctx: &mut dyn ImportContext,
+    pack: &LocalePack,
+    conversation_id: i64,
+    rest: &str,
+    sent_at: &str,
+    cache: &mut HashMap<(IdentityKind, String), i64>,
+) -> Result<(), CoreError> {
+    let Some((joined, name)) = en_us_membership_target(rest) else {
+        return Ok(());
+    };
+    let identity_id = persist_sender(ctx, pack, name, ConversationKind::Group, None, None, cache)?;
+    ctx.note_group_bound(conversation_id, identity_id, joined, sent_at)
+}
+
+/// Anchored en-US system line. The quoted title is not a person.
+/// A line that names two people returns nothing.
+fn en_us_membership_target(rest: &str) -> Option<(bool, &str)> {
+    let rest = rest.trim();
+    if rest.is_empty() || rest.contains('\n') {
+        return None;
+    }
+    if let Some(name) = created_group_actor(rest) {
+        return Some((true, name));
+    }
+    if let Some(name) = rest.strip_suffix(" was added") {
+        return one_person(name).map(|n| (true, n));
+    }
+    if let Some(name) = rest.strip_suffix(" were added") {
+        return one_person(name).map(|n| (true, n));
+    }
+    if let Some((actor, target)) = rest.split_once(" added ") {
+        one_person(actor)?;
+        return one_person(target).map(|n| (true, n));
+    }
+    if let Some((actor, target)) = rest.split_once(" removed ") {
+        one_person(actor)?;
+        return one_person(target).map(|n| (false, n));
+    }
+    if let Some(name) = rest.strip_suffix(" left") {
+        return one_person(name).map(|n| (false, n));
+    }
+    None
+}
+
+fn created_group_actor(rest: &str) -> Option<&str> {
+    let (name, title) = rest.split_once(" created group \"")?;
+    let title = title.strip_suffix('"')?;
+    if title.is_empty() || title.contains('"') {
+        return None;
+    }
+    one_person(name)
+}
+
+fn one_person(name: &str) -> Option<&str> {
+    let name = name.trim();
+    if name.is_empty() || name.contains(" and ") || name.contains('"') {
+        None
+    } else {
+        Some(name)
+    }
 }
 
 fn persist_sender(

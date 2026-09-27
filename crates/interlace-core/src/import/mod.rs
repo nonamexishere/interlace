@@ -123,6 +123,18 @@ pub trait ImportContext {
     fn wa_drop_shell_conversation(&mut self, _conversation_id: i64) -> Result<(), CoreError> {
         Ok(())
     }
+
+    /// One bound of a group membership span. `joined` sets `joined_at`; otherwise `left_at`.
+    /// Does not insert `conversation_participants` and does not change `role`.
+    fn note_group_bound(
+        &mut self,
+        _conversation_id: i64,
+        _identity_id: i64,
+        _joined: bool,
+        _at: &str,
+    ) -> Result<(), CoreError> {
+        Ok(())
+    }
 }
 
 pub trait SourceImporter: Send + Sync {

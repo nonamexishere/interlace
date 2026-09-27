@@ -498,4 +498,88 @@ impl ImportContext for DbImportContext<'_> {
             .execute("DELETE FROM conversations WHERE id = ?1", [conversation_id])?;
         Ok(())
     }
+
+    fn note_group_bound(
+        &mut self,
+        conversation_id: i64,
+        identity_id: i64,
+        joined: bool,
+        at: &str,
+    ) -> Result<(), CoreError> {
+        apply_group_bound(&self.archive.conn, conversation_id, identity_id, joined, at)
+    }
+}
+
+fn apply_group_bound(
+    conn: &rusqlite::Connection,
+    conversation_id: i64,
+    identity_id: i64,
+    joined: bool,
+    at: &str,
+) -> Result<(), CoreError> {
+    let column = if joined { "joined_at" } else { "left_at" };
+    let already: i64 = conn.query_row(
+        &format!(
+            "SELECT COUNT(*) FROM group_membership
+             WHERE conversation_id = ?1 AND identity_id = ?2 AND {column} = ?3"
+        ),
+        rusqlite::params![conversation_id, identity_id, at],
+        |r| r.get(0),
+    )?;
+    if already > 0 {
+        return Ok(());
+    }
+    if joined {
+        let open_unknown: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM group_membership
+             WHERE conversation_id = ?1 AND identity_id = ?2
+               AND joined_at IS NULL AND left_at IS NULL",
+            rusqlite::params![conversation_id, identity_id],
+            |r| r.get(0),
+        )?;
+        if open_unknown > 0 {
+            conn.execute(
+                "UPDATE group_membership SET joined_at = ?3
+                 WHERE conversation_id = ?1 AND identity_id = ?2
+                   AND joined_at IS NULL AND left_at IS NULL",
+                rusqlite::params![conversation_id, identity_id, at],
+            )?;
+            return Ok(());
+        }
+        let open: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM group_membership
+             WHERE conversation_id = ?1 AND identity_id = ?2 AND left_at IS NULL",
+            rusqlite::params![conversation_id, identity_id],
+            |r| r.get(0),
+        )?;
+        if open > 0 {
+            return Ok(());
+        }
+        conn.execute(
+            "INSERT INTO group_membership(conversation_id, identity_id, joined_at, left_at)
+             VALUES (?1, ?2, ?3, NULL)",
+            rusqlite::params![conversation_id, identity_id, at],
+        )?;
+        return Ok(());
+    }
+    let open: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM group_membership
+         WHERE conversation_id = ?1 AND identity_id = ?2 AND left_at IS NULL",
+        rusqlite::params![conversation_id, identity_id],
+        |r| r.get(0),
+    )?;
+    if open > 0 {
+        conn.execute(
+            "UPDATE group_membership SET left_at = ?3
+             WHERE conversation_id = ?1 AND identity_id = ?2 AND left_at IS NULL",
+            rusqlite::params![conversation_id, identity_id, at],
+        )?;
+        return Ok(());
+    }
+    conn.execute(
+        "INSERT INTO group_membership(conversation_id, identity_id, joined_at, left_at)
+         VALUES (?1, ?2, NULL, ?3)",
+        rusqlite::params![conversation_id, identity_id, at],
+    )?;
+    Ok(())
 }
