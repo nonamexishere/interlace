@@ -534,7 +534,11 @@ fn subject_change_writes_no_interval() {
     let cid = group_id(&arch);
     assert_eq!(count(&arch, "SELECT COUNT(*) FROM group_membership"), 0);
     assert_eq!(identity_rows_named(&arch, "Picnic"), 0);
-    let early = names_at(&arch, cid, Some(&sent_at_containing(&arch, "ada-subject-early")));
+    let early = names_at(
+        &arch,
+        cid,
+        Some(&sent_at_containing(&arch, "ada-subject-early")),
+    );
     let late = names_at(
         &arch,
         cid,
