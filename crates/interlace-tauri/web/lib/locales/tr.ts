@@ -33,6 +33,9 @@ export const tr: ChromePack = {
   joinTheseMessages: "Bu mesajları birleştir?",
   joinTheseMessagesDesc:
     "Önceki mesaj kalır, sonraki silinir. Kişiler ayrı kalır.",
+  attachNewNumber: "Bu yeni numara eklensin mi?",
+  attachNewNumberDesc:
+    "Yeni numara mevcut kişiye bağlanır. Bunu geri alabilirsiniz. Mesajlar taşınmaz.",
   stopSuggesting: "Bu çifti önermeyi bırak?",
   stopSuggestingDesc: "Bu kişiler bir daha önerilmez.",
   undoLastLink: "Son bağlantıyı geri al",

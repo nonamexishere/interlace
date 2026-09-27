@@ -213,6 +213,7 @@ def main() -> None:
     assert_year_index(crate)
     assert_wa_reimport_doctor(crate)
     assert_wa_near_review(crate)
+    assert_phone_replaced_review(crate)
     assert_lightbox_thread(crate)
     assert_timeline_row_key(crate)
     assert_voice_next(crate)

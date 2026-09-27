@@ -79,6 +79,8 @@ left identity is still unlinked, it is linked with
 `link_reason=review_accepted`. Reject does not merge; that cluster is not
 suggested again (the matcher skips `rejected` rows).
 
+A new phone number is suggested only when the two numbers both sent in one shared chat, the new number's first day is within 30 days of the old number's last day, and the old number goes quiet (no send from the old number more than 7 days after the new number starts, while the new number still sends after the old number's last message). Two separate chats with you do not count. A matching display name alone is not a suggestion. If two older numbers both fit one newer number, nothing is queued. Confirm attaches the new number's person to the older person. Undo puts the two people back and returns the suggestion to Review. Reject removes it from Review. Neither one moves messages.
+
 Name similarity scores 0.40–0.70 go to review. An exact folded-name cluster
 (Contacts vs WhatsApp `display_name`, after leftover names are promoted) is
 score 0.70 / `exact_name_fold`. Nothing name-based auto-merges.

@@ -52,19 +52,26 @@ pub(super) fn review_queued_fold(
     }
 }
 
+pub(super) fn reason_is_phone_replaced(reason: &str) -> bool {
+    reason.contains("\"phone_replaced\":true")
+}
+
 pub(super) fn fold_review_suppressed(archive: &Archive, fold: &str) -> Result<bool, CoreError> {
     if fold.is_empty() {
         return Ok(false);
     }
-    let rows: Vec<(i64, Option<i64>, Option<i64>)> = {
+    let rows: Vec<(i64, Option<i64>, Option<i64>, String)> = {
         let mut stmt = archive.conn.prepare(
-            "SELECT left_identity_id, right_person_id, right_identity_id
+            "SELECT left_identity_id, right_person_id, right_identity_id, reason_summary
              FROM merge_review_queue WHERE status IN ('open', 'rejected')",
         )?;
-        let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?;
         it.collect::<Result<Vec<_>, _>>()?
     };
-    for (left, right_person, right_ident) in rows {
+    for (left, right_person, right_ident, reason) in rows {
+        if reason_is_phone_replaced(&reason) {
+            continue;
+        }
         if review_queued_fold(archive, left, right_person, right_ident)?.as_deref() == Some(fold) {
             return Ok(true);
         }

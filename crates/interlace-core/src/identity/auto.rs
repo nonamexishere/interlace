@@ -10,6 +10,7 @@ use crate::model::{CoreError, ImportStats};
 
 use super::helpers::{enqueue_review, fold_review_suppressed};
 use super::merge::{link_identity, merge_persons};
+use super::phone::enqueue_phone_replaced;
 use super::score::{name_compat_ratio, name_score};
 
 /// Auto-link exact phone/email and auto person-merge (rules A/B). Display names
@@ -29,6 +30,7 @@ pub fn resolve_run(archive: &mut Archive, _run_id: i64) -> Result<ImportStats, C
     enqueue_name_reviews(archive, &mut stats)?;
     promote_unlinked_names(archive)?;
     enqueue_exact_name_fold_reviews(archive, &mut stats)?;
+    enqueue_phone_replaced(archive, &mut stats)?;
     Ok(stats)
 }
 

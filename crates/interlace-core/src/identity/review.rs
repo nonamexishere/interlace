@@ -10,8 +10,8 @@ use crate::model::CoreError;
 
 use super::helpers::{
     live_person_of, live_right_person, person_display_name, person_identity_ids,
-    person_is_contacts_or_vcard, person_is_live, person_platform_rank, review_pair_fold,
-    review_queued_fold, review_side_panel,
+    person_is_contacts_or_vcard, person_is_live, person_platform_rank, reason_is_phone_replaced,
+    review_pair_fold, review_queued_fold, review_side_panel,
 };
 use super::merge::{link_identity, merge_persons, with_immediate};
 use super::score::name_score;
@@ -46,6 +46,9 @@ pub fn review_resolve_selected(
         )));
     }
     if resolve_wa_near(archive, review_id, accept, &row.4)? {
+        return Ok(());
+    }
+    if resolve_phone_replaced(archive, review_id, accept, row.1, row.2, &row.4)? {
         return Ok(());
     }
     if accept {
@@ -150,6 +153,9 @@ fn resolve_wa_near(
     let Ok(v) = serde_json::from_str::<serde_json::Value>(reason) else {
         return Ok(false);
     };
+    if reason_is_phone_replaced(reason) {
+        return Ok(false);
+    }
     if v.get("wa_near").and_then(|x| x.as_bool()) != Some(true) {
         return Ok(false);
     }
@@ -192,6 +198,65 @@ fn resolve_wa_near(
             [review_id],
         )?;
     }
+    Ok(true)
+}
+
+/// New number onto the older person only. Not a name cluster and not `wa_near`.
+fn resolve_phone_replaced(
+    archive: &mut Archive,
+    review_id: i64,
+    accept: bool,
+    left_identity_id: i64,
+    right_person_id: Option<i64>,
+    reason: &str,
+) -> Result<bool, CoreError> {
+    if !reason_is_phone_replaced(reason) {
+        return Ok(false);
+    }
+    if !accept {
+        archive.conn.execute(
+            "UPDATE merge_review_queue SET status = 'rejected',
+                    resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+                    resolved_by = 'user'
+             WHERE id = ?1",
+            [review_id],
+        )?;
+        return Ok(true);
+    }
+    let Some(old_pid) = right_person_id else {
+        return Err(CoreError::Config("phone review has no older person".into()));
+    };
+    if !person_is_live(archive, old_pid)? {
+        return Err(CoreError::Config(
+            "phone review older person is not live".into(),
+        ));
+    }
+    let Some(new_pid) = live_person_of(archive, left_identity_id)? else {
+        return Err(CoreError::Config("phone review has no newer person".into()));
+    };
+    with_immediate(archive, || {
+        if new_pid != old_pid {
+            merge_persons(
+                archive,
+                new_pid,
+                old_pid,
+                Some(old_pid),
+                "user",
+                "manual",
+                1.0,
+            )?;
+            crate::people::rebuild_activity_years(archive, Some(old_pid))?;
+            crate::people::rebuild_activity_years(archive, Some(new_pid))?;
+        }
+        archive.conn.execute(
+            "UPDATE merge_review_queue SET status = 'accepted',
+                    resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+                    resolved_by = 'user'
+             WHERE id = ?1",
+            [review_id],
+        )?;
+        Ok(())
+    })?;
     Ok(true)
 }
 
@@ -549,6 +614,14 @@ pub fn review_show(archive: &Archive, id: i64) -> Result<serde_json::Value, Core
     }))
 }
 
+struct OpenFoldReview {
+    id: i64,
+    left: i64,
+    right_person: Option<i64>,
+    right_ident: Option<i64>,
+    reason: String,
+}
+
 fn close_sibling_fold_reviews(
     archive: &Archive,
     keep_review_id: i64,
@@ -557,6 +630,14 @@ fn close_sibling_fold_reviews(
     right_pid: Option<i64>,
     status: &str,
 ) -> Result<(), CoreError> {
+    let self_reason: String = archive.conn.query_row(
+        "SELECT reason_summary FROM merge_review_queue WHERE id = ?1",
+        [keep_review_id],
+        |r| r.get(0),
+    )?;
+    if reason_is_phone_replaced(&self_reason) {
+        return Ok(());
+    }
     let fold = match review_pair_fold(archive, left, left_pid, right_pid)? {
         Some(f) => f,
         None => match review_queued_fold(archive, left, right_pid, None)? {
@@ -564,18 +645,27 @@ fn close_sibling_fold_reviews(
             None => return Ok(()),
         },
     };
-    let open: Vec<(i64, i64, Option<i64>, Option<i64>)> = {
+    let open = {
         let mut stmt = archive.conn.prepare(
-            "SELECT id, left_identity_id, right_person_id, right_identity_id
+            "SELECT id, left_identity_id, right_person_id, right_identity_id, reason_summary
              FROM merge_review_queue WHERE status = 'open' AND id != ?1",
         )?;
         let it = stmt.query_map([keep_review_id], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            Ok(OpenFoldReview {
+                id: r.get(0)?,
+                left: r.get(1)?,
+                right_person: r.get(2)?,
+                right_ident: r.get(3)?,
+                reason: r.get(4)?,
+            })
         })?;
         it.collect::<Result<Vec<_>, _>>()?
     };
-    for (oid, oleft, oright_person, oright_ident) in open {
-        if review_queued_fold(archive, oleft, oright_person, oright_ident)?.as_deref()
+    for row in open {
+        if reason_is_phone_replaced(&row.reason) {
+            continue;
+        }
+        if review_queued_fold(archive, row.left, row.right_person, row.right_ident)?.as_deref()
             == Some(fold.as_str())
         {
             archive.conn.execute(
@@ -583,7 +673,7 @@ fn close_sibling_fold_reviews(
                         resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
                         resolved_by = 'user'
                  WHERE id = ?2",
-                rusqlite::params![status, oid],
+                rusqlite::params![status, row.id],
             )?;
         }
     }
