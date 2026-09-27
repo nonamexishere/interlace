@@ -1034,3 +1034,156 @@ fn earlier_join_moves_open_span_backward() {
     assert!(berk[0].left_at.is_none());
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// A same-minute add then leave must not invent a membership before that minute.
+#[test]
+fn same_minute_leave_does_not_invent_earlier_membership() {
+    let root = tmp_root();
+    let zip = android_zip(
+        &root.join("zips"),
+        &[
+            "1/15/19, 9:00 AM - Ada: ada-before-minute",
+            "1/15/19, 10:00 AM - Ada added Berk",
+            "1/15/19, 10:00 AM - Berk left",
+            "1/15/19, 10:05 AM - Ada: ada-after-minute",
+        ],
+    );
+    let mut arch = archive_with_self(&root.join("arch"));
+    import_android(&mut arch, &zip);
+    let cid = group_id(&arch);
+    let minute = sent_at_containing(&arch, "Berk left");
+    let before = names_at(
+        &arch,
+        cid,
+        Some(&sent_at_containing(&arch, "ada-before-minute")),
+    );
+    let after = names_at(
+        &arch,
+        cid,
+        Some(&sent_at_containing(&arch, "ada-after-minute")),
+    );
+    assert!(
+        !shows(&before, "Berk"),
+        "a message before the minute does not include Berk, got {before:?}"
+    );
+    assert!(
+        shows(&after, "Berk"),
+        "a message after the minute still includes Berk, got {after:?}"
+    );
+    let berk = spans_for(&arch, cid, "Berk");
+    assert!(
+        berk.iter().all(|span| {
+            !(span.joined_at.is_none() && span.left_at.as_deref() == Some(minute.as_str()))
+        }),
+        "no Berk span is (joined_at NULL, left_at = {minute}), got {}",
+        berk.len()
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// An earlier join imported after a closed span moves that span backward and keeps the leave.
+#[test]
+fn earlier_join_rewinds_closed_span() {
+    let root = tmp_root();
+    let zip = ios_zip(
+        &root.join("zips"),
+        &[
+            "[3/1/19, 10:00:00 AM] Berk was added",
+            "[6/1/20, 10:00:00 AM] Berk left",
+            "[1/15/18, 10:00:00 AM] Berk was added",
+            "[6/1/19, 10:00:00 AM] Ada: ada-in-2019",
+            "[3/1/24, 10:00:00 AM] Ada: ada-in-2024",
+        ],
+    );
+    let mut arch = archive_with_self(&root.join("arch"));
+    import_ios(&mut arch, &zip);
+    let cid = group_id(&arch);
+    let berk = spans_for(&arch, cid, "Berk");
+    assert_eq!(berk.len(), 1, "Berk has one span, got {}", berk.len());
+    assert!(
+        berk[0]
+            .joined_at
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("2018-"),
+        "joined_at starts in 2018, got {:?}",
+        berk[0].joined_at
+    );
+    assert!(
+        berk[0]
+            .left_at
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("2020-"),
+        "left_at starts in 2020, got {:?}",
+        berk[0].left_at
+    );
+    assert!(
+        berk.iter().all(|span| span.left_at.is_some()),
+        "Berk has no open span"
+    );
+    assert!(
+        shows(
+            &names_at(&arch, cid, Some(&sent_at_containing(&arch, "ada-in-2019"))),
+            "Berk"
+        ),
+        "the 2019 message includes Berk"
+    );
+    assert!(
+        !shows(
+            &names_at(&arch, cid, Some(&sent_at_containing(&arch, "ada-in-2024"))),
+            "Berk"
+        ),
+        "the 2024 message does not include Berk"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A second export of the same add, seconds only different, must not drop the leave.
+#[test]
+fn second_export_same_add_seconds_apart_keeps_leave() {
+    let root = tmp_root();
+    let first = android_zip(
+        &root.join("a"),
+        &[
+            "1/15/19, 10:00 AM - Ada added Berk",
+            "1/15/19, 10:06 AM - Berk: berk-shared",
+            "6/1/20, 10:00 AM - Berk left",
+            "3/1/24, 10:00 AM - Ada: ada-in-2024",
+        ],
+    );
+    let later_dir = root.join("b");
+    let later = later_dir.join("WhatsApp Chat - Pocket.zip");
+    let later_chat = ios_chat(&[
+        "[1/15/19, 10:06:18 AM] Berk: berk-shared",
+        "[3/1/24, 10:00:18 AM] Ada: ada-in-2024",
+        "[1/15/19, 10:00:18 AM] Berk was added",
+    ]);
+    write_zip(&later, &[("_chat.txt", later_chat.as_bytes())]);
+    let mut arch = archive_with_self(&root.join("arch"));
+    import_android(&mut arch, &first);
+    let kept = group_id(&arch);
+    import_ios(&mut arch, &later);
+    assert_eq!(
+        count(&arch, "SELECT COUNT(*) FROM conversations"),
+        1,
+        "two shared messages keep the later add on the first conversation"
+    );
+    let berk = spans_for(&arch, kept, "Berk");
+    assert!(
+        berk.iter()
+            .any(|span| span.left_at.as_deref().unwrap_or("").starts_with("2020-")),
+        "Berk's leave stays on the kept conversation, got {} spans",
+        berk.len()
+    );
+    assert!(
+        berk.iter().all(|span| span.left_at.is_some()),
+        "the seconds-apart add does not reopen Berk"
+    );
+    let late = names_at(&arch, kept, Some(&sent_at_containing(&arch, "ada-in-2024")));
+    assert!(
+        !shows(&late, "Berk"),
+        "a 2024 message on the kept conversation does not include Berk, got {late:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

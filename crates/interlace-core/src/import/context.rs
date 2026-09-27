@@ -562,8 +562,9 @@ fn apply_group_bound(
         }
         let covered: i64 = conn.query_row(
             "SELECT COUNT(*) FROM group_membership
-             WHERE conversation_id = ?1 AND identity_id = ?2 AND left_at IS NULL
-               AND (joined_at IS NULL OR joined_at <= ?3)",
+             WHERE conversation_id = ?1 AND identity_id = ?2
+               AND (joined_at IS NULL OR joined_at <= ?3)
+               AND (left_at IS NULL OR left_at > ?3)",
             rusqlite::params![conversation_id, identity_id, at],
             |r| r.get(0),
         )?;
@@ -575,13 +576,24 @@ fn apply_group_bound(
              WHERE rowid = (
                SELECT rowid FROM group_membership
                WHERE conversation_id = ?1 AND identity_id = ?2
-                 AND left_at IS NULL AND joined_at > ?3
+                 AND joined_at > ?3
                ORDER BY joined_at
                LIMIT 1
              )",
             rusqlite::params![conversation_id, identity_id, at],
         )?;
         if moved > 0 {
+            return Ok(());
+        }
+        let same_minute: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM group_membership
+             WHERE conversation_id = ?1 AND identity_id = ?2
+               AND joined_at IS NOT NULL
+               AND substr(joined_at, 1, 16) = substr(?3, 1, 16)",
+            rusqlite::params![conversation_id, identity_id, at],
+            |r| r.get(0),
+        )?;
+        if same_minute > 0 {
             return Ok(());
         }
         conn.execute(
@@ -598,6 +610,16 @@ fn apply_group_bound(
         rusqlite::params![conversation_id, identity_id, at],
     )?;
     if closed > 0 {
+        return Ok(());
+    }
+    let open_at_leave: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM group_membership
+         WHERE conversation_id = ?1 AND identity_id = ?2
+           AND left_at IS NULL AND joined_at = ?3",
+        rusqlite::params![conversation_id, identity_id, at],
+        |r| r.get(0),
+    )?;
+    if open_at_leave > 0 {
         return Ok(());
     }
     conn.execute(
