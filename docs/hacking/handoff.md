@@ -1,10 +1,7 @@
 # Agent / session handoff
 
-**Date:** 2026-09-23. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
-HEAD on `master` is **#380** (next People-timeline voice note). This branch is **#403**: Search jump loads messages after the hit, not only older ones. **#378** (jump to a year from the inspector). **#377** (click a group participant to open that person). **#376** / PR **#412**,
-**#375** / PR **#411**, **#374** / PR **#410**, **#372** / PR **#408**, and **#373** / PR **#409** landed.
-**#361**–**#380**, **#400**, and **#402** landed. **#384** and **#385** were
-tried and **backed out**. **#403** is this branch.
+**Date:** 2026-09-27. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
+HEAD on `master` is **`8938a3b`**, merge of PR **#444** (**#422**, review a replaced phone number). **#421** / PR **#443** landed before it. **#384** and **#385** stay backed out. Next unstarted child of epic **#416** is **#423**.
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -295,7 +292,7 @@ Phase 2.3 coding is **done** (epic **#264** / milestone 8 closed). Phase 2.2
 polish (#197) is **done**. Phase 2.4 epic **#360** is **started**: **#361**–**#379**, **#400**, and **#402**
 landed (PRs **#381**–**#383**, **#386**, **#388**, **#390**, **#392**, **#394**, **#396**, **#398**, **#401**, **#404**, **#406**, **#408**, **#409**, **#410**, **#411**, **#412**; **#379** this PR). **#384** and **#385** were
 tried locally and **backed out**. Stay on post-#380 chrome.
-**#403** (jump must load messages after the hit) is this branch.
+**#422** / PR **#444** is merged (`8938a3b`). **#421** / PR **#443** is merged. Next is **#423**.
 Phase 4 epic **#56** is **started** (#79 / PR **#359**).
 Normative [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md).
 Do **not** restart **#384** / **#385** unprompted. Do **not** start Phase 1.1
@@ -307,7 +304,7 @@ code.
 
 ### Suggested next
 
-1. **#403** (this branch) loads messages after a Search jump, not only older ones. **#380** landed. **#384** / **#385** stay backed out.
+1. **#422** is merged (PR **#444**, `8938a3b`). Next unstarted child of epic **#416** is **#423**. **#384** / **#385** stay backed out.
    Next Phase 4 coding **#80** only if
    asked. Do not start #81 / #82 / 1.1 / Phase 3 export
    unprompted.
@@ -328,8 +325,8 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 
 ## Recommended next steps
 
-1. #303–#322 / #342 / #361–#379 / #400 / #402 are done. Phase 2.4:
-   **#384** / **#385** backed out. Stay at post-#380. **#403** is this branch (messages after a Search jump).
+1. #303–#322 / #342 / #361–#379 / #400 / #402 / #403 / #419 / #420 / #421 / #422 are done. Phase 2.4:
+   **#384** / **#385** backed out. HEAD is `8938a3b` (PR **#444**). Next is **#423**.
    Phase 4 started: **#79** / PR **#359**. Next
    Phase 4 coding **#80** only if asked. #342 follow-up is **D**.
 2. Do not start 1.1 / Phase 3 export / #81 / #82 unprompted.
@@ -413,8 +410,8 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > mix into IN.md before test-author. Do not spawn agents from a child. Orchestrator
 > does not implement product code. Ask before commit / push / merge.
 > Phase 2.3 coding is done (epic #264 / milestone 8 closed). Phase 2.4
-> epic #360 started: **#380** merged (#378 jump to a year from the inspector;
-> #361–#379 / #400 / #402 landed). **#403** is this branch (messages after a Search jump). **#384** / **#385** stay backed out.
+> epic #360 started: **#380** merged. **#403**, **#419**, **#420**, and **#421**
+> are merged. **#422** / PR **#444** is merged. HEAD is `8938a3b`. Next is **#423**. **#384** / **#385** stay backed out.
 > Read
 > `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,
 > #297, #300, #303–#322, #342 done (PRs #323–#328, #330, #332, #336, #338, #340,
