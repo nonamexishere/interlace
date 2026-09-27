@@ -996,3 +996,41 @@ fn leave_does_not_close_a_join_at_or_after_it() {
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&root2);
 }
+
+/// An earlier join imported after a later open span moves that span backward.
+#[test]
+fn earlier_join_moves_open_span_backward() {
+    let root = tmp_root();
+    let zip = ios_zip(
+        &root.join("zips"),
+        &[
+            "[3/1/24, 10:00:00 AM] Berk was added",
+            "[3/1/21, 10:00:00 AM] Berk was added",
+            "[1/15/19, 10:06:00 AM] Ada: ada-in-2019",
+            "[3/1/22, 10:00:00 AM] Ada: ada-in-2022",
+        ],
+    );
+    let mut arch = archive_with_self(&root.join("arch"));
+    import_ios(&mut arch, &zip);
+    let cid = group_id(&arch);
+    assert!(!shows(
+        &names_at(&arch, cid, Some(&sent_at_containing(&arch, "ada-in-2019"))),
+        "Berk"
+    ));
+    assert!(
+        shows(
+            &names_at(&arch, cid, Some(&sent_at_containing(&arch, "ada-in-2022"))),
+            "Berk"
+        ),
+        "a 2022 message includes Berk after the 2021 join"
+    );
+    let berk = spans_for(&arch, cid, "Berk");
+    assert_eq!(berk.len(), 1, "the earlier join moves the open span");
+    assert!(berk[0]
+        .joined_at
+        .as_deref()
+        .unwrap_or("")
+        .starts_with("2021-"));
+    assert!(berk[0].left_at.is_none());
+    let _ = std::fs::remove_dir_all(&root);
+}

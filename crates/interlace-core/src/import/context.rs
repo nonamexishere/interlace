@@ -560,13 +560,28 @@ fn apply_group_bound(
         if filled > 0 {
             return Ok(());
         }
-        let open: i64 = conn.query_row(
+        let covered: i64 = conn.query_row(
             "SELECT COUNT(*) FROM group_membership
-             WHERE conversation_id = ?1 AND identity_id = ?2 AND left_at IS NULL",
-            rusqlite::params![conversation_id, identity_id],
+             WHERE conversation_id = ?1 AND identity_id = ?2 AND left_at IS NULL
+               AND (joined_at IS NULL OR joined_at <= ?3)",
+            rusqlite::params![conversation_id, identity_id, at],
             |r| r.get(0),
         )?;
-        if open > 0 {
+        if covered > 0 {
+            return Ok(());
+        }
+        let moved = conn.execute(
+            "UPDATE group_membership SET joined_at = ?3
+             WHERE rowid = (
+               SELECT rowid FROM group_membership
+               WHERE conversation_id = ?1 AND identity_id = ?2
+                 AND left_at IS NULL AND joined_at > ?3
+               ORDER BY joined_at
+               LIMIT 1
+             )",
+            rusqlite::params![conversation_id, identity_id, at],
+        )?;
+        if moved > 0 {
             return Ok(());
         }
         conn.execute(
