@@ -895,3 +895,104 @@ fn later_export_leave_lands_on_kept_conversation() {
     assert!(ada[0].joined_at.is_none());
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// An earlier join imported after a leave fills that span. It does not open a new one.
+#[test]
+fn earlier_join_fills_existing_leave() {
+    let root = tmp_root();
+    let zip = ios_zip(
+        &root.join("zips"),
+        &[
+            "[6/1/20, 10:00:00 AM] Ada left",
+            "[1/15/19, 10:00:00 AM] Ada created group \"Picnic\"",
+            "[1/15/19, 10:06:00 AM] Berk: berk-in-2019",
+            "[3/1/24, 10:00:00 AM] Berk: berk-in-2024",
+        ],
+    );
+    let mut arch = archive_with_self(&root.join("arch"));
+    import_ios(&mut arch, &zip);
+    let cid = group_id(&arch);
+    let early = names_at(&arch, cid, Some(&sent_at_containing(&arch, "berk-in-2019")));
+    let late = names_at(&arch, cid, Some(&sent_at_containing(&arch, "berk-in-2024")));
+    assert!(
+        shows(&early, "Ada"),
+        "2019 still includes Ada, got {early:?}"
+    );
+    assert!(!shows(&late, "Ada"), "2024 omits Ada, got {late:?}");
+    let ada = spans_for(&arch, cid, "Ada");
+    assert_eq!(ada.len(), 1, "the join fills the leave span");
+    assert!(ada[0]
+        .joined_at
+        .as_deref()
+        .unwrap_or("")
+        .starts_with("2019-"));
+    assert!(ada[0].left_at.as_deref().unwrap_or("").starts_with("2020-"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A leave that is not after the open join must not invert the span or drop Berk.
+#[test]
+fn leave_does_not_close_a_join_at_or_after_it() {
+    let root = tmp_root();
+    let same_minute = android_zip(
+        &root.join("minute"),
+        &[
+            "1/15/19, 10:00 AM - Ada added Berk",
+            "1/15/19, 10:00 AM - Berk left",
+            "1/15/19, 10:05 AM - Ada: ada-after-minute",
+        ],
+    );
+    let mut arch = archive_with_self(&root.join("arch-minute"));
+    import_android(&mut arch, &same_minute);
+    let cid = group_id(&arch);
+    let after = names_at(
+        &arch,
+        cid,
+        Some(&sent_at_containing(&arch, "ada-after-minute")),
+    );
+    assert!(
+        shows(&after, "Berk"),
+        "a same-minute leave must not drop Berk, got {after:?}"
+    );
+
+    let root2 = tmp_root();
+    let inverted = ios_zip(
+        &root2.join("zips"),
+        &[
+            "[3/1/21, 10:00:00 AM] Berk was added",
+            "[6/1/20, 10:00:00 AM] Berk left",
+            "[1/15/19, 10:06:00 AM] Ada: ada-in-2019",
+            "[7/1/20, 10:00:00 AM] Ada: ada-after-leave",
+            "[3/1/22, 10:00:00 AM] Ada: ada-after-rejoin",
+        ],
+    );
+    let mut arch2 = archive_with_self(&root2.join("arch"));
+    import_ios(&mut arch2, &inverted);
+    let cid2 = group_id(&arch2);
+    assert!(shows(
+        &names_at(
+            &arch2,
+            cid2,
+            Some(&sent_at_containing(&arch2, "ada-in-2019"))
+        ),
+        "Berk"
+    ));
+    assert!(!shows(
+        &names_at(
+            &arch2,
+            cid2,
+            Some(&sent_at_containing(&arch2, "ada-after-leave"))
+        ),
+        "Berk"
+    ));
+    assert!(shows(
+        &names_at(
+            &arch2,
+            cid2,
+            Some(&sent_at_containing(&arch2, "ada-after-rejoin"))
+        ),
+        "Berk"
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&root2);
+}

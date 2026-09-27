@@ -546,6 +546,20 @@ fn apply_group_bound(
             )?;
             return Ok(());
         }
+        let filled = conn.execute(
+            "UPDATE group_membership SET joined_at = ?3
+             WHERE rowid = (
+               SELECT rowid FROM group_membership
+               WHERE conversation_id = ?1 AND identity_id = ?2
+                 AND joined_at IS NULL AND left_at > ?3
+               ORDER BY left_at
+               LIMIT 1
+             )",
+            rusqlite::params![conversation_id, identity_id, at],
+        )?;
+        if filled > 0 {
+            return Ok(());
+        }
         let open: i64 = conn.query_row(
             "SELECT COUNT(*) FROM group_membership
              WHERE conversation_id = ?1 AND identity_id = ?2 AND left_at IS NULL",
@@ -562,18 +576,13 @@ fn apply_group_bound(
         )?;
         return Ok(());
     }
-    let open: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM group_membership
-         WHERE conversation_id = ?1 AND identity_id = ?2 AND left_at IS NULL",
-        rusqlite::params![conversation_id, identity_id],
-        |r| r.get(0),
+    let closed = conn.execute(
+        "UPDATE group_membership SET left_at = ?3
+         WHERE conversation_id = ?1 AND identity_id = ?2 AND left_at IS NULL
+           AND (joined_at IS NULL OR joined_at < ?3)",
+        rusqlite::params![conversation_id, identity_id, at],
     )?;
-    if open > 0 {
-        conn.execute(
-            "UPDATE group_membership SET left_at = ?3
-             WHERE conversation_id = ?1 AND identity_id = ?2 AND left_at IS NULL",
-            rusqlite::params![conversation_id, identity_id, at],
-        )?;
+    if closed > 0 {
         return Ok(());
     }
     conn.execute(
