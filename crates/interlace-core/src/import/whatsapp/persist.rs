@@ -516,13 +516,13 @@ fn en_us_membership_bound(rest: &str) -> Option<(String, bool)> {
     let mut best: Option<(usize, &str, bool, bool)> = None;
     for (pat, joined, takes_target) in verbs {
         if let Some(idx) = line.find(pat) {
-            if best.is_none_or(|(at, _, _, _)| idx < at) {
+            if best.map(|(at, _, _, _)| idx < at).unwrap_or(true) {
                 best = Some((idx, pat, joined, takes_target));
             }
         }
     }
     if let Some(idx) = line.strip_suffix(" left").map(|head| head.len()) {
-        if best.is_none_or(|(at, _, _, _)| idx < at) {
+        if best.map(|(at, _, _, _)| idx < at).unwrap_or(true) {
             best = Some((idx, " left", false, false));
         }
     }
