@@ -6,6 +6,7 @@
 //! GM423-TWO-NAMES-NOOP GM423-NO-IDENTITY-MERGE GM423-SENDER-UNCHANGED
 //! GM423-REIMPORT-IDEMPOTENT GM423-SENDER-ONLY-NO-INTERVAL GM423-HALF-OPEN
 //! GM423-LATER-JOIN-FILLS-LEAVE GM423-LATER-LEAVE-KEEPS-REJOIN
+//! GM423-SAME-TS-LEAVE GM423-LEAVE-CLOSES-ALL-OPEN
 //!
 //! Placeholders Ada / Berk / Self only. Drive import via public Archive API;
 //! assert intervals and as-of presence via SQL on the open connection.
@@ -1169,5 +1170,96 @@ fn membership_later_leave_does_not_close_later_rejoin() {
             );
         }
     }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// GM423-SAME-TS-LEAVE: a leave at the same timestamp as the join closes that join.
+/// One export. `Berk added Ada` and `Ada left` share a timestamp. The open span
+/// (joined_at = that timestamp, left_at NULL) must not keep Ada on the 2024 message.
+#[test]
+fn membership_same_timestamp_leave_closes_join() {
+    let root = tmp_root();
+    let chat = "\
+[2020-03-15, 11:59:59] Messages and calls are end-to-end encrypted
+[2020-03-15, 12:00:00] Berk added Ada
+[2020-03-15, 12:00:00] Ada left
+[2024-01-10, 09:00:00] Berk: after same minute
+";
+    let zip = write_ios_zip(&root.join("zips"), "random-same-ts-leave", chat);
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    import_chat(&mut arch, &zip);
+    if has_table(&arch, "group_membership") {
+        require_group_membership_schema(&arch);
+    }
+
+    let cid = group_cid(&arch);
+    let after_id = message_id_by_body(&arch, "after same minute");
+    let at_after = message_sent_at(&arch, after_id).expect("after same minute sent_at");
+    assert!(
+        at_after.starts_with("2024"),
+        "after same minute sent_at={at_after}"
+    );
+
+    let after_names = names_present_at(&arch, cid, &at_after);
+    assert!(
+        after_names.iter().all(|n| n != "Ada"),
+        "GM423-SAME-TS-LEAVE: 2024 message must not list Ada, got {after_names:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// GM423-LEAVE-CLOSES-ALL-OPEN: a leave after both joins closes every earlier open span.
+/// Shorter export stored only `Berk added Ada`. The same chat's later export adds
+/// an earlier join and a leave after both joins. After both imports the 2025
+/// message must not list Ada.
+#[test]
+fn membership_leave_closes_every_earlier_open_span() {
+    let root = tmp_root();
+    let shorter = "\
+[2024-01-01, 09:00:00] Messages and calls are end-to-end encrypted
+[2024-06-01, 10:00:00] Berk added Ada
+[2025-01-10, 09:00:00] Berk: after both joins
+";
+    let later = "\
+[2024-01-01, 09:00:00] Messages and calls are end-to-end encrypted
+[2024-01-01, 10:00:00] Berk added Ada
+[2024-06-01, 10:00:00] Berk added Ada
+[2024-08-01, 12:00:00] Ada left
+[2025-01-10, 09:00:00] Berk: after both joins
+";
+    let zip_short = write_ios_zip(&root.join("zips"), "shorter-two-joins", shorter);
+    let zip_later = write_ios_zip(&root.join("zips"), "later-two-joins", later);
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    import_chat(&mut arch, &zip_short);
+    if has_table(&arch, "group_membership") {
+        require_group_membership_schema(&arch);
+    }
+
+    let n_conv = count(&arch, "SELECT COUNT(*) FROM conversations");
+    assert_eq!(
+        n_conv, 1,
+        "shorter export must keep one conversation, got {n_conv}"
+    );
+
+    import_chat(&mut arch, &zip_later);
+    let n_conv_later = count(&arch, "SELECT COUNT(*) FROM conversations");
+    assert_eq!(
+        n_conv_later, 1,
+        "later export of the same chat must stay on the kept conversation, got {n_conv_later}"
+    );
+    let cid = group_cid(&arch);
+
+    let after_id = message_id_by_body(&arch, "after both joins");
+    let at_after = message_sent_at(&arch, after_id).expect("after both joins sent_at");
+    assert!(
+        at_after.starts_with("2025"),
+        "after both joins sent_at={at_after}"
+    );
+
+    let after_names = names_present_at(&arch, cid, &at_after);
+    assert!(
+        after_names.iter().all(|n| n != "Ada"),
+        "GM423-LEAVE-CLOSES-ALL-OPEN: message after both joins must not list Ada, got {after_names:?}"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
