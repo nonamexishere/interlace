@@ -47,6 +47,7 @@ export const en = {
   searchPreviewFocusQuery: "Focus query",
   showQuoted: "Show quoted",
   hideQuoted: "Hide quoted",
+  quoteNotInArchive: "Not in this archive",
   searchFilters: "Filters",
   searchFrom: "From",
   searchTo: "To",

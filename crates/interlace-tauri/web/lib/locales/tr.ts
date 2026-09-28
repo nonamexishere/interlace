@@ -49,6 +49,7 @@ export const tr: ChromePack = {
   searchPreviewFocusQuery: "Sorguya odaklan",
   showQuoted: "Alıntıyı göster",
   hideQuoted: "Alıntıyı gizle",
+  quoteNotInArchive: "Bu arşivde yok",
   searchFilters: "Filtreler",
   searchFrom: "Başlangıç",
   searchTo: "Bitiş",
