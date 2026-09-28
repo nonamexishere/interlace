@@ -246,6 +246,28 @@ pub(super) fn import(
             continue;
         }
 
+        if group && pack.id == "en-US" && m.kind == MessageKind::System {
+            if let Some((who, joined)) = en_us_membership_bound(&m.rest_raw) {
+                if let Some(ref ts) = m.sent_at {
+                    let iid = persist_sender(
+                        ctx,
+                        &pack,
+                        &who,
+                        ConversationKind::Group,
+                        None,
+                        None,
+                        &mut ident_cache,
+                    )?;
+                    let kept_conv = retarget.unwrap_or(conv_id);
+                    if joined {
+                        ctx.note_group_membership(kept_conv, iid, Some(ts), None)?;
+                    } else {
+                        ctx.note_group_membership(kept_conv, iid, None, Some(ts))?;
+                    }
+                }
+            }
+        }
+
         if retarget.is_some() && m.kind == MessageKind::System {
             ctx.checkpoint(Checkpoint {
                 cursor_kind: "wa_line".into(),
@@ -479,6 +501,61 @@ pub(super) fn import(
     }
 
     Ok(ImportStats::default())
+}
+
+/// en-US only. One named person. `true` = joined, `false` = left.
+/// The verb is the separator right after the leading name, not a later substring.
+/// Any other wording, including several people on the line, is `None`.
+fn en_us_membership_bound(rest: &str) -> Option<(String, bool)> {
+    let line = strip_cf(rest.trim());
+    let verbs = [
+        (" created group", true, false),
+        (" added ", true, true),
+        (" removed ", false, true),
+    ];
+    let mut best: Option<(usize, &str, bool, bool)> = None;
+    for (pat, joined, takes_target) in verbs {
+        if let Some(idx) = line.find(pat) {
+            if best.map(|(at, _, _, _)| idx < at).unwrap_or(true) {
+                best = Some((idx, pat, joined, takes_target));
+            }
+        }
+    }
+    if let Some(idx) = line.strip_suffix(" left").map(|head| head.len()) {
+        if best.map(|(at, _, _, _)| idx < at).unwrap_or(true) {
+            best = Some((idx, " left", false, false));
+        }
+    }
+    let (idx, pat, joined, takes_target) = best?;
+    let actor = person_side(line[..idx].trim())?;
+    if takes_target {
+        let target = person_side(line[idx + pat.len()..].trim())?;
+        return Some((target, joined));
+    }
+    Some((actor, joined))
+}
+
+fn single_named(name: &str) -> Option<String> {
+    if name.is_empty() || name.contains(',') || name.to_lowercase().contains(" and ") {
+        return None;
+    }
+    Some(name.to_string())
+}
+
+/// A person side: `single_named`, and not a quoted span or the words group / community.
+fn person_side(name: &str) -> Option<String> {
+    let name = single_named(name)?;
+    if name.contains('"') {
+        return None;
+    }
+    let banned = name.split_whitespace().any(|w| {
+        let w = w.to_lowercase();
+        w == "group" || w == "community"
+    });
+    if banned {
+        return None;
+    }
+    Some(name)
 }
 
 fn persist_sender(

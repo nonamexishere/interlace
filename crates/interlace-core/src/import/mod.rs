@@ -78,6 +78,18 @@ pub trait ImportContext {
         Ok(())
     }
 
+    /// One membership bound on a kept group. Does not touch messages or
+    /// `conversation_participants`. Same `(identity, bound timestamp)` is a no-op.
+    fn note_group_membership(
+        &mut self,
+        _conversation_id: i64,
+        _identity_id: i64,
+        _joined_at: Option<&str>,
+        _left_at: Option<&str>,
+    ) -> Result<(), CoreError> {
+        Ok(())
+    }
+
     /// `messages.id` for an existing `wa-v1` key, if this line was already stored.
     fn message_id_for_idempotency(&self, _key: &str) -> Result<Option<i64>, CoreError> {
         Ok(None)

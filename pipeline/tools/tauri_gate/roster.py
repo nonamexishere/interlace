@@ -69,6 +69,7 @@ from tauri_gate.multiselect_copy import assert_multiselect_copy  # noqa: E402
 from tauri_gate.multiselect_copy_keys import assert_multiselect_copy_keys  # noqa: E402
 from tauri_gate.multiselect_copy_live import assert_multiselect_copy_live  # noqa: E402
 from tauri_gate.group_inspector_names import assert_group_inspector_names  # noqa: E402
+from tauri_gate.group_membership_asof import assert_group_membership_asof  # noqa: E402
 from tauri_gate.person_media_gallery import assert_person_media_gallery  # noqa: E402
 from tauri_gate.person_media_gallery_fold import assert_person_media_gallery_fold  # noqa: E402
 from tauri_gate.person_media_gallery_race import assert_person_media_gallery_race  # noqa: E402

@@ -231,6 +231,7 @@ def main() -> None:
     assert_multiselect_copy_keys(crate)
     assert_multiselect_copy_live(crate)
     assert_group_inspector_names(crate)
+    assert_group_membership_asof(crate)
     assert_person_media_gallery(crate)
     assert_person_media_gallery_fold(crate)
     assert_person_media_gallery_race(crate)

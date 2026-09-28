@@ -19,12 +19,14 @@ def main() -> None:
             "interlace-tauri",
             "--exclude",
             "interlace-fixtures",
+            "--",
+            "--test-threads=1",
         ],
         cwd=root,
         check=False,
     )
     if t.returncode != 0:
-        fail(t.stderr or t.stdout)
+        fail(f"{t.stdout}\n{t.stderr}")
     clip = run(
         [
             "cargo",

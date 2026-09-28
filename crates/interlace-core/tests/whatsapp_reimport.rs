@@ -278,7 +278,10 @@ fn wa_reimport_week_ids_stable_and_again_inserts_nothing() {
 #[test]
 fn wa_quit_second_zip_resumes_same_run() {
     let root = tmp_root();
-    let (zip_a, zip_b, _, week) = zip_pair(&root.join("zips"), 6);
+    // A 10-line zip can finish in the gap after status flips to running and
+    // before cancel() runs. The sibling cancel tests use a long tail so the
+    // interrupt still lands mid-import.
+    let (zip_a, zip_b, _, week) = zip_pair(&root.join("zips"), 1_200);
     let arch_path = root.join("arch");
     let db = arch_path.join("archive.sqlite");
     let mut arch = init_archive(&arch_path).unwrap();

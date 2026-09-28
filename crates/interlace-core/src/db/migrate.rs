@@ -26,6 +26,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "0005_wa_near_review",
         include_str!("../../migrations/0005_wa_near_review.sql"),
     ),
+    (
+        6,
+        "0006_group_membership",
+        include_str!("../../migrations/0006_group_membership.sql"),
+    ),
 ];
 
 /// Apply pending numbered SQL migrations. `0001_init.sql` is version 1.

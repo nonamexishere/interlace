@@ -254,9 +254,10 @@ export const api = {
     limit?: number;
     before?: string | null;
   }) => invoke<PersonMediaRow[]>("person_media", args),
-  conversationParticipants: (conversationId: number) =>
+  conversationParticipants: (conversationId: number, messageId?: number | null) =>
     invoke<ConversationParticipantName[]>("conversation_participants_cmd", {
       conversationId,
+      messageId: messageId ?? null,
     }),
   merge: (a: number, b: number, keep: number) =>
     invoke<{ survivor: number; event_id: number }>("person_merge_cmd", {
