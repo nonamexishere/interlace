@@ -59,6 +59,7 @@
     loadNewerVisible = false,
     loadNewerPage = () => {},
     cancelNewerFetch = () => {},
+    onJumpToParent = (_parentId: number) => {},
   }: {
     timeline: TimelineRow[];
     filteredTimeline: { row: TimelineRow; index: number }[];
@@ -96,6 +97,7 @@
     loadNewerVisible?: boolean;
     loadNewerPage?: () => void;
     cancelNewerFetch?: () => void;
+    onJumpToParent?: (parentId: number) => void;
   } = $props();
 
   let tlScrollTop = $state(0);
@@ -714,6 +716,7 @@
     {onOpenImage}
     {loadNewerVisible}
     {loadNewerPage}
+    {onJumpToParent}
   />
   <div id="timeline-end"></div>
 </ScrollArea>

@@ -196,7 +196,14 @@ timezone. Display follows the host / Mac timezone; storage / archive JSON stay U
 nodes (`whitespace-pre-wrap`) so a screen reader still hears them — never
 HTML. **Gmail / email-thread** bubbles show the subject as a title when present
 and fold quoted reply tails (`On … wrote:`, lines starting with `>`) behind
-**Show quoted** / **Hide quoted** — still plain text, not HTML layout. Mail
+**Show quoted** / **Hide quoted** — still plain text, not HTML layout. When a
+parent and its replies are both already loaded and on the same day, they stack
+under that parent (parent, then replies by time, then id). The stack stays
+open. A reply whose parent is not loaded stays one flat row on its own day.
+A reply row has **Parent**, which jumps to that message with the usual message
+jump and stops if the parent is filtered, newer than the loaded window, or past
+the page cap. It does not switch conversation. Two mails that only share a
+subject do not stack. Mail
 bubbles that have labels show quiet chips under the subject (first three, then
 `+k`); WhatsApp stays chip-less. Mail bubbles also show a muted To line
 (To-role names; first three then `+k`; hidden when empty). A WhatsApp bubble

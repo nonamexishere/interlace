@@ -176,8 +176,8 @@ impl ImportContext for DbImportContext<'_> {
             "INSERT OR IGNORE INTO messages(
                 conversation_id, source_id, import_run_id, sender_identity_id,
                 sent_at, sent_at_precision, kind, subject, body_text, body_html,
-                native_id, idempotency_key, gm_thrid, in_reply_to, payload_json
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                native_id, idempotency_key, gm_thrid, in_reply_to, [references], payload_json
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             rusqlite::params![
                 rec.conversation_id,
                 self.source_id,
@@ -193,6 +193,7 @@ impl ImportContext for DbImportContext<'_> {
                 rec.idempotency_key,
                 rec.gm_thrid,
                 rec.in_reply_to,
+                rec.references,
                 rec.payload_json,
             ],
         )?;
@@ -552,6 +553,10 @@ impl ImportContext for DbImportContext<'_> {
             rusqlite::params![left_identity, right_identity, reason],
         )?;
         Ok(())
+    }
+
+    fn link_gmail_reply_parents(&mut self) -> Result<(), CoreError> {
+        crate::import::gmail::link_reply_parents(&self.archive.conn)
     }
 
     fn wa_drop_shell_conversation(&mut self, conversation_id: i64) -> Result<(), CoreError> {

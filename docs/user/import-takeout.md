@@ -49,6 +49,8 @@ are not separators; they lose one leading `>` when the body is read.
 | `X-Gmail-Labels` | labels; **Duplicate Message-ID unions labels** |
 | `From` `To` `Cc` `Bcc` | identities + recipients |
 | `Subject` `Date` | subject / `sent_at` (else mbox From_ date) |
+| `In-Reply-To` | kept as stored. After the import’s messages exist, the first id that matches a stored `Message-ID` (trim, one pair of angle brackets, ASCII lowercase) becomes `thread_parent_id`. No match stays unset. No placeholder row. |
+| `References` | raw header is stored. Used only when no `In-Reply-To` id matches: the last matching id is the parent. A shared subject or `X-GM-THRID` alone does not set a parent. A self-parent or a link that would cycle stays unset. A later import that inserts a missing parent fills a child that is still unset. A duplicate `Message-ID` does not rewrite the stored row. |
 
 `--preserve-raw` (default **off**) stores the unescaped rfc822 in CAS.
 Without it, Interlace stores decoded text + attachments only. Raw mail

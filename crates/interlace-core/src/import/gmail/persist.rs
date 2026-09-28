@@ -105,6 +105,7 @@ pub(super) fn persist_rfc822(
         idempotency_key: idem,
         gm_thrid,
         in_reply_to,
+        references,
         payload_json: None,
         recipients,
         labels: labels.clone(),

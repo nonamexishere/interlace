@@ -159,6 +159,8 @@ pub struct NewMessage {
     pub idempotency_key: String,
     pub gm_thrid: Option<String>,
     pub in_reply_to: Option<String>,
+    /// Raw `References` header. Not a thread key by itself.
+    pub references: Option<String>,
     pub payload_json: Option<String>,
     pub recipients: Vec<(i64, RecipientRole)>,
     pub labels: Vec<String>,

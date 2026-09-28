@@ -102,6 +102,9 @@ pub struct TimelineRow {
     pub labels: Vec<String>,
     pub raw_cas_hash: Option<String>,
     pub recipients: TimelineRecipients,
+    /// Stored parent message, when a reply header matched a row in this archive.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_parent_id: Option<i64>,
 }
 
 /// Names-only To / Cc / Bcc on a timeline row (identity display_name then value).
