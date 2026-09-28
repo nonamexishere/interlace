@@ -38,7 +38,11 @@ fn count(arch: &interlace_core::db::Archive, sql: &str) -> i64 {
     arch.conn.query_row(sql, [], |r| r.get(0)).unwrap()
 }
 
-fn count_params(arch: &interlace_core::db::Archive, sql: &str, params: impl rusqlite::Params) -> i64 {
+fn count_params(
+    arch: &interlace_core::db::Archive,
+    sql: &str,
+    params: impl rusqlite::Params,
+) -> i64 {
     arch.conn.query_row(sql, params, |r| r.get(0)).unwrap()
 }
 
@@ -251,7 +255,6 @@ fn membership_rows(
     rows.map(|r| r.unwrap()).collect()
 }
 
-
 fn membership_count(
     arch: &interlace_core::db::Archive,
     conversation_id: i64,
@@ -290,7 +293,9 @@ fn membership_bound(
          ORDER BY id DESC LIMIT 1"
     );
     arch.conn
-        .query_row(&sql, rusqlite::params![conversation_id, identity_id], |r| r.get(0))
+        .query_row(&sql, rusqlite::params![conversation_id, identity_id], |r| {
+            r.get(0)
+        })
         .optional()
         .unwrap()
         .flatten()
@@ -411,7 +416,9 @@ fn membership_ada_leave_2019_in_2024_out() {
     // Current undated roster still includes Ada (ever-member via CP).
     let current = conversation_participant_names(&arch, cid).unwrap();
     assert!(
-        current.iter().any(|p| p.display_name.as_deref() == Some("Ada")),
+        current
+            .iter()
+            .any(|p| p.display_name.as_deref() == Some("Ada")),
         "conversation_participants ever-set still includes Ada"
     );
 
@@ -422,9 +429,9 @@ fn membership_ada_leave_2019_in_2024_out() {
             "GM423-ASOF-LEAVE: Ada must have a group_membership span after 'Ada left'"
         );
         assert!(
-            ada_spans.iter().any(|(_, left)| {
-                left.as_ref().is_some_and(|l| l.starts_with("2020"))
-            }),
+            ada_spans
+                .iter()
+                .any(|(_, left)| { left.as_ref().is_some_and(|l| l.starts_with("2020")) }),
             "GM423-ASOF-LEAVE: Ada left_at must be in 2020, got {ada_spans:?}"
         );
     }
@@ -676,14 +683,8 @@ fn membership_no_identity_merge_ada_berk() {
         &arch,
         "SELECT COUNT(*) FROM persons WHERE tombstoned_at IS NULL AND display_name = 'Berk'",
     );
-    assert!(
-        ada_persons >= 1,
-        "Ada person must exist"
-    );
-    assert!(
-        berk_persons >= 1,
-        "Berk person must exist"
-    );
+    assert!(ada_persons >= 1, "Ada person must exist");
+    assert!(berk_persons >= 1, "Berk person must exist");
     assert_ne!(
         identity_id_by_display(&arch, "Ada"),
         identity_id_by_display(&arch, "Berk"),
@@ -1104,7 +1105,9 @@ fn membership_later_leave_does_not_close_later_rejoin() {
     );
     let t3 = if has_table(&arch, "group_membership") {
         let ada_spans = ada_spans_for(&arch, cid);
-        let open = ada_spans.iter().find(|(joined, left)| joined.is_some() && left.is_none());
+        let open = ada_spans
+            .iter()
+            .find(|(joined, left)| joined.is_some() && left.is_none());
         assert!(
             open.is_some(),
             "GM423-LATER-LEAVE-KEEPS-REJOIN: shorter export must store Ada (joined_at T3, left_at NULL), got {ada_spans:?}"
@@ -1149,9 +1152,9 @@ fn membership_later_leave_does_not_close_later_rejoin() {
             }),
             "GM423-LATER-LEAVE-KEEPS-REJOIN: no row has joined_at T3 with left_at T2, got {ada_spans:?}"
         );
-        let leave_only = ada_spans.iter().any(|(joined, left)| {
-            joined.is_none() && left.as_deref() == Some(t2.as_str())
-        });
+        let leave_only = ada_spans
+            .iter()
+            .any(|(joined, left)| joined.is_none() && left.as_deref() == Some(t2.as_str()));
         if leave_only {
             let between_id = message_id_by_body(&arch, "between leave and rejoin");
             let at_between = message_sent_at(&arch, between_id).expect("between sent_at");
