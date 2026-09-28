@@ -7,6 +7,7 @@
 //! GM423-REIMPORT-IDEMPOTENT GM423-SENDER-ONLY-NO-INTERVAL GM423-HALF-OPEN
 //! GM423-LATER-JOIN-FILLS-LEAVE GM423-LATER-LEAVE-KEEPS-REJOIN
 //! GM423-SAME-TS-LEAVE GM423-LEAVE-CLOSES-ALL-OPEN
+//! GM423-OTHER-WORDING-NO-SPAN GM423-NULL-SENT-AT-CURRENT-LIST
 //!
 //! Placeholders Ada / Berk / Self only. Drive import via public Archive API;
 //! assert intervals and as-of presence via SQL on the open connection.
@@ -1260,6 +1261,112 @@ fn membership_leave_closes_every_earlier_open_span() {
     assert!(
         after_names.iter().all(|n| n != "Ada"),
         "GM423-LEAVE-CLOSES-ALL-OPEN: message after both joins must not list Ada, got {after_names:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// GM423-OTHER-WORDING-NO-SPAN: subject text and "added this group to a community"
+/// are not joins. The real `Berk added Ada` line still stores Ada's join.
+#[test]
+fn membership_other_wording_stores_nothing() {
+    let root = tmp_root();
+    let chat = "\
+[2024-03-15, 14:32:20] Berk changed the subject to \"Sam added the book\"
+[2024-03-15, 14:32:21] Berk added this group to a community
+[2024-03-15, 14:32:22] Berk added Ada
+[2024-03-15, 14:32:23] Berk: hello
+";
+    let zip = write_ios_zip(&root.join("zips"), "random-other-wording", chat);
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    import_chat(&mut arch, &zip);
+    if has_table(&arch, "group_membership") {
+        require_group_membership_schema(&arch);
+    }
+
+    let cid = group_cid(&arch);
+    let ada_iid = identity_id_by_display(&arch, "Ada");
+    let ada_join = membership_bound(&arch, cid, ada_iid, "joined_at");
+    assert!(
+        ada_join.is_some(),
+        "GM423-OTHER-WORDING-NO-SPAN: 'Berk added Ada' must set joined_at for Ada"
+    );
+
+    let bogus_spans = count(
+        &arch,
+        "SELECT COUNT(*) FROM group_membership gm
+         JOIN identities i ON i.id = gm.identity_id
+         WHERE IFNULL(i.display_name, '') LIKE '%book%'
+            OR IFNULL(i.display_name, '') LIKE '%community%'
+            OR IFNULL(i.display_name, '') LIKE '%Sam%'
+            OR IFNULL(i.value_raw, '') LIKE '%book%'
+            OR IFNULL(i.value_raw, '') LIKE '%community%'
+            OR IFNULL(i.value_raw, '') LIKE '%Sam%'
+            OR IFNULL(i.value_normalized, '') LIKE '%book%'
+            OR IFNULL(i.value_normalized, '') LIKE '%community%'
+            OR IFNULL(i.value_normalized, '') LIKE '%Sam%'",
+    );
+    assert_eq!(
+        bogus_spans, 0,
+        "GM423-OTHER-WORDING-NO-SPAN: subject and community lines must not insert a group_membership row, got {bogus_spans}"
+    );
+    let bogus_identities = count(
+        &arch,
+        "SELECT COUNT(*) FROM identities
+         WHERE IFNULL(display_name, '') LIKE '%book%'
+            OR IFNULL(display_name, '') LIKE '%community%'
+            OR IFNULL(display_name, '') LIKE '%Sam%'
+            OR IFNULL(value_raw, '') LIKE '%book%'
+            OR IFNULL(value_raw, '') LIKE '%community%'
+            OR IFNULL(value_raw, '') LIKE '%Sam%'
+            OR IFNULL(value_normalized, '') LIKE '%book%'
+            OR IFNULL(value_normalized, '') LIKE '%community%'
+            OR IFNULL(value_normalized, '') LIKE '%Sam%'",
+    );
+    assert_eq!(
+        bogus_identities, 0,
+        "GM423-OTHER-WORDING-NO-SPAN: no identity display name or value may contain book, community, or Sam, got {bogus_identities}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// GM423-NULL-SENT-AT-CURRENT-LIST: a NULL `sent_at` falls back to the current roster.
+#[test]
+fn membership_null_sent_at_uses_current_list() {
+    let root = tmp_root();
+    let chat = "\
+[2024-03-15, 14:32:18] Messages and calls are end-to-end encrypted
+[2024-03-15, 14:32:19] Berk added Ada
+[2024-03-15, 14:32:20] Ada: from ada
+[2024-03-15, 14:32:21] Berk: from berk
+";
+    let zip = write_ios_zip(&root.join("zips"), "random-null-sent-at", chat);
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    import_chat(&mut arch, &zip);
+
+    let cid = group_cid(&arch);
+    let mid = message_id_by_body(&arch, "from ada");
+    // CHECK requires precision 'unknown' when sent_at is NULL.
+    arch.conn
+        .execute(
+            "UPDATE messages SET sent_at = NULL, sent_at_precision = 'unknown' WHERE id = ?1",
+            [mid],
+        )
+        .unwrap();
+
+    let names = interlace_core::conversation_participant_names_at(&arch, cid, Some(mid)).expect(
+        "GM423-NULL-SENT-AT-CURRENT-LIST: NULL sent_at must return Ok with the current roster",
+    );
+    assert!(
+        names
+            .iter()
+            .any(|p| p.display_name.as_deref() == Some("Ada")),
+        "GM423-NULL-SENT-AT-CURRENT-LIST: current roster must include Ada, got {names:?}"
+    );
+    assert!(
+        names
+            .iter()
+            .any(|p| p.display_name.as_deref() == Some("Berk")),
+        "GM423-NULL-SENT-AT-CURRENT-LIST: current roster must include Berk, got {names:?}"
     );
     let _ = std::fs::remove_dir_all(&root);
 }

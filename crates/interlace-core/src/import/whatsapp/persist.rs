@@ -504,25 +504,35 @@ pub(super) fn import(
 }
 
 /// en-US only. One named person. `true` = joined, `false` = left.
+/// The verb is the separator right after the leading name, not a later substring.
 /// Any other wording, including several people on the line, is `None`.
 fn en_us_membership_bound(rest: &str) -> Option<(String, bool)> {
     let line = strip_cf(rest.trim());
-    if let Some(idx) = line.find(" created group") {
-        let name = line[..idx].trim();
-        return single_named(name).map(|n| (n, true));
+    let verbs = [
+        (" created group", true, false),
+        (" added ", true, true),
+        (" removed ", false, true),
+    ];
+    let mut best: Option<(usize, &str, bool, bool)> = None;
+    for (pat, joined, takes_target) in verbs {
+        if let Some(idx) = line.find(pat) {
+            if best.is_none_or(|(at, _, _, _)| idx < at) {
+                best = Some((idx, pat, joined, takes_target));
+            }
+        }
     }
-    if let Some(idx) = line.find(" added ") {
-        let name = line[idx + " added ".len()..].trim();
-        return single_named(name).map(|n| (n, true));
+    if let Some(idx) = line.strip_suffix(" left").map(|head| head.len()) {
+        if best.is_none_or(|(at, _, _, _)| idx < at) {
+            best = Some((idx, " left", false, false));
+        }
     }
-    if let Some(idx) = line.find(" removed ") {
-        let name = line[idx + " removed ".len()..].trim();
-        return single_named(name).map(|n| (n, false));
+    let (idx, pat, joined, takes_target) = best?;
+    let actor = person_side(line[..idx].trim())?;
+    if takes_target {
+        let target = person_side(line[idx + pat.len()..].trim())?;
+        return Some((target, joined));
     }
-    if let Some(name) = line.strip_suffix(" left") {
-        return single_named(name.trim()).map(|n| (n, false));
-    }
-    None
+    Some((actor, joined))
 }
 
 fn single_named(name: &str) -> Option<String> {
@@ -530,6 +540,22 @@ fn single_named(name: &str) -> Option<String> {
         return None;
     }
     Some(name.to_string())
+}
+
+/// A person side: `single_named`, and not a quoted span or the words group / community.
+fn person_side(name: &str) -> Option<String> {
+    let name = single_named(name)?;
+    if name.contains('"') {
+        return None;
+    }
+    let banned = name.split_whitespace().any(|w| {
+        let w = w.to_lowercase();
+        w == "group" || w == "community"
+    });
+    if banned {
+        return None;
+    }
+    Some(name)
 }
 
 fn persist_sender(

@@ -202,14 +202,15 @@ pub fn conversation_participant_names_at(
     let Some(message_id) = message_id else {
         return conversation_participant_names(archive, conversation_id);
     };
-    let sent_at: Option<String> = archive
+    let sent_at = archive
         .conn
         .query_row(
             "SELECT sent_at FROM messages WHERE id = ?1",
             [message_id],
-            |r| r.get(0),
+            |r| r.get::<_, Option<String>>(0),
         )
-        .optional()?;
+        .optional()?
+        .flatten();
     let Some(at) = sent_at.filter(|s| !s.is_empty()) else {
         return conversation_participant_names(archive, conversation_id);
     };
