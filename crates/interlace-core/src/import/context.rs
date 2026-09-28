@@ -2,6 +2,8 @@
 
 use std::path::Path;
 
+use rusqlite::OptionalExtension;
+
 use super::{ImportContext, WaNearHit};
 use crate::cas::cas_put;
 use crate::db::Archive;
@@ -363,6 +365,114 @@ impl ImportContext for DbImportContext<'_> {
              WHERE conversation_id = ?1 AND identity_id = ?2",
             rusqlite::params![conversation_id, identity_id, role],
         )?;
+        Ok(())
+    }
+
+    fn note_group_membership(
+        &mut self,
+        conversation_id: i64,
+        identity_id: i64,
+        joined_at: Option<&str>,
+        left_at: Option<&str>,
+    ) -> Result<(), CoreError> {
+        if let Some(ts) = joined_at {
+            let n: i64 = self.archive.conn.query_row(
+                "SELECT COUNT(*) FROM group_membership
+                 WHERE conversation_id = ?1 AND identity_id = ?2 AND joined_at = ?3",
+                rusqlite::params![conversation_id, identity_id, ts],
+                |r| r.get(0),
+            )?;
+            if n == 0 {
+                // Later export learned the join for a leave-only row. Fill that
+                // row; do not open a second span that survives the stored leave.
+                let hole: Option<i64> = self
+                    .archive
+                    .conn
+                    .query_row(
+                        "SELECT id FROM group_membership
+                         WHERE conversation_id = ?1 AND identity_id = ?2
+                           AND joined_at IS NULL AND left_at > ?3
+                         ORDER BY left_at ASC, id ASC
+                         LIMIT 1",
+                        rusqlite::params![conversation_id, identity_id, ts],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                if let Some(id) = hole {
+                    self.archive.conn.execute(
+                        "UPDATE group_membership SET joined_at = ?1 WHERE id = ?2",
+                        rusqlite::params![ts, id],
+                    )?;
+                } else {
+                    self.archive.conn.execute(
+                        "INSERT INTO group_membership(conversation_id, identity_id, joined_at, left_at)
+                         VALUES (?1, ?2, ?3, NULL)",
+                        rusqlite::params![conversation_id, identity_id, ts],
+                    )?;
+                }
+            }
+        }
+        if let Some(ts) = left_at {
+            let n: i64 = self.archive.conn.query_row(
+                "SELECT COUNT(*) FROM group_membership
+                 WHERE conversation_id = ?1 AND identity_id = ?2 AND left_at = ?3",
+                rusqlite::params![conversation_id, identity_id, ts],
+                |r| r.get(0),
+            )?;
+            if n > 0 {
+                // This leave is already stored on another row. Still close a
+                // different open span that started before it (not a later rejoin).
+                let open: Option<i64> = self
+                    .archive
+                    .conn
+                    .query_row(
+                        "SELECT id FROM group_membership
+                         WHERE conversation_id = ?1 AND identity_id = ?2
+                           AND left_at IS NULL AND joined_at IS NOT NULL AND joined_at < ?3
+                         ORDER BY joined_at DESC, id DESC
+                         LIMIT 1",
+                        rusqlite::params![conversation_id, identity_id, ts],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                if let Some(id) = open {
+                    self.archive.conn.execute(
+                        "UPDATE group_membership SET left_at = ?1 WHERE id = ?2",
+                        rusqlite::params![ts, id],
+                    )?;
+                }
+                return Ok(());
+            }
+            // Close an open span only when it started before this leave.
+            // A rejoin that already started later stays open; record the leave
+            // on its own row instead of writing left_at onto that rejoin.
+            let open: Option<i64> = self
+                .archive
+                .conn
+                .query_row(
+                    "SELECT id FROM group_membership
+                     WHERE conversation_id = ?1 AND identity_id = ?2
+                       AND left_at IS NULL
+                       AND (joined_at IS NULL OR joined_at < ?3)
+                     ORDER BY joined_at IS NULL, joined_at DESC, id DESC
+                     LIMIT 1",
+                    rusqlite::params![conversation_id, identity_id, ts],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if let Some(id) = open {
+                self.archive.conn.execute(
+                    "UPDATE group_membership SET left_at = ?1 WHERE id = ?2",
+                    rusqlite::params![ts, id],
+                )?;
+            } else {
+                self.archive.conn.execute(
+                    "INSERT INTO group_membership(conversation_id, identity_id, joined_at, left_at)
+                     VALUES (?1, ?2, NULL, ?3)",
+                    rusqlite::params![conversation_id, identity_id, ts],
+                )?;
+            }
+        }
         Ok(())
     }
 

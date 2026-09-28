@@ -14,7 +14,8 @@ use crate::model::CoreError;
 pub use attach::{attachments_for, complete_attachments, extract_attached_filenames};
 pub use edit::{person_rename, person_set_notes, person_show, PersonShow};
 pub use list::{
-    conversation_participant_names, merge_targets, person_display_name, person_identities,
+    conversation_participant_names, conversation_participant_names_at, merge_targets,
+    person_display_name, person_identities,
 };
 pub use timeline::{
     person_conversations, person_day_message, person_media_rows_for, person_timeline_rows,

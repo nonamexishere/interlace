@@ -246,6 +246,28 @@ pub(super) fn import(
             continue;
         }
 
+        if group && pack.id == "en-US" && m.kind == MessageKind::System {
+            if let Some((who, joined)) = en_us_membership_bound(&m.rest_raw) {
+                if let Some(ref ts) = m.sent_at {
+                    let iid = persist_sender(
+                        ctx,
+                        &pack,
+                        &who,
+                        ConversationKind::Group,
+                        None,
+                        None,
+                        &mut ident_cache,
+                    )?;
+                    let kept_conv = retarget.unwrap_or(conv_id);
+                    if joined {
+                        ctx.note_group_membership(kept_conv, iid, Some(ts), None)?;
+                    } else {
+                        ctx.note_group_membership(kept_conv, iid, None, Some(ts))?;
+                    }
+                }
+            }
+        }
+
         if retarget.is_some() && m.kind == MessageKind::System {
             ctx.checkpoint(Checkpoint {
                 cursor_kind: "wa_line".into(),
@@ -479,6 +501,35 @@ pub(super) fn import(
     }
 
     Ok(ImportStats::default())
+}
+
+/// en-US only. One named person. `true` = joined, `false` = left.
+/// Any other wording, including several people on the line, is `None`.
+fn en_us_membership_bound(rest: &str) -> Option<(String, bool)> {
+    let line = strip_cf(rest.trim());
+    if let Some(idx) = line.find(" created group") {
+        let name = line[..idx].trim();
+        return single_named(name).map(|n| (n, true));
+    }
+    if let Some(idx) = line.find(" added ") {
+        let name = line[idx + " added ".len()..].trim();
+        return single_named(name).map(|n| (n, true));
+    }
+    if let Some(idx) = line.find(" removed ") {
+        let name = line[idx + " removed ".len()..].trim();
+        return single_named(name).map(|n| (n, false));
+    }
+    if let Some(name) = line.strip_suffix(" left") {
+        return single_named(name.trim()).map(|n| (n, false));
+    }
+    None
+}
+
+fn single_named(name: &str) -> Option<String> {
+    if name.is_empty() || name.contains(',') || name.to_lowercase().contains(" and ") {
+        return None;
+    }
+    Some(name.to_string())
 }
 
 fn persist_sender(

@@ -115,6 +115,7 @@ _SPLIT_MAIN_ASSERTS = (
     "assert_multiselect_copy_keys",
     "assert_multiselect_copy_live",
     "assert_group_inspector_names",
+    "assert_group_membership_asof",
     "assert_person_media_gallery",
     "assert_person_media_gallery_fold",
     "assert_person_media_gallery_race",

@@ -173,7 +173,10 @@ unlink there. With the inspector open, years with counts sit under last activity
 identities and message senders stay put) and save a notes field that persists
 in the archive SQLite. When include groups is on and the open conversation is a group,
 the inspector lists participant names as controls; click Berk to open that
-person. A leftover name with no live person stays put with a calm toast.
+person. That list is who was in the group at the focused message when the
+export recorded an en-US join or leave (`X added Y`, `X created group`,
+`Y left`, `X removed Y`). A group with no such lines stays the current list.
+Joined or left dates are not shown. DMs and mail threads still have no member list. A leftover name with no live person stays put with a calm toast.
 DMs do not grow a member list. Names are text, not ids. It is not a second timeline. The person timeline is a **chat**, not a log:
 messages you sent sit on the right, the other person on the left. Each
 bubble caption is **hour:minute** (host timezone) plus the platform chip — not the
