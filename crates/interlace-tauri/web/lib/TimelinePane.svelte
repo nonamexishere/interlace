@@ -10,6 +10,7 @@
   import { lastReadFor, persistLastRead as writePersonLastRead, writeIncludeGroupsPref } from "./PeoplePrefs";
   import { findCount, findHitIndices, onFindKey, snapFindHit, stepFindIndex } from "./findHighlight";
   import { applyJumpScrollPos, jumpToLocalDay, jumpToMessageId, nearestVisibleTlIndex, TIMELINE_PAGE_LIMIT } from "./jumpDay";
+  import { localDay } from "./formatTime";
   import { Input } from "$lib/components/ui/input/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import PersonMediaDialog from "./PersonMediaDialog.svelte";
@@ -166,18 +167,79 @@
     }
   });
 
+  function bySentThenId(
+    a: { row: TimelineRow },
+    b: { row: TimelineRow },
+  ): number {
+    const as = a.row.sent_at ?? "";
+    const bs = b.row.sent_at ?? "";
+    if (as < bs) return -1;
+    if (as > bs) return 1;
+    return a.row.message_id - b.row.message_id;
+  }
+
+  /** Same-day stack under a loaded root. A reply on another day stays put. */
+  function stackSameDayThreads(
+    items: { row: TimelineRow; index: number }[],
+  ): { row: TimelineRow; index: number }[] {
+    if (items.length < 2) return items;
+    const loaded = new Set(items.map((item) => item.row.message_id));
+    const out: { row: TimelineRow; index: number }[] = [];
+    let i = 0;
+    while (i < items.length) {
+      const day = localDay(items[i].row.sent_at, items[i].row.platform);
+      let j = i + 1;
+      while (
+        j < items.length &&
+        localDay(items[j].row.sent_at, items[j].row.platform) === day
+      ) {
+        j++;
+      }
+      const dayItems = items.slice(i, j);
+      const byId = new Map(dayItems.map((item) => [item.row.message_id, item]));
+      const kids = new Map<number, { row: TimelineRow; index: number }[]>();
+      for (const item of dayItems) {
+        const parent = item.row.thread_parent_id;
+        if (parent == null || !loaded.has(parent) || !byId.has(parent)) continue;
+        const list = kids.get(parent) ?? [];
+        list.push(item);
+        kids.set(parent, list);
+      }
+      const consumed = new Set<number>();
+      const emit = (item: { row: TimelineRow; index: number }) => {
+        if (consumed.has(item.row.message_id)) return;
+        consumed.add(item.row.message_id);
+        out.push(item);
+        const replies = (kids.get(item.row.message_id) ?? []).slice().sort(bySentThenId);
+        for (const reply of replies) emit(reply);
+      };
+      for (const item of dayItems) {
+        const parent = item.row.thread_parent_id;
+        if (parent != null && byId.has(parent)) continue;
+        emit(item);
+      }
+      for (const item of dayItems) {
+        if (!consumed.has(item.row.message_id)) out.push(item);
+      }
+      i = j;
+    }
+    return out;
+  }
+
   const filteredTimeline = $derived(
-    timeline
-      .map((row, index) => ({ row, index }))
-      .filter(
-        (item) =>
-          (platformFilter === "all" || item.row.platform === platformFilter) &&
-          (kindFilter === "all" || item.row.conversation_kind === kindFilter) &&
-          (attachKindFilter === "all" || rowMatchesAttachKind(item.row, attachKindFilter)) &&
-          (fromMeFilter === "all" ||
-            (fromMeFilter === "me" && item.row.from_me === true) ||
-            (fromMeFilter === "them" && item.row.from_me === false)),
-      ),
+    stackSameDayThreads(
+      timeline
+        .map((row, index) => ({ row, index }))
+        .filter(
+          (item) =>
+            (platformFilter === "all" || item.row.platform === platformFilter) &&
+            (kindFilter === "all" || item.row.conversation_kind === kindFilter) &&
+            (attachKindFilter === "all" || rowMatchesAttachKind(item.row, attachKindFilter)) &&
+            (fromMeFilter === "all" ||
+              (fromMeFilter === "me" && item.row.from_me === true) ||
+              (fromMeFilter === "them" && item.row.from_me === false)),
+        ),
+    ),
   );
 
   $effect(() => {
@@ -624,6 +686,36 @@
     onFindKey(e, findQ, (q) => (findQ = q), stepFind);
   }
 
+  function jumpToParentMessage(parentId: number) {
+    if (!parentId || selectedId == null) return;
+    const gen = ++jumpGen;
+    const id = selectedId;
+    const key = jumpDay;
+    void jumpToMessageId({
+      key,
+      gen,
+      selectedId: id,
+      messageId: parentId,
+      currentSelectedId: () => selectedId,
+      currentJumpDay: () => jumpDay,
+      currentGen: () => jumpGen,
+      filteredTimeline: () => filteredTimeline,
+      timeline: () => timeline,
+      tlLoading: () => tlLoading,
+      oldestCursor: () => oldestCursor,
+      timelineLength: () => timeline.length,
+      selectPerson: async (pid, append) => {
+        if (selectedId !== id || jumpDay !== key || jumpGen !== gen) return;
+        return selectPerson(pid, append);
+      },
+      scrollToPos: () => {},
+      setTlIndex: (n) => {
+        tlIndex = n;
+      },
+      ensureTlIndexVisible: (n) => list?.ensureTlIndexVisible(n),
+    });
+  }
+
   function goToLastRead() {
     const messageId = lastReadMessageId;
     if (messageId == null || selectedId == null) return;
@@ -989,6 +1081,7 @@
     onOpenImage={(messageId, attachment) => void openThreadImage(messageId, attachment)}
     {loadNewerVisible}
     loadNewerPage={loadNewerPage}
+    onJumpToParent={jumpToParentMessage}
     cancelNewerFetch={() => {
       ++tlGen;
       tlLoading = false;

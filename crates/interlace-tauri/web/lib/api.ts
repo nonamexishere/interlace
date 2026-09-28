@@ -65,6 +65,7 @@ export type TimelineRow = {
     cc: string[];
     bcc: string[];
   };
+  thread_parent_id?: number | null;
 };
 
 export type PersonMediaRow = {

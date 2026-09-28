@@ -135,6 +135,12 @@ pub trait ImportContext {
     fn wa_drop_shell_conversation(&mut self, _conversation_id: i64) -> Result<(), CoreError> {
         Ok(())
     }
+
+    /// After the messages in a Gmail import exist, fill NULL `thread_parent_id`
+    /// from stored `In-Reply-To` / `References` ids. Default: no-op.
+    fn link_gmail_reply_parents(&mut self) -> Result<(), CoreError> {
+        Ok(())
+    }
 }
 
 pub trait SourceImporter: Send + Sync {

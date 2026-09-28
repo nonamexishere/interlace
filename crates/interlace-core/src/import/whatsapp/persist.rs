@@ -329,6 +329,7 @@ pub(super) fn import(
                 idempotency_key: idem,
                 gm_thrid: None,
                 in_reply_to: None,
+                references: None,
                 payload_json: m.payload_json.clone(),
                 recipients: Vec::new(),
                 labels: Vec::new(),

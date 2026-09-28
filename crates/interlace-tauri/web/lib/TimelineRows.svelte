@@ -31,6 +31,7 @@
     onOpenImage,
     loadNewerVisible = false,
     loadNewerPage = () => {},
+    onJumpToParent = (_parentId: number) => {},
   }: {
     windowedDayGroups: {
       key: string;
@@ -57,6 +58,7 @@
     onOpenImage: (messageId: number, a: Attachment) => void;
     loadNewerVisible?: boolean;
     loadNewerPage?: () => void;
+    onJumpToParent?: (parentId: number) => void;
   } = $props();
 
   function onRowContextMenu(e: MouseEvent, row: TimelineRow) {
@@ -133,6 +135,18 @@
                 </p>
               {/if}
               <div data-bubble-body>
+                {#if item.row.thread_parent_id != null}
+                  <button
+                    type="button"
+                    class="text-xs text-muted-foreground underline focus-visible:ring-2 focus-visible:ring-ring"
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      onJumpToParent(item.row.thread_parent_id as number);
+                    }}
+                    >{t("jumpToParent")}</button
+                  >
+                {/if}
                 {#if isMailRow(item.row)}
                   {#if (item.row.subject ?? "").trim()}
                     <p class="mail-subject text-sm font-medium text-foreground">

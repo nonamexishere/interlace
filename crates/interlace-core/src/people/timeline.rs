@@ -130,7 +130,7 @@ pub fn person_timeline_rows_for(
                           AND p.is_self = 1 AND p.tombstoned_at IS NULL
                     )
                 ) THEN 1 ELSE 0 END,
-                m.raw_cas_hash
+                m.raw_cas_hash, m.thread_parent_id
          FROM messages m
          JOIN conversations c ON c.id = m.conversation_id
          WHERE (
@@ -168,6 +168,7 @@ pub fn person_timeline_rows_for(
             labels: Vec::new(),
             raw_cas_hash: r.get(10)?,
             recipients: Default::default(),
+            thread_parent_id: r.get(11)?,
         })
     };
     let lim = limit as i64;

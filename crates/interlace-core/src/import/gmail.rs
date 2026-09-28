@@ -9,6 +9,9 @@ use crate::model::*;
 mod mbox;
 mod parse;
 mod persist;
+mod thread;
+
+pub(crate) use thread::link_reply_parents;
 
 pub(crate) const HEADER_CAP: usize = 1024 * 1024;
 
@@ -151,5 +154,6 @@ pub fn import_mbox_bytes(
         })?;
         ctx.maybe_commit()?;
     }
+    ctx.link_gmail_reply_parents()?;
     Ok(())
 }

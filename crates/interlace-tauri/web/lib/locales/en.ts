@@ -117,6 +117,7 @@ export const en = {
   inThisGroup: "In this group",
   findInThread: "Find in conversation",
   jumpToDay: "Jump to day",
+  jumpToParent: "Parent",
   latest: "Latest",
   lastTime: "Last time",
   media: "Media",

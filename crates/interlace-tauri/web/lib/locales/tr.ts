@@ -119,6 +119,7 @@ export const tr: ChromePack = {
   inThisGroup: "Bu grupta",
   findInThread: "Sohbette bul",
   jumpToDay: "Güne git",
+  jumpToParent: "Üst ileti",
   latest: "En yeni",
   lastTime: "Son kez",
   media: "Medya",
