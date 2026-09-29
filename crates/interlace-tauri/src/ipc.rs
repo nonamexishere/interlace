@@ -11,7 +11,8 @@ use interlace_core::session::{
 };
 use interlace_core::{
     labels_list, open_archive, review_list, review_resolve, review_resolve_selected, review_show,
-    search, Archive, AttachmentFilter, ConversationKind, LockMode, Platform, SearchQuery,
+    search, visible_message_body, Archive, AttachmentFilter, ConversationKind, LockMode, Platform,
+    SearchQuery,
 };
 use tauri::AppHandle;
 
@@ -501,14 +502,7 @@ pub(crate) fn search_cmd(
                 )
                 .unwrap_or_else(|_| ("unknown".into(), "dm".into(), None));
             let (person_id, person_name) = search_hit_person(arch, h.message_id).map_err(err)?;
-            let body: String = arch
-                .conn
-                .query_row(
-                    "SELECT COALESCE(body_text, '') FROM messages WHERE id = ?1",
-                    [h.message_id],
-                    |r| r.get(0),
-                )
-                .unwrap_or_default();
+            let body = visible_message_body(arch, h.message_id).map_err(err)?;
             let attachments = complete_attachments(
                 arch,
                 h.message_id,
@@ -541,13 +535,7 @@ pub(crate) fn search_body(
     message_id: i64,
 ) -> Result<String, String> {
     with_arch(&state, |arch| {
-        arch.conn
-            .query_row(
-                "SELECT COALESCE(body_text, '') FROM messages WHERE id = ?1",
-                [message_id],
-                |r| r.get(0),
-            )
-            .map_err(err)
+        visible_message_body(arch, message_id).map_err(err)
     })
 }
 

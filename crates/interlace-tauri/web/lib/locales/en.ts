@@ -48,6 +48,8 @@ export const en = {
   showQuoted: "Show quoted",
   hideQuoted: "Hide quoted",
   quoteNotInArchive: "Not in this archive",
+  messageEdited: "Edited",
+  messageDeleted: "This message was deleted",
   searchFilters: "Filters",
   searchFrom: "From",
   searchTo: "To",

@@ -34,7 +34,7 @@ pub use people::{
 };
 pub use search::{
     build_search_text, expand_query, extra_ascii_fold, index_import_run, person_timeline,
-    rebuild_fts, search, turkish_fold,
+    rebuild_fts, search, turkish_fold, visible_message_body,
 };
 pub use session::{
     cloud_warning, init_owner_archive, read_last_bookmark, read_last_path, sandbox_denied_message,

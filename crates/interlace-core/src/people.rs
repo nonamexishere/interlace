@@ -88,6 +88,13 @@ pub struct PersonMediaRow {
     pub kind: String,
 }
 
+/// One reaction on a timeline row. Actor name is `identities.display_name`.
+#[derive(Debug, Clone, Serialize)]
+pub struct TimelineReaction {
+    pub actor_display_name: String,
+    pub emoji: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct TimelineRow {
     pub message_id: i64,
@@ -107,6 +114,10 @@ pub struct TimelineRow {
     /// Stored parent message, when a reply header matched a row in this archive.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread_parent_id: Option<i64>,
+    /// Stored `messages.edit_state`: `original`, `edited`, or `deleted`.
+    /// A deleted or tombstone row has an empty `body_text` here; SQLite keeps the body.
+    pub edit_state: String,
+    pub reactions: Vec<TimelineReaction>,
 }
 
 /// Names-only To / Cc / Bcc on a timeline row (identity display_name then value).
@@ -183,6 +194,8 @@ pub fn person_list_on(conn: &Connection) -> Result<Vec<PersonSummary>, CoreError
 /// Live persons with last D18 activity + preview.
 /// `include_groups = false` (the `person_list` default): sender or participant
 /// of `dm` / `email_thread` only. Sort: self first, `sent_at` desc, nulls last, `id`.
+/// A tombstone or `edit_state = deleted` feeds `list_preview` an empty body.
+/// Subject of any other row stays the preview when present.
 pub fn person_list_with_groups(
     archive: &Archive,
     include_groups: bool,
@@ -209,7 +222,8 @@ fn person_list_on_with_groups(
              SELECT pi.person_id AS person_id,
                     m.sent_at AS sent_at,
                     m.subject AS subject,
-                    COALESCE(m.body_text, '') AS body_text,
+                    CASE WHEN m.tombstone != 0 OR m.edit_state = 'deleted'
+                         THEN '' ELSE COALESCE(m.body_text, '') END AS body_text,
                     ROW_NUMBER() OVER (
                       PARTITION BY pi.person_id
                       ORDER BY m.sent_at IS NULL, m.sent_at DESC, m.id DESC

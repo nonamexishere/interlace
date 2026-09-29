@@ -47,6 +47,11 @@ export type Attachment = {
   missing: boolean;
 };
 
+export type TimelineReaction = {
+  actor_display_name: string;
+  emoji: string;
+};
+
 export type TimelineRow = {
   message_id: number;
   sent_at?: string | null;
@@ -66,6 +71,9 @@ export type TimelineRow = {
     bcc: string[];
   };
   thread_parent_id?: number | null;
+  /** `original`, `edited`, or `deleted`. Deleted rows have an empty `body_text`. */
+  edit_state?: string;
+  reactions?: TimelineReaction[];
 };
 
 export type PersonMediaRow = {

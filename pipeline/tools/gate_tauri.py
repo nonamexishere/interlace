@@ -234,6 +234,7 @@ def main() -> None:
     assert_group_membership_asof(crate)
     assert_gmail_thread_parent(crate)
     assert_wa_quote_jump(crate)
+    assert_message_events(crate)
     assert_person_media_gallery(crate)
     assert_person_media_gallery_fold(crate)
     assert_person_media_gallery_race(crate)

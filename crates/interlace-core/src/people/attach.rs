@@ -5,7 +5,7 @@ use rusqlite::OptionalExtension;
 use crate::db::Archive;
 use crate::model::CoreError;
 
-use super::{AttachmentRef, TimelineRecipients, TimelineRow};
+use super::{AttachmentRef, TimelineReaction, TimelineRecipients, TimelineRow};
 
 /// iOS `<attached: file.jpg>` in body (same line or continuation).
 pub fn extract_attached_filenames(body: &str) -> Vec<String> {
@@ -251,6 +251,44 @@ pub(super) fn attach_recipients(
     }
     for row in rows.iter_mut() {
         row.recipients = map.remove(&row.message_id).unwrap_or_default();
+    }
+    Ok(())
+}
+
+/// Reactions for this page: `message_reactions` joined to `identities.display_name`.
+/// One `IN` query. Rows with none stay `[]`. Does not write an identity.
+pub(super) fn attach_reactions(
+    archive: &Archive,
+    rows: &mut [TimelineRow],
+) -> Result<(), CoreError> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<i64> = rows.iter().map(|r| r.message_id).collect();
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let mut stmt = archive.conn.prepare(&format!(
+        "SELECT mr.message_id, COALESCE(i.display_name, ''), mr.emoji
+         FROM message_reactions mr
+         JOIN identities i ON i.id = mr.actor_identity_id
+         WHERE mr.message_id IN ({placeholders})
+         ORDER BY mr.id"
+    ))?;
+    let mapped = stmt.query_map(rusqlite::params_from_iter(&ids), |r| {
+        Ok((
+            r.get::<_, i64>(0)?,
+            TimelineReaction {
+                actor_display_name: r.get(1)?,
+                emoji: r.get(2)?,
+            },
+        ))
+    })?;
+    let mut map: HashMap<i64, Vec<TimelineReaction>> = HashMap::new();
+    for pair in mapped {
+        let (mid, reaction) = pair?;
+        map.entry(mid).or_default().push(reaction);
+    }
+    for row in rows.iter_mut() {
+        row.reactions = map.remove(&row.message_id).unwrap_or_default();
     }
     Ok(())
 }

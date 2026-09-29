@@ -322,28 +322,40 @@
                     >
                   {/if}
                 {:else}
-                  {@const wa = waView(item.row)}
-                  <p class="whitespace-pre-wrap break-words text-sm leading-normal text-foreground">
-                    <LinkifyBody
-                      text={wa.hit ? stripAttached(wa.before) : displayBody(item.row.body_text || item.row.subject || "")}
-                      {splitUrls}
-                      {openUrl}
-                      {findQ}
-                    />
-                    <button
-                      type="button"
-                      class="text-left text-sm underline focus-visible:ring-2 focus-visible:ring-ring"
-                      hidden={!wa.hit}
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        if (wa.hit) openQuotedMessage(wa.messageId, wa.sentAt);
-                      }}
-                      ><LinkifyBody text={stripAttached(wa.span)} {splitUrls} {openUrl} {findQ} /></button
-                    >
-                    <LinkifyBody text={wa.hit ? stripAttached(wa.after) : ""} {splitUrls} {openUrl} {findQ} />
-                  </p>
-                  <p class="text-xs text-muted-foreground" hidden={!wa.miss}>{t("quoteNotInArchive")}</p>
+                  {#if !isMailRow(item.row)}
+                  {#if item.row.edit_state === "deleted"}
+                    <p class="text-sm text-muted-foreground">{t("messageDeleted")}</p>
+                  {:else}
+                    {@const wa = waView(item.row)}
+                    <p class="whitespace-pre-wrap break-words text-sm leading-normal text-foreground">
+                      <LinkifyBody
+                        text={wa.hit ? stripAttached(wa.before) : displayBody(item.row.body_text || item.row.subject || "")}
+                        {splitUrls}
+                        {openUrl}
+                        {findQ}
+                      />
+                      <button
+                        type="button"
+                        class="text-left text-sm underline focus-visible:ring-2 focus-visible:ring-ring"
+                        hidden={!wa.hit}
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          if (wa.hit) openQuotedMessage(wa.messageId, wa.sentAt);
+                        }}
+                        ><LinkifyBody text={stripAttached(wa.span)} {splitUrls} {openUrl} {findQ} /></button
+                      >
+                      <LinkifyBody text={wa.hit ? stripAttached(wa.after) : ""} {splitUrls} {openUrl} {findQ} />
+                    </p>
+                    <p class="text-xs text-muted-foreground" hidden={!wa.miss}>{t("quoteNotInArchive")}</p>
+                    {#if item.row.edit_state === "edited"}
+                      <p class="text-xs text-muted-foreground">{t("messageEdited")}</p>
+                    {/if}
+                  {/if}
+                  {#if (item.row.reactions ?? []).length}
+                    <p class="text-xs text-muted-foreground">{(item.row.reactions ?? []).map((reaction) => `${reaction.actor_display_name} ${reaction.emoji}`).join(" ")}</p>
+                  {/if}
+                  {/if}
                 {/if}
               </div>
               <CasAttach data-bubble-attach flush={true} messageId={item.row.message_id} items={item.row.attachments || []} {showToast} onOpenImage={(a) => onOpenImage(item.row.message_id, a)} />
