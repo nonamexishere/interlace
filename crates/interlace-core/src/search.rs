@@ -277,13 +277,15 @@ type MsgRow = (
     Option<i64>,
     Option<String>,
     Option<String>,
+    String,
+    i64,
 );
 
 pub fn index_import_run(archive: &Archive, run_id: i64) -> Result<(), CoreError> {
     let msgs: Vec<MsgRow> = {
         let mut stmt = archive.conn.prepare(
             "SELECT m.id, m.sent_at, c.platform, m.conversation_id, m.sender_identity_id,
-                    m.subject, m.body_text
+                    m.subject, m.body_text, m.edit_state, m.tombstone
              FROM messages m
              JOIN conversations c ON c.id = m.conversation_id
              WHERE m.import_run_id = ?1
@@ -298,13 +300,21 @@ pub fn index_import_run(archive: &Archive, run_id: i64) -> Result<(), CoreError>
                 r.get(4)?,
                 r.get(5)?,
                 r.get(6)?,
+                r.get(7)?,
+                r.get(8)?,
             ))
         })?;
         it.collect::<Result<Vec<_>, _>>()?
     };
-    for (id, sent_at, platform, conv, sender, subject, body) in msgs {
+    for (id, sent_at, platform, conv, sender, subject, body, edit_state, tombstone) in msgs {
         let files = attachment_names(archive, id)?;
-        let text = build_search_text(subject.as_deref(), body.as_deref(), &files);
+        // Stored body stays on messages. Deleted / tombstone rows index no body.
+        let indexed_body = if edit_state == "deleted" || tombstone != 0 {
+            None
+        } else {
+            body.as_deref()
+        };
+        let text = build_search_text(subject.as_deref(), indexed_body, &files);
         archive.conn.execute(
             "INSERT INTO search_doc(
                 message_id, sent_at, platform, conversation_id, sender_identity_id, search_text

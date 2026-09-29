@@ -5,7 +5,7 @@ use crate::db::Archive;
 use crate::model::CoreError;
 
 use super::attach::{
-    attach_attachments, attach_labels, attach_recipients, enrich_from_body_tokens,
+    attach_attachments, attach_labels, attach_reactions, attach_recipients, enrich_from_body_tokens,
 };
 use super::{PersonConversation, PersonMediaRow, TimelineRow};
 
@@ -119,7 +119,9 @@ pub fn person_timeline_rows_for(
     let attach_sql = attach_kind_sql(attach_kind);
     let sql = format!(
         "SELECT m.id, m.sent_at, m.conversation_id, c.title, c.kind, c.platform,
-                m.sender_identity_id, m.subject, COALESCE(m.body_text, ''),
+                m.sender_identity_id, m.subject,
+                CASE WHEN m.tombstone != 0 OR m.edit_state = 'deleted'
+                     THEN '' ELSE COALESCE(m.body_text, '') END,
                 CASE WHEN m.sender_identity_id IS NOT NULL AND (
                     EXISTS (SELECT 1 FROM self_identities si
                             WHERE si.identity_id = m.sender_identity_id)
@@ -130,7 +132,7 @@ pub fn person_timeline_rows_for(
                           AND p.is_self = 1 AND p.tombstoned_at IS NULL
                     )
                 ) THEN 1 ELSE 0 END,
-                m.raw_cas_hash, m.thread_parent_id
+                m.raw_cas_hash, m.thread_parent_id, m.edit_state
          FROM messages m
          JOIN conversations c ON c.id = m.conversation_id
          WHERE (
@@ -169,6 +171,8 @@ pub fn person_timeline_rows_for(
             raw_cas_hash: r.get(10)?,
             recipients: Default::default(),
             thread_parent_id: r.get(11)?,
+            edit_state: r.get(12)?,
+            reactions: Vec::new(),
         })
     };
     let lim = limit as i64;
@@ -229,6 +233,7 @@ pub fn person_timeline_rows_for(
     attach_attachments(archive, &mut out)?;
     attach_labels(archive, &mut out)?;
     attach_recipients(archive, &mut out)?;
+    attach_reactions(archive, &mut out)?;
     enrich_from_body_tokens(archive, &mut out)?;
     Ok(out)
 }
