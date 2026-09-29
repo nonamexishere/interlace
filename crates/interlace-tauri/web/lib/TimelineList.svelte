@@ -61,6 +61,7 @@
     cancelNewerFetch = () => {},
     onJumpToParent = (_parentId: number) => {},
     openQuotedMessage = (_messageId: number, _sentAt?: string | null) => {},
+    archiveId = "",
   }: {
     timeline: TimelineRow[];
     filteredTimeline: { row: TimelineRow; index: number }[];
@@ -100,6 +101,7 @@
     cancelNewerFetch?: () => void;
     onJumpToParent?: (parentId: number) => void;
     openQuotedMessage?: (messageId: number, sentAt?: string | null) => void;
+    archiveId?: string;
   } = $props();
 
   let tlScrollTop = $state(0);
@@ -720,6 +722,7 @@
     {loadNewerPage}
     {onJumpToParent}
     {openQuotedMessage}
+    {archiveId}
   />
   <div id="timeline-end"></div>
 </ScrollArea>

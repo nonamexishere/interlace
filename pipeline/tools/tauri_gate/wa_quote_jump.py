@@ -129,6 +129,49 @@ def _quote_hit_display_body(rows: str) -> bool:
     return True
 
 
+def _props_block(rows: str) -> str:
+    m = re.search(r"=\s*\$props\s*\(\s*\)", rows)
+    if not m:
+        return ""
+    head = rows[: m.start()]
+    i = max(head.rfind("let {"), head.rfind("let{"))
+    return rows[i : m.end()] if i >= 0 else ""
+
+
+def _quote_hit_trims_newline(rows: str) -> bool:
+    """displayBody on a quote part trims the newline before the reply."""
+    return re.search(r"displayBody\s*\(\s*q\.(?:before|span|after)\b", rows) is not None
+
+
+def _fn_prefix(src: str, idx: int) -> str:
+    i = idx - 1
+    depth = 0
+    while i >= 0:
+        c = src[i]
+        if c == "}":
+            depth += 1
+        elif c == "{":
+            if depth == 0:
+                head = src[max(0, i - 160) : i]
+                if re.search(r"(?:=>|function\b)", head):
+                    return src[i:idx]
+            else:
+                depth -= 1
+        i -= 1
+    return src[:idx]
+
+
+def _quote_cache_ignores_archive(rows: str) -> bool:
+    """No archiveId prop, or a quoteById write that never reads the current archive."""
+    if not re.search(r"\barchiveId\b", _props_block(rows)):
+        return True
+    writes = list(re.finditer(r"\bquoteById(?:\s*\[[^\]]*\])*\s*=(?!=)", rows))
+    for m in writes:
+        if not re.search(r"\barchiveId\b", _fn_prefix(rows, m.end())):
+            return True
+    return False
+
+
 def _quote_span_passes_find(rows: str) -> bool:
     """The underlined quote span passes findQ into LinkifyBody or splitFind."""
     branch = _non_mail_branch(rows)
@@ -185,3 +228,13 @@ def assert_wa_quote_jump(crate: Path) -> None:
         )
     if bits:
         fail(f"{_ISSUE}: " + "; ".join(bits))
+    if _quote_hit_trims_newline(rows):
+        fail(
+            f"{_ISSUE}: quote hit path must strip attachment tokens without displayBody, "
+            "which trims the newline before a reply."
+        )
+    if _quote_cache_ignores_archive(rows):
+        fail(
+            f"{_ISSUE}: quote cache must be cleared or keyed by archiveId "
+            "and an in-flight resolve must ignore a stale archive."
+        )

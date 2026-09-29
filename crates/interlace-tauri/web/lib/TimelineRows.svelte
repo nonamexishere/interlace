@@ -6,7 +6,7 @@
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import CasAttach from "$lib/CasAttach.svelte";
-  import { displayBody, isMailRow, platformLabel, splitQuotedBody } from "./TimelineMail";
+  import { displayBody as trimBody, isMailRow, platformLabel, splitQuotedBody } from "./TimelineMail";
   import { t } from "$lib/i18n";
 
   let {
@@ -33,6 +33,7 @@
     loadNewerPage = () => {},
     onJumpToParent = (_parentId: number) => {},
     openQuotedMessage = (_messageId: number, _sentAt?: string | null) => {},
+    archiveId = "",
   }: {
     windowedDayGroups: {
       key: string;
@@ -61,6 +62,7 @@
     loadNewerPage?: () => void;
     onJumpToParent?: (parentId: number) => void;
     openQuotedMessage?: (messageId: number, sentAt?: string | null) => void;
+    archiveId?: string;
   } = $props();
 
   type QuoteCache =
@@ -77,8 +79,18 @@
       };
 
   let quoteById = $state<Record<number, QuoteCache>>({});
+  let quoteArchive = "";
+
+  function displayBody(s: string) {
+    return s.replace(/<attached:\s*[^>]+>/gi, "");
+  }
 
   $effect(() => {
+    const currentArchiveId = archiveId;
+    if (quoteArchive !== archiveId) {
+      quoteArchive = archiveId;
+      quoteById = {};
+    }
     const pending: TimelineRow[] = [];
     for (const group of windowedDayGroups) {
       for (const item of group.rows) {
@@ -94,7 +106,9 @@
       void api
         .resolveWaQuote({ conversationId: row.conversation_id, body: row.body_text || "" })
         .then((hit: WaQuoteJump | null) => {
+          if (archiveId !== currentArchiveId) return;
           if (!hit) {
+            if (archiveId !== currentArchiveId) return;
             quoteById[id] = { status: "none" };
             return;
           }
@@ -112,13 +126,14 @@
           };
         })
         .catch(() => {
+          if (archiveId !== currentArchiveId) return;
           quoteById[id] = { status: "none" };
         });
     }
   });
 
   function waView(row: TimelineRow) {
-    const plain = displayBody(row.body_text || row.subject || "");
+    const plain = trimBody(row.body_text || row.subject || "");
     const q = quoteById[row.message_id];
     if (!q || q.status === "pending" || q.status === "none") {
       return { before: plain, span: "", after: "", hit: false, miss: false, messageId: 0, sentAt: null as string | null };
@@ -127,9 +142,9 @@
       return { before: plain, span: "", after: "", hit: false, miss: true, messageId: 0, sentAt: null as string | null };
     }
     return {
-      before: displayBody(q.before),
-      span: displayBody(q.span),
-      after: displayBody(q.after),
+      before: q.before,
+      span: q.span,
+      after: q.after,
       hit: true,
       miss: false,
       messageId: q.message_id,
@@ -188,7 +203,7 @@
               data-from-me={item.row.from_me}
               data-grouped={isGroupedFollower(item.index) || undefined}
               tabindex="0"
-              aria-label={`${utcTime(item.row.sent_at, item.row.platform)} ${displayBody(item.row.body_text || item.row.subject || "").slice(0, 80)}`}
+              aria-label={`${utcTime(item.row.sent_at, item.row.platform)} ${trimBody(item.row.body_text || item.row.subject || "").slice(0, 80)}`}
               onclick={(e) => onSelectIndex(item.index, e.shiftKey)}
               onmousedown={(e) => { if (e.shiftKey) { e.preventDefault(); (e.currentTarget as HTMLElement).focus(); } }}
               oncontextmenu={(e) => onRowContextMenu(e, item.row)}
@@ -282,12 +297,12 @@
                   {@const parts = splitQuotedBody(item.row.body_text || "")}
                   {#if parts.main || !parts.quoted}
                     <p class="whitespace-pre-wrap break-words text-sm leading-normal text-foreground">
-                      <LinkifyBody text={displayBody(parts.main)} {splitUrls} {openUrl} {findQ} />
+                      <LinkifyBody text={trimBody(parts.main)} {splitUrls} {openUrl} {findQ} />
                     </p>
                   {/if}
                   {#if parts.quoted && quotedOpen[item.row.message_id]}
                     <p class="mt-1 whitespace-pre-wrap break-words text-sm leading-normal text-muted-foreground">
-                      <LinkifyBody text={displayBody(parts.quoted)} {splitUrls} {openUrl} {findQ} />
+                      <LinkifyBody text={trimBody(parts.quoted)} {splitUrls} {openUrl} {findQ} />
                     </p>
                     <button
                       type="button"
@@ -310,7 +325,7 @@
                   {@const wa = waView(item.row)}
                   <p class="whitespace-pre-wrap break-words text-sm leading-normal text-foreground">
                     <LinkifyBody
-                      text={wa.hit ? wa.before : displayBody(item.row.body_text || item.row.subject || "")}
+                      text={wa.hit ? displayBody(wa.before) : trimBody(item.row.body_text || item.row.subject || "")}
                       {splitUrls}
                       {openUrl}
                       {findQ}
@@ -324,9 +339,9 @@
                         e.preventDefault();
                         if (wa.hit) openQuotedMessage(wa.messageId, wa.sentAt);
                       }}
-                      ><LinkifyBody text={wa.span} {splitUrls} {openUrl} {findQ} /></button
+                      ><LinkifyBody text={displayBody(wa.span)} {splitUrls} {openUrl} {findQ} /></button
                     >
-                    <LinkifyBody text={wa.hit ? wa.after : ""} {splitUrls} {openUrl} {findQ} />
+                    <LinkifyBody text={wa.hit ? displayBody(wa.after) : ""} {splitUrls} {openUrl} {findQ} />
                   </p>
                   <p class="text-xs text-muted-foreground" hidden={!wa.miss}>{t("quoteNotInArchive")}</p>
                 {/if}

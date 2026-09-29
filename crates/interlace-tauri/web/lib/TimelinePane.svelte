@@ -1088,6 +1088,7 @@
     loadNewerPage={loadNewerPage}
     onJumpToParent={jumpToParentMessage}
     {openQuotedMessage}
+    archiveId={archive_id}
     cancelNewerFetch={() => {
       ++tlGen;
       tlLoading = false;
