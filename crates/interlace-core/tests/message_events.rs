@@ -7,6 +7,12 @@
 //! is "secret". Emoji is "👍". Rows are seeded with SQL on `init_archive`.
 //! No export line is invented. A normal WhatsApp header stays one message.
 //! `thread_parent_id` stays NULL. No import-undo command.
+//!
+//! A row is hidden when `edit_state` is `deleted` or `tombstone` is not 0.
+//! Stored `messages.body_text` stays. `person_timeline` snippets,
+//! `review_show` samples, and `visible_message_body` omit that text.
+//! `<attached: note.txt>` inside a hidden body is not a chip. Subject
+//! "invoice" may still find the row.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -15,8 +21,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use interlace_core::db::init_archive;
 use interlace_core::{
-    index_import_run, person_list, person_timeline_rows, search, ImportOpts, SearchQuery,
-    SourceKind, TimelineRow,
+    complete_attachments, index_import_run, person_list, person_timeline, person_timeline_rows,
+    review_show, search, ImportOpts, SearchQuery, SourceKind, TimelineRow,
 };
 use rusqlite::OptionalExtension;
 
@@ -558,6 +564,223 @@ fn wa426_cascade_delete_removes_revision_and_reaction() {
         count(&arch, "SELECT COUNT(*) FROM message_reactions"),
         0,
         "WA426-CASCADE: reaction orphan"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+fn stored_body(arch: &interlace_core::db::Archive, id: i64) -> String {
+    arch.conn
+        .query_row("SELECT body_text FROM messages WHERE id = ?1", [id], |r| {
+            r.get(0)
+        })
+        .unwrap()
+}
+
+/// Deleted tombstone ("secret") plus an older original ("hello") in one DM.
+/// Ada is present. Berk sent both. SQLite keeps the deleted body.
+fn seed_hidden_pair(arch: &interlace_core::db::Archive, key: &str) -> (Seed, i64) {
+    let s = seed(arch, "secret", "deleted", 1, key, true);
+    arch.conn
+        .execute(
+            "UPDATE messages
+             SET subject = 'invoice', body_text = 'secret <attached: note.txt>'
+             WHERE id = ?1",
+            [s.message_id],
+        )
+        .unwrap();
+    let (conv, src, run, sender): (i64, i64, i64, i64) = arch
+        .conn
+        .query_row(
+            "SELECT conversation_id, source_id, import_run_id, sender_identity_id
+             FROM messages WHERE id = ?1",
+            [s.message_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO messages(
+                conversation_id, source_id, import_run_id, sender_identity_id,
+                sent_at, sent_at_precision, kind, body_text, idempotency_key,
+                edit_state, tombstone
+             ) VALUES (
+                ?1, ?2, ?3, ?4,
+                '2024-06-01T09:00:00Z', 'second', 'text', 'hello', ?5,
+                'original', 0
+             )",
+            rusqlite::params![conv, src, run, sender, format!("{key}-hello")],
+        )
+        .unwrap();
+    (s, arch.conn.last_insert_rowid())
+}
+
+/// `person_timeline` snippet omits a deleted body. The older original still
+/// shows "hello". Stored `messages.body_text` keeps "secret".
+#[test]
+fn wa426_delete_hidden_from_person_timeline_snippet() {
+    let root = tmp_root();
+    let arch = init_archive(&root.join("arch")).unwrap();
+    let (s, hello_id) = seed_hidden_pair(&arch, "wa426-tl-snip");
+    assert_eq!(count(&arch, "SELECT COUNT(*) FROM messages"), 2);
+    assert!(
+        stored_body(&arch, s.message_id).contains("secret"),
+        "stored body was cleared"
+    );
+
+    let hits = person_timeline(&arch, s.berk_person, false, 20).unwrap();
+    let deleted = hits
+        .iter()
+        .find(|h| h.message_id == s.message_id)
+        .unwrap_or_else(|| panic!("deleted row missing from person_timeline: {hits:?}"));
+    let hello = hits
+        .iter()
+        .find(|h| h.message_id == hello_id)
+        .unwrap_or_else(|| panic!("hello row missing from person_timeline: {hits:?}"));
+    assert!(
+        !deleted.snippet.contains("secret"),
+        "person_timeline snippet leaked deleted body: {:?}",
+        deleted.snippet
+    );
+    assert!(
+        hello.snippet.contains("hello"),
+        "person_timeline snippet dropped visible body: {:?}",
+        hello.snippet
+    );
+    assert!(
+        stored_body(&arch, s.message_id).contains("secret"),
+        "stored body was cleared"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// `review_show` samples omit a deleted body and still include "hello".
+/// Stored `messages.body_text` keeps "secret".
+#[test]
+fn wa426_delete_hidden_from_review_samples() {
+    let root = tmp_root();
+    let arch = init_archive(&root.join("arch")).unwrap();
+    let (s, _hello_id) = seed_hidden_pair(&arch, "wa426-review-sample");
+    assert_eq!(count(&arch, "SELECT COUNT(*) FROM messages"), 2);
+    let ada_person = s.ada_person.expect("Ada");
+    let berk_identity: i64 = arch
+        .conn
+        .query_row(
+            "SELECT identity_id FROM person_identities WHERE person_id = ?1",
+            [s.berk_person],
+            |r| r.get(0),
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO merge_review_queue(
+                status, left_identity_id, right_person_id, suggested_score, reason_summary
+             ) VALUES ('open', ?1, ?2, 0.5, 'same name')",
+            rusqlite::params![berk_identity, ada_person],
+        )
+        .unwrap();
+    let queue_id = arch.conn.last_insert_rowid();
+    assert!(
+        stored_body(&arch, s.message_id).contains("secret"),
+        "stored body was cleared"
+    );
+
+    let shown = review_show(&arch, queue_id).unwrap();
+    assert!(
+        json_has(&shown, "hello"),
+        "review_show dropped the visible sample: {shown}"
+    );
+    assert!(
+        !json_has(&shown, "secret"),
+        "review_show leaked deleted body: {shown}"
+    );
+    assert!(
+        stored_body(&arch, s.message_id).contains("secret"),
+        "stored body was cleared"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Subject "invoice" may find a deleted row. The hit snippet, the visible
+/// body, and attachment chips omit "secret" and "note.txt". Tombstone 1
+/// hides the body even when `edit_state` is `original`.
+#[test]
+fn wa426_visible_body_hides_deleted_text_and_attached_name() {
+    let root = tmp_root();
+    let arch = init_archive(&root.join("arch")).unwrap();
+    let (s, hello_id) = seed_hidden_pair(&arch, "wa426-visible-body");
+    assert_eq!(count(&arch, "SELECT COUNT(*) FROM messages"), 2);
+    assert!(
+        stored_body(&arch, s.message_id).contains("secret"),
+        "stored body was cleared"
+    );
+
+    index_import_run(&arch, s.run_id).unwrap();
+    let invoice_hits = search(
+        &arch,
+        &SearchQuery {
+            q: "invoice".into(),
+            ..SearchQuery::default()
+        },
+    )
+    .unwrap();
+    let deleted_hit = invoice_hits
+        .iter()
+        .find(|h| h.message_id == s.message_id)
+        .unwrap_or_else(|| panic!("deleted row missing from invoice search: {invoice_hits:?}"));
+    assert!(
+        !deleted_hit.snippet.contains("secret"),
+        "search snippet leaked deleted body: {:?}",
+        deleted_hit.snippet
+    );
+    let secret_hits = search(
+        &arch,
+        &SearchQuery {
+            q: "secret".into(),
+            ..SearchQuery::default()
+        },
+    )
+    .unwrap();
+    assert!(
+        secret_hits.iter().all(|h| h.message_id != s.message_id),
+        "secret search returned the deleted message: {secret_hits:?}"
+    );
+
+    let visible = interlace_core::visible_message_body(&arch, s.message_id).unwrap();
+    assert_eq!(visible, "", "deleted visible body: {visible:?}");
+    let plain = interlace_core::visible_message_body(&arch, hello_id).unwrap();
+    assert!(plain.contains("hello"), "visible original body: {plain:?}");
+    let chips = complete_attachments(&arch, s.message_id, &visible, Vec::new()).unwrap();
+    assert!(
+        chips
+            .iter()
+            .all(|a| a.filename.as_deref() != Some("note.txt")),
+        "attached name leaked from hidden body: {chips:?}"
+    );
+
+    arch.conn
+        .execute(
+            "UPDATE messages SET edit_state = 'original' WHERE id = ?1",
+            [s.message_id],
+        )
+        .unwrap();
+    let (state, stone): (String, i64) = arch
+        .conn
+        .query_row(
+            "SELECT edit_state, tombstone FROM messages WHERE id = ?1",
+            [s.message_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(state, "original");
+    assert_eq!(stone, 1);
+    let tombstone_only = interlace_core::visible_message_body(&arch, s.message_id).unwrap();
+    assert_eq!(
+        tombstone_only, "",
+        "tombstone visible body: {tombstone_only:?}"
+    );
+    assert!(
+        stored_body(&arch, s.message_id).contains("secret"),
+        "stored body was cleared"
     );
     let _ = std::fs::remove_dir_all(&root);
 }

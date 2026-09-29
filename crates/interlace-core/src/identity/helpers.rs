@@ -225,7 +225,9 @@ pub(super) fn review_side_panel(
         |r| r.get(0),
     )?;
     let mut sample_stmt = archive.conn.prepare(&format!(
-        "SELECT sent_at, COALESCE(substr(body_text, 1, 240), '')
+        "SELECT sent_at,
+                CASE WHEN m.tombstone != 0 OR m.edit_state = 'deleted'
+                     THEN '' ELSE COALESCE(substr(m.body_text, 1, 240), '') END
          FROM messages m
          JOIN conversations c ON c.id = m.conversation_id
          WHERE {filter}

@@ -232,7 +232,8 @@ pub fn person_timeline(
     };
     let sql = format!(
         "SELECT m.id, m.sent_at, m.conversation_id, m.subject,
-                COALESCE(substr(m.body_text, 1, 160), '')
+                CASE WHEN m.tombstone != 0 OR m.edit_state = 'deleted'
+                     THEN '' ELSE COALESCE(substr(m.body_text, 1, 160), '') END
          FROM messages m
          JOIN conversations c ON c.id = m.conversation_id
          WHERE (
@@ -266,6 +267,17 @@ pub fn person_timeline(
         out.push(row?);
     }
     Ok(out)
+}
+
+/// Stored `body_text` stays. Empty when the row is deleted or tombstoned.
+pub fn visible_message_body(archive: &Archive, message_id: i64) -> Result<String, CoreError> {
+    Ok(archive.conn.query_row(
+        "SELECT CASE WHEN tombstone != 0 OR edit_state = 'deleted'
+                THEN '' ELSE COALESCE(body_text, '') END
+         FROM messages WHERE id = ?1",
+        [message_id],
+        |r| r.get(0),
+    )?)
 }
 
 /// Bulk-index messages for one import run (D17). Does not DROP triggers.
