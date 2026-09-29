@@ -80,6 +80,18 @@ pub(crate) fn person_timeline(
 }
 
 #[tauri::command]
+pub(crate) fn resolve_wa_quote(
+    state: tauri::State<AppState>,
+    conversation_id: i64,
+    body: String,
+) -> Result<serde_json::Value, String> {
+    with_arch(&state, |arch| {
+        let hit = interlace_core::resolve_wa_quote(arch, conversation_id, &body).map_err(err)?;
+        serde_json::to_value(hit).map_err(err)
+    })
+}
+
+#[tauri::command]
 pub(crate) fn person_day_message(
     state: tauri::State<AppState>,
     id: i64,

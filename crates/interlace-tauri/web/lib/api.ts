@@ -98,6 +98,14 @@ export type PersonDayMessage = {
   sent_at: string;
 };
 
+export type WaQuoteJump = {
+  before: string;
+  span: string;
+  after: string;
+  message_id?: number | null;
+  sent_at?: string | null;
+};
+
 export type ConversationParticipantName = {
   identity_id: number;
   display_name?: string | null;
@@ -243,6 +251,8 @@ export const api = {
     afterId?: number | null;
     beforeId?: number | null;
   }) => invoke<TimelineRow[]>("person_timeline", args),
+  resolveWaQuote: (args: { conversationId: number; body: string }) =>
+    invoke<WaQuoteJump | null>("resolve_wa_quote", args),
   personYearCounts: (args: { id: number; includeGroups: boolean }) =>
     invoke<PersonYearCount[]>("person_year_counts", args),
   personDayMessage: (args: { id: number; day: string; includeGroups: boolean }) =>

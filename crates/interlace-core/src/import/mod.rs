@@ -19,6 +19,10 @@ use crate::model::*;
 pub use contacts::ContactsImporter;
 pub use context::DbImportContext;
 pub use gmail::GmailMboxImporter;
+pub(crate) use locale::{
+    all_packs, is_you_token, parse_dt_with_pack, parse_header_line, split_sender_body, strip_cf,
+    LocalePack,
+};
 pub use locale::{load_pack, name_fold, name_fold_join, normalize_email, parse_phone, PACK_IDS};
 pub use takeout::TakeoutImporter;
 pub use whatsapp::WhatsappImporter;

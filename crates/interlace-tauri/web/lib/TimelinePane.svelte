@@ -686,6 +686,11 @@
     onFindKey(e, findQ, (q) => (findQ = q), stepFind);
   }
 
+  function openQuotedMessage(messageId: number, sentAt?: string | null) {
+    if (selectedId == null || !messageId) return;
+    void openPersonAtMessage(selectedId, messageId, sentAt);
+  }
+
   function jumpToParentMessage(parentId: number) {
     if (!parentId || selectedId == null) return;
     const gen = ++jumpGen;
@@ -1082,6 +1087,8 @@
     {loadNewerVisible}
     loadNewerPage={loadNewerPage}
     onJumpToParent={jumpToParentMessage}
+    {openQuotedMessage}
+    archiveId={archive_id}
     cancelNewerFetch={() => {
       ++tlGen;
       tlLoading = false;

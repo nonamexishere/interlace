@@ -4,6 +4,7 @@ mod attach;
 mod edit;
 mod list;
 mod timeline;
+mod wa_quote;
 
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
@@ -21,6 +22,7 @@ pub use timeline::{
     person_conversations, person_day_message, person_media_rows_for, person_timeline_rows,
     person_timeline_rows_for, person_year_counts, rebuild_activity_years, PersonYearCount,
 };
+pub use wa_quote::{resolve_wa_quote, WaQuoteJump};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PersonSummary {

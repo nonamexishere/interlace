@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Attachment, TimelineRow } from "./api";
+  import { api, type Attachment, type TimelineRow, type WaQuoteJump } from "./api";
   import { localDay, utcTime } from "./formatTime";
   import { splitUrls } from "./linkify";
   import LinkifyBody from "./LinkifyBody.svelte";
@@ -32,6 +32,8 @@
     loadNewerVisible = false,
     loadNewerPage = () => {},
     onJumpToParent = (_parentId: number) => {},
+    openQuotedMessage = (_messageId: number, _sentAt?: string | null) => {},
+    archiveId = "",
   }: {
     windowedDayGroups: {
       key: string;
@@ -59,7 +61,96 @@
     loadNewerVisible?: boolean;
     loadNewerPage?: () => void;
     onJumpToParent?: (parentId: number) => void;
+    openQuotedMessage?: (messageId: number, sentAt?: string | null) => void;
+    archiveId?: string;
   } = $props();
+
+  type QuoteCache =
+    | { status: "pending" }
+    | { status: "none" }
+    | { status: "miss" }
+    | {
+        status: "hit";
+        message_id: number;
+        sent_at: string | null;
+        before: string;
+        span: string;
+        after: string;
+      };
+
+  let quoteById = $state<Record<number, QuoteCache>>({});
+  let quoteArchive = "";
+
+  function stripAttached(s: string) {
+    return s.replace(/<attached:\s*[^>]+>/gi, "");
+  }
+
+  $effect(() => {
+    const currentArchiveId = archiveId;
+    if (quoteArchive !== archiveId) {
+      quoteArchive = archiveId;
+      quoteById = {};
+    }
+    const pending: TimelineRow[] = [];
+    for (const group of windowedDayGroups) {
+      for (const item of group.rows) {
+        const row = item.row;
+        if ((row.platform ?? "").toLowerCase() !== "whatsapp") continue;
+        if (quoteById[row.message_id]) continue;
+        pending.push(row);
+      }
+    }
+    for (const row of pending) {
+      const id = row.message_id;
+      quoteById[id] = { status: "pending" };
+      void api
+        .resolveWaQuote({ conversationId: row.conversation_id, body: row.body_text || "" })
+        .then((hit: WaQuoteJump | null) => {
+          if (archiveId !== currentArchiveId) return;
+          if (!hit) {
+            if (archiveId !== currentArchiveId) return;
+            quoteById[id] = { status: "none" };
+            return;
+          }
+          if (hit.message_id == null) {
+            quoteById[id] = { status: "miss" };
+            return;
+          }
+          quoteById[id] = {
+            status: "hit",
+            message_id: hit.message_id,
+            sent_at: hit.sent_at ?? null,
+            before: hit.before,
+            span: hit.span,
+            after: hit.after,
+          };
+        })
+        .catch(() => {
+          if (archiveId !== currentArchiveId) return;
+          quoteById[id] = { status: "none" };
+        });
+    }
+  });
+
+  function waView(row: TimelineRow) {
+    const plain = displayBody(row.body_text || row.subject || "");
+    const q = quoteById[row.message_id];
+    if (!q || q.status === "pending" || q.status === "none") {
+      return { before: plain, span: "", after: "", hit: false, miss: false, messageId: 0, sentAt: null as string | null };
+    }
+    if (q.status === "miss") {
+      return { before: plain, span: "", after: "", hit: false, miss: true, messageId: 0, sentAt: null as string | null };
+    }
+    return {
+      before: q.before,
+      span: q.span,
+      after: q.after,
+      hit: true,
+      miss: false,
+      messageId: q.message_id,
+      sentAt: q.sent_at,
+    };
+  }
 
   function onRowContextMenu(e: MouseEvent, row: TimelineRow) {
     if ((e.target as HTMLElement | null)?.closest("[data-bubble-attach]")) {
@@ -209,37 +300,50 @@
                       <LinkifyBody text={displayBody(parts.main)} {splitUrls} {openUrl} {findQ} />
                     </p>
                   {/if}
-                  {#if parts.quoted}
-                    {#if quotedOpen[item.row.message_id]}
-                      <p class="mt-1 whitespace-pre-wrap break-words text-sm leading-normal text-muted-foreground">
-                        <LinkifyBody text={displayBody(parts.quoted)} {splitUrls} {openUrl} {findQ} />
-                      </p>
-                      <button
-                        type="button"
-                        class="mt-1 text-xs text-muted-foreground underline focus-visible:ring-2 focus-visible:ring-ring"
-                        data-show-quoted
-                        onclick={(e) => toggleQuoted(item.row.message_id, e)}
-                        >Hide quoted</button
-                      >
-                    {:else}
-                      <button
-                        type="button"
-                        class="mt-1 text-xs text-muted-foreground underline focus-visible:ring-2 focus-visible:ring-ring"
-                        data-show-quoted
-                        onclick={(e) => toggleQuoted(item.row.message_id, e)}
-                        >Show quoted</button
-                      >
-                    {/if}
+                  {#if parts.quoted && quotedOpen[item.row.message_id]}
+                    <p class="mt-1 whitespace-pre-wrap break-words text-sm leading-normal text-muted-foreground">
+                      <LinkifyBody text={displayBody(parts.quoted)} {splitUrls} {openUrl} {findQ} />
+                    </p>
+                    <button
+                      type="button"
+                      class="mt-1 text-xs text-muted-foreground underline focus-visible:ring-2 focus-visible:ring-ring"
+                      data-show-quoted
+                      onclick={(e) => toggleQuoted(item.row.message_id, e)}
+                      >Hide quoted</button
+                    >
+                  {/if}
+                  {#if parts.quoted && !quotedOpen[item.row.message_id]}
+                    <button
+                      type="button"
+                      class="mt-1 text-xs text-muted-foreground underline focus-visible:ring-2 focus-visible:ring-ring"
+                      data-show-quoted
+                      onclick={(e) => toggleQuoted(item.row.message_id, e)}
+                      >Show quoted</button
+                    >
                   {/if}
                 {:else}
+                  {@const wa = waView(item.row)}
                   <p class="whitespace-pre-wrap break-words text-sm leading-normal text-foreground">
                     <LinkifyBody
-                      text={displayBody(item.row.body_text || item.row.subject || "")}
+                      text={wa.hit ? stripAttached(wa.before) : displayBody(item.row.body_text || item.row.subject || "")}
                       {splitUrls}
                       {openUrl}
                       {findQ}
                     />
+                    <button
+                      type="button"
+                      class="text-left text-sm underline focus-visible:ring-2 focus-visible:ring-ring"
+                      hidden={!wa.hit}
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        if (wa.hit) openQuotedMessage(wa.messageId, wa.sentAt);
+                      }}
+                      ><LinkifyBody text={stripAttached(wa.span)} {splitUrls} {openUrl} {findQ} /></button
+                    >
+                    <LinkifyBody text={wa.hit ? stripAttached(wa.after) : ""} {splitUrls} {openUrl} {findQ} />
                   </p>
+                  <p class="text-xs text-muted-foreground" hidden={!wa.miss}>{t("quoteNotInArchive")}</p>
                 {/if}
               </div>
               <CasAttach data-bubble-attach flush={true} messageId={item.row.message_id} items={item.row.attachments || []} {showToast} onOpenImage={(a) => onOpenImage(item.row.message_id, a)} />

@@ -1,0 +1,253 @@
+"""#425 — a WhatsApp quote jumps with the around-message window.
+
+A resolved quote calls openPersonAtMessage. A miss uses chrome key
+quoteNotInArchive. English is "Not in this archive". Turkish lives in
+tr.ts only. Show quoted must not call openPersonAtMessage. Gmail
+jumpToParent stays jumpToMessageId.
+
+A hit strips `<attached: …>` from before, span, and after with a function
+other than displayBody (displayBody trims). displayBody on those parts fails.
+"""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+from common import fail
+from tauri_gate.last_read import _text, _web_file
+from tauri_gate.locale_pack import _chrome_pack_entries
+from tauri_gate.scan import _without_comments
+from tauri_gate.search_jump_onscreen import _fn
+
+_ISSUE = "#425"
+_SKIP_CALLS = {
+    "LinkifyBody",
+    "displayBody",
+    "splitUrls",
+    "openUrl",
+    "findQ",
+    "t",
+    "item",
+    "onJumpToParent",
+    "jumpToParentMessage",
+    "jumpToMessageId",
+    "toggleQuoted",
+}
+
+
+def _read(crate: Path, name: str) -> str:
+    path = _web_file(crate, name)
+    if not path.is_file():
+        path = crate / "web" / "lib" / name
+    return _without_comments(_text(path) if path.is_file() else "")
+
+
+def _non_mail_branch(rows: str) -> str:
+    i = rows.find("{:else}")
+    if i < 0:
+        return ""
+    j = rows.find("{/if}", i)
+    return rows[i:j if j >= 0 else None]
+
+
+def _show_quoted_calls_open(rows: str) -> bool:
+    for m in re.finditer(r"data-show-quoted", rows):
+        chunk = rows[max(0, m.start() - 500) : m.end() + 200]
+        if "openPersonAtMessage" in chunk:
+            return True
+    return False
+
+
+def _expr_is_quote_jump(expr: str) -> bool:
+    return (
+        "openPersonAtMessage" in expr
+        and "jumpToMessageId" not in expr
+        and "jumpToParentMessage" not in expr
+        and "jumpToParent" not in expr
+    )
+
+
+def _lookup_fn(name: str, *srcs: str) -> str:
+    for src in srcs:
+        body = _fn(src, name)
+        if body:
+            return body
+    return ""
+
+
+def _wa_quote_calls_open(rows: str, pane: str, lst: str) -> bool:
+    branch = _non_mail_branch(rows)
+    if not branch:
+        return False
+    if _expr_is_quote_jump(branch):
+        return True
+    names = set(re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", branch))
+    names |= set(re.findall(r"\{([A-Za-z_][A-Za-z0-9_]*)\}", branch))
+    names -= _SKIP_CALLS
+    blob = pane + "\n" + lst
+    for name in names:
+        body = _lookup_fn(name, pane, lst)
+        if body and _expr_is_quote_jump(body):
+            return True
+        for m in re.finditer(rf"\b{re.escape(name)}\s*=\{{([^}}]*)\}}", blob):
+            expr = m.group(1).strip()
+            if _expr_is_quote_jump(expr):
+                return True
+            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", expr):
+                bound = _lookup_fn(expr, pane, lst)
+                if bound and _expr_is_quote_jump(bound):
+                    return True
+    return False
+
+
+_QUOTE_FIELDS = ("before", "span", "after")
+_DISPLAY_ON_PART = re.compile(
+    r"displayBody\s*\(\s*(?:wa|q)\.(?:before|span|after)\b"
+)
+_PART_CALL = re.compile(
+    r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*(?:wa|q)\.(before|span|after)\b"
+)
+_ATTACHED = re.compile(r"<attached:")
+
+
+def _strips_attached(rows: str, name: str) -> bool:
+    """True when name is not displayBody and its body only strips `<attached:`."""
+    if name == "displayBody":
+        return False
+    body = _lookup_fn(name, rows)
+    if not body or not _ATTACHED.search(body):
+        return False
+    if re.search(r"\bdisplayBody\s*\(", body) or re.search(r"\.trim\s*\(", body):
+        return False
+    return True
+
+
+def _quote_parts_stripped(rows: str) -> bool:
+    """Hit path strips before, span, and after. Raw `{q.*}` is not rendered."""
+    view = _lookup_fn("waView", rows)
+    branch = _non_mail_branch(rows)
+    if not view or not branch:
+        return False
+    seen = {field: False for field in _QUOTE_FIELDS}
+    for blob in (view, branch):
+        for name, field in _PART_CALL.findall(blob):
+            if _strips_attached(rows, name):
+                seen[field] = True
+    if not all(seen.values()):
+        return False
+    for field in _QUOTE_FIELDS:
+        if re.search(rf"\{{q\.{field}\}}", branch):
+            return False
+    return True
+
+
+def _display_body_on_quote(rows: str) -> bool:
+    """displayBody(wa|q.before/span/after) trims the newline before a reply."""
+    return _DISPLAY_ON_PART.search(rows) is not None
+
+
+def _props_block(rows: str) -> str:
+    m = re.search(r"=\s*\$props\s*\(\s*\)", rows)
+    if not m:
+        return ""
+    head = rows[: m.start()]
+    i = max(head.rfind("let {"), head.rfind("let{"))
+    return rows[i : m.end()] if i >= 0 else ""
+
+
+def _fn_prefix(src: str, idx: int) -> str:
+    i = idx - 1
+    depth = 0
+    while i >= 0:
+        c = src[i]
+        if c == "}":
+            depth += 1
+        elif c == "{":
+            if depth == 0:
+                head = src[max(0, i - 160) : i]
+                if re.search(r"(?:=>|function\b)", head):
+                    return src[i:idx]
+            else:
+                depth -= 1
+        i -= 1
+    return src[:idx]
+
+
+def _quote_cache_ignores_archive(rows: str) -> bool:
+    """No archiveId prop, or a quoteById write that never reads the current archive."""
+    if not re.search(r"\barchiveId\b", _props_block(rows)):
+        return True
+    writes = list(re.finditer(r"\bquoteById(?:\s*\[[^\]]*\])*\s*=(?!=)", rows))
+    for m in writes:
+        if not re.search(r"\barchiveId\b", _fn_prefix(rows, m.end())):
+            return True
+    return False
+
+
+def _quote_span_passes_find(rows: str) -> bool:
+    """The underlined quote span passes findQ into LinkifyBody or splitFind."""
+    branch = _non_mail_branch(rows)
+    if not branch:
+        return False
+    for m in re.finditer(r"<button\b", branch):
+        end = branch.find("</button", m.start())
+        if end < 0:
+            continue
+        chunk = branch[m.start() : end]
+        if "underline" not in chunk:
+            continue
+        if not re.search(r"\b(?:wa|q)\.span\b", chunk):
+            continue
+        if "LinkifyBody" in chunk and "findQ" in chunk:
+            return True
+        if "splitFind" in chunk and "findQ" in chunk:
+            return True
+    return False
+
+
+def assert_wa_quote_jump(crate: Path) -> None:
+    """#425: WhatsApp quote uses openPersonAtMessage; Show quoted and Parent stay."""
+    rows = _read(crate, "TimelineRows.svelte")
+    pane = _read(crate, "TimelinePane.svelte")
+    lst = _read(crate, "TimelineList.svelte")
+    en_path = crate / "web" / "lib" / "locales" / "en.ts"
+    tr_path = crate / "web" / "lib" / "locales" / "tr.ts"
+    en = _chrome_pack_entries(_text(en_path)) if en_path.is_file() else {}
+    tr = _chrome_pack_entries(_text(tr_path)) if tr_path.is_file() else {}
+    bits: list[str] = []
+    if _show_quoted_calls_open(rows):
+        bits.append("Show quoted calls openPersonAtMessage")
+    parent = _fn(pane, "jumpToParentMessage")
+    if (
+        "jumpToParent" not in rows
+        or "onJumpToParent" not in rows
+        or "jumpToMessageId" not in parent
+        or "onJumpToParent={jumpToParentMessage}" not in pane
+        or en.get("jumpToParent") != "Parent"
+        or not tr.get("jumpToParent", "").strip()
+    ):
+        bits.append("Gmail jumpToParent path must remain")
+    if en.get("quoteNotInArchive") != "Not in this archive":
+        bits.append("chrome key quoteNotInArchive is absent from en.ts")
+    if not tr.get("quoteNotInArchive", "").strip():
+        bits.append("chrome key quoteNotInArchive is absent from tr.ts")
+    if "quoteNotInArchive" not in rows or not _wa_quote_calls_open(rows, pane, lst):
+        bits.append("a WhatsApp quote does not call openPersonAtMessage")
+    if _display_body_on_quote(rows):
+        bits.append(
+            "quote hit path must strip attachment tokens without displayBody, "
+            "which trims the newline before a reply."
+        )
+    elif not _quote_parts_stripped(rows) or not _quote_span_passes_find(rows):
+        bits.append(
+            "quote hit path must strip <attached: …> from before, span, and after "
+            "without displayBody, and the underlined span must pass findQ into "
+            "LinkifyBody or splitFind"
+        )
+    if bits:
+        fail(f"{_ISSUE}: " + "; ".join(bits))
+    if _quote_cache_ignores_archive(rows):
+        fail(
+            f"{_ISSUE}: quote cache must be cleared or keyed by archiveId "
+            "and an in-flight resolve must ignore a stale archive."
+        )
