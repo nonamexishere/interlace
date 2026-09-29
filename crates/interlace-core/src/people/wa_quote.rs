@@ -137,9 +137,7 @@ fn find_quote(body: &str, packs: &[LocalePack]) -> Option<QuoteSpan> {
             return None;
         }
         let trimmed = &line[rel_s..rel_e];
-        let Some((sender, text)) = split_sender_body(trimmed) else {
-            return None;
-        };
+        let (sender, text) = split_sender_body(trimmed)?;
         return Some(QuoteSpan {
             sender,
             text,
