@@ -16,7 +16,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use interlace_core::db::init_archive;
-use interlace_core::{person_list, person_timeline_rows, ImportOpts, SourceKind};
+use interlace_core::{
+    person_list, person_timeline_rows, resolve_wa_quote, ImportOpts, SourceKind, WaQuoteJump,
+};
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -396,5 +398,90 @@ fn wa_quote_whatsapp_rows_leave_thread_parent_null() {
         "WA425-NO-PARENT: quoting body missing"
     );
     assert_wa_parentless(&arch, "WA425-NO-PARENT");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+fn resolve_body(
+    arch: &interlace_core::db::Archive,
+    body: &str,
+) -> Result<Option<WaQuoteJump>, interlace_core::CoreError> {
+    let msg = messages(arch)
+        .into_iter()
+        .find(|m| m.body.as_deref() == Some(body))
+        .unwrap_or_else(|| panic!("body missing: {body:?}"));
+    resolve_wa_quote(arch, msg.conversation_id, body)
+}
+
+/// A prose label is not a quote when the body also has an earlier line.
+#[test]
+fn wa_quote_prose_colon_is_not_a_quote() {
+    let root = tmp_root();
+    let chat = "\
+[2019-06-01, 10:05:00] Ada: Remember this
+Note: bring milk
+";
+    let zip = write_ios_zip(&root.join("zips"), "WhatsApp Chat - Ada", chat);
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    import_zip(&mut arch, &zip, "ada-note");
+    let hit = resolve_body(&arch, "Remember this\nNote: bring milk").expect("resolve");
+    assert!(
+        hit.is_none(),
+        "a prose colon after another line is not a quote, got {hit:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Nobody in the chat is named Note, so the whole body is not a quote.
+#[test]
+fn wa_quote_unknown_sender_line_is_not_a_quote() {
+    let root = tmp_root();
+    let chat = "[2019-06-01, 10:05:00] Ada: Note: bring milk\n";
+    let zip = write_ios_zip(&root.join("zips"), "WhatsApp Chat - Ada", chat);
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    import_zip(&mut arch, &zip, "ada-note");
+    let hit = resolve_body(&arch, "Note: bring milk").expect("resolve");
+    assert!(
+        hit.is_none(),
+        "an unknown sender line is not a quote, got {hit:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Several timeless matches stay plain text. They must not say the original is missing.
+#[test]
+fn wa_quote_two_hellos_without_time_stay_plain() {
+    let root = tmp_root();
+    let chat = "\
+[2019-06-01, 10:00:01] Berk: hello
+[2019-06-01, 10:00:02] Berk: hello
+[2019-06-01, 10:05:00] Ada: Berk: hello
+";
+    let zip = write_ios_zip(&root.join("zips"), "WhatsApp Chat - Ada", chat);
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    import_zip(&mut arch, &zip, "two-hello");
+    let hit = resolve_body(&arch, "Berk: hello").expect("resolve");
+    assert!(
+        hit.is_none(),
+        "two timeless hellos stay plain text, got {hit:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A timestamped line that is not in the chat stays a real miss.
+#[test]
+fn wa_quote_timestamped_missing_stays_a_miss() {
+    let root = tmp_root();
+    let body = "[2019-06-01, 10:00:03] Berk: gone";
+    let chat = format!("[2019-06-01, 10:05:00] Ada: {body}\n");
+    let zip = write_ios_zip(&root.join("zips"), "WhatsApp Chat - Ada", &chat);
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    import_zip(&mut arch, &zip, "ada-gone");
+    let hit = resolve_body(&arch, body)
+        .expect("resolve")
+        .expect("timestamped missing line stays a quote");
+    assert!(
+        hit.message_id.is_none(),
+        "timestamped miss must not name a message, got {hit:?}"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }

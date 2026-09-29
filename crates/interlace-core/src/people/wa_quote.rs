@@ -1,4 +1,4 @@
-//! Read-time WhatsApp quote pointer. No new column and no write.
+//! Read-time WhatsApp quote lookup.
 
 use serde::Serialize;
 
@@ -24,8 +24,9 @@ pub struct WaQuoteJump {
 struct QuoteSpan {
     sender: String,
     text: String,
-    /// Parsed instants for a timestamped line. Empty when the line has no time.
+    /// One RFC3339 instant per locale pack that parsed the line. Empty when timeless.
     sent_at: Vec<String>,
+    /// Byte offsets of the quote span in the stored body.
     start: usize,
     end: usize,
 }
@@ -46,23 +47,9 @@ pub fn resolve_wa_quote(
         .to_string();
     let you = packs.iter().any(|p| is_you_token(p, &span.sender));
     let mut hits: Vec<(i64, Option<String>)> = Vec::new();
-    let mut stmt = archive.conn.prepare(
-        "SELECT m.id, m.sent_at, COALESCE(m.body_text, ''),
-                COALESCE(i.display_name, ''), COALESCE(i.value_raw, ''),
-                COALESCE(p.display_name, ''),
-                CASE WHEN p.is_self = 1 THEN 1 ELSE 0 END,
-                CASE WHEN si.identity_id IS NOT NULL THEN 1 ELSE 0 END,
-                COALESCE(cp.role, '')
-         FROM messages m
-         LEFT JOIN identities i ON i.id = m.sender_identity_id
-         LEFT JOIN person_identities pi ON pi.identity_id = i.id
-         LEFT JOIN persons p ON p.id = pi.person_id AND p.tombstoned_at IS NULL
-         LEFT JOIN self_identities si ON si.identity_id = i.id
-         LEFT JOIN conversation_participants cp
-           ON cp.conversation_id = m.conversation_id AND cp.identity_id = m.sender_identity_id
-         WHERE m.conversation_id = ?1",
-    )?;
-    let rows = stmt.query_map([conversation_id], |r| {
+    let (sql, params) = quote_query(conversation_id, &span, you, &packs);
+    let mut stmt = archive.conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(&params), |r| {
         Ok((
             r.get::<_, i64>(0)?,
             r.get::<_, Option<String>>(1)?,
@@ -115,11 +102,10 @@ pub fn resolve_wa_quote(
             break;
         }
     }
-    let (message_id, sent_at) = if hits.len() == 1 {
-        let (id, at) = hits.pop().unwrap();
-        (Some(id), at)
-    } else {
-        (None, None)
+    let (message_id, sent_at) = match hits.as_slice() {
+        [(id, at)] => (Some(*id), at.clone()),
+        _ if !span.sent_at.is_empty() => (None, None),
+        _ => return Ok(None),
     };
     let before = body[..span.start].to_string();
     let quote = body[span.start..span.end].to_string();
@@ -140,18 +126,19 @@ fn find_quote(body: &str, packs: &[LocalePack]) -> Option<QuoteSpan> {
             return Some(span);
         }
     }
+    // A later "Note: …" line is prose. Only the first non-empty line can be timeless.
     for (start, end) in &lines {
         let line = &body[*start..*end];
-        if parse_header_line(line).is_some() {
-            continue;
-        }
         let (rel_s, rel_e) = trim_bounds(line);
         if rel_s >= rel_e {
             continue;
         }
+        if parse_header_line(line).is_some() {
+            return None;
+        }
         let trimmed = &line[rel_s..rel_e];
         let Some((sender, text)) = split_sender_body(trimmed) else {
-            continue;
+            return None;
         };
         return Some(QuoteSpan {
             sender,
@@ -162,6 +149,68 @@ fn find_quote(body: &str, packs: &[LocalePack]) -> Option<QuoteSpan> {
         });
     }
     None
+}
+
+fn quote_query(
+    conversation_id: i64,
+    span: &QuoteSpan,
+    you: bool,
+    packs: &[LocalePack],
+) -> (String, Vec<String>) {
+    let mut sql = String::from(
+        "SELECT m.id, m.sent_at, COALESCE(m.body_text, ''),
+                COALESCE(i.display_name, ''), COALESCE(i.value_raw, ''),
+                COALESCE(p.display_name, ''),
+                CASE WHEN p.is_self = 1 THEN 1 ELSE 0 END,
+                CASE WHEN si.identity_id IS NOT NULL THEN 1 ELSE 0 END,
+                COALESCE(cp.role, '')
+         FROM messages m
+         LEFT JOIN identities i ON i.id = m.sender_identity_id
+         LEFT JOIN person_identities pi ON pi.identity_id = i.id
+         LEFT JOIN persons p ON p.id = pi.person_id AND p.tombstoned_at IS NULL
+         LEFT JOIN self_identities si ON si.identity_id = i.id
+         LEFT JOIN conversation_participants cp
+           ON cp.conversation_id = m.conversation_id AND cp.identity_id = m.sender_identity_id
+         WHERE m.conversation_id = ?",
+    );
+    let mut params = vec![conversation_id.to_string()];
+    if you {
+        let mut tokens: Vec<String> = Vec::new();
+        for pack in packs {
+            for token in &pack.you_tokens {
+                if !tokens.iter().any(|t| t == token) {
+                    tokens.push(token.clone());
+                }
+            }
+        }
+        sql.push_str(
+            " AND (p.is_self = 1 OR si.identity_id IS NOT NULL OR COALESCE(cp.role, '') = 'me'",
+        );
+        if !tokens.is_empty() {
+            let marks = vec!["?"; tokens.len()].join(", ");
+            sql.push_str(&format!(
+                " OR TRIM(COALESCE(i.display_name, '')) IN ({marks}) OR TRIM(COALESCE(i.value_raw, '')) IN ({marks})"
+            ));
+            params.extend(tokens.iter().cloned());
+            params.extend(tokens);
+        }
+        sql.push(')');
+    } else {
+        sql.push_str(
+            " AND (TRIM(COALESCE(i.display_name, '')) = ?
+                OR TRIM(COALESCE(i.value_raw, '')) = ?
+                OR TRIM(COALESCE(p.display_name, '')) = ?)",
+        );
+        params.push(span.sender.clone());
+        params.push(span.sender.clone());
+        params.push(span.sender.clone());
+    }
+    if !span.sent_at.is_empty() {
+        let marks = vec!["?"; span.sent_at.len()].join(", ");
+        sql.push_str(&format!(" AND m.sent_at IN ({marks})"));
+        params.extend(span.sent_at.iter().cloned());
+    }
+    (sql, params)
 }
 
 fn timestamped_in_line(line: &str, line_start: usize, packs: &[LocalePack]) -> Option<QuoteSpan> {

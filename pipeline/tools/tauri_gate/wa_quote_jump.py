@@ -97,6 +97,59 @@ def _wa_quote_calls_open(rows: str, pane: str, lst: str) -> bool:
     return False
 
 
+def _assigned_display_body(view: str, field: str) -> bool:
+    return (
+        re.search(rf"\b{field}\s*:\s*displayBody\s*\(\s*q\.{field}\b", view) is not None
+    )
+
+
+def _rendered_display_body(branch: str, field: str) -> bool:
+    return (
+        re.search(rf"displayBody\s*\(\s*(?:wa|q)\.{field}\b", branch) is not None
+    )
+
+
+def _quote_hit_display_body(rows: str) -> bool:
+    """Hit path runs displayBody on before, span, and after. Raw q.* is not rendered."""
+    view = _lookup_fn("waView", rows)
+    branch = _non_mail_branch(rows)
+    if not view or not branch:
+        return False
+    for field in ("before", "span", "after"):
+        assigned = _assigned_display_body(view, field)
+        rendered = _rendered_display_body(branch, field)
+        if not assigned and not rendered:
+            return False
+        if re.search(rf"\{{q\.{field}\}}", branch):
+            return False
+        if not assigned:
+            stripped = re.sub(rf"displayBody\s*\(\s*(?:wa|q)\.{field}\b", "", branch)
+            if re.search(rf"\b(?:wa|q)\.{field}\b", stripped):
+                return False
+    return True
+
+
+def _quote_span_passes_find(rows: str) -> bool:
+    """The underlined quote span passes findQ into LinkifyBody or splitFind."""
+    branch = _non_mail_branch(rows)
+    if not branch:
+        return False
+    for m in re.finditer(r"<button\b", branch):
+        end = branch.find("</button", m.start())
+        if end < 0:
+            continue
+        chunk = branch[m.start() : end]
+        if "underline" not in chunk:
+            continue
+        if not re.search(r"\b(?:wa|q)\.span\b", chunk):
+            continue
+        if "LinkifyBody" in chunk and "findQ" in chunk:
+            return True
+        if "splitFind" in chunk and "findQ" in chunk:
+            return True
+    return False
+
+
 def assert_wa_quote_jump(crate: Path) -> None:
     """#425: WhatsApp quote uses openPersonAtMessage; Show quoted and Parent stay."""
     rows = _read(crate, "TimelineRows.svelte")
@@ -125,5 +178,10 @@ def assert_wa_quote_jump(crate: Path) -> None:
         bits.append("chrome key quoteNotInArchive is absent from tr.ts")
     if "quoteNotInArchive" not in rows or not _wa_quote_calls_open(rows, pane, lst):
         bits.append("a WhatsApp quote does not call openPersonAtMessage")
+    if not _quote_hit_display_body(rows) or not _quote_span_passes_find(rows):
+        bits.append(
+            "quote hit path must run displayBody on before, span, and after, "
+            "and the underlined span must pass findQ into LinkifyBody or splitFind"
+        )
     if bits:
         fail(f"{_ISSUE}: " + "; ".join(bits))

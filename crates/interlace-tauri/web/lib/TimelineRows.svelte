@@ -127,9 +127,9 @@
       return { before: plain, span: "", after: "", hit: false, miss: true, messageId: 0, sentAt: null as string | null };
     }
     return {
-      before: q.before,
-      span: q.span,
-      after: q.after,
+      before: displayBody(q.before),
+      span: displayBody(q.span),
+      after: displayBody(q.after),
       hit: true,
       miss: false,
       messageId: q.message_id,
@@ -324,7 +324,7 @@
                         e.preventDefault();
                         if (wa.hit) openQuotedMessage(wa.messageId, wa.sentAt);
                       }}
-                      >{wa.span}</button
+                      ><LinkifyBody text={wa.span} {splitUrls} {openUrl} {findQ} /></button
                     >
                     <LinkifyBody text={wa.hit ? wa.after : ""} {splitUrls} {openUrl} {findQ} />
                   </p>
