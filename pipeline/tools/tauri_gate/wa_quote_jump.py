@@ -4,6 +4,9 @@ A resolved quote calls openPersonAtMessage. A miss uses chrome key
 quoteNotInArchive. English is "Not in this archive". Turkish lives in
 tr.ts only. Show quoted must not call openPersonAtMessage. Gmail
 jumpToParent stays jumpToMessageId.
+
+A hit strips `<attached: …>` from before, span, and after with a function
+other than displayBody (displayBody trims). displayBody on those parts fails.
 """
 from __future__ import annotations
 
@@ -97,36 +100,50 @@ def _wa_quote_calls_open(rows: str, pane: str, lst: str) -> bool:
     return False
 
 
-def _assigned_display_body(view: str, field: str) -> bool:
-    return (
-        re.search(rf"\b{field}\s*:\s*displayBody\s*\(\s*q\.{field}\b", view) is not None
-    )
+_QUOTE_FIELDS = ("before", "span", "after")
+_DISPLAY_ON_PART = re.compile(
+    r"displayBody\s*\(\s*(?:wa|q)\.(?:before|span|after)\b"
+)
+_PART_CALL = re.compile(
+    r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*(?:wa|q)\.(before|span|after)\b"
+)
+_ATTACHED = re.compile(r"<attached:")
 
 
-def _rendered_display_body(branch: str, field: str) -> bool:
-    return (
-        re.search(rf"displayBody\s*\(\s*(?:wa|q)\.{field}\b", branch) is not None
-    )
+def _strips_attached(rows: str, name: str) -> bool:
+    """True when name is not displayBody and its body only strips `<attached:`."""
+    if name == "displayBody":
+        return False
+    body = _lookup_fn(name, rows)
+    if not body or not _ATTACHED.search(body):
+        return False
+    if re.search(r"\bdisplayBody\s*\(", body) or re.search(r"\.trim\s*\(", body):
+        return False
+    return True
 
 
-def _quote_hit_display_body(rows: str) -> bool:
-    """Hit path runs displayBody on before, span, and after. Raw q.* is not rendered."""
+def _quote_parts_stripped(rows: str) -> bool:
+    """Hit path strips before, span, and after. Raw `{q.*}` is not rendered."""
     view = _lookup_fn("waView", rows)
     branch = _non_mail_branch(rows)
     if not view or not branch:
         return False
-    for field in ("before", "span", "after"):
-        assigned = _assigned_display_body(view, field)
-        rendered = _rendered_display_body(branch, field)
-        if not assigned and not rendered:
-            return False
+    seen = {field: False for field in _QUOTE_FIELDS}
+    for blob in (view, branch):
+        for name, field in _PART_CALL.findall(blob):
+            if _strips_attached(rows, name):
+                seen[field] = True
+    if not all(seen.values()):
+        return False
+    for field in _QUOTE_FIELDS:
         if re.search(rf"\{{q\.{field}\}}", branch):
             return False
-        if not assigned:
-            stripped = re.sub(rf"displayBody\s*\(\s*(?:wa|q)\.{field}\b", "", branch)
-            if re.search(rf"\b(?:wa|q)\.{field}\b", stripped):
-                return False
     return True
+
+
+def _display_body_on_quote(rows: str) -> bool:
+    """displayBody(wa|q.before/span/after) trims the newline before a reply."""
+    return _DISPLAY_ON_PART.search(rows) is not None
 
 
 def _props_block(rows: str) -> str:
@@ -136,11 +153,6 @@ def _props_block(rows: str) -> str:
     head = rows[: m.start()]
     i = max(head.rfind("let {"), head.rfind("let{"))
     return rows[i : m.end()] if i >= 0 else ""
-
-
-def _quote_hit_trims_newline(rows: str) -> bool:
-    """displayBody on a quote part trims the newline before the reply."""
-    return re.search(r"displayBody\s*\(\s*q\.(?:before|span|after)\b", rows) is not None
 
 
 def _fn_prefix(src: str, idx: int) -> str:
@@ -221,18 +233,19 @@ def assert_wa_quote_jump(crate: Path) -> None:
         bits.append("chrome key quoteNotInArchive is absent from tr.ts")
     if "quoteNotInArchive" not in rows or not _wa_quote_calls_open(rows, pane, lst):
         bits.append("a WhatsApp quote does not call openPersonAtMessage")
-    if not _quote_hit_display_body(rows) or not _quote_span_passes_find(rows):
+    if _display_body_on_quote(rows):
         bits.append(
-            "quote hit path must run displayBody on before, span, and after, "
-            "and the underlined span must pass findQ into LinkifyBody or splitFind"
+            "quote hit path must strip attachment tokens without displayBody, "
+            "which trims the newline before a reply."
+        )
+    elif not _quote_parts_stripped(rows) or not _quote_span_passes_find(rows):
+        bits.append(
+            "quote hit path must strip <attached: …> from before, span, and after "
+            "without displayBody, and the underlined span must pass findQ into "
+            "LinkifyBody or splitFind"
         )
     if bits:
         fail(f"{_ISSUE}: " + "; ".join(bits))
-    if _quote_hit_trims_newline(rows):
-        fail(
-            f"{_ISSUE}: quote hit path must strip attachment tokens without displayBody, "
-            "which trims the newline before a reply."
-        )
     if _quote_cache_ignores_archive(rows):
         fail(
             f"{_ISSUE}: quote cache must be cleared or keyed by archiveId "
