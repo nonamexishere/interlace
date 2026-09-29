@@ -8,8 +8,13 @@ export function isMailRow(row: {
   return platform === "gmail" || conversation_kind === "email_thread";
 }
 
+/** Drop a media token. Does not trim, so a quote can keep the newline before a reply. */
+export function stripAttached(s: string) {
+  return s.replace(/<attached:\s*[^>]+>/gi, "");
+}
+
 export function displayBody(s: string) {
-  return s.replace(/<attached:\s*[^>]+>/gi, "").trim();
+  return stripAttached(s).trim();
 }
 
 export function joinSelectedBodies(

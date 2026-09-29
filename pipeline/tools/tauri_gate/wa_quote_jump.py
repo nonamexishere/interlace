@@ -110,22 +110,15 @@ def _rendered_display_body(branch: str, field: str) -> bool:
 
 
 def _quote_hit_display_body(rows: str) -> bool:
-    """Hit path runs displayBody on before, span, and after. Raw q.* is not rendered."""
-    view = _lookup_fn("waView", rows)
+    """Hit path strips attachment tokens without trimming. Raw q.* is not rendered."""
     branch = _non_mail_branch(rows)
-    if not view or not branch:
+    if not branch:
         return False
     for field in ("before", "span", "after"):
-        assigned = _assigned_display_body(view, field)
-        rendered = _rendered_display_body(branch, field)
-        if not assigned and not rendered:
+        if not re.search(rf"stripAttached\s*\(\s*wa\.{field}\b", branch):
             return False
         if re.search(rf"\{{q\.{field}\}}", branch):
             return False
-        if not assigned:
-            stripped = re.sub(rf"displayBody\s*\(\s*(?:wa|q)\.{field}\b", "", branch)
-            if re.search(rf"\b(?:wa|q)\.{field}\b", stripped):
-                return False
     return True
 
 
@@ -223,7 +216,7 @@ def assert_wa_quote_jump(crate: Path) -> None:
         bits.append("a WhatsApp quote does not call openPersonAtMessage")
     if not _quote_hit_display_body(rows) or not _quote_span_passes_find(rows):
         bits.append(
-            "quote hit path must run displayBody on before, span, and after, "
+            "quote hit path must strip attachment tokens with stripAttached, "
             "and the underlined span must pass findQ into LinkifyBody or splitFind"
         )
     if bits:
