@@ -3,8 +3,10 @@
 //! Matrix IDs (gate grep):
 //! WA425-RESOLVED WA425-MISSING WA425-SAME-TEXT WA425-OTHER
 //! WA425-REIMPORT WA425-NO-PARENT
+//! WA425-YOU-COLLIDE WA425-YOU-MISS WA425-YOU-SELF WA425-YOU-TR
 //!
 //! Placeholders Ada / Berk / Self only. Bodies are "hello" and "reply".
+//! WA425-YOU-* uses Ada, the export token You or Sen, and body "other".
 //! A same-line iOS body keeps one embedded export line. A following physical
 //! header line is its own message, so fixtures stay on one physical line.
 //! No quote resolver is exported. `thread_parent_id` stays NULL. The jump
@@ -61,6 +63,16 @@ fn wa_opts(name: &str) -> ImportOpts {
 
 fn import_zip(arch: &mut interlace_core::db::Archive, zip: &Path, name: &str) {
     arch.run_import(SourceKind::WhatsappIosZip, zip, &wa_opts(name))
+        .expect("whatsapp import");
+}
+
+fn import_zip_tr(arch: &mut interlace_core::db::Archive, zip: &Path, name: &str) {
+    let opts = ImportOpts {
+        locale: Some("tr-TR".into()),
+        conversation_name: Some(name.into()),
+        ..ImportOpts::default()
+    };
+    arch.run_import(SourceKind::WhatsappIosZip, zip, &opts)
         .expect("whatsapp import");
 }
 
@@ -412,6 +424,44 @@ fn resolve_body(
     resolve_wa_quote(arch, msg.conversation_id, body)
 }
 
+/// One row: sender `identities.display_name` plus `body_text`. Not a person named Self.
+fn message_id_for(arch: &interlace_core::db::Archive, display_name: &str, body: &str) -> i64 {
+    let mut stmt = arch
+        .conn
+        .prepare(
+            "SELECT m.id
+             FROM messages m
+             JOIN identities i ON i.id = m.sender_identity_id
+             WHERE i.display_name = ?1 AND m.body_text = ?2
+             ORDER BY m.id",
+        )
+        .unwrap();
+    let ids: Vec<i64> = stmt
+        .query_map(rusqlite::params![display_name, body], |r| r.get(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    drop(stmt);
+    if ids.len() != 1 {
+        let mut dump = arch
+            .conn
+            .prepare(
+                "SELECT m.id, i.display_name, i.value_raw, m.body_text
+                 FROM messages m
+                 LEFT JOIN identities i ON i.id = m.sender_identity_id
+                 ORDER BY m.id",
+            )
+            .unwrap();
+        let rows: Vec<(i64, Option<String>, Option<String>, Option<String>)> = dump
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        panic!("expected one {display_name:?} body {body:?}, got {ids:?}; rows {rows:?}");
+    }
+    ids[0]
+}
+
 /// A prose label is not a quote when the body also has an earlier line.
 #[test]
 fn wa_quote_prose_colon_is_not_a_quote() {
@@ -482,6 +532,133 @@ fn wa_quote_timestamped_missing_stays_a_miss() {
     assert!(
         hit.message_id.is_none(),
         "timestamped miss must not name a message, got {hit:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA425-YOU-COLLIDE: same clock, You and Sen both say hello. Ada quotes Sen.
+#[test]
+fn wa_quote_you_collide_resolves_to_named_sen() {
+    let root = tmp_root();
+    let chat = "\
+[2019-06-01, 10:00:03] You: hello
+[2019-06-01, 10:00:03] Sen: hello
+[2019-06-01, 10:05:00] Ada: [2019-06-01, 10:00:03] Sen: hello
+";
+    let zip = write_ios_zip(&root.join("zips"), "WhatsApp Chat - Ada", chat);
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    import_zip(&mut arch, &zip, "you-sen");
+
+    let you_id = message_id_for(&arch, "You", "hello");
+    let sen_id = message_id_for(&arch, "Sen", "hello");
+    assert_ne!(
+        you_id, sen_id,
+        "WA425-YOU-COLLIDE: You and Sen must be two rows"
+    );
+    let quote = "[2019-06-01, 10:00:03] Sen: hello";
+    let hit = resolve_body(&arch, quote)
+        .expect("resolve")
+        .expect("WA425-YOU-COLLIDE: timestamped quote");
+    assert_ne!(
+        hit.message_id,
+        Some(you_id),
+        "WA425-YOU-COLLIDE: opened You {you_id}, not Sen {sen_id}: {hit:?}"
+    );
+    assert_eq!(
+        hit.message_id,
+        Some(sen_id),
+        "WA425-YOU-COLLIDE: expected Sen {sen_id}, got {hit:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA425-YOU-MISS: Sen never said hello. Ada quotes Sen at You's timestamp.
+#[test]
+fn wa_quote_you_miss_does_not_open_you() {
+    let root = tmp_root();
+    let chat = "\
+[2019-06-01, 10:00:03] You: hello
+[2019-06-01, 10:01:04] Sen: other
+[2019-06-01, 10:05:00] Ada: [2019-06-01, 10:00:03] Sen: hello
+";
+    let zip = write_ios_zip(&root.join("zips"), "WhatsApp Chat - Ada", chat);
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    import_zip(&mut arch, &zip, "you-sen-miss");
+
+    let you_id = message_id_for(&arch, "You", "hello");
+    let sen_id = message_id_for(&arch, "Sen", "other");
+    assert_ne!(you_id, sen_id);
+    let quote = "[2019-06-01, 10:00:03] Sen: hello";
+    let hit = resolve_body(&arch, quote)
+        .expect("resolve")
+        .expect("WA425-YOU-MISS: timestamped quote");
+    assert!(
+        hit.message_id.is_none(),
+        "WA425-YOU-MISS: message_id must be absent, not You {you_id}, got {hit:?}"
+    );
+    assert_ne!(
+        hit.message_id,
+        Some(you_id),
+        "WA425-YOU-MISS: must not open You {you_id}, got {hit:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA425-YOU-SELF: no Sen. Ada quotes the You line that is in the chat.
+#[test]
+fn wa_quote_you_self_resolves_to_you() {
+    let root = tmp_root();
+    let chat = "\
+[2019-06-01, 10:00:03] You: hello
+[2019-06-01, 10:05:00] Ada: [2019-06-01, 10:00:03] You: hello
+";
+    let zip = write_ios_zip(&root.join("zips"), "WhatsApp Chat - Ada", chat);
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    import_zip(&mut arch, &zip, "you-only");
+
+    let named_sen: i64 = arch
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM identities WHERE display_name = 'Sen'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(named_sen, 0, "WA425-YOU-SELF: no participant named Sen");
+    let you_id = message_id_for(&arch, "You", "hello");
+    let quote = "[2019-06-01, 10:00:03] You: hello";
+    let hit = resolve_body(&arch, quote)
+        .expect("resolve")
+        .expect("WA425-YOU-SELF: timestamped quote");
+    assert_eq!(
+        hit.message_id,
+        Some(you_id),
+        "WA425-YOU-SELF: expected You {you_id}, got {hit:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA425-YOU-TR: tr-TR pack. The only Sen line is self. Ada quotes it.
+#[test]
+fn wa_quote_you_tr_resolves_to_sen() {
+    let root = tmp_root();
+    let chat = "\
+[1.6.2019, 10:00:03] Sen: hello
+[1.6.2019, 10:05:00] Ada: [1.6.2019, 10:00:03] Sen: hello
+";
+    let zip = write_ios_zip(&root.join("zips"), "WhatsApp Chat - Ada", chat);
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    import_zip_tr(&mut arch, &zip, "sen-only");
+
+    let sen_id = message_id_for(&arch, "Sen", "hello");
+    let quote = "[1.6.2019, 10:00:03] Sen: hello";
+    let hit = resolve_body(&arch, quote)
+        .expect("resolve")
+        .expect("WA425-YOU-TR: timestamped quote");
+    assert_eq!(
+        hit.message_id,
+        Some(sen_id),
+        "WA425-YOU-TR: expected Sen {sen_id}, got {hit:?}"
     );
     let _ = std::fs::remove_dir_all(&root);
 }

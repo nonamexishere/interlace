@@ -45,7 +45,10 @@ pub fn resolve_wa_quote(
     let want = blake3::hash(span.text.trim().as_bytes())
         .to_hex()
         .to_string();
-    let you = packs.iter().any(|p| is_you_token(p, &span.sender));
+    // Import locale is not stored. A you-token that names a non-self participant
+    // in this chat is that person; otherwise the token stays Self.
+    let you = packs.iter().any(|p| is_you_token(p, &span.sender))
+        && !non_self_participant_named(archive, conversation_id, &span.sender)?;
     let mut hits: Vec<(i64, Option<String>)> = Vec::new();
     let (sql, params) = quote_query(conversation_id, &span, you, &packs);
     let mut stmt = archive.conn.prepare(&sql)?;
@@ -147,6 +150,46 @@ fn find_quote(body: &str, packs: &[LocalePack]) -> Option<QuoteSpan> {
         });
     }
     None
+}
+
+/// `display_name` or `value_raw` equals `sender` (`strip_cf` of trim), and the
+/// identity is not self on this conversation (`is_self`, `self_identities`, or role `me`).
+fn non_self_participant_named(
+    archive: &Archive,
+    conversation_id: i64,
+    sender: &str,
+) -> Result<bool, CoreError> {
+    let mut stmt = archive.conn.prepare(
+        "SELECT COALESCE(i.display_name, ''), COALESCE(i.value_raw, ''),
+                CASE WHEN p.is_self = 1 THEN 1 ELSE 0 END,
+                CASE WHEN si.identity_id IS NOT NULL THEN 1 ELSE 0 END,
+                COALESCE(cp.role, '')
+         FROM conversation_participants cp
+         JOIN identities i ON i.id = cp.identity_id
+         LEFT JOIN person_identities pi ON pi.identity_id = i.id
+         LEFT JOIN persons p ON p.id = pi.person_id AND p.tombstoned_at IS NULL
+         LEFT JOIN self_identities si ON si.identity_id = i.id
+         WHERE cp.conversation_id = ?",
+    )?;
+    let rows = stmt.query_map([conversation_id], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, i64>(2)?,
+            r.get::<_, i64>(3)?,
+            r.get::<_, String>(4)?,
+        ))
+    })?;
+    for row in rows {
+        let (display, raw, is_self, in_self, role) = row?;
+        let named = [&display, &raw]
+            .into_iter()
+            .any(|n| !n.is_empty() && strip_cf(n.trim()) == sender);
+        if named && is_self != 1 && in_self != 1 && role != "me" {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn quote_query(
