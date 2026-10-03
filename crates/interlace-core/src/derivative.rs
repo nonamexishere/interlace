@@ -206,7 +206,19 @@ fn point_derivative(
 }
 
 fn still_from_image_crate(bytes: &[u8]) -> Option<(Vec<u8>, &'static str)> {
-    let img = image::load_from_memory(bytes).ok()?;
+    use image::ImageDecoder;
+
+    // `load_from_memory` leaves EXIF orientation to the viewer. Bake it into
+    // the pixels so the still carries no orientation tag.
+    let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?;
+    let mut decoder = reader.into_decoder().ok()?;
+    let orientation = decoder
+        .orientation()
+        .unwrap_or(image::metadata::Orientation::NoTransforms);
+    let mut img = image::DynamicImage::from_decoder(decoder).ok()?;
+    img.apply_orientation(orientation);
     encode_dynamic(img, bytes)
 }
 
@@ -297,15 +309,36 @@ fn platform_pdf(_bytes: &[u8], _path: Option<&Path>) -> Option<(Vec<u8>, &'stati
     None
 }
 
+/// ImageIO bitmaps are premultiplied. JPEG and PNG stills store straight alpha.
+#[cfg(target_os = "macos")]
+fn straight_alpha(img: image::DynamicImage) -> (image::DynamicImage, bool) {
+    let mut rgba = img.into_rgba8();
+    let mut opaque = true;
+    for px in rgba.pixels_mut() {
+        let alpha = px.0[3];
+        if alpha != 255 {
+            opaque = false;
+        }
+        if alpha == 0 || alpha == 255 {
+            continue;
+        }
+        let alpha = u32::from(alpha);
+        for channel in &mut px.0[..3] {
+            let straight = u32::from(*channel) * 255 / alpha;
+            *channel = u8::try_from(straight).unwrap_or(255);
+        }
+    }
+    (image::DynamicImage::ImageRgba8(rgba), opaque)
+}
+
 #[cfg(target_os = "macos")]
 fn platform_image_fallback(bytes: &[u8], path: Option<&Path>) -> Option<(Vec<u8>, &'static str)> {
     let rgba = macos::imageio_rgba(path?)?;
-    let opaque = rgba.pixels().all(|px| px.0[3] == 255);
-    let img = fit_edge(image::DynamicImage::ImageRgba8(rgba));
+    let (straight, opaque) = straight_alpha(fit_edge(image::DynamicImage::ImageRgba8(rgba)));
     if opaque {
-        encode_jpeg(img, bytes)
+        encode_jpeg(straight, bytes)
     } else {
-        encode_png(img, bytes)
+        encode_png(straight, bytes)
     }
 }
 
@@ -360,7 +393,9 @@ mod macos {
     use objc2::runtime::AnyObject;
     use objc2::ClassType;
     use objc2_av_foundation::{AVAssetImageGenerator, AVURLAsset, AVURLAssetOverrideMIMETypeKey};
-    use objc2_core_foundation::{CGPoint, CGRect, CGSize, CFURL};
+    use objc2_core_foundation::{
+        CFBoolean, CFDictionary, CFNumber, CFType, CGPoint, CGRect, CGSize, CFURL,
+    };
     use objc2_core_graphics::{
         CGBitmapContextCreate, CGBitmapContextGetBytesPerRow, CGBitmapContextGetData, CGColorSpace,
         CGContext, CGImage, CGImageAlphaInfo, CGImageByteOrderInfo, CGPDFBox, CGPDFDocument,
@@ -368,13 +403,40 @@ mod macos {
     };
     use objc2_core_media::{CMTime, CMTimeFlags};
     use objc2_foundation::{NSDictionary, NSString, NSURL};
+    use objc2_image_io::{
+        kCGImageSourceCreateThumbnailFromImageAlways, kCGImageSourceCreateThumbnailWithTransform,
+        kCGImageSourceThumbnailMaxPixelSize,
+    };
 
     pub(super) fn imageio_rgba(path: &Path) -> Option<RgbaImage> {
         let url = CFURL::from_file_path(path)?;
-        // SAFETY: `url` is a file URL for a CAS blob. Index 0 is the primary image.
+        // SAFETY: `url` is a file URL for a CAS blob. Source options are unused.
         let src = unsafe { objc2_image_io::CGImageSource::with_url(&url, None) }?;
-        let cg = unsafe { src.image_at_index(0, None) }?;
+        // SAFETY: the primary index is the image ImageIO marks current. HEIF may not be 0.
+        let index = unsafe { src.primary_image_index() };
+        let opts = thumbnail_options();
+        // SAFETY: option keys are ImageIO thumbnail CFStrings. Values are CFBoolean or
+        // CFNumber. `as_opaque` only erases those CF types for `thumbnail_at_index`.
+        let cg = unsafe { src.thumbnail_at_index(index, Some(opts.as_opaque())) }?;
         cgimage_rgba(&cg)
+    }
+
+    fn thumbnail_options() -> objc2_core_foundation::CFRetained<CFDictionary<CFType, CFType>> {
+        let max_px = CFNumber::new_i32(480);
+        // SAFETY: these ImageIO keys are process-lifetime CFStrings.
+        let keys: [&CFType; 3] = unsafe {
+            [
+                kCGImageSourceCreateThumbnailFromImageAlways.as_ref(),
+                kCGImageSourceCreateThumbnailWithTransform.as_ref(),
+                kCGImageSourceThumbnailMaxPixelSize.as_ref(),
+            ]
+        };
+        let values: [&CFType; 3] = [
+            CFBoolean::new(true).as_ref(),
+            CFBoolean::new(true).as_ref(),
+            max_px.as_ref(),
+        ];
+        CFDictionary::from_slices(&keys, &values)
     }
 
     pub(super) fn video_rgba(path: &Path, mime_hint: &str) -> Option<RgbaImage> {

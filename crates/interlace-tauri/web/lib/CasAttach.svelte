@@ -103,7 +103,8 @@
       openSrcs = { ...openSrcs, [k]: url };
       videoOpen = { ...videoOpen, [k]: true };
     } catch {
-      broken = { ...broken, [k]: true };
+      // A failed original fetch must leave the poster up and stay closed.
+      videoOpen = { ...videoOpen, [k]: false };
     }
   }
 
@@ -387,7 +388,7 @@
             Photo/file not stored ({a.filename || "attachment"}). Re-import the WhatsApp ZIP from the
             Import tab (old messages stay, missing files are added).
           </p>
-        {:else if isImage(a) && !broken[keyOf(a)]}
+        {:else if isImage(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
           <button
             type="button"
             class="block cursor-pointer border-0 bg-transparent p-0 text-left focus-visible:ring-2 focus-visible:ring-ring"
@@ -402,19 +403,20 @@
             aria-label={`Open ${a.filename || "image"} full size`}
           >
             <span data-cas-image-slot class="cas-image-slot max-h-64">
-              {#if srcs[keyOf(a)]}
-                <img
-                  src={srcs[keyOf(a)]}
-                  alt={a.filename || "image"}
-                  class="max-h-64 max-w-full object-contain"
-                  data-deriv-still={preferStill ? "" : undefined}
-                  onerror={() => {
-                    broken = { ...broken, [keyOf(a)]: true };
-                  }}
-                />
-              {/if}
+              <img
+                src={srcs[keyOf(a)]}
+                alt={a.filename || "image"}
+                class="max-h-64 max-w-full object-contain"
+                data-deriv-still={preferStill ? "" : undefined}
+                onerror={() => {
+                  broken = { ...broken, [keyOf(a)]: true };
+                }}
+              />
             </span>
           </button>
+        {:else if isImage(a) && !broken[keyOf(a)] && !quiet[keyOf(a)]}
+          <!-- Box stays up while the URL loads. A missing still sets quiet and uses the filename line. -->
+          <span class="cas-image-slot max-h-64"></span>
         {:else if preferStill && isVideo(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
           <div class="relative inline-block max-w-full">
             <img
@@ -441,7 +443,7 @@
                 srcKey={keyOf(a)}
                 filename={a.filename}
                 onBroken={() => {
-                  broken = { ...broken, [keyOf(a)]: true };
+                  videoOpen = { ...videoOpen, [keyOf(a)]: false };
                 }}
                 onClose={() => {
                   videoOpen = { ...videoOpen, [keyOf(a)]: false };

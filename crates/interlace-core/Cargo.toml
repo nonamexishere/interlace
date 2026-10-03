@@ -39,6 +39,7 @@ objc2-image-io = { version = "0.3.2", features = ["objc2-core-graphics"] }
 [dev-dependencies]
 rusqlite.workspace = true
 interlace-fixtures = { path = "../interlace-fixtures" }
+image.workspace = true
 
 [[bench]]
 name = "search"

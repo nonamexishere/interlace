@@ -415,6 +415,15 @@ fn assert_still_image(path: &Path) {
     assert!(jpeg || png, "DERIV-ADDR: still is not a JPEG or PNG");
 }
 
+/// `load_from_memory` does not apply EXIF orientation. Callers must not either.
+fn decoded_size(bytes: &[u8], id_tag: &str) -> (u32, u32) {
+    let img = match image::load_from_memory(bytes) {
+        Ok(img) => img,
+        Err(err) => panic!("{id_tag}: load_from_memory failed: {err}"),
+    };
+    (img.width(), img.height())
+}
+
 #[test]
 fn deriv_doctor_writes_jpeg_still() {
     let (root, arch, hash, id) = seed_blob("jpeg", JPEG, "ada.jpg", "image/jpeg", "image");
@@ -750,5 +759,114 @@ fn deriv_epoch_stays_1() {
     let root = tmp_root("epoch");
     let arch = init_archive(&root).unwrap();
     assert_eq!(schema_epoch(&arch), 1, "DERIV-EPOCH");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn deriv_jpeg_orientation_is_upright() {
+    let bytes: &[u8] = include_bytes!("fixtures/deriv/orient.jpg");
+    let (ow, oh) = decoded_size(bytes, "DERIV-ORIENT");
+    assert_eq!(
+        (ow, oh),
+        (8, 2),
+        "DERIV-ORIENT: original load_from_memory is {ow}x{oh}, want 8x2"
+    );
+    let (root, arch, hash, _id) = seed_blob("orient-jpg", bytes, "ada.jpg", "image/jpeg", "image");
+    let issues = arch.doctor_issues().unwrap();
+    assert!(
+        !issues.iter().any(|i| i.contains("CAS blob missing")),
+        "DERIV-ORIENT: {issues:?}"
+    );
+    let orig = std::fs::read(interlace_core::cas::cas_blob_path(&root, &hash).unwrap()).unwrap();
+    assert_eq!(orig, bytes, "DERIV-ORIENT: original CAS bytes changed");
+    let stills = stills_besides(&root, bytes);
+    assert_eq!(
+        stills.len(),
+        1,
+        "DERIV-ORIENT: expected one still whose bytes differ from the original"
+    );
+    let still = std::fs::read(&stills[0]).unwrap();
+    let (w, h) = decoded_size(&still, "DERIV-ORIENT");
+    assert_eq!(
+        (w, h),
+        (2, 8),
+        "DERIV-ORIENT: still load_from_memory is {w}x{h}, want 2x8"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn deriv_heic_orientation_is_upright() {
+    let bytes: &[u8] = include_bytes!("fixtures/deriv/orient.heic");
+    let (root, arch, hash, _id) =
+        seed_blob("orient-heic", bytes, "ada.heic", "image/heic", "image");
+    let issues = arch.doctor_issues().unwrap();
+    assert!(
+        !issues.iter().any(|i| i.contains("CAS blob missing")),
+        "DERIV-ORIENT-HEIC: {issues:?}"
+    );
+    let orig = std::fs::read(interlace_core::cas::cas_blob_path(&root, &hash).unwrap()).unwrap();
+    assert_eq!(orig, bytes, "DERIV-ORIENT-HEIC: original CAS bytes changed");
+    let stills = stills_besides(&root, bytes);
+    assert_eq!(
+        stills.len(),
+        1,
+        "DERIV-ORIENT-HEIC: expected one still whose bytes differ from the original"
+    );
+    let still = std::fs::read(&stills[0]).unwrap();
+    let (w, h) = decoded_size(&still, "DERIV-ORIENT-HEIC");
+    assert_eq!(
+        (w, h),
+        (2, 8),
+        "DERIV-ORIENT-HEIC: still load_from_memory is {w}x{h}, want 2x8"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn deriv_bmp_alpha_is_straight() {
+    let bytes: &[u8] = include_bytes!("fixtures/deriv/alpha.bmp");
+    let (root, arch, hash, _id) = seed_blob("alpha-bmp", bytes, "ada.bmp", "image/bmp", "image");
+    let issues = arch.doctor_issues().unwrap();
+    assert!(
+        !issues.iter().any(|i| i.contains("CAS blob missing")),
+        "DERIV-ALPHA: {issues:?}"
+    );
+    let orig = std::fs::read(interlace_core::cas::cas_blob_path(&root, &hash).unwrap()).unwrap();
+    assert_eq!(orig, bytes, "DERIV-ALPHA: original CAS bytes changed");
+    let stills = stills_besides(&root, bytes);
+    assert_eq!(
+        stills.len(),
+        1,
+        "DERIV-ALPHA: expected one still whose bytes differ from the original"
+    );
+    let still = std::fs::read(&stills[0]).unwrap();
+    assert!(
+        still.starts_with(&[0x89, 0x50, 0x4E, 0x47]),
+        "DERIV-ALPHA: still is not a PNG"
+    );
+    let rgba = match image::load_from_memory(&still) {
+        Ok(img) => img.to_rgba8(),
+        Err(err) => panic!("DERIV-ALPHA: load_from_memory failed: {err}"),
+    };
+    let px0 = rgba.get_pixel(0, 0);
+    assert!(
+        px0[0] >= 200,
+        "DERIV-ALPHA: pixel 0 red is {}, want >= 200",
+        px0[0]
+    );
+    assert!(
+        (100..=160).contains(&px0[3]),
+        "DERIV-ALPHA: pixel 0 alpha is {}, want 100..=160",
+        px0[3]
+    );
+    let px1 = rgba.get_pixel(1, 0);
+    assert_eq!(
+        px1[1], 255,
+        "DERIV-ALPHA: pixel 1 green is {}, want 255",
+        px1[1]
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
