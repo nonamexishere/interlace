@@ -64,3 +64,5 @@ jobs:
           tool: cargo-deny@0.18.2
       - name: gate_tauri
         run: python3 pipeline/tools/gate_tauri.py
+      - name: attachment derivatives
+        run: cargo test -p interlace-core --test attachment_derivatives

@@ -291,6 +291,7 @@ Space play/pause; `#q` still types a space. Videos play in-window from the same
 local CAS bytes (`data:`); autoplay is off. A stored video can be opened
 full-size in-window. PDFs open in-window from
 local CAS. Video and PDF are never a remote stream (no remote viewer).
+The People timeline scrolls a content-addressed still (photo, video poster, PDF first page); open and playback still use the original.
 A person’s **Media** gallery (Find / Jump row, or the inspector Media
 button) lists that person’s stored CAS image / video / sticker files,
 plus Gmail inline image/video parts. Click a photo for the existing

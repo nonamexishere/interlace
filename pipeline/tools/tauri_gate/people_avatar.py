@@ -11,7 +11,7 @@ Chrome: one PersonAvatar.svelte on expanded people row, collapsed rail,
 inspector header, merge picker. Reserved size-8. Initials: two-word first
 letters / Ada→AD / empty User / CJK one grapheme. self same PHOTO/initials
 rule. src / {#key} = person id + hash. Name-only / missing blob / onerror
-→ initials. No Search/timeline faces. No image crate / dHash. D24 app.md.
+→ initials. No Search/timeline faces. No photo_dhash. The image crate is only for #427 attachment stills. D24 app.md.
 Muted initials.
 
 #138 / #212 / #213 / #265 stay as their own asserts. Do not delete them.
@@ -19,6 +19,7 @@ Placeholders only (Ada / Berk).
 """
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -122,10 +123,6 @@ _PHOTO_FIELD_TS = re.compile(r"\bphoto_cas_hash\s*\??\s*:\s*string")
 _PHOTO_BYTES = re.compile(
     r"\bphoto_bytes\b|\bphoto_data\b|\bphotoCasBytes\b|photo_cas_hash\s*:\s*Vec\s*<"
 )
-_IMAGE_CRATE = re.compile(
-    r"""(?m)^\s*(?:image\s*=|image\s*\{)\s*"""
-    r"""|^\s*image\s*=\s*["']"""
-)
 _DHASH_COMPUTE = re.compile(
     r"""
     \bphoto_dhash\s*=
@@ -180,19 +177,6 @@ def _core_people_blob(root: Path) -> str:
     base = root / "crates" / "interlace-core" / "src"
     for rel in ("people.rs", "people/list.rs", "people/attach.rs"):
         p = base / rel
-        if p.is_file():
-            parts.append(p.read_text())
-    return "\n".join(parts)
-
-
-def _core_toml_blob(root: Path) -> str:
-    parts: list[str] = []
-    for rel in (
-        "Cargo.toml",
-        "crates/interlace-core/Cargo.toml",
-        "crates/interlace-tauri/Cargo.toml",
-    ):
-        p = root / rel
         if p.is_file():
             parts.append(p.read_text())
     return "\n".join(parts)
@@ -404,14 +388,27 @@ def assert_people_avatar(crate: Path) -> None:
             "(keep #322 img-free names)"
         )
 
-    # 10) No image crate / dHash on this ticket.
-    toml = _core_toml_blob(root)
-    if _IMAGE_CRATE.search(toml) or re.search(
-        r"""(?m)^\s*image\s*=\s*\{""", toml
-    ):
-        fail(f"{_ISSUE}: do not add the image crate (#80 / D14)")
+    # 10) photo_dhash stays forbidden. The image crate is only for #427 stills
+    # and the test that measures those stills.
     if _DHASH_COMPUTE.search(people_clean):
         fail(f"{_ISSUE}: do not compute photo_dhash (#80 / D14)")
+    allowed = {
+        "crates/interlace-core/src/derivative.rs",
+        "crates/interlace-core/tests/attachment_derivatives.rs",
+    }
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in ("target", "node_modules")]
+        for name in filenames:
+            if not name.endswith(".rs"):
+                continue
+            path = Path(dirpath, name)
+            if path.relative_to(root).as_posix() in allowed:
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if "image::" in text or "use image" in text:
+                fail(
+                    f"{_ISSUE}: do not use the image crate outside attachment stills (#427)"
+                )
 
     # 11) D24 — people / inspector / merge mention local photo or initials.
     docs = _text(root / "docs" / "user" / "app.md")

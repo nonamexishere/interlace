@@ -54,7 +54,7 @@ fn lookup_filename(archive: &Archive, name: &str) -> Result<Option<AttachmentRef
     archive
         .conn
         .query_row(
-            "SELECT id, cas_hash, filename, mime, kind, omitted, missing
+            "SELECT id, cas_hash, filename, mime, kind, omitted, missing, derivative_cas_hash
              FROM attachments WHERE filename = ?1 AND cas_hash IS NOT NULL LIMIT 1",
             [name],
             |r| {
@@ -66,6 +66,7 @@ fn lookup_filename(archive: &Archive, name: &str) -> Result<Option<AttachmentRef
                     kind: r.get(4)?,
                     omitted: r.get::<_, i64>(5)? != 0,
                     missing: r.get::<_, i64>(6)? != 0,
+                    derivative_cas_hash: r.get(7)?,
                 })
             },
         )
@@ -96,6 +97,7 @@ pub fn complete_attachments(
                 kind: guess_kind(&name),
                 omitted: false,
                 missing: true,
+                derivative_cas_hash: None,
             });
         }
     }
@@ -124,7 +126,7 @@ pub fn attachments_for(
 ) -> Result<HashMap<i64, Vec<AttachmentRef>>, CoreError> {
     let mut map: HashMap<i64, Vec<AttachmentRef>> = HashMap::new();
     let mut stmt = archive.conn.prepare(
-        "SELECT id, message_id, cas_hash, filename, mime, kind, omitted, missing
+        "SELECT id, message_id, cas_hash, filename, mime, kind, omitted, missing, derivative_cas_hash
          FROM attachments WHERE message_id = ?1 ORDER BY id",
     )?;
     for id in message_ids {
@@ -137,6 +139,7 @@ pub fn attachments_for(
                 kind: r.get(5)?,
                 omitted: r.get::<_, i64>(6)? != 0,
                 missing: r.get::<_, i64>(7)? != 0,
+                derivative_cas_hash: r.get(8)?,
             })
         })?;
         let mut v = Vec::new();

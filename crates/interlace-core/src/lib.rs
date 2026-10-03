@@ -5,6 +5,7 @@
 pub mod cas;
 pub mod cli;
 pub mod db;
+mod derivative;
 pub mod identity;
 pub mod import;
 pub mod model;

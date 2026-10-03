@@ -14,6 +14,7 @@
   export type Attachment = {
     id: number;
     cas_hash?: string | null;
+    derivative_cas_hash?: string | null;
     filename?: string | null;
     mime?: string | null;
     kind: string;
@@ -27,12 +28,14 @@
     flush = false,
     onOpenImage,
     messageId = undefined,
+    preferStill = false,
   }: {
     items: Attachment[];
     showToast?: (message: string) => void;
     flush?: boolean;
     onOpenImage?: (a: Attachment) => void;
     messageId?: number;
+    preferStill?: boolean;
   } = $props();
 
   function isImage(a: Attachment) {
@@ -69,6 +72,9 @@
   }
 
   let srcs = $state<Record<string, string>>({});
+  let openSrcs = $state<Record<string, string>>({});
+  let videoOpen = $state<Record<string, boolean>>({});
+  let quiet = $state<Record<string, boolean>>({});
   let broken = $state<Record<string, boolean>>({});
   const requested = new Set<string>();
 
@@ -77,8 +83,29 @@
     return h || null;
   }
 
+  function stillHash(a: Attachment): string | null {
+    const h =
+      a.derivative_cas_hash ??
+      (a as { derivativeCasHash?: string | null }).derivativeCasHash;
+    return h || null;
+  }
+
   function keyOf(a: Attachment): string {
     return hashOf(a) || a.filename || String(a.id);
+  }
+
+  async function openOriginalVideo(a: Attachment) {
+    const hash = hashOf(a);
+    const k = keyOf(a);
+    if (!hash) return;
+    try {
+      const url = await api.casDataUrl(hash);
+      openSrcs = { ...openSrcs, [k]: url };
+      videoOpen = { ...videoOpen, [k]: true };
+    } catch {
+      // A failed original fetch must leave the poster up and stay closed.
+      videoOpen = { ...videoOpen, [k]: false };
+    }
   }
 
   $effect(() => {
@@ -86,6 +113,24 @@
       const hash = hashOf(a);
       const k = keyOf(a);
       if (!hash || requested.has(k)) continue;
+      if (preferStill && (isImage(a) || isVideo(a) || isPdf(a))) {
+        const still = stillHash(a);
+        if (!still) {
+          requested.add(k);
+          quiet = { ...quiet, [k]: true };
+          continue;
+        }
+        requested.add(k);
+        api
+          .casDataUrl(still)
+          .then((url) => {
+            srcs = { ...srcs, [k]: url };
+          })
+          .catch(() => {
+            broken = { ...broken, [k]: true };
+          });
+        continue;
+      }
       requested.add(k);
       api
         .casDataUrl(hash)
@@ -343,7 +388,7 @@
             Photo/file not stored ({a.filename || "attachment"}). Re-import the WhatsApp ZIP from the
             Import tab (old messages stay, missing files are added).
           </p>
-        {:else if isImage(a) && !broken[keyOf(a)]}
+        {:else if isImage(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
           <button
             type="button"
             class="block cursor-pointer border-0 bg-transparent p-0 text-left focus-visible:ring-2 focus-visible:ring-ring"
@@ -358,18 +403,54 @@
             aria-label={`Open ${a.filename || "image"} full size`}
           >
             <span data-cas-image-slot class="cas-image-slot max-h-64">
-              {#if srcs[keyOf(a)]}
-                <img
-                  src={srcs[keyOf(a)]}
-                  alt={a.filename || "image"}
-                  class="max-h-64 max-w-full object-contain"
-                  onerror={() => {
-                    broken = { ...broken, [keyOf(a)]: true };
-                  }}
-                />
-              {/if}
+              <img
+                src={srcs[keyOf(a)]}
+                alt={a.filename || "image"}
+                class="max-h-64 max-w-full object-contain"
+                data-deriv-still={preferStill ? "" : undefined}
+                onerror={() => {
+                  broken = { ...broken, [keyOf(a)]: true };
+                }}
+              />
             </span>
           </button>
+        {:else if isImage(a) && !broken[keyOf(a)] && !quiet[keyOf(a)]}
+          <!-- Box stays up while the URL loads. A missing still sets quiet and uses the filename line. -->
+          <span class="cas-image-slot max-h-64"></span>
+        {:else if preferStill && isVideo(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
+          <div class="relative inline-block max-w-full">
+            <img
+              data-deriv-still
+              src={srcs[keyOf(a)]}
+              alt={a.filename || "video"}
+              class="max-h-64 max-w-full object-contain"
+            />
+            <button
+              type="button"
+              class="absolute inset-0 m-auto inline-flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Play video"
+              onclick={(e) => {
+                e.stopPropagation();
+                openOriginalVideo(a);
+              }}
+            >
+              <Play class="size-4" />
+            </button>
+            {#if videoOpen[keyOf(a)] && openSrcs[keyOf(a)]}
+              <CasVideo
+                overlayOnly
+                srcs={openSrcs}
+                srcKey={keyOf(a)}
+                filename={a.filename}
+                onBroken={() => {
+                  videoOpen = { ...videoOpen, [keyOf(a)]: false };
+                }}
+                onClose={() => {
+                  videoOpen = { ...videoOpen, [keyOf(a)]: false };
+                }}
+              />
+            {/if}
+          </div>
         {:else if isVideo(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
           <CasVideo
             srcs={srcs}
@@ -378,6 +459,13 @@
             onBroken={() => {
               broken = { ...broken, [keyOf(a)]: true };
             }}
+          />
+        {:else if preferStill && isPdf(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
+          <img
+            data-deriv-still
+            src={srcs[keyOf(a)]}
+            alt={a.filename || "PDF"}
+            class="max-h-64 max-w-full object-contain"
           />
         {:else if isPdf(a) && srcs[keyOf(a)] && !broken[keyOf(a)]}
           <CasPdf
@@ -473,7 +561,7 @@
                 {" "}/ {formatTime(dur)}{/if}
             </span>
           </div>
-        {:else if !broken[keyOf(a)] && !srcs[keyOf(a)]}
+        {:else if !broken[keyOf(a)] && !srcs[keyOf(a)] && !quiet[keyOf(a)]}
           <p class="text-xs text-muted-foreground">Loading {a.filename || "attachment"}…</p>
         {:else}
           <p class="text-xs text-muted-foreground">
