@@ -358,7 +358,7 @@
                   {/if}
                 {/if}
               </div>
-              <CasAttach data-bubble-attach flush={true} messageId={item.row.message_id} items={item.row.attachments || []} {showToast} onOpenImage={(a) => onOpenImage(item.row.message_id, a)} />
+              <CasAttach data-bubble-attach flush={true} messageId={item.row.message_id} items={item.row.attachments || []} {showToast} onOpenImage={(a) => onOpenImage(item.row.message_id, a)} preferStill={true} />
             </article>
             </div>
           </div>

@@ -52,6 +52,9 @@ pub(super) fn persist_attachment(
                 )?;
                 ctx.stats.upgraded_attachments += 1;
                 ctx.stats.attachments_stored += 1;
+                if let Some(b) = bytes {
+                    store_new_derivative(ctx, aid, h, b, &rec)?;
+                }
             }
         }
         return Ok(());
@@ -75,17 +78,55 @@ pub(super) fn persist_attachment(
             rec.missing as i64,
         ],
     )?;
+    let aid = ctx.archive.conn.last_insert_rowid();
     if let Some(ref h) = hash {
         ctx.archive.conn.execute(
             "UPDATE cas_blobs SET refcount = refcount + 1 WHERE hash = ?1",
             [h],
         )?;
         ctx.stats.attachments_stored += 1;
+        if let Some(b) = bytes {
+            store_new_derivative(ctx, aid, h, b, &rec)?;
+        }
     } else if rec.omitted {
         ctx.stats.attachments_omitted += 1;
     } else if rec.missing {
         ctx.stats.attachments_missing += 1;
     }
+    Ok(())
+}
+
+fn store_new_derivative(
+    ctx: &mut DbImportContext<'_>,
+    attachment_id: i64,
+    cas_hash: &str,
+    bytes: &[u8],
+    rec: &NewAttachment,
+) -> Result<(), CoreError> {
+    ctx.archive.conn.execute(
+        "UPDATE attachments SET derivative_cas_hash = NULL WHERE id = ?1",
+        [attachment_id],
+    )?;
+    let kind = attach_kind_sql(rec.kind);
+    let deriv = crate::derivative::still_hash_for_new_bytes(
+        ctx.archive,
+        cas_hash,
+        bytes,
+        rec.filename.as_deref(),
+        rec.mime.as_deref(),
+        kind,
+    )?;
+    let Some(dh) = deriv else {
+        return Ok(());
+    };
+    ctx.archive.conn.execute(
+        "UPDATE attachments SET derivative_cas_hash = ?1 WHERE id = ?2",
+        rusqlite::params![dh, attachment_id],
+    )?;
+    ctx.archive.conn.execute(
+        "UPDATE cas_blobs SET refcount = refcount + 1 WHERE hash = ?1",
+        [dh],
+    )?;
     Ok(())
 }
 

@@ -40,6 +40,7 @@ export type Identity = {
 export type Attachment = {
   id: number;
   cas_hash?: string | null;
+  derivative_cas_hash?: string | null;
   filename?: string | null;
   mime?: string | null;
   kind: string;

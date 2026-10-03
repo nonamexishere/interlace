@@ -65,6 +65,7 @@ fn cas_reference_count(archive: &Archive, hash: &str) -> Result<i64, CoreError> 
     Ok(archive.conn.query_row(
         "SELECT
                 (SELECT COUNT(*) FROM attachments WHERE cas_hash = ?1)
+              + (SELECT COUNT(*) FROM attachments WHERE derivative_cas_hash = ?1)
               + (SELECT COUNT(*) FROM contacts_raw WHERE photo_cas_hash = ?1)
               + (SELECT COUNT(*) FROM messages WHERE raw_cas_hash = ?1)",
         [hash],
@@ -72,7 +73,8 @@ fn cas_reference_count(archive: &Archive, hash: &str) -> Result<i64, CoreError> 
     )?)
 }
 
-/// Delete blobs not referenced by attachments, contact photos, or messages.raw_cas_hash.
+/// Delete blobs not referenced by `attachments.cas_hash`, `attachments.derivative_cas_hash`,
+/// contact photos, or `messages.raw_cas_hash`.
 /// Returns number of files removed. Repairs cas_blobs.refcount.
 pub fn gc_cas(archive: &Archive) -> Result<u64, CoreError> {
     let cas_root = archive.root.join("cas");
@@ -105,7 +107,8 @@ pub fn gc_cas(archive: &Archive) -> Result<u64, CoreError> {
     Ok(removed)
 }
 
-/// Sum sizes of blobs not referenced by attachments, contact photos, or raw rfc822.
+/// Sum sizes of blobs not referenced by `attachments.cas_hash`, `attachments.derivative_cas_hash`,
+/// contact photos, or raw rfc822.
 /// Read-only: does not delete files or rewrite cas_blobs.
 pub fn estimate_unreferenced_cas_bytes(archive: &Archive) -> Result<u64, CoreError> {
     let cas_root = archive.root.join("cas");

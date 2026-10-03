@@ -76,6 +76,14 @@ pub fn open_with_options(opts: &OpenOptions) -> Result<Archive> {
     }
 }
 
+struct AttachmentScanRow {
+    id: i64,
+    hash: String,
+    filename: Option<String>,
+    mime: Option<String>,
+    kind: String,
+}
+
 impl Archive {
     pub fn status(&self) -> Result<serde_json::Value> {
         let archive_id: String = self.conn.query_row(
@@ -221,15 +229,39 @@ impl Archive {
     /// Full scan used by `interlace doctor` and the Doctor tab. Empty = healthy.
     pub fn doctor_issues(&self) -> Result<Vec<String>> {
         let mut issues = self.doctor_issues_quick()?;
-        let mut stmt = self
-            .conn
-            .prepare("SELECT DISTINCT cas_hash FROM attachments WHERE cas_hash IS NOT NULL")?;
-        let hashes = stmt.query_map([], |r| r.get::<_, String>(0))?;
-        for h in hashes {
-            let h = h?;
-            if self.cas_get(&h).is_err() {
-                issues.push(format!("CAS blob missing: {h}"));
+        let attachments: Vec<AttachmentScanRow> = {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, cas_hash, filename, mime, kind
+                 FROM attachments WHERE cas_hash IS NOT NULL",
+            )?;
+            let mapped = stmt.query_map([], |r| {
+                Ok(AttachmentScanRow {
+                    id: r.get(0)?,
+                    hash: r.get(1)?,
+                    filename: r.get(2)?,
+                    mime: r.get(3)?,
+                    kind: r.get(4)?,
+                })
+            })?;
+            let mut rows = Vec::new();
+            for row in mapped {
+                rows.push(row?);
             }
+            rows
+        };
+        for row in attachments {
+            if self.cas_get(&row.hash).is_err() {
+                issues.push(format!("CAS blob missing: {}", row.hash));
+                continue;
+            }
+            crate::derivative::ensure_stored(
+                self,
+                row.id,
+                &row.hash,
+                row.filename.as_deref(),
+                row.mime.as_deref(),
+                &row.kind,
+            )?;
         }
         let mut stmt = self
             .conn

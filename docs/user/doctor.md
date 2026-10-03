@@ -85,7 +85,10 @@ DROPped** (D17).
 
 ## GC CAS
 
-`doctor --gc-cas` deletes blobs not referenced by `attachments.cas_hash` or
-`contacts_raw.photo_cas_hash`. Do not GC from `refcount==0` alone.
+`doctor --gc-cas` deletes blobs not referenced by `attachments.cas_hash`,
+`attachments.derivative_cas_hash`, `contacts_raw.photo_cas_hash`, or
+`messages.raw_cas_hash`. Do not GC from `refcount==0` alone.
+Full doctor creates or restores a still when the original file exists and the still file does not.
+Quick doctor does not walk media and does not create a still. A missing original is still reported and is not invented.
 The in-app Doctor GC confirm names reclaimable bytes before unused files
 are deleted.
