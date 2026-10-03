@@ -65,6 +65,7 @@ pub struct AttachmentRef {
     pub kind: String,
     pub omitted: bool,
     pub missing: bool,
+    pub derivative_cas_hash: Option<String>,
 }
 
 /// Archive label row (`labels.id` / `labels.name`) for the Search filter.

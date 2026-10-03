@@ -36,6 +36,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "0007_gmail_references",
         include_str!("../../migrations/0007_gmail_references.sql"),
     ),
+    (
+        8,
+        "0008_attachment_derivatives",
+        include_str!("../../migrations/0008_attachment_derivatives.sql"),
+    ),
 ];
 
 /// Apply pending numbered SQL migrations. `0001_init.sql` is version 1.
