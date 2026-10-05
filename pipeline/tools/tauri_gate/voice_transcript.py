@@ -181,6 +181,21 @@ def _cargo_bits(root: Path) -> list[str]:
     return bits
 
 
+def _resources_map_weights(resources: object) -> bool:
+    """Object destinations only. A list path is copied under `_up_`, not the resource root."""
+    if not isinstance(resources, dict):
+        return False
+    saw = False
+    for dest in resources.values():
+        if not isinstance(dest, str):
+            return False
+        if ".." in dest or "_up_" in dest:
+            return False
+        if dest == "ggml-tiny.bin":
+            saw = True
+    return saw
+
+
 def _weight_bits(root: Path, crate: Path) -> list[str]:
     bits: list[str] = []
     if not (root / "assets" / "ggml-tiny.bin").is_file():
@@ -193,6 +208,10 @@ def _weight_bits(root: Path, crate: Path) -> list[str]:
     blob = json.dumps(resources) if resources is not None else ""
     if "ggml-tiny.bin" not in blob:
         bits.append("tauri.conf.json bundle.resources does not name ggml-tiny.bin")
+    if not _resources_map_weights(resources):
+        bits.append(
+            "tauri.conf.json bundle.resources must map the weights onto ggml-tiny.bin"
+        )
     return bits
 
 
