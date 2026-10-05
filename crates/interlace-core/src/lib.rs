@@ -43,8 +43,8 @@ pub use session::{
     validate_phone_region, write_last_bookmark, write_last_path,
 };
 pub use voice::{
-    set_voice_transcribe_enabled, store_voice_transcript, transcribe_voice_notes,
-    voice_transcribe_enabled,
+    pending_voice_note_rows, set_voice_transcribe_enabled, store_voice_transcript,
+    transcribe_voice_notes, voice_transcribe_enabled,
 };
 
 /// Placeholder kept from the 0.0.1 name-squat so existing tests stay green.

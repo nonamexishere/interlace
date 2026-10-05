@@ -15,6 +15,7 @@ from tauri_gate.locale_pack import _chrome_pack_entries
 from tauri_gate.scan import _web_sources
 from tauri_gate.scan_parse import _call_arg, _function_body, _match_closer
 from tauri_gate.scan_parse_rest import _ts_function_body
+from tauri_gate.scan_rust_rest import _rust_function_body, _rust_match_delim, _rust_next
 
 _EXACT = {
     "en": {
@@ -215,6 +216,94 @@ def _weight_bits(root: Path, crate: Path) -> list[str]:
     return bits
 
 
+def _skip_rust_gap(src: str, i: int) -> int:
+    n = len(src)
+    while i < n:
+        nxt = _rust_next(src, i)
+        if nxt != i:
+            i = nxt
+            continue
+        if src[i].isspace():
+            i += 1
+            continue
+        break
+    return i
+
+
+def _ident_at(src: str, i: int, name: str) -> bool:
+    if not src.startswith(name, i):
+        return False
+    if i > 0 and (src[i - 1].isalnum() or src[i - 1] == "_"):
+        return False
+    end = i + len(name)
+    return end >= len(src) or not (src[end].isalnum() or src[end] == "_")
+
+
+def _argument_braces(src: str) -> list[str]:
+    """Brace groups in a call's argument list. Nested braces stay inside the outer group."""
+    out: list[str] = []
+    i = 0
+    n = len(src)
+    while i < n:
+        nxt = _rust_next(src, i)
+        if nxt != i:
+            i = nxt
+            continue
+        if src[i] == "{":
+            close = _rust_match_delim(src, i)
+            if close < 0:
+                out.append(src[i + 1 :])
+                break
+            out.append(src[i + 1 : close])
+            i = close + 1
+            continue
+        i += 1
+    return out
+
+
+def _with_arch_closures(body: str) -> list[str]:
+    """Argument braces of `with_arch(...)` calls in this body only."""
+    found: list[str] = []
+    i = 0
+    n = len(body)
+    while i < n:
+        nxt = _rust_next(body, i)
+        if nxt != i:
+            i = nxt
+            continue
+        if _ident_at(body, i, "with_arch"):
+            j = _skip_rust_gap(body, i + len("with_arch"))
+            if j < n and body[j] == "(":
+                close = _rust_match_delim(body, j)
+                if close < 0:
+                    found.extend(_argument_braces(body[j + 1 :]))
+                    break
+                found.extend(_argument_braces(body[j + 1 : close]))
+                i = close + 1
+                continue
+        i += 1
+    return found
+
+
+def _transcribe_cmd_body(ipc: str) -> str:
+    """Interior of `fn transcribe_voice_notes_cmd`, matched from its opening `{`."""
+    return _rust_function_body(ipc, "transcribe_voice_notes_cmd")
+
+
+def _decodes_while_holding_archive(body: str) -> bool:
+    if "transcribe_voice_notes(" in body:
+        return True
+    if "store_voice_transcript" not in body:
+        return True
+    if "decode(" not in body:
+        return True
+    return any("decode(" in closure for closure in _with_arch_closures(body))
+
+
+def _transcribe_cmd_decodes_while_holding(crate: Path) -> bool:
+    return _decodes_while_holding_archive(_transcribe_cmd_body(_text(crate / "src" / "ipc.rs")))
+
+
 def assert_voice_transcript(crate: Path) -> None:
     """#428: Doctor checkbox and button, bundled weights, no bubble control."""
     doctor = _text(crate / "web" / "lib" / "DoctorPane.svelte")
@@ -228,3 +317,5 @@ def assert_voice_transcript(crate: Path) -> None:
     bits.extend(_weight_bits(root, crate))
     if bits:
         fail("VOICE-TRANSCRIPT: " + "; ".join(bits))
+    if _transcribe_cmd_decodes_while_holding(crate):
+        fail("transcribe command decodes while holding the archive mutex")

@@ -11,11 +11,12 @@ use interlace_core::session::{
     write_last_bookmark, write_last_path,
 };
 use interlace_core::{
-    labels_list, open_archive, review_list, review_resolve, review_resolve_selected, review_show,
-    search, set_voice_transcribe_enabled, transcribe_voice_notes, visible_message_body,
-    voice_transcribe_enabled, Archive, AttachmentFilter, ConversationKind, LockMode, Platform,
-    SearchQuery,
+    labels_list, open_archive, pending_voice_note_rows, review_list, review_resolve,
+    review_resolve_selected, review_show, search, set_voice_transcribe_enabled,
+    store_voice_transcript, visible_message_body, voice_transcribe_enabled, Archive,
+    AttachmentFilter, ConversationKind, LockMode, Platform, SearchQuery,
 };
+use rusqlite::OptionalExtension;
 use tauri::AppHandle;
 
 use crate::{err, err_open, map_io, with_arch, with_arch_mut, AppState};
@@ -430,18 +431,44 @@ pub(crate) fn set_voice_transcribe_enabled_cmd(
 
 #[tauri::command]
 pub(crate) fn transcribe_voice_notes_cmd(state: tauri::State<AppState>) -> Result<(), String> {
-    with_arch(&state, |arch| {
-        if !voice_transcribe_enabled(arch).map_err(err)? {
-            return Ok(());
-        }
-        let weights = resolve_whisper_weights();
-        if !weights.is_file() {
-            return Err("voice weights are missing".into());
-        }
-        let decode = installed_voice_decoder()
-            .ok_or_else(|| "voice decoder is not installed".to_string())?;
-        transcribe_voice_notes(arch, &weights, |bytes| decode(bytes, &weights)).map_err(err)
-    })
+    if !with_arch(&state, |arch| voice_transcribe_enabled(arch).map_err(err))? {
+        return Ok(());
+    }
+    let weights = resolve_whisper_weights();
+    if !weights.is_file() {
+        return Err("voice weights are missing".into());
+    }
+    let decode = match installed_voice_decoder() {
+        Some(decode) => decode,
+        None => return Err("voice decoder is not installed".into()),
+    };
+    let rows = with_arch(&state, |arch| pending_voice_note_rows(arch).map_err(err))?;
+    for (id, hash) in rows {
+        let bytes = match with_arch(&state, |arch| Ok(arch.cas_get(&hash)))? {
+            Ok(bytes) => bytes,
+            Err(_) => continue,
+        };
+        let text = match decode(&bytes, &weights) {
+            Ok(Some(text)) if !text.trim().is_empty() => text,
+            Ok(Some(_)) | Ok(None) | Err(_) => continue,
+        };
+        with_arch(&state, |arch| {
+            let still_blank: Option<i64> = arch
+                .conn
+                .query_row(
+                    "SELECT id FROM attachments WHERE id = ?1 AND transcript IS NULL",
+                    [id],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(err)?;
+            if still_blank.is_none() {
+                return Ok(());
+            }
+            store_voice_transcript(arch, id, &text).map_err(err)
+        })?;
+    }
+    Ok(())
 }
 
 #[tauri::command]

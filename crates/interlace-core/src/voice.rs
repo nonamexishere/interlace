@@ -30,6 +30,18 @@ pub fn set_voice_transcribe_enabled(archive: &Archive, on: bool) -> Result<(), C
     Ok(())
 }
 
+pub fn pending_voice_note_rows(archive: &Archive) -> Result<Vec<(i64, String)>, CoreError> {
+    let mut stmt = archive.conn.prepare(
+        "SELECT id, cas_hash FROM attachments
+         WHERE kind = 'voice' AND cas_hash IS NOT NULL AND transcript IS NULL
+         ORDER BY attachments.id",
+    )?;
+    let rows = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 pub fn store_voice_transcript(
     archive: &Archive,
     attachment_id: i64,
@@ -65,16 +77,7 @@ pub fn transcribe_voice_notes(
     if !voice_transcribe_enabled(archive)? || !weights_path.is_file() {
         return Ok(());
     }
-    let rows: Vec<(i64, String)> = {
-        let mut stmt = archive.conn.prepare(
-            "SELECT id, cas_hash FROM attachments
-             WHERE kind = 'voice' AND cas_hash IS NOT NULL AND transcript IS NULL
-             ORDER BY id",
-        )?;
-        let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
-        it.collect::<Result<Vec<_>, _>>()?
-    };
-    for (id, hash) in rows {
+    for (id, hash) in pending_voice_note_rows(archive)? {
         let bytes = match archive.cas_get(&hash) {
             Ok(bytes) => bytes,
             Err(_) => continue,
