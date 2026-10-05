@@ -442,9 +442,17 @@ pub(crate) fn transcribe_voice_notes_cmd(state: tauri::State<AppState>) -> Resul
         Some(decode) => decode,
         None => return Err("voice decoder is not installed".into()),
     };
-    let rows = with_arch(&state, |arch| pending_voice_note_rows(arch).map_err(err))?;
+    let (rows, root) = with_arch(&state, |arch| {
+        let rows = pending_voice_note_rows(arch).map_err(err)?;
+        Ok((rows, arch.root.clone()))
+    })?;
     for (id, hash) in rows {
-        let bytes = match with_arch(&state, |arch| Ok(arch.cas_get(&hash)))? {
+        let bytes = match with_arch(&state, |arch| {
+            if arch.root != root {
+                return Err("archive changed".into());
+            }
+            Ok(arch.cas_get(&hash))
+        })? {
             Ok(bytes) => bytes,
             Err(_) => continue,
         };
@@ -453,6 +461,9 @@ pub(crate) fn transcribe_voice_notes_cmd(state: tauri::State<AppState>) -> Resul
             Ok(Some(_)) | Ok(None) | Err(_) => continue,
         };
         with_arch(&state, |arch| {
+            if arch.root != root {
+                return Err("archive changed".into());
+            }
             let still_blank: Option<i64> = arch
                 .conn
                 .query_row(

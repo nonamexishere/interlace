@@ -304,6 +304,155 @@ def _transcribe_cmd_decodes_while_holding(crate: Path) -> bool:
     return _decodes_while_holding_archive(_transcribe_cmd_body(_text(crate / "src" / "ipc.rs")))
 
 
+def _skip_ws_comments(src: str, i: int, limit: int) -> int:
+    while i < limit:
+        nxt = _rust_next(src, i)
+        if nxt != i:
+            if not (src.startswith("//", i) or src.startswith("/*", i)):
+                return i
+            if nxt > limit:
+                return i
+            i = nxt
+            continue
+        if src[i].isspace():
+            i += 1
+            continue
+        return i
+    return i
+
+
+def _has_ident(src: str, name: str) -> bool:
+    i = 0
+    n = len(src)
+    while i < n:
+        nxt = _rust_next(src, i)
+        if nxt != i:
+            i = nxt
+            continue
+        if _ident_at(src, i, name):
+            return True
+        i += 1
+    return False
+
+
+def _has_arch_root(src: str, limit: int | None = None) -> bool:
+    end = len(src) if limit is None else limit
+    name = "arch"
+    i = 0
+    while i < end:
+        nxt = _rust_next(src, i)
+        if nxt != i:
+            if nxt > end:
+                break
+            i = nxt
+            continue
+        if i + len(name) <= end and _ident_at(src, i, name):
+            j = i + len(name)
+            while j < end and src[j].isspace():
+                j += 1
+            if j < end and src[j] == ".":
+                k = j + 1
+                while k < end and src[k].isspace():
+                    k += 1
+                if (
+                    k + len("root") <= end
+                    and _rust_next(src, k) == k
+                    and _ident_at(src, k, "root")
+                ):
+                    return True
+            i += len(name)
+            continue
+        i += 1
+    return False
+
+
+def _call_at(src: str, name: str) -> int:
+    i = 0
+    n = len(src)
+    while i < n:
+        nxt = _rust_next(src, i)
+        if nxt != i:
+            i = nxt
+            continue
+        if _ident_at(src, i, name):
+            j = i + len(name)
+            while j < n and src[j].isspace():
+                j += 1
+            if j < n and src[j] == "(":
+                return i
+            i += len(name)
+            continue
+        i += 1
+    return -1
+
+
+def _has_archive_changed_lit(src: str, limit: int) -> bool:
+    needle = '"archive changed"'
+    i = 0
+    while i < limit:
+        nxt = _rust_next(src, i)
+        if nxt != i:
+            if nxt <= limit and src[i:nxt] == needle:
+                return True
+            if nxt > limit:
+                break
+            i = nxt
+            continue
+        i += 1
+    return False
+
+
+def _has_return_err(src: str, limit: int) -> bool:
+    i = 0
+    while i < limit:
+        nxt = _rust_next(src, i)
+        if nxt != i:
+            if nxt > limit:
+                break
+            i = nxt
+            continue
+        if i + len("return") <= limit and _ident_at(src, i, "return"):
+            j = _skip_ws_comments(src, i + len("return"), limit)
+            if j + len("Err") <= limit and _ident_at(src, j, "Err"):
+                return True
+            i += len("return")
+            continue
+        i += 1
+    return False
+
+
+def _guarded_before_call(closure: str, name: str) -> bool:
+    at = _call_at(closure, name)
+    if at < 0:
+        return False
+    return (
+        _has_arch_root(closure, at)
+        and _has_archive_changed_lit(closure, at)
+        and _has_return_err(closure, at)
+    )
+
+
+def _transcribe_can_store_into_different_archive(body: str) -> bool:
+    """True unless row, byte, and store closures all prove the same archive."""
+    closures = _with_arch_closures(body)
+    pending = [c for c in closures if _has_ident(c, "pending_voice_note_rows")]
+    if not pending or any(not _has_arch_root(c) for c in pending):
+        return True
+    cas = [c for c in closures if _call_at(c, "cas_get") >= 0]
+    if not cas or any(not _guarded_before_call(c, "cas_get") for c in cas):
+        return True
+    store = [c for c in closures if _call_at(c, "store_voice_transcript") >= 0]
+    if not store or any(not _guarded_before_call(c, "store_voice_transcript") for c in store):
+        return True
+    return False
+
+
+def _transcribe_cmd_can_store_into_different_archive(crate: Path) -> bool:
+    return _transcribe_can_store_into_different_archive(
+        _transcribe_cmd_body(_text(crate / "src" / "ipc.rs"))
+    )
+
+
 def assert_voice_transcript(crate: Path) -> None:
     """#428: Doctor checkbox and button, bundled weights, no bubble control."""
     doctor = _text(crate / "web" / "lib" / "DoctorPane.svelte")
@@ -319,3 +468,5 @@ def assert_voice_transcript(crate: Path) -> None:
         fail("VOICE-TRANSCRIPT: " + "; ".join(bits))
     if _transcribe_cmd_decodes_while_holding(crate):
         fail("transcribe command decodes while holding the archive mutex")
+    if _transcribe_cmd_can_store_into_different_archive(crate):
+        fail("transcribe command can store into a different archive")
