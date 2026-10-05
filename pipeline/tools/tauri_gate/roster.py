@@ -74,6 +74,7 @@ from tauri_gate.gmail_thread_parent import assert_gmail_thread_parent  # noqa: E
 from tauri_gate.wa_quote_jump import assert_wa_quote_jump  # noqa: E402
 from tauri_gate.message_events import assert_message_events  # noqa: E402
 from tauri_gate.attachment_derivatives import assert_attachment_derivatives  # noqa: E402
+from tauri_gate.voice_transcript import assert_voice_transcript  # noqa: E402
 from tauri_gate.person_media_gallery import assert_person_media_gallery  # noqa: E402
 from tauri_gate.person_media_gallery_fold import assert_person_media_gallery_fold  # noqa: E402
 from tauri_gate.person_media_gallery_race import assert_person_media_gallery_race  # noqa: E402

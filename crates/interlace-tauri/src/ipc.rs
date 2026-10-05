@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use interlace_core::cli::{installed_voice_decoder, resolve_whisper_weights};
 use interlace_core::people::{attachments_for, complete_attachments, search_hit_person};
 use interlace_core::session::{
     init_owner_archive, read_last_bookmark, read_last_path, record_recent, sandbox_denied_message,
@@ -11,7 +12,8 @@ use interlace_core::session::{
 };
 use interlace_core::{
     labels_list, open_archive, review_list, review_resolve, review_resolve_selected, review_show,
-    search, visible_message_body, Archive, AttachmentFilter, ConversationKind, LockMode, Platform,
+    search, set_voice_transcribe_enabled, transcribe_voice_notes, visible_message_body,
+    voice_transcribe_enabled, Archive, AttachmentFilter, ConversationKind, LockMode, Platform,
     SearchQuery,
 };
 use tauri::AppHandle;
@@ -408,6 +410,37 @@ pub(crate) fn doctor_run_cmd(
     with_arch(&state, |arch| {
         arch.doctor(rebuild_fts, gc_cas, integrity).map_err(err)?;
         arch.doctor_issues().map_err(err)
+    })
+}
+
+#[tauri::command]
+pub(crate) fn voice_transcribe_enabled_cmd(state: tauri::State<AppState>) -> Result<bool, String> {
+    with_arch(&state, |arch| voice_transcribe_enabled(arch).map_err(err))
+}
+
+#[tauri::command]
+pub(crate) fn set_voice_transcribe_enabled_cmd(
+    state: tauri::State<AppState>,
+    on: bool,
+) -> Result<(), String> {
+    with_arch(&state, |arch| {
+        set_voice_transcribe_enabled(arch, on).map_err(err)
+    })
+}
+
+#[tauri::command]
+pub(crate) fn transcribe_voice_notes_cmd(state: tauri::State<AppState>) -> Result<(), String> {
+    with_arch(&state, |arch| {
+        if !voice_transcribe_enabled(arch).map_err(err)? {
+            return Ok(());
+        }
+        let weights = resolve_whisper_weights();
+        if !weights.is_file() {
+            return Err("voice weights are missing".into());
+        }
+        let decode = installed_voice_decoder()
+            .ok_or_else(|| "voice decoder is not installed".to_string())?;
+        transcribe_voice_notes(arch, &weights, |bytes| decode(bytes, &weights)).map_err(err)
     })
 }
 

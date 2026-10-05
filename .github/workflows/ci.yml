@@ -21,7 +21,7 @@ jobs:
       - name: cargo fmt
         run: cargo fmt --all -- --check
       - name: cargo clippy
-        run: cargo clippy -p interlace-core -p interlace -p interlace-cli -p interlace-fixtures -- -D warnings
+        run: cargo clippy -p interlace-core -p interlace -p interlace-cli -p interlace-fixtures -p interlace-voice -- -D warnings
       - name: cargo test
         run: cargo test --workspace --exclude interlace-tauri
       - uses: taiki-e/install-action@v2

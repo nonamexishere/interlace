@@ -1,5 +1,7 @@
 //! FTS5 search + person timeline (D17, D18). Dual Turkish/ASCII fold.
 
+use rusqlite::OptionalExtension;
+
 use crate::db::Archive;
 use crate::model::{
     AttachmentFilter, ConversationKind, CoreError, Platform, SearchHit, SearchQuery,
@@ -320,13 +322,16 @@ pub fn index_import_run(archive: &Archive, run_id: i64) -> Result<(), CoreError>
     };
     for (id, sent_at, platform, conv, sender, subject, body, edit_state, tombstone) in msgs {
         let files = attachment_names(archive, id)?;
+        let transcripts = transcripts_for(archive, id)?;
         // Stored body stays on messages. Deleted / tombstone rows index no body.
-        let indexed_body = if edit_state == "deleted" || tombstone != 0 {
-            None
-        } else {
-            body.as_deref()
-        };
-        let text = build_search_text(subject.as_deref(), indexed_body, &files);
+        let text = compose_search_text(
+            subject.as_deref(),
+            body.as_deref(),
+            &edit_state,
+            tombstone,
+            &files,
+            &transcripts,
+        );
         archive.conn.execute(
             "INSERT INTO search_doc(
                 message_id, sent_at, platform, conversation_id, sender_identity_id, search_text
@@ -343,6 +348,99 @@ pub fn rebuild_fts(archive: &Archive) -> Result<(), CoreError> {
         [],
     )?;
     Ok(())
+}
+
+/// Body side of `build_search_text`. Transcripts join that side, before the fold,
+/// and only when the message is still visible. The 3-argument builder stays as-is.
+fn compose_search_text(
+    subject: Option<&str>,
+    body: Option<&str>,
+    edit_state: &str,
+    tombstone: i64,
+    files: &[String],
+    transcripts: &[String],
+) -> String {
+    let hidden = edit_state == "deleted" || tombstone != 0;
+    if hidden || transcripts.is_empty() {
+        let indexed = if hidden { None } else { body };
+        return build_search_text(subject, indexed, files);
+    }
+    let extra = transcripts.join(" ");
+    let joined = match body {
+        Some(b) if !b.is_empty() => format!("{b} {extra}"),
+        _ => extra,
+    };
+    build_search_text(subject, Some(&joined), files)
+}
+
+pub(crate) fn reindex_message_search(archive: &Archive, message_id: i64) -> Result<(), CoreError> {
+    let row = archive
+        .conn
+        .query_row(
+            "SELECT m.sent_at, m.subject, m.body_text, m.conversation_id, m.sender_identity_id,
+                    c.platform, m.edit_state, m.tombstone
+             FROM messages m
+             JOIN conversations c ON c.id = m.conversation_id
+             WHERE m.id = ?1",
+            [message_id],
+            |r| {
+                Ok((
+                    r.get::<_, Option<String>>(0)?,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, Option<i64>>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, String>(6)?,
+                    r.get::<_, i64>(7)?,
+                ))
+            },
+        )
+        .optional()?;
+    let Some((sent_at, subject, body, conv, sender, platform, edit_state, tombstone)) = row else {
+        return Err(CoreError::Parse(format!(
+            "message {message_id} missing for search reindex"
+        )));
+    };
+    let files = attachment_names(archive, message_id)?;
+    let transcripts = transcripts_for(archive, message_id)?;
+    let text = compose_search_text(
+        subject.as_deref(),
+        body.as_deref(),
+        &edit_state,
+        tombstone,
+        &files,
+        &transcripts,
+    );
+    let exists: i64 = archive.conn.query_row(
+        "SELECT COUNT(*) FROM search_doc WHERE message_id = ?1",
+        [message_id],
+        |r| r.get(0),
+    )?;
+    if exists == 0 {
+        archive.conn.execute(
+            "INSERT INTO search_doc(
+                message_id, sent_at, platform, conversation_id, sender_identity_id, search_text
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![message_id, sent_at, platform, conv, sender, text],
+        )?;
+    } else {
+        archive.conn.execute(
+            "UPDATE search_doc SET search_text = ?1 WHERE message_id = ?2",
+            rusqlite::params![text, message_id],
+        )?;
+    }
+    Ok(())
+}
+
+fn transcripts_for(archive: &Archive, message_id: i64) -> Result<Vec<String>, CoreError> {
+    let mut stmt = archive.conn.prepare(
+        "SELECT transcript FROM attachments
+         WHERE message_id = ?1 AND transcript IS NOT NULL
+         ORDER BY id",
+    )?;
+    let it = stmt.query_map([message_id], |r| r.get(0))?;
+    Ok(it.collect::<Result<Vec<_>, _>>()?)
 }
 
 fn attachment_names(archive: &Archive, message_id: i64) -> Result<Vec<String>, CoreError> {

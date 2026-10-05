@@ -149,6 +149,11 @@ export const en = {
   letterRail: "Jump to letter",
   self: "(self)",
   noLivePerson: "No live person for that name",
+  transcribeVoiceLabel: "Transcribe voice notes",
+  transcribeVoice: "Transcribe",
+  transcribeVoiceDesc:
+    "Writes a transcript of each new voice note into search. Audio stays on this Mac. Notes that already have a transcript are left as they are. Turning this off keeps existing transcripts.",
+  transcribeVoiceFinished: "Transcription finished.",
 } as const;
 
 export type ChromeKey = keyof typeof en;

@@ -39,6 +39,8 @@
     gcCas: boolean;
     ok: string;
   } | null = null;
+  let voiceOn = $state(false);
+  let voiceAsk = $state(false);
 
   async function load() {
     const gen = ++scanGen;
@@ -103,6 +105,7 @@
     flags: { integrity: boolean; rebuildFts: boolean; gcCas: boolean },
     ok: string,
   ) {
+    voiceAsk = false;
     confirmTitle = title;
     confirmDesc = description;
     confirmLabel = label;
@@ -110,7 +113,56 @@
     confirmOpen = true;
   }
 
+  async function readEnabled() {
+    try {
+      voiceOn = await api.voiceTranscribeEnabled();
+    } catch {
+      voiceOn = false;
+    }
+  }
+
+  $effect(() => {
+    void readEnabled();
+  });
+
+  async function onVoiceToggle(on: boolean) {
+    voiceOn = on;
+    try {
+      await api.setVoiceTranscribeEnabled(on);
+    } catch (e) {
+      onError(e);
+      void readEnabled();
+    }
+  }
+
+  function askVoice() {
+    voiceAsk = true;
+    pending = null;
+    confirmTitle = t("transcribeVoice");
+    confirmDesc = t("transcribeVoiceDesc");
+    confirmLabel = t("transcribeVoice");
+    confirmOpen = true;
+  }
+
+  async function runVoice() {
+    busy = true;
+    lastOk = "";
+    try {
+      await api.transcribeVoiceNotes();
+      lastOk = t("transcribeVoiceFinished");
+    } catch (e) {
+      onError(e);
+    } finally {
+      busy = false;
+      voiceAsk = false;
+    }
+  }
+
   async function runPending() {
+    if (voiceAsk) {
+      await runVoice();
+      return;
+    }
     if (!pending) return;
     busy = true;
     lastOk = "";
@@ -241,6 +293,26 @@
       GC CAS
     </Button>
     <Button variant="ghost" size="sm" disabled={busy || scanning} onclick={load}>Refresh</Button>
+    <label class="inline-flex items-center gap-2 px-1 text-sm">
+      <input
+        type="checkbox"
+        class="focus-visible:ring-2 focus-visible:ring-ring"
+        data-vt-enabled
+        checked={voiceOn}
+        disabled={busy || scanning}
+        onchange={(event) => onVoiceToggle(event.currentTarget.checked)}
+      />
+      {t("transcribeVoiceLabel")}
+    </label>
+    <Button
+      variant="outline"
+      size="sm"
+      data-vt-run
+      disabled={busy || scanning}
+      onclick={askVoice}
+    >
+      {t("transcribeVoice")}
+    </Button>
   </div>
 
   <section class="mt-8 max-w-xl space-y-2 text-sm">

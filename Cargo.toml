@@ -7,6 +7,7 @@ members = [
     "crates/interlace-cli-common",
     "crates/interlace-fixtures",
     "crates/interlace-tauri",
+    "crates/interlace-voice",
 ]
 default-members = [
     "crates/interlace-core",
@@ -20,11 +21,12 @@ default-members = [
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/nonamexishere/interlace"
-rust-version = "1.80"
+rust-version = "1.85"
 version = "0.1.1"
 
 [workspace.dependencies]
 interlace-core = { path = "crates/interlace-core", version = "0.1.1" }
+interlace-voice = { path = "crates/interlace-voice", version = "0.1.1" }
 interlace-cli-common = { path = "crates/interlace-cli-common", version = "0.1.1" }
 rusqlite = { version = "0.32", default-features = false, features = ["bundled", "blob", "backup", "hooks"] }
 thiserror = "2"
