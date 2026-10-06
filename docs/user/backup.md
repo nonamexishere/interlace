@@ -17,6 +17,16 @@ cp -a ~/Interlace /Volumes/SSD/Interlace
 interlace open --path /Volumes/SSD/Interlace
 ```
 
+## Snapshots
+
+Doctor can take a local snapshot and restore one. Each snapshot is a directory
+`snapshots/<id>/` with `INTERLACE.toml`, a backup `archive.sqlite`, `cas/`,
+and a BLAKE3 manifest. A snapshot is not an account and not a cloud copy.
+It is not an `interlace backup` command. **Copy archive to…** stays.
+
+A hash failure is not applied. Messages added after the snapshot are removed
+when restore succeeds.
+
 ## Copy these
 
 - `INTERLACE.toml`

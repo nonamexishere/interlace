@@ -346,3 +346,27 @@ fn now_rfc3339() -> String {
         .unwrap_or(0);
     format!("{secs}")
 }
+
+impl Archive {
+    /// Dup the lock fd and drop the sqlite connection. Does not checkpoint.
+    pub(super) fn suspend_conn(&mut self) -> Result<()> {
+        self._lock.keep_dup()?;
+        self.conn.set_db_config(
+            rusqlite::config::DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+            true,
+        )?;
+        let placeholder = Connection::open_in_memory()?;
+        drop(std::mem::replace(&mut self.conn, placeholder));
+        Ok(())
+    }
+
+    /// Reopen `archive.sqlite` on the same path. Does not take another flock.
+    pub(super) fn resume_conn(&mut self) -> Result<()> {
+        let conn = Connection::open(self.root.join("archive.sqlite"))?;
+        apply_pragmas(&conn)?;
+        migrate(&conn)?;
+        ensure_fts_triggers(&conn)?;
+        self.conn = conn;
+        Ok(())
+    }
+}

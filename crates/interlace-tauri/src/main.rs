@@ -27,8 +27,8 @@ use crate::ipc::{
     estimate_unreferenced_cas_bytes, init, labels_list_cmd, ocr_images_cmd, ocr_images_enabled_cmd,
     open, open_url, pick_folder, remembered_path, review_accept_cmd, review_list_cmd,
     review_reject_cmd, review_show_cmd, search_body, search_cmd, set_ocr_images_enabled_cmd,
-    set_voice_transcribe_enabled_cmd, status, transcribe_voice_notes_cmd,
-    voice_transcribe_enabled_cmd,
+    set_voice_transcribe_enabled_cmd, snapshot_list, snapshot_restore, snapshot_take, status,
+    transcribe_voice_notes_cmd, voice_transcribe_enabled_cmd,
 };
 use crate::menu::native_menu;
 use crate::people_cmd::{
@@ -221,6 +221,9 @@ fn main() {
             open_cas_eml,
             reveal_archive,
             copy_archive_to,
+            snapshot_list,
+            snapshot_take,
+            snapshot_restore,
             open_url,
             people,
             person_show,

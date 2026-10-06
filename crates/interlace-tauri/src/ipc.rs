@@ -713,3 +713,32 @@ pub(crate) fn review_accept_cmd(
 pub(crate) fn review_reject_cmd(state: tauri::State<AppState>, id: i64) -> Result<(), String> {
     with_arch_mut(&state, |arch| review_resolve(arch, id, false).map_err(err))
 }
+
+#[tauri::command]
+pub(crate) fn snapshot_list(state: tauri::State<AppState>) -> Result<Vec<String>, String> {
+    with_arch(&state, |arch| {
+        interlace_core::list_snapshots(&arch.root).map_err(err)
+    })
+}
+
+#[tauri::command]
+pub(crate) fn snapshot_take(state: tauri::State<AppState>) -> Result<String, String> {
+    let import_status = state.import.lock().map_err(err)?.status.clone();
+    if import_status == "running" {
+        return Err("import running".into());
+    }
+    with_arch(&state, |arch| {
+        interlace_core::snapshot_archive(arch).map_err(err)
+    })
+}
+
+#[tauri::command]
+pub(crate) fn snapshot_restore(state: tauri::State<AppState>, id: String) -> Result<(), String> {
+    let import_status = state.import.lock().map_err(err)?.status.clone();
+    if import_status == "running" {
+        return Err("import running".into());
+    }
+    with_arch_mut(&state, |arch| {
+        interlace_core::restore_snapshot(arch, &id).map_err(err)
+    })
+}
