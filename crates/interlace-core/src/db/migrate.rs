@@ -46,6 +46,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "0009_voice_transcript",
         include_str!("../../migrations/0009_voice_transcript.sql"),
     ),
+    (
+        10,
+        "0010_photo_ocr",
+        include_str!("../../migrations/0010_photo_ocr.sql"),
+    ),
 ];
 
 /// Apply pending numbered SQL migrations. `0001_init.sql` is version 1.

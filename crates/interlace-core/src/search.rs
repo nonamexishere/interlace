@@ -350,27 +350,28 @@ pub fn rebuild_fts(archive: &Archive) -> Result<(), CoreError> {
     Ok(())
 }
 
-/// Body side of `build_search_text`. Transcripts join that side, before the fold,
-/// and only when the message is still visible. The 3-argument builder stays as-is.
+/// Body side of `build_search_text`. Transcripts and OCR text join that side,
+/// before the fold, only when the row is visible and the list is non-empty.
+/// A hidden row passes no body and does not join the list. The 3-argument builder stays as-is.
 fn compose_search_text(
     subject: Option<&str>,
     body: Option<&str>,
     edit_state: &str,
     tombstone: i64,
     files: &[String],
-    transcripts: &[String],
+    joined: &[String],
 ) -> String {
     let hidden = edit_state == "deleted" || tombstone != 0;
-    if hidden || transcripts.is_empty() {
+    if hidden || joined.is_empty() {
         let indexed = if hidden { None } else { body };
         return build_search_text(subject, indexed, files);
     }
-    let extra = transcripts.join(" ");
-    let joined = match body {
+    let extra = joined.join(" ");
+    let combined = match body {
         Some(b) if !b.is_empty() => format!("{b} {extra}"),
         _ => extra,
     };
-    build_search_text(subject, Some(&joined), files)
+    build_search_text(subject, Some(&combined), files)
 }
 
 pub(crate) fn reindex_message_search(archive: &Archive, message_id: i64) -> Result<(), CoreError> {
@@ -435,9 +436,14 @@ pub(crate) fn reindex_message_search(archive: &Archive, message_id: i64) -> Resu
 
 fn transcripts_for(archive: &Archive, message_id: i64) -> Result<Vec<String>, CoreError> {
     let mut stmt = archive.conn.prepare(
-        "SELECT transcript FROM attachments
-         WHERE message_id = ?1 AND transcript IS NOT NULL
-         ORDER BY id",
+        "SELECT text FROM (
+            SELECT id, transcript AS text FROM attachments
+            WHERE message_id = ?1 AND transcript IS NOT NULL
+            UNION ALL
+            SELECT id, ocr_text AS text FROM attachments
+            WHERE message_id = ?1 AND ocr_text IS NOT NULL
+        )
+        ORDER BY id",
     )?;
     let it = stmt.query_map([message_id], |r| r.get(0))?;
     Ok(it.collect::<Result<Vec<_>, _>>()?)

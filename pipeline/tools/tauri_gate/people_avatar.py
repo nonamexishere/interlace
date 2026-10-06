@@ -388,13 +388,15 @@ def assert_people_avatar(crate: Path) -> None:
             "(keep #322 img-free names)"
         )
 
-    # 10) photo_dhash stays forbidden. The image crate is only for #427 stills
-    # and the test that measures those stills.
+    # 10) photo_dhash stays forbidden. The image crate is only for #427 stills,
+    # the test that measures those stills, and #429 on-device photo decode.
     if _DHASH_COMPUTE.search(people_clean):
         fail(f"{_ISSUE}: do not compute photo_dhash (#80 / D14)")
     allowed = {
         "crates/interlace-core/src/derivative.rs",
         "crates/interlace-core/tests/attachment_derivatives.rs",
+        "crates/interlace-ocr/src/pixels.rs",
+        "crates/interlace-ocr/tests/decode.rs",
     }
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in ("target", "node_modules")]

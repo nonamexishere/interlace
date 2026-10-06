@@ -24,9 +24,10 @@ use crate::cas::{cas_data_url, cas_response, open_cas, open_cas_eml, reveal_arch
 use crate::import_cmd::{import_cancel, import_progress, import_start, pick_import_path};
 use crate::ipc::{
     close_archive, copy_archive_to, doctor_issues_cmd, doctor_issues_quick_cmd, doctor_run_cmd,
-    estimate_unreferenced_cas_bytes, init, labels_list_cmd, open, open_url, pick_folder,
-    remembered_path, review_accept_cmd, review_list_cmd, review_reject_cmd, review_show_cmd,
-    search_body, search_cmd, set_voice_transcribe_enabled_cmd, status, transcribe_voice_notes_cmd,
+    estimate_unreferenced_cas_bytes, init, labels_list_cmd, ocr_images_cmd, ocr_images_enabled_cmd,
+    open, open_url, pick_folder, remembered_path, review_accept_cmd, review_list_cmd,
+    review_reject_cmd, review_show_cmd, search_body, search_cmd, set_ocr_images_enabled_cmd,
+    set_voice_transcribe_enabled_cmd, status, transcribe_voice_notes_cmd,
     voice_transcribe_enabled_cmd,
 };
 use crate::menu::native_menu;
@@ -130,6 +131,7 @@ fn people(state: tauri::State<AppState>) -> Result<serde_json::Value, String> {
 }
 
 fn main() {
+    interlace_ocr::install_decoder();
     interlace_voice::install_decoder();
     let archive_root: Arc<Mutex<Option<PathBuf>>> = Arc::new(Mutex::new(None));
     let proto_root = Arc::clone(&archive_root);
@@ -209,6 +211,9 @@ fn main() {
             voice_transcribe_enabled_cmd,
             set_voice_transcribe_enabled_cmd,
             transcribe_voice_notes_cmd,
+            ocr_images_enabled_cmd,
+            set_ocr_images_enabled_cmd,
+            ocr_images_cmd,
             estimate_unreferenced_cas_bytes,
             cas_data_url,
             reveal_cas,

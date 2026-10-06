@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 interlace-core.workspace = true
 interlace-voice.workspace = true
+interlace-ocr.workspace = true
 
 [dev-dependencies]
 rusqlite.workspace = true

@@ -8,6 +8,7 @@ members = [
     "crates/interlace-fixtures",
     "crates/interlace-tauri",
     "crates/interlace-voice",
+    "crates/interlace-ocr",
 ]
 default-members = [
     "crates/interlace-core",
@@ -27,6 +28,7 @@ version = "0.1.1"
 [workspace.dependencies]
 interlace-core = { path = "crates/interlace-core", version = "0.1.1" }
 interlace-voice = { path = "crates/interlace-voice", version = "0.1.1" }
+interlace-ocr = { path = "crates/interlace-ocr", version = "0.1.1" }
 interlace-cli-common = { path = "crates/interlace-cli-common", version = "0.1.1" }
 rusqlite = { version = "0.32", default-features = false, features = ["bundled", "blob", "backup", "hooks"] }
 thiserror = "2"

@@ -237,6 +237,7 @@ def main() -> None:
     assert_message_events(crate)
     assert_attachment_derivatives(crate)
     assert_voice_transcript(crate)
+    assert_photo_ocr(crate)
     assert_person_media_gallery(crate)
     assert_person_media_gallery_fold(crate)
     assert_person_media_gallery_race(crate)
