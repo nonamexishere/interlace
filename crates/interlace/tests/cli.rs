@@ -234,3 +234,150 @@ fn import_whatsapp_zip_is_not_treated_as_archive() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+fn init_fresh(dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
+    let arch = dir.join("arch");
+    let cfg = dir.join("cfg");
+    std::fs::create_dir_all(&cfg).unwrap();
+    let init = bin()
+        .env("INTERLACE_CONFIG_DIR", &cfg)
+        .args([
+            "init",
+            "--path",
+            arch.to_str().unwrap(),
+            "--phone-region",
+            "TR",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        init.status.success(),
+        "init stderr={}",
+        String::from_utf8_lossy(&init.stderr)
+    );
+    (arch, cfg)
+}
+
+#[test]
+fn transcribe_help_lists_command() {
+    let out = bin().arg("--help").output().unwrap();
+    assert!(out.status.success(), "{:?}", out);
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("transcribe"), "help missing transcribe: {s}");
+}
+
+#[test]
+fn transcribe_off_exits_zero_without_doctor_line() {
+    let dir = tmp();
+    let (arch, cfg) = init_fresh(&dir);
+    let missing = dir.join("no-ggml.bin");
+    let out = bin()
+        .env("INTERLACE_CONFIG_DIR", &cfg)
+        .env("INTERLACE_WHISPER_WEIGHTS", &missing)
+        .args(["transcribe", "--off", "--path", arch.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        !combined.contains("doctor:"),
+        "transcribe --off printed doctor: {combined}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn transcribe_on_and_off_together_is_clap_error() {
+    let dir = tmp();
+    let (arch, cfg) = init_fresh(&dir);
+    let out = bin()
+        .env("INTERLACE_CONFIG_DIR", &cfg)
+        .args([
+            "transcribe",
+            "--on",
+            "--off",
+            "--path",
+            arch.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        !out.status.success(),
+        "stdout={:?} stderr={:?}",
+        out.stdout,
+        out.stderr
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        combined.contains("--on") && combined.contains("--off"),
+        "expected a clap error naming both flags, got {combined}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn transcribe_on_then_bare_missing_weights() {
+    let dir = tmp();
+    let (arch, cfg) = init_fresh(&dir);
+    let on = bin()
+        .env("INTERLACE_CONFIG_DIR", &cfg)
+        .args(["transcribe", "--on", "--path", arch.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        on.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&on.stderr)
+    );
+    let missing = dir.join("no-ggml.bin");
+    let out = bin()
+        .env("INTERLACE_CONFIG_DIR", &cfg)
+        .env("INTERLACE_WHISPER_WEIGHTS", &missing)
+        .args(["transcribe", "--path", arch.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert_eq!(stdout, "voice weights are missing\n");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn transcribe_bare_when_never_on_omits_weights_line() {
+    let dir = tmp();
+    let (arch, cfg) = init_fresh(&dir);
+    let missing = dir.join("no-ggml.bin");
+    let out = bin()
+        .env("INTERLACE_CONFIG_DIR", &cfg)
+        .env("INTERLACE_WHISPER_WEIGHTS", &missing)
+        .args(["transcribe", "--path", arch.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        !stdout.contains("voice weights are missing"),
+        "stdout={stdout:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

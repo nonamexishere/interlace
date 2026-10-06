@@ -229,6 +229,10 @@ export const api = {
   doctorIssuesQuick: () => invoke<string[]>("doctor_issues_quick_cmd"),
   doctorRun: (args: { integrity: boolean; rebuildFts: boolean; gcCas: boolean }) =>
     invoke<string[]>("doctor_run_cmd", args),
+  voiceTranscribeEnabled: () => invoke<boolean>("voice_transcribe_enabled_cmd"),
+  setVoiceTranscribeEnabled: (on: boolean) =>
+    invoke<void>("set_voice_transcribe_enabled_cmd", { on }),
+  transcribeVoiceNotes: () => invoke<void>("transcribe_voice_notes_cmd"),
   estimateUnreferencedCasBytes: () => invoke<number>("estimate_unreferenced_cas_bytes"),
   casDataUrl: (hash: string) => invoke<string>("cas_data_url", { hash }),
   revealCas: (hash: string) => invoke<void>("reveal_cas", { hash }),

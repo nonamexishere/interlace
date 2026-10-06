@@ -1,0 +1,25 @@
+[package]
+name = "interlace-voice"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+description = "On-device voice transcripts for Interlace"
+
+[dependencies]
+interlace-core.workspace = true
+ruopus = { version = "0.1.2", default-features = false, features = ["std"] }
+symphonia = { version = "0.5", default-features = false, features = [
+    "wav",
+    "pcm",
+    "ogg",
+    "vorbis",
+    "mp3",
+    "isomp4",
+    "aac",
+] }
+
+[build-dependencies]
+cmake = "0.1"

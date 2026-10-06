@@ -7,7 +7,8 @@ same integrity / rebuild-FTS / GC-CAS actions (confirm first) and the same
 so a missing blob still appears there. Opening the app is not that scan —
 People is not blocked on hashing `cas/`. The nav badge stays empty until the
 Doctor tab finishes that walk. Close the app before running the CLI
-against the same folder (exclusive flock).
+against the same folder (exclusive flock). Opening Doctor does not transcribe;
+turning the setting off keeps transcripts already written and writes no new ones.
 
 ```bash
 interlace doctor                 # integrity implied if no flags

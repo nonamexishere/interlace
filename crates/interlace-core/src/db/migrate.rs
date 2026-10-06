@@ -41,6 +41,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "0008_attachment_derivatives",
         include_str!("../../migrations/0008_attachment_derivatives.sql"),
     ),
+    (
+        9,
+        "0009_voice_transcript",
+        include_str!("../../migrations/0009_voice_transcript.sql"),
+    ),
 ];
 
 /// Apply pending numbered SQL migrations. `0001_init.sql` is version 1.

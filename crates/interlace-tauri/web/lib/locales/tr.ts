@@ -151,4 +151,9 @@ export const tr: ChromePack = {
   letterRail: "Harfe atla",
   self: "(ben)",
   noLivePerson: "Bu ad için canlı kişi yok",
+  transcribeVoiceLabel: "Sesli notları yazıya dök",
+  transcribeVoice: "Yazıya dök",
+  transcribeVoiceDesc:
+    "Her yeni sesli notun metnini aramaya yazar. Ses bu Mac'te kalır. Metni olan notlara dokunulmaz. Bunu kapatmak mevcut metinleri yerinde bırakır.",
+  transcribeVoiceFinished: "Yazıya dökme bitti.",
 };

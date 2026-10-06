@@ -10,15 +10,20 @@ mod search;
 
 use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::OnceLock;
 
 use clap::error::ErrorKind;
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::db::{open_archive, LockMode};
+use crate::model::CoreError;
 use crate::session::{init_owner_archive, write_last_path};
-use crate::{AttachmentFilter, ConversationKind, Platform};
+use crate::{
+    set_voice_transcribe_enabled, transcribe_voice_notes, voice_transcribe_enabled,
+    AttachmentFilter, ConversationKind, Platform,
+};
 
 use common::{resolve_path, warn_cloud, warn_mode, CliError};
 use import::cmd_import;
@@ -106,6 +111,15 @@ enum Commands {
     Review {
         #[command(subcommand)]
         cmd: ReviewCmd,
+    },
+    /// Write voice-note text into local search
+    Transcribe {
+        /// Turn the setting on. Does not run a pass.
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Turn the setting off. Does not run a pass.
+        #[arg(long, conflicts_with = "on")]
+        off: bool,
     },
     /// Integrity, FTS rebuild, CAS gc
     Doctor {
@@ -332,6 +346,7 @@ fn dispatch(cli: Cli) -> Result<(), CliError> {
         ),
         Commands::Person { cmd } => cmd_person(cli.archive, cli.json, cli.verbose, cmd),
         Commands::Review { cmd } => cmd_review(cli.archive, cli.json, cmd),
+        Commands::Transcribe { on, off } => cmd_transcribe(cli.archive, on, off),
         Commands::Doctor {
             rebuild_fts,
             gc_cas,
@@ -399,6 +414,87 @@ fn cmd_status(path: Option<PathBuf>, json: bool) -> Result<(), CliError> {
             }
         }
     }
+    Ok(())
+}
+
+pub type VoiceDecoder = fn(&[u8], &Path) -> Result<Option<String>, CoreError>;
+
+static VOICE_DECODER: OnceLock<VoiceDecoder> = OnceLock::new();
+
+/// Register the on-device decoder. Bins call this before [`run`].
+pub fn install_voice_decoder(decoder: VoiceDecoder) {
+    let _ = VOICE_DECODER.set(decoder);
+}
+
+pub fn installed_voice_decoder() -> Option<VoiceDecoder> {
+    VOICE_DECODER.get().copied()
+}
+
+/// `INTERLACE_WHISPER_WEIGHTS` wins, including when that path is missing.
+pub fn resolve_whisper_weights() -> PathBuf {
+    if let Some(path) = std::env::var_os("INTERLACE_WHISPER_WEIGHTS") {
+        return PathBuf::from(path);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for candidate in [
+                dir.join("../Resources/ggml-tiny.bin"),
+                dir.join("../Resources/assets/ggml-tiny.bin"),
+                dir.join("ggml-tiny.bin"),
+            ] {
+                if candidate.is_file() {
+                    return candidate;
+                }
+            }
+            if let Some(found) = walk_assets(dir) {
+                return found;
+            }
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        if let Some(found) = walk_assets(&cwd) {
+            return found;
+        }
+    }
+    PathBuf::from("assets/ggml-tiny.bin")
+}
+
+fn walk_assets(start: &Path) -> Option<PathBuf> {
+    let mut cur = start.to_path_buf();
+    for _ in 0..8 {
+        let candidate = cur.join("assets/ggml-tiny.bin");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        if !cur.pop() {
+            break;
+        }
+    }
+    None
+}
+
+fn cmd_transcribe(path: Option<PathBuf>, on: bool, off: bool) -> Result<(), CliError> {
+    let root = resolve_path(path)?;
+    let arch = open_archive(&root, LockMode::Exclusive)?;
+    if on {
+        set_voice_transcribe_enabled(&arch, true)?;
+        return Ok(());
+    }
+    if off {
+        set_voice_transcribe_enabled(&arch, false)?;
+        return Ok(());
+    }
+    if !voice_transcribe_enabled(&arch)? {
+        return Ok(());
+    }
+    let weights = resolve_whisper_weights();
+    if !weights.is_file() {
+        println!("voice weights are missing");
+        return Ok(());
+    }
+    let decode = installed_voice_decoder()
+        .ok_or_else(|| CliError::fatal("voice decoder is not installed"))?;
+    transcribe_voice_notes(&arch, &weights, |bytes| decode(bytes, &weights))?;
     Ok(())
 }
 

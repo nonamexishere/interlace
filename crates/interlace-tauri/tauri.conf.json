@@ -34,6 +34,7 @@
       "icons/icon.icns",
       "icons/icon.png"
     ],
+    "resources": { "../../assets/ggml-tiny.bin": "ggml-tiny.bin" },
     "macOS": {
       "entitlements": "Interlace.entitlements",
       "minimumSystemVersion": "12.0",

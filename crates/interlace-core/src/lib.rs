@@ -12,6 +12,7 @@ pub mod model;
 pub mod people;
 pub mod search;
 pub mod session;
+mod voice;
 
 pub use db::{init_archive, migrate, open_archive, open_with_options, Archive, LockMode};
 pub use identity::{
@@ -40,6 +41,10 @@ pub use search::{
 pub use session::{
     cloud_warning, init_owner_archive, read_last_bookmark, read_last_path, sandbox_denied_message,
     validate_phone_region, write_last_bookmark, write_last_path,
+};
+pub use voice::{
+    pending_voice_note_rows, set_voice_transcribe_enabled, store_voice_transcript,
+    transcribe_voice_notes, voice_transcribe_enabled,
 };
 
 /// Placeholder kept from the 0.0.1 name-squat so existing tests stay green.

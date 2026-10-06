@@ -4,16 +4,19 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use interlace_core::cli::{installed_voice_decoder, resolve_whisper_weights};
 use interlace_core::people::{attachments_for, complete_attachments, search_hit_person};
 use interlace_core::session::{
     init_owner_archive, read_last_bookmark, read_last_path, record_recent, sandbox_denied_message,
     write_last_bookmark, write_last_path,
 };
 use interlace_core::{
-    labels_list, open_archive, review_list, review_resolve, review_resolve_selected, review_show,
-    search, visible_message_body, Archive, AttachmentFilter, ConversationKind, LockMode, Platform,
-    SearchQuery,
+    labels_list, open_archive, pending_voice_note_rows, review_list, review_resolve,
+    review_resolve_selected, review_show, search, set_voice_transcribe_enabled,
+    store_voice_transcript, visible_message_body, voice_transcribe_enabled, Archive,
+    AttachmentFilter, ConversationKind, LockMode, Platform, SearchQuery,
 };
+use rusqlite::OptionalExtension;
 use tauri::AppHandle;
 
 use crate::{err, err_open, map_io, with_arch, with_arch_mut, AppState};
@@ -409,6 +412,74 @@ pub(crate) fn doctor_run_cmd(
         arch.doctor(rebuild_fts, gc_cas, integrity).map_err(err)?;
         arch.doctor_issues().map_err(err)
     })
+}
+
+#[tauri::command]
+pub(crate) fn voice_transcribe_enabled_cmd(state: tauri::State<AppState>) -> Result<bool, String> {
+    with_arch(&state, |arch| voice_transcribe_enabled(arch).map_err(err))
+}
+
+#[tauri::command]
+pub(crate) fn set_voice_transcribe_enabled_cmd(
+    state: tauri::State<AppState>,
+    on: bool,
+) -> Result<(), String> {
+    with_arch(&state, |arch| {
+        set_voice_transcribe_enabled(arch, on).map_err(err)
+    })
+}
+
+#[tauri::command]
+pub(crate) fn transcribe_voice_notes_cmd(state: tauri::State<AppState>) -> Result<(), String> {
+    if !with_arch(&state, |arch| voice_transcribe_enabled(arch).map_err(err))? {
+        return Ok(());
+    }
+    let weights = resolve_whisper_weights();
+    if !weights.is_file() {
+        return Err("voice weights are missing".into());
+    }
+    let decode = match installed_voice_decoder() {
+        Some(decode) => decode,
+        None => return Err("voice decoder is not installed".into()),
+    };
+    let (rows, root) = with_arch(&state, |arch| {
+        let rows = pending_voice_note_rows(arch).map_err(err)?;
+        Ok((rows, arch.root.clone()))
+    })?;
+    for (id, hash) in rows {
+        let bytes = match with_arch(&state, |arch| {
+            if arch.root != root {
+                return Err("archive changed".into());
+            }
+            Ok(arch.cas_get(&hash))
+        })? {
+            Ok(bytes) => bytes,
+            Err(_) => continue,
+        };
+        let text = match decode(&bytes, &weights) {
+            Ok(Some(text)) if !text.trim().is_empty() => text,
+            Ok(Some(_)) | Ok(None) | Err(_) => continue,
+        };
+        with_arch(&state, |arch| {
+            if arch.root != root {
+                return Err("archive changed".into());
+            }
+            let still_blank: Option<i64> = arch
+                .conn
+                .query_row(
+                    "SELECT id FROM attachments WHERE id = ?1 AND transcript IS NULL",
+                    [id],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(err)?;
+            if still_blank.is_none() {
+                return Ok(());
+            }
+            store_voice_transcript(arch, id, &text).map_err(err)
+        })?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
