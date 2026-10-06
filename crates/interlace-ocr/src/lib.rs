@@ -18,7 +18,7 @@ pub fn text_from_image(bytes: &[u8], weights: &Path) -> Result<Option<String>, C
     let Some(rgba) = pixels::decode_rgba(bytes) else {
         return Ok(None);
     };
-    if rgba.is_empty() || !weights.is_file() {
+    if rgba.is_empty() || !pixels::fits_ocr(rgba.width(), rgba.height()) || !weights.is_file() {
         return Ok(None);
     }
     let Ok(path) = CString::new(weights.as_os_str().as_bytes()) else {
