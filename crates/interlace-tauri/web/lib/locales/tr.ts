@@ -156,4 +156,9 @@ export const tr: ChromePack = {
   transcribeVoiceDesc:
     "Her yeni sesli notun metnini aramaya yazar. Ses bu Mac'te kalır. Metni olan notlara dokunulmaz. Bunu kapatmak mevcut metinleri yerinde bırakır.",
   transcribeVoiceFinished: "Yazıya dökme bitti.",
+  ocrImagesLabel: "Fotoğraflardaki metni oku",
+  ocrImages: "Fotoğrafları oku",
+  ocrImagesDesc:
+    "Her yeni fotoğrafın metnini aramaya yazar. Görüntü bu Mac'te kalır. Metni olan fotoğraflara dokunulmaz. Bunu kapatmak mevcut metinleri yerinde bırakır.",
+  ocrImagesFinished: "Fotoğraf metni aramada.",
 };

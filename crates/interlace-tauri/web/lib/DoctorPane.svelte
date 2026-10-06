@@ -41,6 +41,8 @@
   } | null = null;
   let voiceOn = $state(false);
   let voiceAsk = $state(false);
+  let ocrOn = $state(false);
+  let ocrAsk = $state(false);
 
   async function load() {
     const gen = ++scanGen;
@@ -106,6 +108,7 @@
     ok: string,
   ) {
     voiceAsk = false;
+    ocrAsk = false;
     confirmTitle = title;
     confirmDesc = description;
     confirmLabel = label;
@@ -121,8 +124,20 @@
     }
   }
 
+  async function readOcrEnabled() {
+    try {
+      ocrOn = await api.ocrImagesEnabled();
+    } catch {
+      ocrOn = false;
+    }
+  }
+
   $effect(() => {
     void readEnabled();
+  });
+
+  $effect(() => {
+    void readOcrEnabled();
   });
 
   async function onVoiceToggle(on: boolean) {
@@ -135,8 +150,19 @@
     }
   }
 
+  async function onOcrToggle(on: boolean) {
+    ocrOn = on;
+    try {
+      await api.setOcrImagesEnabled(on);
+    } catch (e) {
+      onError(e);
+      void readOcrEnabled();
+    }
+  }
+
   function askVoice() {
     voiceAsk = true;
+    ocrAsk = false;
     pending = null;
     confirmTitle = t("transcribeVoice");
     confirmDesc = t("transcribeVoiceDesc");
@@ -158,7 +184,35 @@
     }
   }
 
+  function askOcr() {
+    ocrAsk = true;
+    voiceAsk = false;
+    pending = null;
+    confirmTitle = t("ocrImages");
+    confirmDesc = t("ocrImagesDesc");
+    confirmLabel = t("ocrImages");
+    confirmOpen = true;
+  }
+
+  async function runOcr() {
+    busy = true;
+    lastOk = "";
+    try {
+      await api.ocrImages();
+      lastOk = t("ocrImagesFinished");
+    } catch (e) {
+      onError(e);
+    } finally {
+      busy = false;
+      ocrAsk = false;
+    }
+  }
+
   async function runPending() {
+    if (ocrAsk) {
+      await runOcr();
+      return;
+    }
     if (voiceAsk) {
       await runVoice();
       return;
@@ -312,6 +366,26 @@
       onclick={askVoice}
     >
       {t("transcribeVoice")}
+    </Button>
+    <label class="inline-flex items-center gap-2 px-1 text-sm">
+      <input
+        type="checkbox"
+        class="focus-visible:ring-2 focus-visible:ring-ring"
+        data-ocr-enabled
+        checked={ocrOn}
+        disabled={busy || scanning}
+        onchange={(event) => onOcrToggle(event.currentTarget.checked)}
+      />
+      {t("ocrImagesLabel")}
+    </label>
+    <Button
+      variant="outline"
+      size="sm"
+      data-ocr-run
+      disabled={busy || scanning}
+      onclick={askOcr}
+    >
+      {t("ocrImages")}
     </Button>
   </div>
 

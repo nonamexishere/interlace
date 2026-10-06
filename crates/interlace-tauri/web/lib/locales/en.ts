@@ -154,6 +154,11 @@ export const en = {
   transcribeVoiceDesc:
     "Writes a transcript of each new voice note into search. Audio stays on this Mac. Notes that already have a transcript are left as they are. Turning this off keeps existing transcripts.",
   transcribeVoiceFinished: "Transcription finished.",
+  ocrImagesLabel: "Read text in photos",
+  ocrImages: "Read photos",
+  ocrImagesDesc:
+    "Writes the text of each new photo into search. The image stays on this Mac. Photos that already have text are left as they are. Turning this off keeps existing text.",
+  ocrImagesFinished: "Photo text is in search.",
 } as const;
 
 export type ChromeKey = keyof typeof en;

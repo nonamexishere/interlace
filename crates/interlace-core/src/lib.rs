@@ -9,6 +9,7 @@ mod derivative;
 pub mod identity;
 pub mod import;
 pub mod model;
+mod ocr;
 pub mod people;
 pub mod search;
 pub mod session;
@@ -24,6 +25,10 @@ pub use import::{
     TakeoutImporter, WhatsappImporter,
 };
 pub use model::*;
+pub use ocr::{
+    ocr_image_attachments, ocr_images_enabled, pending_ocr_rows, set_ocr_images_enabled,
+    store_ocr_text,
+};
 pub use people::{
     attachments_for, complete_attachments, conversation_participant_names,
     conversation_participant_names_at, labels_list, merge_targets, person_conversations,

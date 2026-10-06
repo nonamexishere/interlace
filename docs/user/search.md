@@ -2,7 +2,9 @@
 
 Interlace search is **local FTS5** over imported messages. There is no cloud
 index. Voice-note transcripts join this index only after you turn the setting
-on and run the pass; the audio stays on this machine.
+on and run the pass; the audio stays on this machine. Photo text joins search
+only after you turn the setting on and run the pass. The image stays on this
+machine.
 
 ```bash
 interlace search "fatura" \

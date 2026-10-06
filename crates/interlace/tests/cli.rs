@@ -381,3 +381,117 @@ fn transcribe_bare_when_never_on_omits_weights_line() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn ocr_off_exits_zero_without_doctor_line() {
+    let dir = tmp();
+    let (arch, cfg) = init_fresh(&dir);
+    let missing = dir.join("no-ocr.bin");
+    let out = bin()
+        .env("INTERLACE_CONFIG_DIR", &cfg)
+        .env("INTERLACE_OCR_WEIGHTS", &missing)
+        .args(["ocr", "--off", "--path", arch.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        !combined.contains("doctor:"),
+        "ocr --off printed doctor: {combined}"
+    );
+    assert!(
+        !combined.contains("ocr weights are missing"),
+        "ocr --off printed the weights line: {combined}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn ocr_on_and_off_together_is_clap_error() {
+    let dir = tmp();
+    let (arch, cfg) = init_fresh(&dir);
+    let out = bin()
+        .env("INTERLACE_CONFIG_DIR", &cfg)
+        .args(["ocr", "--on", "--off", "--path", arch.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        !out.status.success(),
+        "stdout={:?} stderr={:?}",
+        out.stdout,
+        out.stderr
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        combined.contains("--on") && combined.contains("--off"),
+        "expected a clap error naming both flags, got {combined}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn ocr_on_then_bare_missing_weights() {
+    let dir = tmp();
+    let (arch, cfg) = init_fresh(&dir);
+    let on = bin()
+        .env("INTERLACE_CONFIG_DIR", &cfg)
+        .args(["ocr", "--on", "--path", arch.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        on.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&on.stderr)
+    );
+    let missing = dir.join("no-ocr.bin");
+    let out = bin()
+        .env("INTERLACE_CONFIG_DIR", &cfg)
+        .env("INTERLACE_OCR_WEIGHTS", &missing)
+        .args(["ocr", "--path", arch.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert_eq!(stdout, "ocr weights are missing\n");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn ocr_bare_when_never_on_omits_weights_line() {
+    let dir = tmp();
+    let (arch, cfg) = init_fresh(&dir);
+    let missing = dir.join("no-ocr.bin");
+    let out = bin()
+        .env("INTERLACE_CONFIG_DIR", &cfg)
+        .env("INTERLACE_OCR_WEIGHTS", &missing)
+        .args(["ocr", "--path", arch.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        !stdout.contains("ocr weights are missing"),
+        "stdout={stdout:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

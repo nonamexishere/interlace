@@ -233,6 +233,9 @@ export const api = {
   setVoiceTranscribeEnabled: (on: boolean) =>
     invoke<void>("set_voice_transcribe_enabled_cmd", { on }),
   transcribeVoiceNotes: () => invoke<void>("transcribe_voice_notes_cmd"),
+  ocrImagesEnabled: () => invoke<boolean>("ocr_images_enabled_cmd"),
+  setOcrImagesEnabled: (on: boolean) => invoke<void>("set_ocr_images_enabled_cmd", { on }),
+  ocrImages: () => invoke<void>("ocr_images_cmd"),
   estimateUnreferencedCasBytes: () => invoke<number>("estimate_unreferenced_cas_bytes"),
   casDataUrl: (hash: string) => invoke<string>("cas_data_url", { hash }),
   revealCas: (hash: string) => invoke<void>("reveal_cas", { hash }),

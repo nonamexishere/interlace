@@ -21,6 +21,7 @@ use crate::db::{open_archive, LockMode};
 use crate::model::CoreError;
 use crate::session::{init_owner_archive, write_last_path};
 use crate::{
+    ocr_image_attachments, ocr_images_enabled, set_ocr_images_enabled,
     set_voice_transcribe_enabled, transcribe_voice_notes, voice_transcribe_enabled,
     AttachmentFilter, ConversationKind, Platform,
 };
@@ -114,6 +115,15 @@ enum Commands {
     },
     /// Write voice-note text into local search
     Transcribe {
+        /// Turn the setting on. Does not run a pass.
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Turn the setting off. Does not run a pass.
+        #[arg(long, conflicts_with = "on")]
+        off: bool,
+    },
+    /// Write photo text into local search
+    Ocr {
         /// Turn the setting on. Does not run a pass.
         #[arg(long, conflicts_with = "off")]
         on: bool,
@@ -347,6 +357,7 @@ fn dispatch(cli: Cli) -> Result<(), CliError> {
         Commands::Person { cmd } => cmd_person(cli.archive, cli.json, cli.verbose, cmd),
         Commands::Review { cmd } => cmd_review(cli.archive, cli.json, cmd),
         Commands::Transcribe { on, off } => cmd_transcribe(cli.archive, on, off),
+        Commands::Ocr { on, off } => cmd_ocr(cli.archive, on, off),
         Commands::Doctor {
             rebuild_fts,
             gc_cas,
@@ -495,6 +506,87 @@ fn cmd_transcribe(path: Option<PathBuf>, on: bool, off: bool) -> Result<(), CliE
     let decode = installed_voice_decoder()
         .ok_or_else(|| CliError::fatal("voice decoder is not installed"))?;
     transcribe_voice_notes(&arch, &weights, |bytes| decode(bytes, &weights))?;
+    Ok(())
+}
+
+pub type OcrDecoder = fn(&[u8], &Path) -> Result<Option<String>, CoreError>;
+
+static OCR_DECODER: OnceLock<OcrDecoder> = OnceLock::new();
+
+/// Register the on-device decoder. Bins call this before [`run`].
+pub fn install_ocr_decoder(decoder: OcrDecoder) {
+    let _ = OCR_DECODER.set(decoder);
+}
+
+pub fn installed_ocr_decoder() -> Option<OcrDecoder> {
+    OCR_DECODER.get().copied()
+}
+
+/// `INTERLACE_OCR_WEIGHTS` wins, including when that path is missing.
+pub fn resolve_ocr_weights() -> PathBuf {
+    if let Some(path) = std::env::var_os("INTERLACE_OCR_WEIGHTS") {
+        return PathBuf::from(path);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for candidate in [
+                dir.join("../Resources/tur.traineddata"),
+                dir.join("../Resources/assets/tur.traineddata"),
+                dir.join("tur.traineddata"),
+            ] {
+                if candidate.is_file() {
+                    return candidate;
+                }
+            }
+            if let Some(found) = walk_ocr_assets(dir) {
+                return found;
+            }
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        if let Some(found) = walk_ocr_assets(&cwd) {
+            return found;
+        }
+    }
+    PathBuf::from("assets/tur.traineddata")
+}
+
+fn walk_ocr_assets(start: &Path) -> Option<PathBuf> {
+    let mut cur = start.to_path_buf();
+    for _ in 0..8 {
+        let candidate = cur.join("assets/tur.traineddata");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        if !cur.pop() {
+            break;
+        }
+    }
+    None
+}
+
+fn cmd_ocr(path: Option<PathBuf>, on: bool, off: bool) -> Result<(), CliError> {
+    let root = resolve_path(path)?;
+    let arch = open_archive(&root, LockMode::Exclusive)?;
+    if on {
+        set_ocr_images_enabled(&arch, true)?;
+        return Ok(());
+    }
+    if off {
+        set_ocr_images_enabled(&arch, false)?;
+        return Ok(());
+    }
+    if !ocr_images_enabled(&arch)? {
+        return Ok(());
+    }
+    let weights = resolve_ocr_weights();
+    if !weights.is_file() {
+        println!("ocr weights are missing");
+        return Ok(());
+    }
+    let decode =
+        installed_ocr_decoder().ok_or_else(|| CliError::fatal("ocr decoder is not installed"))?;
+    ocr_image_attachments(&arch, &weights, |bytes| decode(bytes, &weights))?;
     Ok(())
 }
 

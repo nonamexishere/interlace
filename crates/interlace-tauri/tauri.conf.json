@@ -34,7 +34,10 @@
       "icons/icon.icns",
       "icons/icon.png"
     ],
-    "resources": { "../../assets/ggml-tiny.bin": "ggml-tiny.bin" },
+    "resources": {
+      "../../assets/ggml-tiny.bin": "ggml-tiny.bin",
+      "../../assets/tur.traineddata": "tur.traineddata"
+    },
     "macOS": {
       "entitlements": "Interlace.entitlements",
       "minimumSystemVersion": "12.0",
