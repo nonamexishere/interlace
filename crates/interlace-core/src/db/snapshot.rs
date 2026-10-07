@@ -81,12 +81,12 @@ pub fn restore_snapshot(archive: &mut Archive, id: &str) -> Result<()> {
     })();
     if let Err(e) = installed {
         if suspended {
-            archive.resume_conn()?;
+            // Resume must not replace the install error.
+            let _ = archive.resume_conn();
         }
         return Err(e);
     }
-    archive.resume_conn()?;
-    Ok(())
+    archive.resume_conn()
 }
 
 /// `open_archive` exclusive, then [`restore_snapshot`]. Lock failure renames nothing.
@@ -195,24 +195,25 @@ fn install_staged(root: &Path, stage: &Path) -> Result<()> {
     fs::create_dir_all(&aside)?;
     let names = ["INTERLACE.toml", "archive.sqlite", "cas"];
     if let Err(e) = move_present(root, &aside, &names) {
-        let _ = move_present(&aside, root, &names);
-        let _ = fs::remove_dir_all(&aside);
+        // A failed roll-back leaves the aside on disk.
+        if move_present(&aside, root, &names).is_ok() {
+            let _ = fs::remove_dir_all(&aside);
+        }
+        return Err(e);
+    }
+    // Sidecars are deleted while the live database name is absent, so the
+    // snapshot is never published beside the previous wal.
+    if let Err(e) = delete_live_sidecars(root) {
+        if root.join("archive.sqlite-wal").exists() {
+            remove_names(root, &names);
+            if move_present(&aside, root, &names).is_ok() {
+                let _ = fs::remove_dir_all(&aside);
+            }
+        }
         return Err(e);
     }
     if let Err(e) = move_required(stage, root, &names) {
         remove_names(root, &names);
-        let _ = move_present(&aside, root, &names);
-        let _ = fs::remove_dir_all(&aside);
-        return Err(e);
-    }
-    if let Err(e) = delete_live_sidecars(root) {
-        // Sidecars still belong to the previous database. Put that database
-        // back only while its wal is still here; a deleted wal must not replay.
-        if root.join("archive.sqlite-wal").exists() {
-            remove_names(root, &names);
-            let _ = move_present(&aside, root, &names);
-        }
-        let _ = fs::remove_dir_all(&aside);
         return Err(e);
     }
     let _ = fs::remove_dir_all(&aside);

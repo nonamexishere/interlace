@@ -66,14 +66,13 @@
         scanError = friendly(e instanceof Error ? e.message : String(e ?? ""));
       }
     } finally {
-      if (gen === scanGen) {
-        try {
-          snapshots = await api.snapshotList();
-        } catch {
-          snapshots = [];
-        }
-        scanning = false;
+      try {
+        const listed = await api.snapshotList();
+        if (gen === scanGen) snapshots = listed;
+      } catch {
+        if (gen === scanGen) snapshots = [];
       }
+      if (gen === scanGen) scanning = false;
     }
   }
 

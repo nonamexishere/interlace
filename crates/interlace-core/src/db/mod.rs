@@ -7,7 +7,7 @@ mod snapshot;
 
 pub use lock::LockMode;
 pub use migrate::migrate;
-pub use open::{init_archive, open_archive, open_with_options, Archive};
+pub use open::{archive_on_file, init_archive, open_archive, open_with_options, Archive};
 pub use snapshot::{list_snapshots, restore_snapshot, restore_snapshot_at, snapshot_archive};
 
 use crate::model::CoreError;

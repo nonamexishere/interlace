@@ -1,4 +1,4 @@
-//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK
+//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER
 //!
 //! Snapshot and restore. Placeholder Ada / Berk only. The rare token
 //! `quartzsnap91` is planted only in the Berk zip. These tests call the
@@ -621,4 +621,216 @@ fn rest_missing_id() {
         assert_eq!(message_count(&held.arch), n);
     }
     assert!(snap_dir(&held.arch, &id).is_dir());
+}
+
+fn main_db_file(arch: &Archive) -> String {
+    let mut file = String::new();
+    let queried = arch.conn.pragma_query(None, "database_list", |row| {
+        let name: String = row.get(1)?;
+        if name == "main" {
+            file = row.get::<_, Option<String>>(2)?.unwrap_or_default();
+        }
+        Ok(())
+    });
+    if queried.is_err() {
+        return String::new();
+    }
+    file
+}
+
+fn main_db_file_name(arch: &Archive) -> Option<String> {
+    let file = main_db_file(arch);
+    if file.is_empty() {
+        return None;
+    }
+    Path::new(&file)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .filter(|name| !name.is_empty())
+}
+
+fn snap_aside_dirs(root: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let Ok(entries) = fs::read_dir(root.join("tmp")) else {
+        return found;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("snap-aside-") && entry.path().is_dir() {
+            found.push(entry.path());
+        }
+    }
+    found
+}
+
+fn aside_has_sqlite(root: &Path, bytes: &[u8]) -> bool {
+    snap_aside_dirs(root)
+        .into_iter()
+        .any(|dir| fs::read(dir.join("archive.sqlite")).ok().as_deref() == Some(bytes))
+}
+
+/// `fn install_staged` through the line before the next function.
+fn install_staged_slice(src: &str) -> &str {
+    let start = src.find("fn install_staged").expect("fn install_staged");
+    let rest = &src[start..];
+    let after_line = rest.find('\n').map(|i| i + 1).unwrap_or(rest.len());
+    let tail = &rest[after_line..];
+    let mut rel = 0;
+    for line in tail.split_inclusive('\n') {
+        if function_line(line) {
+            return &rest[..after_line + rel];
+        }
+        rel += line.len();
+    }
+    rest
+}
+
+fn function_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let rest = trimmed
+        .strip_prefix("pub(crate) ")
+        .or_else(|| trimmed.strip_prefix("pub(super) "))
+        .or_else(|| trimmed.strip_prefix("pub "))
+        .unwrap_or(trimmed);
+    let rest = rest.strip_prefix("async ").unwrap_or(rest);
+    let rest = rest.strip_prefix("unsafe ").unwrap_or(rest);
+    rest.starts_with("fn ")
+}
+
+/// First index of `needle` outside comments and string literals.
+fn call_pos(src: &str, needle: &str) -> Option<usize> {
+    let bytes = src.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+            i += 2;
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+            i += 2;
+            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            i = (i + 2).min(bytes.len());
+            continue;
+        }
+        if bytes[i] == b'"' {
+            i += 1;
+            while i < bytes.len() && bytes[i] != b'"' {
+                if bytes[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                i += 1;
+            }
+            i = (i + 1).min(bytes.len());
+            continue;
+        }
+        if src[i..].starts_with(needle) {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
+#[test]
+fn rest_sidecar() {
+    let mut held = plant("side-ok");
+    insert_message(&held, "ada before", "k-side-before");
+    let id = snapshot_archive(&held.arch).unwrap();
+    insert_message(&held, "ada after", "k-side-after");
+    restore_snapshot(&mut held.arch, &id).unwrap();
+    assert!(
+        body_on(&held.arch, "ada before"),
+        "ada before missing after restore"
+    );
+    assert!(
+        !body_on(&held.arch, "ada after"),
+        "ada after survived restore"
+    );
+    assert_eq!(
+        main_db_file_name(&held.arch).as_deref(),
+        Some("archive.sqlite"),
+        "pragma_database_list main file is {:?}",
+        main_db_file(&held.arch)
+    );
+    let asides = snap_aside_dirs(&held.arch.root);
+    assert!(
+        asides.is_empty(),
+        "snap-aside directory remained under tmp: {asides:?}"
+    );
+
+    let mut held = plant("side-fault");
+    insert_message(&held, "ada before", "k-side-fault-before");
+    let id = snapshot_archive(&held.arch).unwrap();
+    insert_message(&held, "ada after", "k-side-fault-after");
+    let live = held.arch.root.join("archive.sqlite");
+    let before = fs::read(&live).unwrap();
+    let snap_path = snap_dir(&held.arch, &id).join("archive.sqlite");
+    let snap = fs::read(&snap_path).unwrap();
+    assert!(
+        before != snap,
+        "void: live archive.sqlite and the snapshot file are the same bytes ({})",
+        before.len()
+    );
+    fs::create_dir(held.arch.root.join("archive.sqlite-journal")).unwrap();
+    let err = restore_snapshot(&mut held.arch, &id);
+    assert!(
+        err.is_err(),
+        "restore_snapshot returned Ok while archive.sqlite-journal is a directory"
+    );
+    if live.exists() {
+        let now = fs::read(&live).expect("live archive.sqlite exists but is not readable");
+        assert!(
+            now == before,
+            "live archive.sqlite bytes are not the pre-restore database (len {} vs before {}, same as snapshot {})",
+            now.len(),
+            before.len(),
+            now == snap
+        );
+        assert_eq!(
+            main_db_file_name(&held.arch).as_deref(),
+            Some("archive.sqlite"),
+            "pragma_database_list main file is {:?}",
+            main_db_file(&held.arch)
+        );
+    } else {
+        assert_ne!(
+            main_db_file_name(&held.arch).as_deref(),
+            Some("archive.sqlite"),
+            "pragma_database_list main file is {:?} while archive.sqlite is absent",
+            main_db_file(&held.arch)
+        );
+    }
+    let kept = (live.is_file() && fs::read(&live).ok().as_deref() == Some(before.as_slice()))
+        || aside_has_sqlite(&held.arch.root, &before);
+    assert!(
+        kept,
+        "pre-restore archive.sqlite bytes are neither the live file nor inside tmp/snap-aside-*"
+    );
+    assert!(
+        fs::read(&snap_path).unwrap() == snap,
+        "snapshot archive.sqlite changed"
+    );
+}
+
+#[test]
+fn rest_order() {
+    let src = include_str!("../src/db/snapshot.rs");
+    let slice = install_staged_slice(src);
+    assert!(
+        slice.starts_with("fn install_staged"),
+        "slice did not start at fn install_staged"
+    );
+    let delete_at = call_pos(slice, "delete_live_sidecars(");
+    let move_at = call_pos(slice, "move_required(stage");
+    assert!(
+        matches!((delete_at, move_at), (Some(delete), Some(publish)) if delete < publish),
+        "install_staged must call delete_live_sidecars( before move_required(stage) (delete at {delete_at:?}, move_required(stage) at {move_at:?})"
+    );
 }

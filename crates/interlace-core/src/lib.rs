@@ -16,8 +16,8 @@ pub mod session;
 mod voice;
 
 pub use db::{
-    init_archive, list_snapshots, migrate, open_archive, open_with_options, restore_snapshot,
-    restore_snapshot_at, snapshot_archive, Archive, LockMode,
+    archive_on_file, init_archive, list_snapshots, migrate, open_archive, open_with_options,
+    restore_snapshot, restore_snapshot_at, snapshot_archive, Archive, LockMode,
 };
 pub use identity::{
     person_merge, person_undo, person_unlink, resolve_run, review_census, review_list,

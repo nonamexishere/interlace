@@ -149,6 +149,23 @@ def assert_snapshot(crate: Path) -> None:
             body = _rust_function_body(ipc, name)
             if "import running" not in body:
                 bits.append(f"{name} does not refuse import running")
+    load_body = _ts_function_body(doctor, "load")
+    snap_at = load_body.find("snapshotList")
+    if snap_at < 0:
+        bits.append("Doctor load does not call snapshotList")
+    else:
+        after = load_body[snap_at + len("snapshotList") :]
+        stop = after.find("scanning = false")
+        if stop < 0:
+            bits.append("Doctor load has no scanning = false after snapshotList")
+        elif "scanGen" not in after[:stop]:
+            bits.append(
+                "Doctor load does not check scanGen after snapshotList "
+                "and before scanning = false"
+            )
+    restore_fn = _rust_function_body(ipc, "snapshot_restore")
+    if "archive_on_file" not in restore_fn or "None" not in restore_fn:
+        bits.append("snapshot_restore body lacks archive_on_file and None")
     bits.extend(_locale_bits(crate))
     if bits:
         fail("snapshot: " + "; ".join(bits))

@@ -738,7 +738,21 @@ pub(crate) fn snapshot_restore(state: tauri::State<AppState>, id: String) -> Res
     if import_status == "running" {
         return Err("import running".into());
     }
-    with_arch_mut(&state, |arch| {
-        interlace_core::restore_snapshot(arch, &id).map_err(err)
-    })
+    let mut guard = state.archive.lock().map_err(err)?;
+    let outcome = {
+        let Some(arch) = guard.as_mut() else {
+            return Err("no archive open".into());
+        };
+        match interlace_core::restore_snapshot(arch, &id) {
+            Ok(()) => Ok(()),
+            Err(e) => Err((e, !interlace_core::archive_on_file(arch))),
+        }
+    };
+    if let Err((e, detach)) = outcome {
+        if detach {
+            *guard = None;
+        }
+        return Err(err(e));
+    }
+    Ok(())
 }
