@@ -1,10 +1,10 @@
-//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER
+//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER REST-LIVE REST-PUBLISH REST-BUSY
 //!
 //! Snapshot and restore. Placeholder Ada / Berk only. The rare token
 //! `quartzsnap91` is planted only in the Berk zip. These tests call the
 //! public snapshot API. They do not copy the live database by hand.
 
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -833,4 +833,206 @@ fn rest_order() {
         matches!((delete_at, move_at), (Some(delete), Some(publish)) if delete < publish),
         "install_staged must call delete_live_sidecars( before move_required(stage) (delete at {delete_at:?}, move_required(stage) at {move_at:?})"
     );
+}
+
+#[test]
+fn rest_live() {
+    let mut held = plant("live");
+    insert_message(&held, "ada before", "k-live-before");
+    let id = snapshot_archive(&held.arch).unwrap();
+    insert_message(&held, "ada after", "k-live-after");
+    let live = held.arch.root.join("archive.sqlite");
+    let before = fs::read(&live).unwrap();
+    let snap_path = snap_dir(&held.arch, &id).join("archive.sqlite");
+    let snap = fs::read(&snap_path).unwrap();
+    assert!(
+        before != snap,
+        "void: live archive.sqlite and the snapshot file are the same bytes ({})",
+        before.len()
+    );
+    fs::create_dir(held.arch.root.join("archive.sqlite-journal")).unwrap();
+    let err = restore_snapshot(&mut held.arch, &id);
+    assert!(
+        err.is_err(),
+        "restore_snapshot returned Ok while archive.sqlite-journal is a directory"
+    );
+    let now = fs::read(&live).ok();
+    assert!(
+        now.as_deref() == Some(before.as_slice()),
+        "live archive.sqlite bytes are not the pre-restore database (exists {}, len {:?} vs before {}, same as snapshot {})",
+        live.is_file(),
+        now.as_ref().map(|b| b.len()),
+        before.len(),
+        now.as_deref() == Some(snap.as_slice())
+    );
+    assert_eq!(
+        main_db_file_name(&held.arch).as_deref(),
+        Some("archive.sqlite"),
+        "pragma_database_list main file is {:?}",
+        main_db_file(&held.arch)
+    );
+    assert!(
+        body_on(&held.arch, "ada after"),
+        "ada after missing after failed restore"
+    );
+    assert!(
+        body_on(&held.arch, "ada before"),
+        "ada before missing after failed restore"
+    );
+    assert!(
+        fs::read(&snap_path).unwrap() == snap,
+        "snapshot archive.sqlite changed"
+    );
+}
+
+#[test]
+fn rest_publish() {
+    let src = include_str!("../src/db/snapshot.rs");
+    let slice = install_staged_slice(src);
+    assert!(
+        slice.starts_with("fn install_staged"),
+        "slice did not start at fn install_staged"
+    );
+    let stage_at = call_pos(slice, "move_required(stage");
+    assert!(
+        stage_at.is_some(),
+        "install_staged has no move_required(stage call"
+    );
+    let suffix = &slice[stage_at.unwrap() + "move_required(stage".len()..];
+    let present_at = call_pos(suffix, "move_present(&aside");
+    let err_at = call_pos(suffix, "return Err");
+    assert!(
+        matches!((present_at, err_at), (Some(present), Some(err)) if present < err),
+        "after move_required(stage, move_present(&aside must occur before the first return Err (move_present(&aside at {present_at:?}, return Err at {err_at:?})"
+    );
+}
+
+#[test]
+fn rest_busy() {
+    let mut held = plant("busy-sql");
+    insert_message(&held, "ada before", "k-busy-sql-before");
+    let id = snapshot_archive(&held.arch).unwrap();
+    insert_message(&held, "ada after", "k-busy-sql-after");
+    let live = held.arch.root.join("archive.sqlite");
+    let before = fs::read(&live).unwrap();
+    let snap_path = snap_dir(&held.arch, &id).join("archive.sqlite");
+    let snap = fs::read(&snap_path).unwrap();
+    assert!(
+        before != snap,
+        "void: live archive.sqlite and the snapshot file are the same bytes ({})",
+        before.len()
+    );
+    let reader = open_reader(&live);
+    let err = restore_snapshot(&mut held.arch, &id);
+    assert!(
+        matches!(
+            &err,
+            Err(CoreError::Fatal(msg)) if msg.starts_with("snapshot busy")
+        ),
+        "expected CoreError::Fatal starting with snapshot busy, got {err:?}"
+    );
+    let now = fs::read(&live).ok();
+    assert!(
+        now.as_deref() == Some(before.as_slice()),
+        "live archive.sqlite bytes changed while the reader was open (exists {}, len {:?} vs before {})",
+        live.is_file(),
+        now.as_ref().map(|b| b.len()),
+        before.len()
+    );
+    assert!(
+        body_on(&held.arch, "ada after"),
+        "ada after missing while restore was refused"
+    );
+    assert!(
+        fs::read(&snap_path).unwrap() == snap,
+        "snapshot archive.sqlite changed"
+    );
+    drop(reader);
+    restore_snapshot(&mut held.arch, &id).unwrap();
+    assert!(
+        !body_on(&held.arch, "ada after"),
+        "ada after survived restore"
+    );
+    assert!(
+        body_on(&held.arch, "ada before"),
+        "ada before missing after restore"
+    );
+
+    let mut held = plant("busy-toml");
+    insert_message(&held, "ada before", "k-busy-toml-before");
+    let id = snapshot_archive(&held.arch).unwrap();
+    insert_message(&held, "ada after", "k-busy-toml-after");
+    let live = held.arch.root.join("archive.sqlite");
+    let before = fs::read(&live).unwrap();
+    let snap_path = snap_dir(&held.arch, &id).join("archive.sqlite");
+    let snap = fs::read(&snap_path).unwrap();
+    assert!(
+        before != snap,
+        "void: live archive.sqlite and the snapshot file are the same bytes ({})",
+        before.len()
+    );
+    let toml = File::open(held.arch.root.join("INTERLACE.toml")).unwrap();
+    let err = restore_snapshot(&mut held.arch, &id);
+    assert!(
+        matches!(
+            &err,
+            Err(CoreError::Fatal(msg)) if msg.starts_with("snapshot busy")
+        ),
+        "expected CoreError::Fatal starting with snapshot busy, got {err:?}"
+    );
+    let now = fs::read(&live).ok();
+    assert!(
+        now.as_deref() == Some(before.as_slice()),
+        "live archive.sqlite bytes changed while INTERLACE.toml was open (exists {}, len {:?} vs before {})",
+        live.is_file(),
+        now.as_ref().map(|b| b.len()),
+        before.len()
+    );
+    assert!(
+        fs::read(&snap_path).unwrap() == snap,
+        "snapshot archive.sqlite changed"
+    );
+    drop(toml);
+    restore_snapshot(&mut held.arch, &id).unwrap();
+
+    let mut held = plant("busy-cas");
+    insert_message(&held, "ada before", "k-busy-cas-before");
+    let id = snapshot_archive(&held.arch).unwrap();
+    insert_message(&held, "ada after", "k-busy-cas-after");
+    let live = held.arch.root.join("archive.sqlite");
+    let before = fs::read(&live).unwrap();
+    let snap_path = snap_dir(&held.arch, &id).join("archive.sqlite");
+    let snap = fs::read(&snap_path).unwrap();
+    assert!(
+        before != snap,
+        "void: live archive.sqlite and the snapshot file are the same bytes ({})",
+        before.len()
+    );
+    let cas = held.arch.root.join("cas");
+    fs::create_dir_all(&cas).unwrap();
+    let hold = cas.join("hold.bin");
+    fs::write(&hold, b"ada").unwrap();
+    let hold_file = File::open(&hold).unwrap();
+    let err = restore_snapshot(&mut held.arch, &id);
+    assert!(
+        matches!(
+            &err,
+            Err(CoreError::Fatal(msg)) if msg.starts_with("snapshot busy")
+        ),
+        "expected CoreError::Fatal starting with snapshot busy, got {err:?}"
+    );
+    let now = fs::read(&live).ok();
+    assert!(
+        now.as_deref() == Some(before.as_slice()),
+        "live archive.sqlite bytes changed while cas/hold.bin was open (exists {}, len {:?} vs before {})",
+        live.is_file(),
+        now.as_ref().map(|b| b.len()),
+        before.len()
+    );
+    assert!(
+        fs::read(&snap_path).unwrap() == snap,
+        "snapshot archive.sqlite changed"
+    );
+    drop(hold_file);
+    restore_snapshot(&mut held.arch, &id).unwrap();
 }

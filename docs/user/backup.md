@@ -25,7 +25,9 @@ and a BLAKE3 manifest. A snapshot is not an account and not a cloud copy.
 It is not an `interlace backup` command. **Copy archive to…** stays.
 
 A hash failure is not applied. Messages added after the snapshot are removed
-when restore succeeds.
+when restore succeeds. A failed restore leaves the open archive as it was.
+Restore refuses while this process still has the database or the content
+store open.
 
 ## Copy these
 

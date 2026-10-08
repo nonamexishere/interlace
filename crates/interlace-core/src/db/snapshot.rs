@@ -76,17 +76,55 @@ pub fn restore_snapshot(archive: &mut Archive, id: &str) -> Result<()> {
     let installed = (|| -> Result<()> {
         archive.suspend_conn()?;
         suspended = true;
+        // No rename until this process has dropped the live files. The
+        // archive connection is already closed; snapshots/ and tmp/ do not count.
+        if live_files_open(&archive.root)? {
+            return Err(CoreError::Fatal("snapshot busy".into()));
+        }
         install_staged(&archive.root, &stage)?;
         Ok(())
     })();
     if let Err(e) = installed {
         if suspended {
             // Resume must not replace the install error.
-            let _ = archive.resume_conn();
+            let _ = resume_restored(archive);
         }
         return Err(e);
     }
-    archive.resume_conn()
+    resume_restored(archive)
+}
+
+/// Reopen the archive connection. SQLite will not open while
+/// `archive.sqlite-journal` is a directory, so that directory is held
+/// aside for the open only and put back. Deleting sidecars still sees it.
+fn resume_restored(archive: &mut Archive) -> Result<()> {
+    let held = hold_journal_dir(&archive.root)?;
+    let opened = archive.resume_conn();
+    if let Some(held) = held {
+        let journal = archive.root.join("archive.sqlite-journal");
+        if !journal.exists() {
+            let _ = fs::rename(held, journal);
+        }
+    }
+    opened
+}
+
+fn hold_journal_dir(root: &Path) -> Result<Option<PathBuf>> {
+    let journal = root.join("archive.sqlite-journal");
+    match fs::symlink_metadata(&journal) {
+        Ok(meta) if meta.is_dir() => {}
+        Ok(_) => return Ok(None),
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.into()),
+    }
+    let dest = root.join("tmp").join(format!(
+        "snap-journal-{}-{}",
+        std::process::id(),
+        STAGE_SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::create_dir_all(root.join("tmp"))?;
+    fs::rename(&journal, &dest)?;
+    Ok(Some(dest))
 }
 
 /// `open_archive` exclusive, then [`restore_snapshot`]. Lock failure renames nothing.
@@ -194,26 +232,35 @@ fn install_staged(root: &Path, stage: &Path) -> Result<()> {
     ));
     fs::create_dir_all(&aside)?;
     let names = ["INTERLACE.toml", "archive.sqlite", "cas"];
+    // Sidecars are parked only when they are files. A later error moves them
+    // back with the database. A failed roll-back leaves the aside on disk.
+    let rollback = [
+        "INTERLACE.toml",
+        "archive.sqlite",
+        "cas",
+        "archive.sqlite-journal",
+        "archive.sqlite-shm",
+        "archive.sqlite-wal",
+    ];
     if let Err(e) = move_present(root, &aside, &names) {
-        // A failed roll-back leaves the aside on disk.
-        if move_present(&aside, root, &names).is_ok() {
+        if move_present(&aside, root, &rollback).is_ok() {
             let _ = fs::remove_dir_all(&aside);
         }
         return Err(e);
     }
-    // Sidecars are deleted while the live database name is absent, so the
+    // Sidecars go away while the live database name is absent, so the
     // snapshot is never published beside the previous wal.
-    if let Err(e) = delete_live_sidecars(root) {
-        if root.join("archive.sqlite-wal").exists() {
-            remove_names(root, &names);
-            if move_present(&aside, root, &names).is_ok() {
-                let _ = fs::remove_dir_all(&aside);
-            }
+    if let Err(e) = delete_live_sidecars(root, &aside) {
+        if move_present(&aside, root, &rollback).is_ok() {
+            let _ = fs::remove_dir_all(&aside);
         }
         return Err(e);
     }
     if let Err(e) = move_required(stage, root, &names) {
         remove_names(root, &names);
+        if move_present(&aside, root, &rollback).is_ok() {
+            let _ = fs::remove_dir_all(&aside);
+        }
         return Err(e);
     }
     let _ = fs::remove_dir_all(&aside);
@@ -267,14 +314,31 @@ fn remove_names(dir: &Path, names: &[&str]) {
     }
 }
 
-fn delete_live_sidecars(root: &Path) -> Result<()> {
+fn delete_live_sidecars(root: &Path, aside: &Path) -> Result<()> {
+    // Journal first: a directory fails remove_file before the wal is unlinked.
     for name in [
-        "archive.sqlite-wal",
-        "archive.sqlite-shm",
         "archive.sqlite-journal",
+        "archive.sqlite-shm",
+        "archive.sqlite-wal",
     ] {
+        park_sidecar_file(root, aside, name)?;
         remove_file_retry(&root.join(name))?;
     }
+    Ok(())
+}
+
+/// Rename a regular sidecar into `aside`. A directory stays where it is.
+fn park_sidecar_file(root: &Path, aside: &Path, name: &str) -> Result<()> {
+    let path = root.join(name);
+    let meta = match fs::symlink_metadata(&path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e.into()),
+    };
+    if !meta.is_file() {
+        return Ok(());
+    }
+    fs::rename(path, aside.join(name))?;
     Ok(())
 }
 
@@ -283,6 +347,7 @@ fn remove_file_retry(path: &Path) -> Result<()> {
         match fs::remove_file(path) {
             Ok(()) => return Ok(()),
             Err(e) if e.kind() == ErrorKind::NotFound => return Ok(()),
+            Err(e) if path.is_dir() => return Err(e.into()),
             Err(_) => thread::sleep(Duration::from_millis(10)),
         }
     }
@@ -291,6 +356,134 @@ fn remove_file_retry(path: &Path) -> Result<()> {
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e.into()),
     }
+}
+
+/// True when this process still has a live database file, `INTERLACE.toml`,
+/// or a file under live `cas/` open. Copies under `snapshots/` and `tmp/` do not count.
+fn live_files_open(root: &Path) -> Result<bool> {
+    let root = fs::canonicalize(root)?;
+    let live = LivePaths::from_canonical_root(&root);
+    each_open_path(|path| live.contains(path))
+}
+
+struct LivePaths {
+    named: Vec<PathBuf>,
+    cas: PathBuf,
+    snaps: PathBuf,
+    tmp: PathBuf,
+}
+
+impl LivePaths {
+    fn from_canonical_root(root: &Path) -> Self {
+        let mut named = Vec::with_capacity(5);
+        for name in [
+            "archive.sqlite",
+            "archive.sqlite-wal",
+            "archive.sqlite-shm",
+            "archive.sqlite-journal",
+            "INTERLACE.toml",
+        ] {
+            if let Ok(path) = fs::canonicalize(root.join(name)) {
+                named.push(path);
+            }
+        }
+        Self {
+            named,
+            cas: canonical_existing(root.join("cas")),
+            snaps: canonical_existing(root.join("snapshots")),
+            tmp: canonical_existing(root.join("tmp")),
+        }
+    }
+
+    fn contains(&self, raw: &Path) -> bool {
+        let Ok(path) = fs::canonicalize(raw) else {
+            return false;
+        };
+        if path.starts_with(&self.snaps) || path.starts_with(&self.tmp) {
+            return false;
+        }
+        if self.named.contains(&path) {
+            return true;
+        }
+        path.starts_with(&self.cas) && path != self.cas
+    }
+}
+
+fn canonical_existing(path: PathBuf) -> PathBuf {
+    fs::canonicalize(&path).unwrap_or(path)
+}
+
+fn each_open_path(hit: impl FnMut(&Path) -> bool) -> Result<bool> {
+    #[cfg(target_os = "linux")]
+    {
+        linux_each_open_path(hit)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        macos_each_open_path(hit)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        let _ = hit;
+        Ok(false)
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn linux_each_open_path(mut hit: impl FnMut(&Path) -> bool) -> Result<bool> {
+    for ent in fs::read_dir("/proc/self/fd")? {
+        let ent = ent?;
+        let Ok(path) = fs::read_link(ent.path()) else {
+            continue;
+        };
+        if hit(&path) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_each_open_path(mut hit: impl FnMut(&Path) -> bool) -> Result<bool> {
+    let max = macos_fd_limit();
+    for fd in 0..max {
+        let Some(path) = macos_fd_path(fd) else {
+            continue;
+        };
+        if hit(&path) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_fd_limit() -> i32 {
+    let mut lim = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    let max = if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) } == 0 {
+        lim.rlim_cur
+    } else {
+        1024
+    };
+    max.clamp(1, 1_048_576) as i32
+}
+
+#[cfg(target_os = "macos")]
+fn macos_fd_path(fd: i32) -> Option<PathBuf> {
+    let mut buf = vec![0u8; libc::PATH_MAX as usize];
+    let rc = unsafe { libc::fcntl(fd, libc::F_GETPATH, buf.as_mut_ptr()) };
+    if rc == -1 {
+        return None;
+    }
+    let len = buf.iter().position(|&byte| byte == 0).unwrap_or(buf.len());
+    let text = std::str::from_utf8(&buf[..len]).ok()?;
+    if text.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(text))
 }
 
 fn mirror_tree(src: &Path, dst: &Path, skip_partial: bool) -> Result<()> {
