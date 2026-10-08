@@ -46,6 +46,9 @@ export function startPeopleBoot(ctx: PeopleBootCtx): () => void {
   void listen("menu-copy-archive-to", () => {
     void copyArchiveTo(ctx);
   }).then(keepMenu);
+  void listen("archive-closed", () => {
+    ctx.setSetup(true);
+  }).then(keepMenu);
   void getCurrentWebview()
     .onDragDropEvent((event) => {
       if (event.payload.type !== "drop") return;

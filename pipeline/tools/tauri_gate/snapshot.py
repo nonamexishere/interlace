@@ -95,6 +95,36 @@ def _assigns_archive_slot_none(body: str) -> bool:
     return False
 
 
+def _guard_none_assign(body: str) -> re.Match[str] | None:
+    """The `*guard = None` that clears the open archive slot."""
+    return re.search(r"\*\s*guard\s*=\s*None\b", body)
+
+
+def _detach_assign_path(body: str) -> str:
+    """From `archive_on_file` through the `return Err` after `*guard = None`."""
+    assign = _guard_none_assign(body)
+    if not assign:
+        return ""
+    ret = re.search(r"\breturn\s+Err\b", body[assign.end() :])
+    end = assign.end() + ret.start() if ret else len(body)
+    start = body.rfind("archive_on_file", 0, assign.start())
+    if start < 0:
+        start = assign.start()
+    return body[start:end]
+
+
+def _after_guard_none_before_return_err(body: str) -> str:
+    """Text after `*guard = None` and before the `return Err` that follows it."""
+    assign = _guard_none_assign(body)
+    if not assign:
+        return ""
+    rest = body[assign.end() :]
+    ret = re.search(r"\breturn\s+Err\b", rest)
+    if not ret:
+        return ""
+    return rest[: ret.start()]
+
+
 def _fns_calling(ipc: str, needle: str) -> list[str]:
     names = re.findall(
         r"(?:pub(?:\(crate\))?\s+)?(?:async\s+)?fn\s+([A-Za-z0-9_]+)",
@@ -197,6 +227,26 @@ def assert_snapshot(crate: Path) -> None:
         bits.append(
             "snapshot_restore assigns the archive slot None without archive_root and rebuild_menu"
         )
+    detach_path = _detach_assign_path(restore_fn)
+    for token in ("archive_on_file", "None", "archive_root", "rebuild_menu"):
+        if token not in detach_path:
+            bits.append(f"snapshot_restore detach path lacks {token}")
+    if "archive-closed" not in _after_guard_none_before_return_err(restore_fn):
+        bits.append(
+            "snapshot_restore lacks archive-closed after *guard = None and before return Err"
+        )
+    if "archive-closed" in take_fn:
+        bits.append("snapshot_take mentions archive-closed")
+    boot = _text(crate / "web" / "lib" / "PeopleBoot.ts")
+    listen_at = boot.find('listen("archive-closed"')
+    if listen_at < 0:
+        bits.append('PeopleBoot.ts lacks listen("archive-closed"')
+    else:
+        window = boot[listen_at + len('listen("archive-closed"') :][:200]
+        if "setSetup(true)" not in window:
+            bits.append("archive-closed listener lacks setSetup(true)")
+        if "closeArchive" in window:
+            bits.append("archive-closed listener calls closeArchive")
     bits.extend(_locale_bits(crate))
     if bits:
         fail("snapshot: " + "; ".join(bits))

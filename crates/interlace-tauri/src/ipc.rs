@@ -20,7 +20,7 @@ use interlace_core::{
     LockMode, Platform, SearchQuery,
 };
 use rusqlite::OptionalExtension;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 use crate::{err, err_open, map_io, with_arch, with_arch_mut, AppState};
 
@@ -780,6 +780,7 @@ pub(crate) fn snapshot_restore(
             drop(guard);
             *state.archive_root.lock().map_err(err)? = None;
             crate::menu::rebuild_menu(&app);
+            let _ = app.emit("archive-closed", ());
         }
         return Err(err(e));
     }
