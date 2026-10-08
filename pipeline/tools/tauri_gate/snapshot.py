@@ -78,6 +78,23 @@ def _onclick_body(doctor: str, marker: str) -> str:
     return _ts_function_body(doctor, m.group(1)) or el
 
 
+def _assigns_archive_slot_none(body: str) -> bool:
+    """True when the archive slot is assigned None, not merely mentioned."""
+    if re.search(r"\barchive\b[^;\n]{0,240}=\s*None\b", body):
+        return True
+    names = re.findall(
+        r"\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[^;\n]*\barchive\s*\.\s*lock\s*\(",
+        body,
+    )
+    for name in names:
+        if re.search(
+            rf"(?<![\w])(?:\*\s*)?{re.escape(name)}\s*=\s*None\b",
+            body,
+        ):
+            return True
+    return False
+
+
 def _fns_calling(ipc: str, needle: str) -> list[str]:
     names = re.findall(
         r"(?:pub(?:\(crate\))?\s+)?(?:async\s+)?fn\s+([A-Za-z0-9_]+)",
@@ -163,9 +180,23 @@ def assert_snapshot(crate: Path) -> None:
                 "Doctor load does not check scanGen after snapshotList "
                 "and before scanning = false"
             )
+    take_fn = _rust_function_body(ipc, "snapshot_take")
     restore_fn = _rust_function_body(ipc, "snapshot_restore")
+    for name, body in (("snapshot_take", take_fn), ("snapshot_restore", restore_fn)):
+        if "import running" not in body:
+            bits.append(f"{name} does not refuse import running")
+        if "copy in progress" not in body:
+            bits.append(f"{name} does not refuse copy in progress")
+    if "disabled={busy" not in _element(doctor, "data-copy-archive"):
+        bits.append("data-copy-archive lacks disabled={busy")
     if "archive_on_file" not in restore_fn or "None" not in restore_fn:
         bits.append("snapshot_restore body lacks archive_on_file and None")
+    if _assigns_archive_slot_none(restore_fn) and (
+        "archive_root" not in restore_fn or "rebuild_menu" not in restore_fn
+    ):
+        bits.append(
+            "snapshot_restore assigns the archive slot None without archive_root and rebuild_menu"
+        )
     bits.extend(_locale_bits(crate))
     if bits:
         fail("snapshot: " + "; ".join(bits))

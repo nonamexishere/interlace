@@ -477,7 +477,13 @@
     <Button variant="outline" size="sm" data-reveal-archive onclick={revealArchive}>
       {t("revealInFinder")}
     </Button>
-    <Button variant="outline" size="sm" data-copy-archive onclick={copyArchiveTo}>
+    <Button
+      variant="outline"
+      size="sm"
+      data-copy-archive
+      disabled={busy || scanning}
+      onclick={copyArchiveTo}
+    >
       {t("copyArchiveTo")}
     </Button>
     <div data-snapshot-list class="space-y-2 pt-2">

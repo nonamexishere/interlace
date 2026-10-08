@@ -73,7 +73,7 @@ pub fn restore_snapshot(archive: &mut Archive, id: &str) -> Result<()> {
     verify_manifest(&stage)?;
 
     let mut suspended = false;
-    let installed = (|| -> Result<()> {
+    let installed = (|| -> Result<PathBuf> {
         archive.suspend_conn()?;
         suspended = true;
         // No rename until this process has dropped the live files. The
@@ -81,17 +81,29 @@ pub fn restore_snapshot(archive: &mut Archive, id: &str) -> Result<()> {
         if live_files_open(&archive.root)? {
             return Err(CoreError::Fatal("snapshot busy".into()));
         }
-        install_staged(&archive.root, &stage)?;
-        Ok(())
+        install_staged(&archive.root, &stage)
     })();
-    if let Err(e) = installed {
-        if suspended {
-            // Resume must not replace the install error.
-            let _ = resume_restored(archive);
+    let aside = match installed {
+        Ok(path) => path,
+        Err(e) => {
+            if suspended {
+                // Resume must not replace the install error.
+                let _ = resume_restored(archive);
+            }
+            return Err(e);
         }
-        return Err(e);
+    };
+    // The aside still holds the pre-restore names. Delete it only after
+    // resume replaces the connection, or after a roll-back that itself works.
+    if let Err(original) = resume_restored(archive) {
+        if rollback_published(&archive.root, &aside).is_ok() {
+            let _ = fs::remove_dir_all(&aside);
+        }
+        let _ = resume_restored(archive);
+        return Err(original);
     }
-    resume_restored(archive)
+    let _ = fs::remove_dir_all(&aside);
+    Ok(())
 }
 
 /// Reopen the archive connection. SQLite will not open while
@@ -224,7 +236,7 @@ fn stage_from_snapshot(snap: &Path, stage: &Path) -> Result<()> {
     Ok(())
 }
 
-fn install_staged(root: &Path, stage: &Path) -> Result<()> {
+fn install_staged(root: &Path, stage: &Path) -> Result<PathBuf> {
     let aside = root.join("tmp").join(format!(
         "snap-aside-{}-{}",
         std::process::id(),
@@ -263,8 +275,40 @@ fn install_staged(root: &Path, stage: &Path) -> Result<()> {
         }
         return Err(e);
     }
-    let _ = fs::remove_dir_all(&aside);
-    Ok(())
+    // Leave snap-aside-* until resume_conn has replaced the connection.
+    // A failed resume moves this directory back, including the parked wal.
+    Ok(aside)
+}
+
+/// Drop the published snapshot names, then move the aside back.
+/// A failed rename leaves the aside on disk.
+fn rollback_published(root: &Path, aside: &Path) -> Result<()> {
+    remove_names(root, &["INTERLACE.toml", "archive.sqlite", "cas"]);
+    // A failed reopen can leave sidecars beside the snapshot file. Those
+    // block the parked wal, shm, and journal from moving home.
+    for name in [
+        "archive.sqlite-journal",
+        "archive.sqlite-shm",
+        "archive.sqlite-wal",
+    ] {
+        let path = root.join(name);
+        if path.is_dir() {
+            continue;
+        }
+        let _ = remove_file_retry(&path);
+    }
+    move_present(
+        aside,
+        root,
+        &[
+            "INTERLACE.toml",
+            "archive.sqlite",
+            "cas",
+            "archive.sqlite-journal",
+            "archive.sqlite-shm",
+            "archive.sqlite-wal",
+        ],
+    )
 }
 
 fn move_present(from_dir: &Path, to_dir: &Path, names: &[&str]) -> Result<()> {

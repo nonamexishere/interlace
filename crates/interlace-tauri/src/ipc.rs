@@ -727,17 +727,43 @@ pub(crate) fn snapshot_take(state: tauri::State<AppState>) -> Result<String, Str
     if import_status == "running" {
         return Err("import running".into());
     }
+    // copying, then archive. copy_archive_to does not take the archive mutex.
+    {
+        let mut copying = state.copying.lock().map_err(err)?;
+        if *copying {
+            return Err("copy in progress".into());
+        }
+        *copying = true;
+    }
+    let _copy_guard = CopyGuard {
+        flag: Arc::clone(&state.copying),
+    };
     with_arch(&state, |arch| {
         interlace_core::snapshot_archive(arch).map_err(err)
     })
 }
 
 #[tauri::command]
-pub(crate) fn snapshot_restore(state: tauri::State<AppState>, id: String) -> Result<(), String> {
+pub(crate) fn snapshot_restore(
+    app: AppHandle,
+    state: tauri::State<AppState>,
+    id: String,
+) -> Result<(), String> {
     let import_status = state.import.lock().map_err(err)?.status.clone();
     if import_status == "running" {
         return Err("import running".into());
     }
+    // copying, then archive. copy_archive_to does not take the archive mutex.
+    {
+        let mut copying = state.copying.lock().map_err(err)?;
+        if *copying {
+            return Err("copy in progress".into());
+        }
+        *copying = true;
+    }
+    let _copy_guard = CopyGuard {
+        flag: Arc::clone(&state.copying),
+    };
     let mut guard = state.archive.lock().map_err(err)?;
     let outcome = {
         let Some(arch) = guard.as_mut() else {
@@ -751,6 +777,9 @@ pub(crate) fn snapshot_restore(state: tauri::State<AppState>, id: String) -> Res
     if let Err((e, detach)) = outcome {
         if detach {
             *guard = None;
+            drop(guard);
+            *state.archive_root.lock().map_err(err)? = None;
+            crate::menu::rebuild_menu(&app);
         }
         return Err(err(e));
     }

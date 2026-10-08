@@ -27,7 +27,8 @@ It is not an `interlace backup` command. **Copy archive to…** stays.
 A hash failure is not applied. Messages added after the snapshot are removed
 when restore succeeds. A failed restore leaves the open archive as it was.
 Restore refuses while this process still has the database or the content
-store open.
+store open. Restore does not run while Copy archive to… is copying, and a
+failed reopen puts the open archive back.
 
 ## Copy these
 

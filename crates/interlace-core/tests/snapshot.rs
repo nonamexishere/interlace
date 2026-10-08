@@ -1,4 +1,4 @@
-//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER REST-LIVE REST-PUBLISH REST-BUSY
+//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER REST-LIVE REST-PUBLISH REST-BUSY REST-RESUME
 //!
 //! Snapshot and restore. Placeholder Ada / Berk only. The rare token
 //! `quartzsnap91` is planted only in the Berk zip. These tests call the
@@ -1035,4 +1035,79 @@ fn rest_busy() {
     );
     drop(hold_file);
     restore_snapshot(&mut held.arch, &id).unwrap();
+}
+
+#[test]
+fn rest_resume() {
+    let mut held = plant("resume");
+    insert_message(&held, "ada before", "k-resume-before");
+    let id = snapshot_archive(&held.arch).unwrap();
+    insert_message(&held, "ada after", "k-resume-after");
+    let live = held.arch.root.join("archive.sqlite");
+    let before = fs::read(&live).unwrap();
+    let dir = snap_dir(&held.arch, &id);
+    let snap_path = dir.join("archive.sqlite");
+    let snap = fs::read(&snap_path).unwrap();
+    assert!(
+        before != snap,
+        "void: live archive.sqlite and the snapshot file are the same bytes ({})",
+        before.len()
+    );
+    let garbage = b"not-a-sqlite-database";
+    fs::write(&snap_path, garbage).unwrap();
+    let manifest_path = dir.join("MANIFEST.blake3");
+    let text = fs::read_to_string(&manifest_path).unwrap();
+    assert!(text.ends_with('\n') && !text.ends_with("\n\n"));
+    let hex = blake3::hash(garbage).to_hex().to_string();
+    let mut rewritten = String::new();
+    let mut saw = false;
+    for line in text.trim_end_matches('\n').split('\n') {
+        let (old_hex, rel) = line.split_once(' ').expect("manifest line has no space");
+        if rel == "archive.sqlite" {
+            assert!(!saw, "manifest lists archive.sqlite twice");
+            assert_eq!(old_hex.len(), 64);
+            assert_ne!(old_hex, hex);
+            rewritten.push_str(&hex);
+            rewritten.push(' ');
+            rewritten.push_str(rel);
+            saw = true;
+        } else {
+            rewritten.push_str(line);
+        }
+        rewritten.push('\n');
+    }
+    assert!(saw, "manifest has no archive.sqlite line");
+    fs::write(&manifest_path, rewritten).unwrap();
+    let err = restore_snapshot(&mut held.arch, &id);
+    assert!(
+        err.is_err(),
+        "restore_snapshot returned Ok for not-a-sqlite-database"
+    );
+    let now = fs::read(&live).ok();
+    assert!(
+        live.is_file() && now.as_deref() == Some(before.as_slice()),
+        "live archive.sqlite bytes are not the pre-restore database (exists {}, len {:?} vs before {})",
+        live.is_file(),
+        now.as_ref().map(|b| b.len()),
+        before.len()
+    );
+    assert_eq!(
+        main_db_file_name(&held.arch).as_deref(),
+        Some("archive.sqlite"),
+        "pragma_database_list main file is {:?}",
+        main_db_file(&held.arch)
+    );
+    assert!(
+        body_on(&held.arch, "ada before"),
+        "ada before missing after failed resume"
+    );
+    assert!(
+        body_on(&held.arch, "ada after"),
+        "ada after missing after failed resume"
+    );
+    assert_eq!(
+        fs::read(&snap_path).unwrap(),
+        garbage,
+        "snapshot archive.sqlite no longer holds not-a-sqlite-database"
+    );
 }
