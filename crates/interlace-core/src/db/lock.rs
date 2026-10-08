@@ -17,6 +17,9 @@ pub struct ArchiveLock {
     /// Held for process lifetime so flock is released on drop.
     #[allow(dead_code)]
     file: File,
+    /// Dup of `file` so LOCK_EX survives a close of the original fd.
+    #[allow(dead_code)]
+    held: Option<File>,
 }
 
 impl ArchiveLock {
@@ -47,7 +50,15 @@ impl ArchiveLock {
             writeln!(file, "{pid} {cmd}")?;
             file.flush()?;
         }
-        Ok(Self { file })
+        Ok(Self { file, held: None })
+    }
+
+    /// Keep a second fd so `LOCK_EX` outlives a later close of `file`.
+    pub(super) fn keep_dup(&mut self) -> Result<()> {
+        if self.held.is_none() {
+            self.held = Some(self.file.try_clone()?);
+        }
+        Ok(())
     }
 }
 

@@ -3,7 +3,7 @@ use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, OpenFlags, OptionalExtension};
 
 use crate::model::{CoreError, ImportOpts, ImportStats, OpenOptions, SourceKind};
 
@@ -74,6 +74,22 @@ pub fn open_with_options(opts: &OpenOptions) -> Result<Archive> {
     } else {
         open_archive(&opts.path, LockMode::Exclusive)
     }
+}
+
+/// True only when `pragma database_list` names `main` as `archive.sqlite`.
+pub fn archive_on_file(archive: &Archive) -> bool {
+    let mut on_file = false;
+    let queried = archive.conn.pragma_query(None, "database_list", |row| {
+        let name: String = row.get(1)?;
+        if name == "main" {
+            let file: String = row.get::<_, Option<String>>(2)?.unwrap_or_default();
+            on_file = Path::new(&file)
+                .file_name()
+                .is_some_and(|file_name| file_name == "archive.sqlite");
+        }
+        Ok(())
+    });
+    queried.is_ok() && on_file
 }
 
 struct AttachmentScanRow {
@@ -345,4 +361,38 @@ fn now_rfc3339() -> String {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     format!("{secs}")
+}
+
+impl Archive {
+    /// Dup the lock fd and drop the sqlite connection. Does not checkpoint.
+    pub(super) fn suspend_conn(&mut self) -> Result<()> {
+        self._lock.keep_dup()?;
+        self.conn.set_db_config(
+            rusqlite::config::DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+            true,
+        )?;
+        let placeholder = Connection::open_in_memory()?;
+        drop(std::mem::replace(&mut self.conn, placeholder));
+        Ok(())
+    }
+
+    /// Reopen `archive.sqlite` on the same path. Does not take another flock.
+    /// A missing file is an error and does not replace `self.conn`.
+    pub(super) fn resume_conn(&mut self) -> Result<()> {
+        let path = self.root.join("archive.sqlite");
+        if !path.is_file() {
+            return Err(CoreError::Fatal("archive.sqlite is not a file".into()));
+        }
+        let conn = Connection::open_with_flags(
+            &path,
+            OpenFlags::SQLITE_OPEN_READ_WRITE
+                | OpenFlags::SQLITE_OPEN_URI
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        apply_pragmas(&conn)?;
+        migrate(&conn)?;
+        ensure_fts_triggers(&conn)?;
+        self.conn = conn;
+        Ok(())
+    }
 }

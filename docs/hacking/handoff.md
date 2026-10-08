@@ -1,7 +1,7 @@
 # Agent / session handoff
 
-**Date:** 2026-09-29. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
-This PR is **#448** (**#424**, Gmail threads from reply headers). **#423** / PR **#447** is merged (`8bd02d8`). **#384** and **#385** stay backed out. Next unstarted child of epic **#416** is **#425** (jump from a WhatsApp quote to the original).
+**Date:** 2026-10-09. **Owner:** Mustafa. **Repo:** [nonamexishere/interlace](https://github.com/nonamexishere/interlace) (public).
+This PR is **#454** (**#430**, Doctor can snapshot and restore the open archive). Epic **#416** children **#417–#429** are merged. **#384** and **#385** stay backed out. Next unstarted child of epic **#416** is **#431** (Doctor can repair, dry-run first).
 
 Read this first in a new session, then `gh pr list` / `gh issue list` (this file rots).
 Do **not** dump real chat bodies or real contact names into issues, PRs, tests, or this file.
@@ -90,7 +90,9 @@ App holds exclusive flock. **File → Switch archive** drops the flock
 without quitting (returns to setup). Or close `interlace-app` /
 `tauri:dev` before CLI `import` / `doctor --integrity` / wipe.
 
-## Snapshot (2026-08-28)
+## Snapshot (2026-10-09)
+
+Living status is the top of this file. **#430** / PR **#454** is the open product PR. Next is **#431**. Dogfood `~/Interlace` (counts only): 40,582 messages, 1,729 identities, 2,209 live persons, 1 open review, region TR. Last import finished 2026-09-24 as `done`.
 
 Published: `interlace` / `interlace-core` / `interlace-cli` **0.1.1** (`v0.1.0`,
 `v0.1.1` tags). Workspace version is still **0.1.1**. App crate
@@ -292,7 +294,7 @@ Phase 2.3 coding is **done** (epic **#264** / milestone 8 closed). Phase 2.2
 polish (#197) is **done**. Phase 2.4 epic **#360** is **started**: **#361**–**#379**, **#400**, and **#402**
 landed (PRs **#381**–**#383**, **#386**, **#388**, **#390**, **#392**, **#394**, **#396**, **#398**, **#401**, **#404**, **#406**, **#408**, **#409**, **#410**, **#411**, **#412**; **#379** this PR). **#384** and **#385** were
 tried locally and **backed out**. Stay on post-#380 chrome.
-**#424** / PR **#448** is this branch. **#423** / PR **#447** is merged (`8bd02d8`). Next is **#425**.
+**#430** / PR **#454** is this branch (snapshot and restore). **#417–#429** are merged. Next is **#431**.
 Phase 4 epic **#56** is **started** (#79 / PR **#359**).
 Normative [`docs/design/UI-DESIGN.md`](../design/UI-DESIGN.md).
 Do **not** restart **#384** / **#385** unprompted. Do **not** start Phase 1.1
@@ -304,7 +306,7 @@ code.
 
 ### Suggested next
 
-1. **#424** is this PR (**#448**). Next unstarted child of epic **#416** is **#425**. **#384** / **#385** stay backed out.
+1. **#430** is this PR (**#454**). Next unstarted child of epic **#416** is **#431**. **#384** / **#385** stay backed out.
    Next Phase 4 coding **#80** only if
    asked. Do not start #81 / #82 / 1.1 / Phase 3 export
    unprompted.
@@ -325,8 +327,8 @@ Phase 2.2 archive: [#197](https://github.com/nonamexishere/interlace/issues/197)
 
 ## Recommended next steps
 
-1. #303–#322 / #342 / #361–#379 / #400 / #402 / #403 / #419 / #420 / #421 / #422 are done. Phase 2.4:
-   **#384** / **#385** backed out. **#424** is PR **#448**. Next is **#425**.
+1. #303–#322 / #342 / #361–#379 / #400 / #402 / #403 / #417–#429 are done. Phase 2.4:
+   **#384** / **#385** backed out. **#430** is PR **#454**. Next is **#431**.
    Phase 4 started: **#79** / PR **#359**. Next
    Phase 4 coding **#80** only if asked. #342 follow-up is **D**.
 2. Do not start 1.1 / Phase 3 export / #81 / #82 unprompted.
@@ -410,8 +412,8 @@ picker (#151). Tests use placeholders only (`Cemre Yıldız` / `Berk Özdemir`).
 > mix into IN.md before test-author. Do not spawn agents from a child. Orchestrator
 > does not implement product code. Ask before commit / push / merge.
 > Phase 2.3 coding is done (epic #264 / milestone 8 closed). Phase 2.4
-> epic #360 started: **#380** merged. **#403**, **#419**, **#420**, and **#421**
-> are merged. **#424** / PR **#448** is this branch. Next is **#425**. **#384** / **#385** stay backed out.
+> epic #360 started: **#380** merged. **#403** and **#417–#429**
+> are merged. **#430** / PR **#454** is this branch. Next is **#431**. **#384** / **#385** stay backed out.
 > Read
 > `docs/design/UI-DESIGN.md`. Do not invent a new 2.3 ticket. #265–#279,
 > #297, #300, #303–#322, #342 done (PRs #323–#328, #330, #332, #336, #338, #340,

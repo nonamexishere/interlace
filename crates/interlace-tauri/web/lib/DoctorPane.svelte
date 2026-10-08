@@ -43,6 +43,8 @@
   let voiceAsk = $state(false);
   let ocrOn = $state(false);
   let ocrAsk = $state(false);
+  let snapshots = $state<string[]>([]);
+  let snapshotAsk = $state<string | null>(null);
 
   async function load() {
     const gen = ++scanGen;
@@ -64,6 +66,12 @@
         scanError = friendly(e instanceof Error ? e.message : String(e ?? ""));
       }
     } finally {
+      try {
+        const listed = await api.snapshotList();
+        if (gen === scanGen) snapshots = listed;
+      } catch {
+        if (gen === scanGen) snapshots = [];
+      }
       if (gen === scanGen) scanning = false;
     }
   }
@@ -109,6 +117,7 @@
   ) {
     voiceAsk = false;
     ocrAsk = false;
+    snapshotAsk = null;
     confirmTitle = title;
     confirmDesc = description;
     confirmLabel = label;
@@ -163,6 +172,7 @@
   function askVoice() {
     voiceAsk = true;
     ocrAsk = false;
+    snapshotAsk = null;
     pending = null;
     confirmTitle = t("transcribeVoice");
     confirmDesc = t("transcribeVoiceDesc");
@@ -187,6 +197,7 @@
   function askOcr() {
     ocrAsk = true;
     voiceAsk = false;
+    snapshotAsk = null;
     pending = null;
     confirmTitle = t("ocrImages");
     confirmDesc = t("ocrImagesDesc");
@@ -208,6 +219,61 @@
     }
   }
 
+  function askSnapshot(id: string) {
+    snapshotAsk = id;
+    voiceAsk = false;
+    ocrAsk = false;
+    pending = null;
+    confirmTitle = t("snapshotRestoreTitle");
+    confirmDesc = t("snapshotRestoreBody");
+    confirmLabel = t("snapshotRestore");
+    confirmOpen = true;
+  }
+
+  async function takeSnapshot() {
+    busy = true;
+    try {
+      await api.snapshotTake();
+      onToast?.(t("snapshotSaved"));
+      try {
+        snapshots = await api.snapshotList();
+      } catch {
+        snapshots = [];
+      }
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e ?? "");
+      if (raw.includes("import running")) onToast?.(t("importRunning"));
+      else onError(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function runSnapshot() {
+    const id = snapshotAsk;
+    if (!id) return;
+    busy = true;
+    try {
+      await api.snapshotRestore(id);
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e ?? "");
+      onToast?.(
+        raw.includes("import running") ? t("importRunning") : t("snapshotRestoreFailed"),
+      );
+      return;
+    } finally {
+      busy = false;
+      snapshotAsk = null;
+    }
+    onToast?.(t("snapshotRestored"));
+    try {
+      await load();
+      await onDone();
+    } catch (e) {
+      onError(e);
+    }
+  }
+
   async function runPending() {
     if (ocrAsk) {
       await runOcr();
@@ -215,6 +281,10 @@
     }
     if (voiceAsk) {
       await runVoice();
+      return;
+    }
+    if (snapshotAsk) {
+      await runSnapshot();
       return;
     }
     if (!pending) return;
@@ -407,8 +477,44 @@
     <Button variant="outline" size="sm" data-reveal-archive onclick={revealArchive}>
       {t("revealInFinder")}
     </Button>
-    <Button variant="outline" size="sm" data-copy-archive onclick={copyArchiveTo}>
+    <Button
+      variant="outline"
+      size="sm"
+      data-copy-archive
+      disabled={busy || scanning}
+      onclick={copyArchiveTo}
+    >
       {t("copyArchiveTo")}
+    </Button>
+    <div data-snapshot-list class="space-y-2 pt-2">
+      <p class="font-medium">{t("snapshots")}</p>
+      {#if snapshots.length > 0}
+        <ul class="space-y-1">
+          {#each snapshots as id (id)}
+            <li class="flex flex-wrap items-center justify-between gap-2">
+              <span class="font-mono text-xs">{id}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                data-snapshot-restore
+                disabled={busy || scanning}
+                onclick={() => askSnapshot(id)}
+              >
+                {t("snapshotRestore")}
+              </Button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+    <Button
+      variant="outline"
+      size="sm"
+      data-snapshot-take
+      disabled={busy || scanning}
+      onclick={takeSnapshot}
+    >
+      {t("snapshotTake")}
     </Button>
   </section>
 </ScrollArea>

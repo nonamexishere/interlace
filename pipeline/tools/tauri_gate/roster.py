@@ -76,6 +76,7 @@ from tauri_gate.message_events import assert_message_events  # noqa: E402
 from tauri_gate.attachment_derivatives import assert_attachment_derivatives  # noqa: E402
 from tauri_gate.voice_transcript import assert_voice_transcript  # noqa: E402
 from tauri_gate.photo_ocr import assert_photo_ocr  # noqa: E402
+from tauri_gate.snapshot import assert_snapshot  # noqa: E402
 from tauri_gate.person_media_gallery import assert_person_media_gallery  # noqa: E402
 from tauri_gate.person_media_gallery_fold import assert_person_media_gallery_fold  # noqa: E402
 from tauri_gate.person_media_gallery_race import assert_person_media_gallery_race  # noqa: E402

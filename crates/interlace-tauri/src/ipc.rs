@@ -20,7 +20,7 @@ use interlace_core::{
     LockMode, Platform, SearchQuery,
 };
 use rusqlite::OptionalExtension;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 use crate::{err, err_open, map_io, with_arch, with_arch_mut, AppState};
 
@@ -712,4 +712,77 @@ pub(crate) fn review_accept_cmd(
 #[tauri::command]
 pub(crate) fn review_reject_cmd(state: tauri::State<AppState>, id: i64) -> Result<(), String> {
     with_arch_mut(&state, |arch| review_resolve(arch, id, false).map_err(err))
+}
+
+#[tauri::command]
+pub(crate) fn snapshot_list(state: tauri::State<AppState>) -> Result<Vec<String>, String> {
+    with_arch(&state, |arch| {
+        interlace_core::list_snapshots(&arch.root).map_err(err)
+    })
+}
+
+#[tauri::command]
+pub(crate) fn snapshot_take(state: tauri::State<AppState>) -> Result<String, String> {
+    let import_status = state.import.lock().map_err(err)?.status.clone();
+    if import_status == "running" {
+        return Err("import running".into());
+    }
+    // copying, then archive. copy_archive_to does not take the archive mutex.
+    {
+        let mut copying = state.copying.lock().map_err(err)?;
+        if *copying {
+            return Err("copy in progress".into());
+        }
+        *copying = true;
+    }
+    let _copy_guard = CopyGuard {
+        flag: Arc::clone(&state.copying),
+    };
+    with_arch(&state, |arch| {
+        interlace_core::snapshot_archive(arch).map_err(err)
+    })
+}
+
+#[tauri::command]
+pub(crate) fn snapshot_restore(
+    app: AppHandle,
+    state: tauri::State<AppState>,
+    id: String,
+) -> Result<(), String> {
+    let import_status = state.import.lock().map_err(err)?.status.clone();
+    if import_status == "running" {
+        return Err("import running".into());
+    }
+    // copying, then archive. copy_archive_to does not take the archive mutex.
+    {
+        let mut copying = state.copying.lock().map_err(err)?;
+        if *copying {
+            return Err("copy in progress".into());
+        }
+        *copying = true;
+    }
+    let _copy_guard = CopyGuard {
+        flag: Arc::clone(&state.copying),
+    };
+    let mut guard = state.archive.lock().map_err(err)?;
+    let outcome = {
+        let Some(arch) = guard.as_mut() else {
+            return Err("no archive open".into());
+        };
+        match interlace_core::restore_snapshot(arch, &id) {
+            Ok(()) => Ok(()),
+            Err(e) => Err((e, !interlace_core::archive_on_file(arch))),
+        }
+    };
+    if let Err((e, detach)) = outcome {
+        if detach {
+            *guard = None;
+            drop(guard);
+            *state.archive_root.lock().map_err(err)? = None;
+            crate::menu::rebuild_menu(&app);
+            let _ = app.emit("archive-closed", ());
+        }
+        return Err(err(e));
+    }
+    Ok(())
 }
