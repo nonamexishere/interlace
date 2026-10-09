@@ -23,12 +23,13 @@ use tauri::{Emitter, Manager};
 use crate::cas::{cas_data_url, cas_response, open_cas, open_cas_eml, reveal_archive, reveal_cas};
 use crate::import_cmd::{import_cancel, import_progress, import_start, pick_import_path};
 use crate::ipc::{
-    close_archive, copy_archive_to, doctor_issues_cmd, doctor_issues_quick_cmd, doctor_run_cmd,
-    estimate_unreferenced_cas_bytes, init, labels_list_cmd, ocr_images_cmd, ocr_images_enabled_cmd,
-    open, open_url, pick_folder, remembered_path, review_accept_cmd, review_list_cmd,
-    review_reject_cmd, review_show_cmd, search_body, search_cmd, set_ocr_images_enabled_cmd,
-    set_voice_transcribe_enabled_cmd, snapshot_list, snapshot_restore, snapshot_take, status,
-    transcribe_voice_notes_cmd, voice_transcribe_enabled_cmd,
+    close_archive, copy_archive_to, doctor_apply_cmd, doctor_issues_cmd, doctor_issues_quick_cmd,
+    doctor_plan_cmd, doctor_run_cmd, estimate_unreferenced_cas_bytes, init, labels_list_cmd,
+    ocr_images_cmd, ocr_images_enabled_cmd, open, open_url, pick_folder, remembered_path,
+    review_accept_cmd, review_list_cmd, review_reject_cmd, review_show_cmd, search_body,
+    search_cmd, set_ocr_images_enabled_cmd, set_voice_transcribe_enabled_cmd, snapshot_list,
+    snapshot_restore, snapshot_take, status, transcribe_voice_notes_cmd,
+    voice_transcribe_enabled_cmd,
 };
 use crate::menu::native_menu;
 use crate::people_cmd::{
@@ -208,6 +209,8 @@ fn main() {
             doctor_issues_cmd,
             doctor_issues_quick_cmd,
             doctor_run_cmd,
+            doctor_plan_cmd,
+            doctor_apply_cmd,
             voice_transcribe_enabled_cmd,
             set_voice_transcribe_enabled_cmd,
             transcribe_voice_notes_cmd,

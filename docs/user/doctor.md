@@ -95,3 +95,9 @@ Full doctor creates or restores a still when the original file exists and the st
 Quick doctor does not walk media and does not create a still. A missing original is still reported and is not invented.
 The in-app Doctor GC confirm names reclaimable bytes before unused files
 are deleted.
+
+## Repair
+
+Repair lists rebuild search, reattach, and reclaim. It does not change the archive.
+Apply runs that list once. It refuses when a listed repair is no longer in its before-state or after-state.
+`--rebuild-fts` and `--gc-cas` still write immediately.

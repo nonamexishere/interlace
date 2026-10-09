@@ -61,7 +61,7 @@ pub fn cas_get(archive: &Archive, hash: &str) -> Result<Vec<u8>, CoreError> {
     })
 }
 
-fn cas_reference_count(archive: &Archive, hash: &str) -> Result<i64, CoreError> {
+pub(crate) fn cas_reference_count(archive: &Archive, hash: &str) -> Result<i64, CoreError> {
     Ok(archive.conn.query_row(
         "SELECT
                 (SELECT COUNT(*) FROM attachments WHERE cas_hash = ?1)

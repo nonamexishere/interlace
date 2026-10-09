@@ -212,6 +212,12 @@ export type ImportProgress = {
   } | null;
 };
 
+export type DoctorPlan = {
+  rebuild_search: boolean;
+  reattach: string[];
+  reclaim: string[];
+};
+
 export const api = {
   rememberedPath: () => invoke<string | null>("remembered_path"),
   pickFolder: () => invoke<string | null>("pick_folder"),
@@ -229,6 +235,8 @@ export const api = {
   doctorIssuesQuick: () => invoke<string[]>("doctor_issues_quick_cmd"),
   doctorRun: (args: { integrity: boolean; rebuildFts: boolean; gcCas: boolean }) =>
     invoke<string[]>("doctor_run_cmd", args),
+  doctorPlan: () => invoke<DoctorPlan>("doctor_plan_cmd"),
+  doctorApply: (plan: DoctorPlan) => invoke<void>("doctor_apply_cmd", { plan }),
   voiceTranscribeEnabled: () => invoke<boolean>("voice_transcribe_enabled_cmd"),
   setVoiceTranscribeEnabled: (on: boolean) =>
     invoke<void>("set_voice_transcribe_enabled_cmd", { on }),

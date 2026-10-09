@@ -17,7 +17,7 @@ use interlace_core::{
     review_list, review_resolve, review_resolve_selected, review_show, search,
     set_ocr_images_enabled, set_voice_transcribe_enabled, store_ocr_text, store_voice_transcript,
     visible_message_body, voice_transcribe_enabled, Archive, AttachmentFilter, ConversationKind,
-    LockMode, Platform, SearchQuery,
+    DoctorPlan, LockMode, Platform, SearchQuery,
 };
 use rusqlite::OptionalExtension;
 use tauri::{AppHandle, Emitter};
@@ -415,6 +415,19 @@ pub(crate) fn doctor_run_cmd(
         arch.doctor(rebuild_fts, gc_cas, integrity).map_err(err)?;
         arch.doctor_issues().map_err(err)
     })
+}
+
+#[tauri::command]
+pub(crate) fn doctor_plan_cmd(state: tauri::State<AppState>) -> Result<DoctorPlan, String> {
+    with_arch(&state, |arch| arch.doctor_plan().map_err(err))
+}
+
+#[tauri::command]
+pub(crate) fn doctor_apply_cmd(
+    state: tauri::State<AppState>,
+    plan: DoctorPlan,
+) -> Result<(), String> {
+    with_arch(&state, |arch| arch.doctor_apply(&plan).map_err(err))
 }
 
 #[tauri::command]
