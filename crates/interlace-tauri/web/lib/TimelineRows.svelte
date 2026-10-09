@@ -354,7 +354,7 @@
                       <button
                         type="button"
                         data-message-edited
-                        class="text-xs text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                        class="w-fit rounded-full border border-border bg-background/60 px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                         aria-expanded={editOpen[item.row.message_id] ? "true" : "false"}
                         onclick={(e) => {
                           e.stopPropagation();
@@ -363,10 +363,13 @@
                           editOpen = { ...editOpen, [id]: !editOpen[id] };
                         }}
                       >{t("messageEdited")}</button>
-                      {#if editOpen[item.row.message_id]}
-                        {#each item.row.previous_bodies ?? [] as wording}
-                          <p data-previous-body class="text-xs text-muted-foreground whitespace-pre-wrap">{wording}</p>
-                        {/each}
+                      {#if editOpen[item.row.message_id] && (item.row.previous_bodies ?? []).length}
+                        <p class="text-xs text-muted-foreground">{t("messageEditedOldest")}</p>
+                        <div class="border-l border-border pl-2">
+                          {#each item.row.previous_bodies ?? [] as wording}
+                            <p data-previous-body class="text-xs text-muted-foreground whitespace-pre-wrap">{wording}</p>
+                          {/each}
+                        </div>
                       {/if}
                     {/if}
                   {/if}

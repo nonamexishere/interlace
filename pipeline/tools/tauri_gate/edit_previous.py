@@ -1,9 +1,13 @@
 """#464 — Edited opens the previous wordings on the same non-mail bubble.
 
-messageEdited stays "Edited" / "Düzenlendi". The non-mail edited arm renders
-that key on <button type="button" data-message-edited>, toggled by editOpen.
-While open, each previous_bodies string is a plain <p data-previous-body>.
-A deleted bubble stays messageDeleted only. No new locale key.
+messageEdited stays "Edited" / "Düzenlendi" on a native
+<button type="button" data-message-edited> chip toggled by editOpen.
+While that chip is open and previous_bodies is non-empty, one muted
+text-xs line renders t("messageEditedOldest") ("Oldest first" /
+"Önce en eski") after the chip and before each plain
+<p data-previous-body> inside a border-l group. The chip stays when the
+list is empty; that caption does not. A deleted bubble stays
+messageDeleted only. Mail paints neither the chip nor the caption.
 """
 from __future__ import annotations
 
@@ -26,12 +30,25 @@ _ISSUE = "#464"
 _EDITED = re.compile(r"""edit_state\s*===\s*['"]edited['"]""")
 _DELETED = re.compile(r"""edit_state\s*===\s*['"]deleted['"]""")
 _T_EDITED = re.compile(r"""t\(\s*['"]messageEdited['"]\s*\)""")
+_T_OLDEST = re.compile(r"""t\(\s*['"]messageEditedOldest['"]\s*\)""")
 _T_DELETED = re.compile(r"""t\(\s*['"]messageDeleted['"]\s*\)""")
 _BLOCK = re.compile(r"\{#if\b|\{:else\b|\{/if\}")
 _PREV_CLASSES = ("text-xs", "text-muted-foreground", "whitespace-pre-wrap")
+_CAPTION_CLASSES = ("text-xs", "text-muted-foreground")
+_GROUP_CLASSES = ("border-l", "border-border", "pl-2")
 _BTN_CLASSES = (
+    "w-fit",
+    "rounded-full",
+    "border",
+    "border-border",
+    "bg-background/60",
+    "px-2",
+    "py-0.5",
     "text-xs",
     "text-muted-foreground",
+    "transition-colors",
+    "hover:bg-muted",
+    "hover:text-foreground",
     "focus-visible:ring-2",
     "focus-visible:ring-ring",
 )
@@ -271,8 +288,11 @@ def _button_bits(src: str, markup: str, tag: str, idx: int) -> list[str]:
         arm_s, arm_e = _true_arm_span(markup, arm_at)
         arm = markup[arm_s:arm_e]
         without = arm.replace(markup[found[0] : close + len("</button>")] if found else "", "", 1)
-        if "messageEdited" in without:
+        # Quote closes on messageEdited, so messageEditedOldest is not a second label.
+        if _T_EDITED.search(without):
             bits.append("messageEdited is still a <p> outside the edited button")
+    if _T_OLDEST.search(inner):
+        bits.append('edited button also renders t("messageEditedOldest")')
     return bits
 
 
@@ -316,6 +336,9 @@ def _order_bits(markup: str) -> list[str]:
     region = markup[start:end]
     body_at = region.find("body_text")
     button_at = region.find("data-message-edited")
+    # Live arm only. A deleted-arm stray key is not the Oldest-first line.
+    oldest_m = _T_OLDEST.search(region, button_at + 1) if button_at >= 0 else None
+    oldest_at = oldest_m.start() if oldest_m else -1
     prev_at = region.find("data-previous-body")
     react_at = -1
     for m in re.finditer(r"\{#if\b", region):
@@ -325,17 +348,151 @@ def _order_bits(markup: str) -> list[str]:
         if "reactions" in cond:
             react_at = m.start()
             break
-    if min(body_at, button_at, prev_at, react_at) < 0:
+    if min(body_at, button_at, oldest_at, prev_at, react_at) < 0:
         return []
-    if not (body_at < button_at < prev_at < react_at):
+    if not (body_at < button_at < oldest_at < prev_at < react_at):
         return [
-            "non-mail live arm source order must be current body, then the edited button, then previous lines, then reactions"
+            "non-mail live arm source order must be current body, then the edited chip, then the Oldest-first line, then previous lines, then reactions"
         ]
     return []
 
 
+def _open_tag_at(markup: str, lt: int) -> str | None:
+    if lt < 0 or lt >= len(markup) or markup[lt] != "<" or markup.startswith("</", lt):
+        return None
+    n = len(markup)
+    j = lt + 1
+    quote = None
+    brace = 0
+    while j < n:
+        c = markup[j]
+        if quote:
+            if c == quote:
+                quote = None
+        elif c in "'\"":
+            quote = c
+        elif c == "{":
+            brace += 1
+        elif c == "}":
+            if brace:
+                brace -= 1
+        elif c == ">" and brace == 0:
+            return markup[lt : j + 1]
+        j += 1
+    return None
+
+
+def _element_inner(markup: str, lt: int, tag: str) -> tuple[int, int]:
+    name = _tag_name(tag)
+    start = lt + len(tag)
+    if not name or tag.rstrip().endswith("/>"):
+        return (start, start)
+    depth = 1
+    rx = re.compile(rf"<{re.escape(name)}\b|</{re.escape(name)}\s*>", re.I)
+    for m in rx.finditer(markup, start):
+        if markup.startswith("</", m.start()):
+            depth -= 1
+            if depth == 0:
+                return (start, m.start())
+        else:
+            depth += 1
+    return (start, len(markup))
+
+
+def _iter_open_tags(markup: str, start: int, end: int):
+    i = start
+    while i < end:
+        lt = markup.find("<", i)
+        if lt < 0 or lt >= end:
+            break
+        if markup.startswith("</", lt) or markup.startswith("<!", lt):
+            i = lt + 1
+            continue
+        tag = _open_tag_at(markup, lt)
+        if not tag:
+            break
+        yield lt, tag
+        i = lt + max(len(tag), 1)
+
+
+def _previous_nonempty(cond: str) -> bool:
+    return "previous_bodies" in cond and re.search(r"(?:\?\.|\.)length\b", cond) is not None
+
+
+def _edited_button_inner(markup: str) -> tuple[int, int] | None:
+    for hit in re.finditer(r"data-message-edited", markup):
+        found = _open_tag_before(markup, hit.start() + 1)
+        if not found or "data-message-edited" not in found[1]:
+            continue
+        lt, tag = found
+        if _tag_name(tag) != "button":
+            continue
+        return _element_inner(markup, lt, tag)
+    return None
+
+
+def _oldest_bits(markup: str) -> list[str]:
+    bits: list[str] = []
+    arm_at = _if_open_matching(markup, _EDITED)
+    if arm_at < 0:
+        return ['edited arm does not render t("messageEditedOldest")']
+    arm_s, arm_e = _true_arm_span(markup, arm_at)
+    arm = markup[arm_s:arm_e]
+    hits = list(_T_OLDEST.finditer(arm))
+    if not hits:
+        bits.append('edited arm does not render t("messageEditedOldest")')
+    elif len(hits) > 1:
+        bits.append('edited arm renders t("messageEditedOldest") more than once')
+    button_inner = _edited_button_inner(markup)
+    for hit in hits:
+        idx = arm_s + hit.start()
+        stack = _template_stack(markup, idx)
+        if not _true_name(stack, "editOpen"):
+            bits.append("Oldest-first line is not gated on editOpen")
+        if not any(
+            kind == "if" and _previous_nonempty(cond) for kind, cond, _ in stack
+        ):
+            bits.append("Oldest-first line shows when previous_bodies is empty")
+        if _in_each(stack, "previous_bodies"):
+            bits.append("Oldest-first line is inside the previous_bodies each")
+        if not _true_if(stack, _EDITED) or _true_if(stack, _DELETED) or _in_mail_true(stack):
+            bits.append("Oldest-first line renders outside the edited arm")
+        tag = _start_tag(markup, idx)
+        if "data-previous-body" in tag or "data-message-edited" in tag:
+            bits.append("Oldest-first line is a previous wording or sits on the chip")
+        missing = [token for token in _CAPTION_CLASSES if not _has_class(tag, token)]
+        if missing:
+            bits.append("Oldest-first line is missing " + " ".join(missing))
+        if button_inner and button_inner[0] <= idx < button_inner[1]:
+            bits.append("Oldest-first line is inside the edited chip")
+        if markup.rfind("data-message-edited", 0, idx) < 0:
+            bits.append("Oldest-first line is not after the edited chip")
+        if markup.find("data-previous-body", idx) < 0:
+            bits.append("Oldest-first line is not before data-previous-body")
+    caption_at = arm_s + hits[0].start() if hits else -1
+    prev_at = arm.find("data-previous-body")
+    if prev_at >= 0:
+        prev_idx = arm_s + prev_at
+        under = False
+        if caption_at >= 0:
+            for lt, tag in _iter_open_tags(markup, caption_at, prev_idx):
+                if lt <= caption_at:
+                    continue
+                if any(not _has_class(tag, token) for token in _GROUP_CLASSES):
+                    continue
+                inner_s, inner_e = _element_inner(markup, lt, tag)
+                if inner_s <= prev_idx < inner_e and not (inner_s <= caption_at < inner_e):
+                    under = True
+                    break
+        if not under:
+            bits.append(
+                "previous lines are not inside a border-l border-border pl-2 group under the Oldest-first line"
+            )
+    return bits
+
+
 def assert_edit_previous(crate: Path) -> None:
-    """#464: Edited is a button that reveals previous_bodies on the same bubble."""
+    """#464: Edited is a chip that reveals previous_bodies, oldest first."""
     rows_path = _web_file(crate, "TimelineRows.svelte")
     list_path = _web_file(crate, "TimelineList.svelte")
     api_path = crate / "web" / "lib" / "api.ts"
@@ -352,6 +509,10 @@ def assert_edit_previous(crate: Path) -> None:
         bits.append("chrome key messageEdited is not Edited in en.ts")
     if tr.get("messageEdited") != "Düzenlendi":
         bits.append("chrome key messageEdited is not Düzenlendi in tr.ts")
+    if en.get("messageEditedOldest") != "Oldest first":
+        bits.append('chrome key messageEditedOldest is not "Oldest first" in en.ts')
+    if tr.get("messageEditedOldest") != "Önce en eski":
+        bits.append('chrome key messageEditedOldest is not "Önce en eski" in tr.ts')
     if not re.search(
         r"\bprevious_bodies\??\s*:\s*(?:string\s*\[\]|Array<\s*string\s*>)",
         row,
@@ -379,16 +540,27 @@ def assert_edit_previous(crate: Path) -> None:
             "data-message-edited",
             "data-previous-body",
             "previous_bodies",
-            "messageEdited",
         ):
             if bad in arm:
                 bits.append(f"deleted arm contains {bad}")
-    mail_at = re.search(r"\{#if\s+isMailRow\s*\(", markup)
-    if mail_at:
+        # Same quote-close rule as _T_EDITED: messageEditedOldest is not messageEdited.
+        if re.search(r"messageEdited(?!Oldest)", arm):
+            bits.append("deleted arm contains messageEdited")
+        if "messageEditedOldest" in arm:
+            bits.append("deleted arm contains messageEditedOldest")
+    mail_painted = False
+    mail_oldest = False
+    for mail_at in re.finditer(r"\{#if\s+isMailRow\s*\(", markup):
         mail_s, mail_e = _true_arm_span(markup, mail_at.start())
         mail = markup[mail_s:mail_e]
         if "data-message-edited" in mail or "data-previous-body" in mail or _T_EDITED.search(mail):
-            bits.append("mail branch paints the edited button or previous lines")
+            mail_painted = True
+        if "messageEditedOldest" in mail:
+            mail_oldest = True
+    if mail_painted:
+        bits.append("mail branch paints the edited button or previous lines")
+    if mail_oldest:
+        bits.append("mail branch contains messageEditedOldest")
 
     hits = list(re.finditer(r"data-message-edited", markup))
     if not hits:
@@ -421,6 +593,7 @@ def assert_edit_previous(crate: Path) -> None:
         art_end = block.find("</article>")
         if prev_at >= 0 and not (art < prev_at < art_end):
             bits.append("previous lines are outside the row article")
+    bits.extend(_oldest_bits(markup))
     bits.extend(_order_bits(markup))
     if bits:
         fail(f"{_ISSUE}: " + "; ".join(bits))
