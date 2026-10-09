@@ -127,6 +127,14 @@ impl From<rusqlite::Error> for CoreError {
     }
 }
 
+/// Dry-run repairs. `doctor_apply` re-reads before it writes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DoctorPlan {
+    pub rebuild_search: bool,
+    pub reattach: Vec<String>,
+    pub reclaim: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct NewIdentity {
     pub platform: Platform,

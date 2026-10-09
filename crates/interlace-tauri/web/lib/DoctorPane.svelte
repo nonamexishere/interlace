@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api } from "./api";
+  import { api, type DoctorPlan } from "./api";
   import { Button } from "$lib/components/ui/button/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import ConfirmDialog from "$lib/ConfirmDialog.svelte";
@@ -45,6 +45,8 @@
   let ocrAsk = $state(false);
   let snapshots = $state<string[]>([]);
   let snapshotAsk = $state<string | null>(null);
+  let repairPlan = $state<DoctorPlan | null>(null);
+  let repairAsk = $state(false);
 
   async function load() {
     const gen = ++scanGen;
@@ -108,6 +110,54 @@
     );
   }
 
+  function repairPlanEmpty() {
+    const plan = repairPlan;
+    if (!plan) return true;
+    return !plan.rebuild_search && plan.reattach.length === 0 && plan.reclaim.length === 0;
+  }
+
+  async function planRepair() {
+    busy = true;
+    try {
+      repairPlan = await api.doctorPlan();
+    } catch (e) {
+      onError(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function askRepair() {
+    repairAsk = true;
+    voiceAsk = false;
+    ocrAsk = false;
+    snapshotAsk = null;
+    pending = null;
+    confirmTitle = t("doctorRepairTitle");
+    confirmDesc = t("doctorRepairBody");
+    confirmLabel = t("doctorRepairApply");
+    confirmOpen = true;
+  }
+
+  async function runRepair() {
+    const plan = repairPlan;
+    if (!plan) {
+      repairAsk = false;
+      return;
+    }
+    busy = true;
+    try {
+      await api.doctorApply(plan);
+      lastOk = t("doctorRepairDone");
+      repairPlan = await api.doctorPlan();
+    } catch (e) {
+      onError(e);
+    } finally {
+      busy = false;
+      repairAsk = false;
+    }
+  }
+
   function ask(
     title: string,
     description: string,
@@ -115,6 +165,7 @@
     flags: { integrity: boolean; rebuildFts: boolean; gcCas: boolean },
     ok: string,
   ) {
+    repairAsk = false;
     voiceAsk = false;
     ocrAsk = false;
     snapshotAsk = null;
@@ -173,6 +224,7 @@
     voiceAsk = true;
     ocrAsk = false;
     snapshotAsk = null;
+    repairAsk = false;
     pending = null;
     confirmTitle = t("transcribeVoice");
     confirmDesc = t("transcribeVoiceDesc");
@@ -198,6 +250,7 @@
     ocrAsk = true;
     voiceAsk = false;
     snapshotAsk = null;
+    repairAsk = false;
     pending = null;
     confirmTitle = t("ocrImages");
     confirmDesc = t("ocrImagesDesc");
@@ -223,6 +276,7 @@
     snapshotAsk = id;
     voiceAsk = false;
     ocrAsk = false;
+    repairAsk = false;
     pending = null;
     confirmTitle = t("snapshotRestoreTitle");
     confirmDesc = t("snapshotRestoreBody");
@@ -275,6 +329,10 @@
   }
 
   async function runPending() {
+    if (repairAsk) {
+      await runRepair();
+      return;
+    }
     if (ocrAsk) {
       await runOcr();
       return;
@@ -377,6 +435,20 @@
     <p class="mt-3 text-sm text-muted-foreground">{lastOk}</p>
   {/if}
 
+  {#if repairPlan}
+    <ul data-doctor-repair-list class="mt-3 list-disc pl-4 text-sm text-muted-foreground">
+      {#if repairPlan.rebuild_search}
+        <li>{t("doctorRepairRebuild")}</li>
+      {/if}
+      {#each repairPlan.reattach as hash (hash)}
+        <li>{t("doctorRepairReattach").replace("{hash}", hash)}</li>
+      {/each}
+      {#each repairPlan.reclaim as hash (hash)}
+        <li>{t("doctorRepairReclaim").replace("{hash}", hash)}</li>
+      {/each}
+    </ul>
+  {/if}
+
   <div class="mt-4 flex flex-wrap gap-2">
     <Button
       variant="outline"
@@ -415,6 +487,24 @@
       onclick={estimateThenAsk}
     >
       GC CAS
+    </Button>
+    <Button
+      variant="outline"
+      size="sm"
+      data-doctor-repair
+      disabled={busy || scanning}
+      onclick={planRepair}
+    >
+      {t("doctorRepair")}
+    </Button>
+    <Button
+      variant="outline"
+      size="sm"
+      data-doctor-repair-apply
+      disabled={busy || scanning || repairPlanEmpty()}
+      onclick={askRepair}
+    >
+      {t("doctorRepairApply")}
     </Button>
     <Button variant="ghost" size="sm" disabled={busy || scanning} onclick={load}>Refresh</Button>
     <label class="inline-flex items-center gap-2 px-1 text-sm">

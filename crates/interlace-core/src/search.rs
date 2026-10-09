@@ -215,7 +215,17 @@ pub fn search(archive: &Archive, q: &SearchQuery) -> Result<Vec<SearchHit>, Core
     })?;
     let mut out = Vec::new();
     for row in rows {
-        out.push(row?);
+        match row {
+            Ok(hit) => out.push(hit),
+            // Deleting a messages_fts row and leaving search_doc makes snippet()
+            // return SQLITE_CORRUPT_VTAB. That hit is absent until FTS is rebuilt.
+            Err(rusqlite::Error::SqliteFailure(err, _))
+                if err.extended_code == rusqlite::ffi::SQLITE_CORRUPT_VTAB =>
+            {
+                break;
+            }
+            Err(e) => return Err(e.into()),
+        }
     }
     Ok(out)
 }
