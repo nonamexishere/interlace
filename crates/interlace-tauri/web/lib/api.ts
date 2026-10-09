@@ -75,6 +75,8 @@ export type TimelineRow = {
   /** `original`, `edited`, or `deleted`. Deleted rows have an empty `body_text`. */
   edit_state?: string;
   reactions?: TimelineReaction[];
+  /** Older wordings, oldest first. Empty when deleted, tombstoned, or none. */
+  previous_bodies?: string[];
 };
 
 export type PersonMediaRow = {

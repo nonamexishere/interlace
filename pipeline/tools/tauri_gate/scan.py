@@ -69,6 +69,27 @@ def _web_logic(crate: Path) -> str:
 
 def _timeline_block(crate: Path) -> str:
     found: list[str] = []
+    each_open = "{#each"
+    each_close = "{/each}"
+
+    def matching_each_end(text: str, start: int) -> int:
+        # The opener's closer, not an inner `{#each`'s (#464).
+        depth = 1
+        j = start + len(each_open)
+        while True:
+            nxt_open = text.find(each_open, j)
+            nxt_close = text.find(each_close, j)
+            if nxt_close < 0:
+                return -1
+            if nxt_open >= 0 and nxt_open < nxt_close:
+                depth += 1
+                j = nxt_open + len(each_open)
+                continue
+            depth -= 1
+            if depth == 0:
+                return nxt_close
+            j = nxt_close + len(each_close)
+
     for p in _web_sources(crate):
         if p.suffix != ".svelte":
             continue
@@ -82,11 +103,11 @@ def _timeline_block(crate: Path) -> str:
                     start = idx
             if start < 0:
                 break
-            end = text.find("{/each}", start)
+            end = matching_each_end(text, start)
             if end < 0:
                 fail(f"#111: unclosed {{#each timeline}} in {p.relative_to(crate)}")
             found.append(text[start:end])
-            i = end + len("{/each}")
+            i = end + len(each_close)
     if not found:
         fail(
             "#111: person timeline must {#each timeline}, {#each dayGroups}, "

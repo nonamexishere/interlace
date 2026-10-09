@@ -235,6 +235,7 @@ def main() -> None:
     assert_gmail_thread_parent(crate)
     assert_wa_quote_jump(crate)
     assert_message_events(crate)
+    assert_edit_previous(crate)
     assert_attachment_derivatives(crate)
     assert_voice_transcript(crate)
     assert_photo_ocr(crate)

@@ -65,6 +65,8 @@
     archiveId?: string;
   } = $props();
 
+  let editOpen = $state<Record<number, boolean>>({});
+
   type QuoteCache =
     | { status: "pending" }
     | { status: "none" }
@@ -349,7 +351,23 @@
                     </p>
                     <p class="text-xs text-muted-foreground" hidden={!wa.miss}>{t("quoteNotInArchive")}</p>
                     {#if item.row.edit_state === "edited"}
-                      <p class="text-xs text-muted-foreground">{t("messageEdited")}</p>
+                      <button
+                        type="button"
+                        data-message-edited
+                        class="text-xs text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-expanded={editOpen[item.row.message_id] ? "true" : "false"}
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          const id = item.row.message_id;
+                          editOpen = { ...editOpen, [id]: !editOpen[id] };
+                        }}
+                      >{t("messageEdited")}</button>
+                      {#if editOpen[item.row.message_id]}
+                        {#each item.row.previous_bodies ?? [] as wording}
+                          <p data-previous-body class="text-xs text-muted-foreground whitespace-pre-wrap">{wording}</p>
+                        {/each}
+                      {/if}
                     {/if}
                   {/if}
                   {#if (item.row.reactions ?? []).length}

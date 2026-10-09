@@ -119,6 +119,9 @@ pub struct TimelineRow {
     /// A deleted or tombstone row has an empty `body_text` here; SQLite keeps the body.
     pub edit_state: String,
     pub reactions: Vec<TimelineReaction>,
+    /// Older `message_revisions.body_text` values, `rev_no` ascending.
+    /// Always present, including `[]`. Not the current `messages.body_text`.
+    pub previous_bodies: Vec<String>,
 }
 
 /// Names-only To / Cc / Bcc on a timeline row (identity display_name then value).

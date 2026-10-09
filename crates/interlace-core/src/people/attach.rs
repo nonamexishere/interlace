@@ -295,3 +295,41 @@ pub(super) fn attach_reactions(
     }
     Ok(())
 }
+
+/// Older wordings for this page: one `IN` query on `message_revisions`.
+/// A tombstone or `edit_state = deleted` stays `[]`. A null revision body is
+/// omitted. A body that exactly equals stored `messages.body_text` is omitted
+/// (no trim); a null stored body does not drop a non-null revision. Order is
+/// `rev_no` ascending. Does not append the current body or delete revisions.
+pub(super) fn attach_previous_bodies(
+    archive: &Archive,
+    rows: &mut [TimelineRow],
+) -> Result<(), CoreError> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<i64> = rows.iter().map(|r| r.message_id).collect();
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let mut stmt = archive.conn.prepare(&format!(
+        "SELECT rv.message_id, rv.body_text
+         FROM message_revisions rv
+         JOIN messages m ON m.id = rv.message_id
+         WHERE rv.message_id IN ({placeholders})
+           AND NOT (m.tombstone != 0 OR m.edit_state = 'deleted')
+           AND rv.body_text IS NOT NULL
+           AND (m.body_text IS NULL OR rv.body_text != m.body_text)
+         ORDER BY rv.rev_no ASC"
+    ))?;
+    let mapped = stmt.query_map(rusqlite::params_from_iter(&ids), |r| {
+        Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut map: HashMap<i64, Vec<String>> = HashMap::new();
+    for pair in mapped {
+        let (mid, body) = pair?;
+        map.entry(mid).or_default().push(body);
+    }
+    for row in rows.iter_mut() {
+        row.previous_bodies = map.remove(&row.message_id).unwrap_or_default();
+    }
+    Ok(())
+}
