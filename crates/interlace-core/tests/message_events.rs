@@ -2,6 +2,8 @@
 //!
 //! Matrix IDs (gate grep):
 //! WA426-EDIT WA426-DELETE WA426-REACT WA426-PLAIN WA426-CASCADE
+//! WA464-PREV WA464-ORDER WA464-TOMB-ROW WA464-VISIBLE WA464-SPACE
+//! IL464-NO-SECOND-HIT IL464-TOMBSTONE-REV
 //!
 //! Placeholders Ada / Berk / Self only. Current text is "hello". Deleted text
 //! is "secret". Emoji is "👍". Rows are seeded with SQL on `init_archive`.
@@ -781,6 +783,459 @@ fn wa426_visible_body_hides_deleted_text_and_attached_name() {
     assert!(
         stored_body(&arch, s.message_id).contains("secret"),
         "stored body was cleared"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+fn insert_rev(
+    arch: &interlace_core::db::Archive,
+    message_id: i64,
+    rev_no: i64,
+    body: Option<&str>,
+) {
+    arch.conn
+        .execute(
+            "INSERT INTO message_revisions(message_id, rev_no, body_text, edited_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![
+                message_id,
+                rev_no,
+                body,
+                format!("2024-06-01T10:0{rev_no}:00Z")
+            ],
+        )
+        .unwrap();
+}
+
+fn row_value(row: &TimelineRow) -> serde_json::Value {
+    serde_json::to_value(row).unwrap()
+}
+
+/// WA464-PREV: current body `merhaba canim`. Revisions are `merhaba`, the same
+/// current body again, and a null body. `previous_bodies` is `["merhaba"]` only.
+#[test]
+fn wa464_prev_previous_bodies_is_the_older_wording_only() {
+    let root = tmp_root();
+    let arch = init_archive(&root.join("arch")).unwrap();
+    let s = seed(&arch, "merhaba canim", "edited", 0, "wa464-prev", false);
+    insert_rev(&arch, s.message_id, 1, Some("merhaba"));
+    insert_rev(&arch, s.message_id, 2, Some("merhaba canim"));
+    insert_rev(&arch, s.message_id, 3, None);
+
+    assert_eq!(count(&arch, "SELECT COUNT(*) FROM messages"), 1);
+    assert_eq!(count(&arch, "SELECT COUNT(*) FROM message_revisions"), 3);
+    let nulls: i64 = arch
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM message_revisions
+             WHERE message_id = ?1 AND body_text IS NULL",
+            [s.message_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(nulls, 1, "WA464-PREV: null revision");
+    let same: i64 = arch
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM message_revisions
+             WHERE message_id = ?1 AND body_text = 'merhaba canim'",
+            [s.message_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(same, 1, "WA464-PREV: revision equal to the current body");
+    let (state, stone): (String, i64) = arch
+        .conn
+        .query_row(
+            "SELECT edit_state, tombstone FROM messages WHERE id = ?1",
+            [s.message_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(state, "edited");
+    assert_eq!(stone, 0);
+
+    let rows = timeline(&arch, s.berk_person);
+    assert_eq!(
+        rows.len(),
+        1,
+        "WA464-PREV: one timeline row, got {}",
+        rows.len()
+    );
+    assert_eq!(
+        rows[0].body_text, "merhaba canim",
+        "WA464-PREV: current body"
+    );
+    assert_eq!(rows[0].edit_state, "edited");
+    let v = row_value(&rows[0]);
+    let want = serde_json::json!(["merhaba"]);
+    assert_eq!(
+        v.get("previous_bodies"),
+        Some(&want),
+        "WA464-PREV: previous_bodies missing or wrong: {v}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA464-ORDER: two older wordings, oldest first, even if inserted out of order.
+#[test]
+fn wa464_order_previous_bodies_follow_rev_no() {
+    let root = tmp_root();
+    let arch = init_archive(&root.join("arch")).unwrap();
+    let s = seed(
+        &arch,
+        "merhaba canim yine",
+        "edited",
+        0,
+        "wa464-order",
+        false,
+    );
+    insert_rev(&arch, s.message_id, 2, Some("merhaba canim"));
+    insert_rev(&arch, s.message_id, 1, Some("merhaba"));
+
+    assert_eq!(
+        count(&arch, "SELECT COUNT(*) FROM messages"),
+        1,
+        "WA464-ORDER: one messages row"
+    );
+    assert_eq!(count(&arch, "SELECT COUNT(*) FROM message_revisions"), 2);
+    let rows = timeline(&arch, s.berk_person);
+    assert_eq!(
+        rows.len(),
+        1,
+        "WA464-ORDER: one timeline row, got {}",
+        rows.len()
+    );
+    assert_eq!(rows[0].body_text, "merhaba canim yine");
+    assert_eq!(rows[0].edit_state, "edited");
+    let v = row_value(&rows[0]);
+    let want = serde_json::json!(["merhaba", "merhaba canim"]);
+    assert_eq!(
+        v.get("previous_bodies"),
+        Some(&want),
+        "WA464-ORDER: previous_bodies missing or wrong: {v}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA464-TOMB-ROW: the same two revisions stay in SQLite. A deleted tombstone
+/// timeline row has an empty body and `previous_bodies` `[]`, with neither
+/// sentence in the row JSON.
+#[test]
+fn wa464_tomb_row_previous_bodies_are_empty() {
+    let root = tmp_root();
+    let arch = init_archive(&root.join("arch")).unwrap();
+    let s = seed(
+        &arch,
+        "merhaba canim yine",
+        "deleted",
+        1,
+        "wa464-tomb-row",
+        false,
+    );
+    insert_rev(&arch, s.message_id, 1, Some("merhaba"));
+    insert_rev(&arch, s.message_id, 2, Some("merhaba canim"));
+
+    assert_eq!(
+        count(&arch, "SELECT COUNT(*) FROM message_revisions"),
+        2,
+        "WA464-TOMB-ROW: revision COUNT(*)"
+    );
+    let (state, stone): (String, i64) = arch
+        .conn
+        .query_row(
+            "SELECT edit_state, tombstone FROM messages WHERE id = ?1",
+            [s.message_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(state, "deleted");
+    assert_eq!(stone, 1);
+    let rows = timeline(&arch, s.berk_person);
+    assert_eq!(
+        rows.len(),
+        1,
+        "WA464-TOMB-ROW: one timeline row, got {}",
+        rows.len()
+    );
+    assert_eq!(rows[0].body_text, "", "WA464-TOMB-ROW: timeline body");
+    assert_eq!(rows[0].edit_state, "deleted");
+    let v = row_value(&rows[0]);
+    let want = serde_json::json!([]);
+    assert_eq!(
+        v.get("previous_bodies"),
+        Some(&want),
+        "WA464-TOMB-ROW: previous_bodies missing or wrong: {v}"
+    );
+    let text = serde_json::to_string(&v).unwrap();
+    assert!(
+        !text.contains("merhaba"),
+        "WA464-TOMB-ROW: timeline JSON contains merhaba: {text}"
+    );
+    assert_eq!(
+        count(&arch, "SELECT COUNT(*) FROM message_revisions"),
+        2,
+        "WA464-TOMB-ROW: revision COUNT(*)"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA464-VISIBLE: current body `merhaba`. Revisions in `rev_no` order are
+/// `merhaba canim`, `  merhaba  `, and `merhaba <attached: note.txt>`.
+/// `previous_bodies` is exactly `["merhaba canim"]`. The trim-only revision
+/// and the marker-only revision are absent. All three revision rows stay.
+#[test]
+fn wa464_visible_drops_trim_and_marker_only_revisions() {
+    let root = tmp_root();
+    let arch = init_archive(&root.join("arch")).unwrap();
+    let s = seed(&arch, "merhaba", "edited", 0, "wa464-visible", false);
+    insert_rev(&arch, s.message_id, 1, Some("merhaba canim"));
+    insert_rev(&arch, s.message_id, 2, Some("  merhaba  "));
+    insert_rev(&arch, s.message_id, 3, Some("merhaba <attached: note.txt>"));
+
+    let rows = timeline(&arch, s.berk_person);
+    assert_eq!(
+        rows.len(),
+        1,
+        "WA464-VISIBLE: one timeline row, got {}",
+        rows.len()
+    );
+    assert_eq!(rows[0].body_text, "merhaba", "WA464-VISIBLE: current body");
+    assert_eq!(rows[0].edit_state, "edited");
+    let n: i64 = arch
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM message_revisions WHERE message_id = ?1",
+            [s.message_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n, 3, "WA464-VISIBLE: revision COUNT(*)");
+    let v = row_value(&rows[0]);
+    let want = serde_json::json!(["merhaba canim"]);
+    assert_eq!(
+        v.get("previous_bodies"),
+        Some(&want),
+        "WA464-VISIBLE: previous_bodies missing or wrong: {v}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA464-SPACE: current body `merhaba canim yine`. Revisions are
+/// `merhaba  canim` (two spaces between the words), then
+/// `merhaba <attached: note.txt>`. `previous_bodies` is exactly those stored
+/// strings, in that order. The vec does not strip the marker.
+#[test]
+fn wa464_space_keeps_internal_space_and_stored_marker() {
+    let root = tmp_root();
+    let arch = init_archive(&root.join("arch")).unwrap();
+    let s = seed(
+        &arch,
+        "merhaba canim yine",
+        "edited",
+        0,
+        "wa464-space",
+        false,
+    );
+    insert_rev(&arch, s.message_id, 1, Some("merhaba  canim"));
+    insert_rev(&arch, s.message_id, 2, Some("merhaba <attached: note.txt>"));
+
+    let rows = timeline(&arch, s.berk_person);
+    assert_eq!(
+        rows.len(),
+        1,
+        "WA464-SPACE: one timeline row, got {}",
+        rows.len()
+    );
+    assert_eq!(
+        rows[0].body_text, "merhaba canim yine",
+        "WA464-SPACE: current body"
+    );
+    let v = row_value(&rows[0]);
+    let want = serde_json::json!(["merhaba  canim", "merhaba <attached: note.txt>"]);
+    assert_eq!(
+        v.get("previous_bodies"),
+        Some(&want),
+        "WA464-SPACE: previous_bodies missing or wrong: {v}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// IL464-NO-SECOND-HIT: two revisions stay one message, one timeline row, and
+/// one `person_timeline` hit. Does not read `previous_bodies`.
+#[test]
+fn il464_no_second_hit_for_revisions() {
+    let root = tmp_root();
+    let arch = init_archive(&root.join("arch")).unwrap();
+    let s = seed(
+        &arch,
+        "merhaba canim yine",
+        "edited",
+        0,
+        "il464-no-second-hit",
+        false,
+    );
+    insert_rev(&arch, s.message_id, 1, Some("merhaba"));
+    insert_rev(&arch, s.message_id, 2, Some("merhaba canim"));
+
+    assert_eq!(
+        count(&arch, "SELECT COUNT(*) FROM messages"),
+        1,
+        "IL464-NO-SECOND-HIT: messages"
+    );
+    assert_eq!(count(&arch, "SELECT COUNT(*) FROM message_revisions"), 2);
+    let current = stored_body(&arch, s.message_id);
+    assert_eq!(current, "merhaba canim yine");
+    assert_ne!(current, "merhaba");
+    assert_ne!(current, "merhaba canim");
+
+    let rows = timeline(&arch, s.berk_person);
+    assert_eq!(
+        rows.len(),
+        1,
+        "IL464-NO-SECOND-HIT: person_timeline_rows, got {}",
+        rows.len()
+    );
+    assert_eq!(rows[0].message_id, s.message_id);
+    assert_eq!(rows[0].body_text, "merhaba canim yine");
+    let hits = person_timeline(&arch, s.berk_person, false, 20).unwrap();
+    let n = hits.iter().filter(|h| h.message_id == s.message_id).count();
+    assert_eq!(
+        n, 1,
+        "IL464-NO-SECOND-HIT: person_timeline hits for the message, got {hits:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+fn revision_bodies(arch: &interlace_core::db::Archive, message_id: i64) -> Vec<Option<String>> {
+    let mut stmt = arch
+        .conn
+        .prepare(
+            "SELECT body_text FROM message_revisions
+             WHERE message_id = ?1 ORDER BY rev_no",
+        )
+        .unwrap();
+    stmt.query_map([message_id], |r| r.get(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect()
+}
+
+fn omits_token(text: &str, token: &str) -> bool {
+    !text.contains(token)
+}
+
+/// IL464-TOMBSTONE-REV: tombstone keeps the stored body and the revision rows.
+/// Visible surfaces omit `rev-alpha` and `rev-beta`. Search, find, and copy of
+/// a live edited row are not asserted.
+#[test]
+fn il464_tombstone_omits_revision_tokens() {
+    let root = tmp_root();
+    let arch = init_archive(&root.join("arch")).unwrap();
+    let stored = "merhaba canim yine";
+    let alpha = "rev-alpha";
+    let beta = "rev-beta";
+    assert!(!stored.contains(alpha) && !stored.contains(beta));
+    assert!(!alpha.starts_with(beta) && !beta.starts_with(alpha));
+    assert!(!stored.starts_with(alpha) && !stored.starts_with(beta));
+
+    let s = seed(&arch, stored, "deleted", 1, "il464-tomb-rev", true);
+    insert_rev(&arch, s.message_id, 1, Some(alpha));
+    insert_rev(&arch, s.message_id, 2, Some(beta));
+    let ada_person = s.ada_person.expect("Ada");
+    let berk_identity: i64 = arch
+        .conn
+        .query_row(
+            "SELECT identity_id FROM person_identities WHERE person_id = ?1",
+            [s.berk_person],
+            |r| r.get(0),
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO merge_review_queue(
+                status, left_identity_id, right_person_id, suggested_score, reason_summary
+             ) VALUES ('open', ?1, ?2, 0.5, 'same name')",
+            rusqlite::params![berk_identity, ada_person],
+        )
+        .unwrap();
+    let queue_id = arch.conn.last_insert_rowid();
+
+    index_import_run(&arch, s.run_id).unwrap();
+    let visible = interlace_core::visible_message_body(&arch, s.message_id).unwrap();
+    assert_eq!(
+        visible, "",
+        "IL464-TOMBSTONE-REV: visible_message_body: {visible:?}"
+    );
+
+    for token in [alpha, beta] {
+        let hits = search(
+            &arch,
+            &SearchQuery {
+                q: token.into(),
+                ..SearchQuery::default()
+            },
+        )
+        .unwrap();
+        assert!(
+            hits.iter()
+                .all(|h| omits_token(&h.snippet, alpha) && omits_token(&h.snippet, beta)),
+            "IL464-TOMBSTONE-REV: FTS snippet leaked {token}: {hits:?}"
+        );
+    }
+    let indexed: Option<String> = arch
+        .conn
+        .query_row(
+            "SELECT search_text FROM search_doc WHERE message_id = ?1",
+            [s.message_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .unwrap();
+    let indexed_text = indexed.unwrap_or_default();
+    assert!(
+        omits_token(&indexed_text, alpha) && omits_token(&indexed_text, beta),
+        "IL464-TOMBSTONE-REV: search_doc.search_text leaked: {indexed_text:?}"
+    );
+
+    let timeline_hits = person_timeline(&arch, s.berk_person, false, 20).unwrap();
+    let row = timeline_hits
+        .iter()
+        .find(|h| h.message_id == s.message_id)
+        .unwrap_or_else(|| panic!("tombstone missing from person_timeline: {timeline_hits:?}"));
+    assert!(
+        omits_token(&row.snippet, alpha) && omits_token(&row.snippet, beta),
+        "IL464-TOMBSTONE-REV: person_timeline snippet leaked: {:?}",
+        row.snippet
+    );
+
+    let previews: Vec<String> = person_list(&arch)
+        .unwrap()
+        .into_iter()
+        .filter_map(|p| p.preview)
+        .collect();
+    assert!(
+        previews
+            .iter()
+            .all(|p| omits_token(p, alpha) && omits_token(p, beta)),
+        "IL464-TOMBSTONE-REV: people-list preview leaked: {previews:?}"
+    );
+
+    let shown = review_show(&arch, queue_id).unwrap();
+    assert!(
+        !json_has(&shown, alpha) && !json_has(&shown, beta),
+        "IL464-TOMBSTONE-REV: review_show samples leaked: {shown}"
+    );
+
+    assert_eq!(
+        stored_body(&arch, s.message_id),
+        stored,
+        "IL464-TOMBSTONE-REV: stored body"
+    );
+    assert_eq!(
+        revision_bodies(&arch, s.message_id),
+        vec![Some(alpha.to_string()), Some(beta.to_string())],
+        "IL464-TOMBSTONE-REV: revision rows"
     );
     let _ = std::fs::remove_dir_all(&root);
 }

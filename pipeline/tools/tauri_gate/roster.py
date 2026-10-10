@@ -73,6 +73,7 @@ from tauri_gate.group_membership_asof import assert_group_membership_asof  # noq
 from tauri_gate.gmail_thread_parent import assert_gmail_thread_parent  # noqa: E402
 from tauri_gate.wa_quote_jump import assert_wa_quote_jump  # noqa: E402
 from tauri_gate.message_events import assert_message_events  # noqa: E402
+from tauri_gate.edit_previous import assert_edit_previous  # noqa: E402
 from tauri_gate.attachment_derivatives import assert_attachment_derivatives  # noqa: E402
 from tauri_gate.voice_transcript import assert_voice_transcript  # noqa: E402
 from tauri_gate.photo_ocr import assert_photo_ocr  # noqa: E402

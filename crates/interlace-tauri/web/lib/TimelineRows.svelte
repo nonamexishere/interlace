@@ -65,6 +65,8 @@
     archiveId?: string;
   } = $props();
 
+  let editOpen = $state<Record<number, boolean>>({});
+
   type QuoteCache =
     | { status: "pending" }
     | { status: "none" }
@@ -90,6 +92,7 @@
     if (quoteArchive !== archiveId) {
       quoteArchive = archiveId;
       quoteById = {};
+      editOpen = {};
     }
     const pending: TimelineRow[] = [];
     for (const group of windowedDayGroups) {
@@ -349,7 +352,26 @@
                     </p>
                     <p class="text-xs text-muted-foreground" hidden={!wa.miss}>{t("quoteNotInArchive")}</p>
                     {#if item.row.edit_state === "edited"}
-                      <p class="text-xs text-muted-foreground">{t("messageEdited")}</p>
+                      <button
+                        type="button"
+                        data-message-edited
+                        class="w-fit rounded-full border border-border bg-background/60 px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-expanded={editOpen[item.row.message_id] ? "true" : "false"}
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          const id = item.row.message_id;
+                          editOpen = { ...editOpen, [id]: !editOpen[id] };
+                        }}
+                      >{t("messageEdited")}</button>
+                      {#if editOpen[item.row.message_id] && (item.row.previous_bodies ?? []).length}
+                        <p class="text-xs text-muted-foreground">{t("messageEditedOldest")}</p>
+                        <div class="border-l border-border pl-2">
+                          {#each item.row.previous_bodies ?? [] as wording}
+                            <p data-previous-body class="text-xs text-muted-foreground whitespace-pre-wrap">{displayBody(wording)}</p>
+                          {/each}
+                        </div>
+                      {/if}
                     {/if}
                   {/if}
                   {#if (item.row.reactions ?? []).length}

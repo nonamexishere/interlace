@@ -168,10 +168,15 @@ def assert_typography(crate: Path) -> None:
     search = _search_pane_blob(crate)
 
     # 1) Timeline + search bodies exist and share one 14–15px size.
-    tl_attrs = _typo_prewrap_attrs(
-        timeline,
-        re.compile(r"displayBody|body_text|bodyText"),
-    )
+    # Previous wordings are text-xs history (#464), not the #199 body size.
+    tl_attrs = [
+        attrs
+        for attrs in _typo_prewrap_attrs(
+            timeline,
+            re.compile(r"displayBody|body_text|bodyText"),
+        )
+        if "data-previous-body" not in attrs
+    ]
     if not tl_attrs:
         fail(
             "#199: timeline message bodies must stay whitespace-pre-wrap "

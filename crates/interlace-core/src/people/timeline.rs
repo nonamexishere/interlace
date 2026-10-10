@@ -5,7 +5,8 @@ use crate::db::Archive;
 use crate::model::CoreError;
 
 use super::attach::{
-    attach_attachments, attach_labels, attach_reactions, attach_recipients, enrich_from_body_tokens,
+    attach_attachments, attach_labels, attach_previous_bodies, attach_reactions, attach_recipients,
+    enrich_from_body_tokens,
 };
 use super::{PersonConversation, PersonMediaRow, TimelineRow};
 
@@ -173,6 +174,7 @@ pub fn person_timeline_rows_for(
             thread_parent_id: r.get(11)?,
             edit_state: r.get(12)?,
             reactions: Vec::new(),
+            previous_bodies: Vec::new(),
         })
     };
     let lim = limit as i64;
@@ -234,6 +236,7 @@ pub fn person_timeline_rows_for(
     attach_labels(archive, &mut out)?;
     attach_recipients(archive, &mut out)?;
     attach_reactions(archive, &mut out)?;
+    attach_previous_bodies(archive, &mut out)?;
     enrich_from_body_tokens(archive, &mut out)?;
     Ok(out)
 }

@@ -51,6 +51,7 @@ export const tr: ChromePack = {
   hideQuoted: "Alıntıyı gizle",
   quoteNotInArchive: "Bu arşivde yok",
   messageEdited: "Düzenlendi",
+  messageEditedOldest: "Önce en eski",
   messageDeleted: "Bu mesaj silindi",
   searchFilters: "Filtreler",
   searchFrom: "Başlangıç",

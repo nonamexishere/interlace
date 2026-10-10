@@ -295,3 +295,82 @@ pub(super) fn attach_reactions(
     }
     Ok(())
 }
+
+/// Visible form of a stored body: every `<attached:…>` token removed, then trim.
+/// The token is `<attached:\s*[^>]+>` with ASCII case folded. `\s*` does not
+/// change the span, because whitespace is not `>`.
+fn visible_wording(body: &str) -> String {
+    let bytes = body.as_bytes();
+    let mut out = String::with_capacity(body.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if let Some(end) = attached_token_end(bytes, i) {
+            i = end;
+            continue;
+        }
+        let Some(ch) = body[i..].chars().next() else {
+            break;
+        };
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out.trim().to_string()
+}
+
+/// End index of an `<attached:` token starting at `at`, if one is there.
+fn attached_token_end(bytes: &[u8], at: usize) -> Option<usize> {
+    const PAT: &[u8] = b"<attached:";
+    let rest = bytes.get(at..)?;
+    if rest.len() < PAT.len() || !rest[..PAT.len()].eq_ignore_ascii_case(PAT) {
+        return None;
+    }
+    let gt = rest[PAT.len()..].iter().position(|b| *b == b'>')?;
+    if gt == 0 {
+        return None;
+    }
+    Some(at + PAT.len() + gt + 1)
+}
+
+/// Older wordings for this page: one `IN` query on `message_revisions`.
+/// A tombstone or `edit_state = deleted` stays `[]`. A null revision body is
+/// omitted. A body that exactly equals stored `messages.body_text` is omitted.
+/// A revision is also omitted when its visible form equals the current body's
+/// visible form. Kept strings are the stored revision text. A null stored body
+/// is empty on the row: it does not drop a revision whose visible form is
+/// non-empty, and it does drop one whose visible form is empty. Order is
+/// `rev_no` ascending. Does not append the current body or delete revisions.
+pub(super) fn attach_previous_bodies(
+    archive: &Archive,
+    rows: &mut [TimelineRow],
+) -> Result<(), CoreError> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<i64> = rows.iter().map(|r| r.message_id).collect();
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let mut stmt = archive.conn.prepare(&format!(
+        "SELECT rv.message_id, rv.body_text
+         FROM message_revisions rv
+         JOIN messages m ON m.id = rv.message_id
+         WHERE rv.message_id IN ({placeholders})
+           AND NOT (m.tombstone != 0 OR m.edit_state = 'deleted')
+           AND rv.body_text IS NOT NULL
+           AND (m.body_text IS NULL OR rv.body_text != m.body_text)
+         ORDER BY rv.rev_no ASC"
+    ))?;
+    let mapped = stmt.query_map(rusqlite::params_from_iter(&ids), |r| {
+        Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut map: HashMap<i64, Vec<String>> = HashMap::new();
+    for pair in mapped {
+        let (mid, body) = pair?;
+        map.entry(mid).or_default().push(body);
+    }
+    for row in rows.iter_mut() {
+        let current = visible_wording(&row.body_text);
+        let mut bodies = map.remove(&row.message_id).unwrap_or_default();
+        bodies.retain(|body| visible_wording(body) != current);
+        row.previous_bodies = bodies;
+    }
+    Ok(())
+}

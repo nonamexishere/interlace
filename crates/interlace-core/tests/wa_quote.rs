@@ -4,6 +4,7 @@
 //! WA425-RESOLVED WA425-MISSING WA425-SAME-TEXT WA425-OTHER
 //! WA425-REIMPORT WA425-NO-PARENT
 //! WA425-YOU-COLLIDE WA425-YOU-MISS WA425-YOU-SELF WA425-YOU-TR
+//! IL464-QUOTE-NOT-REV
 //!
 //! Placeholders Ada / Berk / Self only. Bodies are "hello" and "reply".
 //! WA425-YOU-* uses Ada, the export token You or Sen, and body "other".
@@ -660,5 +661,72 @@ fn wa_quote_you_tr_resolves_to_sen() {
         Some(sen_id),
         "WA425-YOU-TR: expected Sen {sen_id}, got {hit:?}"
     );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// IL464-QUOTE-NOT-REV: Ada quotes a span equal to Berk's revision body and not
+/// equal to Berk's current `messages.body_text`. That does not resolve to Berk.
+#[test]
+fn il464_quote_of_revision_body_does_not_resolve_berk() {
+    let root = tmp_root();
+    let quote = "[2019-06-01, 10:00:03] Berk: merhaba";
+    let chat = "\
+[2019-06-01, 10:00:03] Berk: merhaba
+[2019-06-01, 10:05:00] Ada: [2019-06-01, 10:00:03] Berk: merhaba
+";
+    let zip = write_ios_zip(&root.join("zips"), "WhatsApp Chat - Ada", chat);
+    let mut arch = init_archive(&root.join("arch")).unwrap();
+    import_zip(&mut arch, &zip, "ada-berk-rev");
+
+    let berk_id = message_id_for(&arch, "Berk", "merhaba");
+    let ada = messages(&arch)
+        .into_iter()
+        .find(|m| m.body.as_deref() == Some(quote))
+        .expect("IL464-QUOTE-NOT-REV: Ada quote body");
+    arch.conn
+        .execute(
+            "UPDATE messages SET body_text = 'merhaba canim' WHERE id = ?1",
+            [berk_id],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO message_revisions(message_id, rev_no, body_text, edited_at)
+             VALUES (?1, 1, 'merhaba', '2019-06-01T10:04:00Z')",
+            [berk_id],
+        )
+        .unwrap();
+
+    let current: String = arch
+        .conn
+        .query_row(
+            "SELECT body_text FROM messages WHERE id = ?1",
+            [berk_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let revision: String = arch
+        .conn
+        .query_row(
+            "SELECT body_text FROM message_revisions WHERE message_id = ?1",
+            [berk_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(current, "merhaba canim");
+    assert_eq!(revision, "merhaba");
+    assert_ne!(current, revision);
+    assert_eq!(ada.body.as_deref(), Some(quote));
+    assert!(quote.ends_with("Berk: merhaba"));
+    assert!(!current.contains("merhaba canim yine"));
+
+    let hit =
+        resolve_wa_quote(&arch, ada.conversation_id, quote).expect("IL464-QUOTE-NOT-REV: resolve");
+    assert_ne!(
+        hit.as_ref().and_then(|h| h.message_id),
+        Some(berk_id),
+        "IL464-QUOTE-NOT-REV: revision body resolved to Berk, got {hit:?}"
+    );
+    assert_wa_parentless(&arch, "IL464-QUOTE-NOT-REV");
     let _ = std::fs::remove_dir_all(&root);
 }
