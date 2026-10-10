@@ -491,6 +491,122 @@ def _oldest_bits(markup: str) -> list[str]:
     return bits
 
 
+def _each_alias(markup: str, idx: int) -> str:
+    span = _tight_each_span(markup, idx)
+    if span is None:
+        return ""
+    close = _match_closer(markup, span[0])
+    if close < 0:
+        return ""
+    head = markup[span[0] : close + 1]
+    found = re.search(r"\bas\s+([A-Za-z_]\w*)", head)
+    return found.group(1) if found else ""
+
+
+def _script_src(src: str) -> str:
+    parts: list[str] = []
+    i = 0
+    while True:
+        start = src.find("<script", i)
+        if start < 0:
+            break
+        open_end = src.find(">", start)
+        if open_end < 0:
+            break
+        end = src.find("</script>", open_end)
+        if end < 0:
+            parts.append(src[open_end + 1 :])
+            break
+        parts.append(src[open_end + 1 : end])
+        i = end + len("</script>")
+    return "\n".join(parts)
+
+
+def _quote_archive_branch(src: str) -> str | None:
+    """Brace body of `if (quoteArchive !== archiveId)` that clears quoteById."""
+    cond_rx = re.compile(r"quoteArchive\s*!==\s*archiveId")
+    for m in re.finditer(r"\bif\s*\(", src):
+        paren = m.end() - 1
+        close = _match_closer(src, paren)
+        if close < 0:
+            continue
+        if not cond_rx.search(src[paren : close + 1]):
+            continue
+        j = close + 1
+        while j < len(src) and src[j].isspace():
+            j += 1
+        if j >= len(src) or src[j] != "{":
+            continue
+        end = _match_closer(src, j)
+        if end < 0:
+            continue
+        body = src[j : end + 1]
+        if re.search(r"quoteById\s*=\s*\{\s*\}", body):
+            return body
+    return None
+
+
+def _chrome_display_bits(markup: str) -> list[str]:
+    """CHROME-DISPLAY: the previous line's own text calls displayBody(binding)."""
+    bits: list[str] = []
+    forbidden = re.compile(
+        r"\bLinkifyBody\b|\bwaView\b|<mark\b|\bsplitFind\b|\bfindQ\b|search-mark"
+    )
+    for hit in re.finditer(r"data-previous-body", markup):
+        found = _open_tag_before(markup, hit.start() + 1)
+        if not found or "data-previous-body" not in found[1]:
+            bits.append("CHROME-DISPLAY: data-previous-body paragraph is missing")
+            continue
+        lt, tag = found
+        inner_s, inner_e = _element_inner(markup, lt, tag)
+        inner = markup[inner_s:inner_e]
+        alias = _each_alias(markup, hit.start())
+        if not alias:
+            bits.append(
+                "CHROME-DISPLAY: data-previous-body is not inside an each binding"
+            )
+            continue
+        if forbidden.search(inner) or forbidden.search(tag):
+            bits.append(
+                "CHROME-DISPLAY: data-previous-body uses LinkifyBody, waView, or find marks"
+            )
+        calls = re.search(rf"\bdisplayBody\s*\(\s*{re.escape(alias)}\s*\)", inner)
+        raw = re.search(rf"\{{\s*{re.escape(alias)}\s*\}}", inner)
+        if not calls or raw:
+            snippet = " ".join(inner.split())
+            if len(snippet) > 120:
+                snippet = snippet[:117] + "..."
+            bits.append(
+                "CHROME-DISPLAY: data-previous-body text expression does not call "
+                f"displayBody on the each binding {alias}; got {snippet!r}"
+            )
+    return bits
+
+
+def _chrome_archive_bits(rows_src: str, list_src: str) -> list[str]:
+    """CHROME-ARCHIVE: clear editOpen with quoteById. Not on person switch."""
+    # Person switch must not clear editOpen. Message ids are archive-global.
+    bits: list[str] = []
+    body = _quote_archive_branch(_script_src(rows_src))
+    if body is None:
+        bits.append(
+            "CHROME-ARCHIVE: quoteArchive !== archiveId branch that assigns "
+            "quoteById = {} is missing"
+        )
+    elif not re.search(r"\beditOpen\s*=\s*\{\s*\}", body):
+        bits.append(
+            "CHROME-ARCHIVE: quoteArchive !== archiveId branch assigns "
+            "quoteById = {} but not editOpen = {}"
+        )
+    effects = _quoted_clear_effects(list_src)
+    if effects and any(re.search(r"\beditOpen\b", effect) for effect in effects):
+        bits.append(
+            "CHROME-ARCHIVE: TimelineList effect that reads density and selectedId "
+            "and assigns quotedOpen = {} mentions editOpen"
+        )
+    return bits
+
+
 def assert_edit_previous(crate: Path) -> None:
     """#464: Edited is a chip that reveals previous_bodies, oldest first."""
     rows_path = _web_file(crate, "TimelineRows.svelte")
@@ -520,7 +636,8 @@ def assert_edit_previous(crate: Path) -> None:
         bits.append("api.ts TimelineRow does not include previous_bodies")
     if not _has_edit_open(raw):
         bits.append("TimelineRows has no editOpen record")
-    effects = _quoted_clear_effects(_without_comments(_text(list_path)))
+    list_src = _without_comments(_text(list_path))
+    effects = _quoted_clear_effects(list_src)
     if not effects:
         bits.append(
             "TimelineList effect that clears quotedOpen on selectedId / density is missing"
@@ -595,5 +712,7 @@ def assert_edit_previous(crate: Path) -> None:
             bits.append("previous lines are outside the row article")
     bits.extend(_oldest_bits(markup))
     bits.extend(_order_bits(markup))
+    bits.extend(_chrome_display_bits(markup))
+    bits.extend(_chrome_archive_bits(raw, list_src))
     if bits:
         fail(f"{_ISSUE}: " + "; ".join(bits))

@@ -92,6 +92,7 @@
     if (quoteArchive !== archiveId) {
       quoteArchive = archiveId;
       quoteById = {};
+      editOpen = {};
     }
     const pending: TimelineRow[] = [];
     for (const group of windowedDayGroups) {
@@ -367,7 +368,7 @@
                         <p class="text-xs text-muted-foreground">{t("messageEditedOldest")}</p>
                         <div class="border-l border-border pl-2">
                           {#each item.row.previous_bodies ?? [] as wording}
-                            <p data-previous-body class="text-xs text-muted-foreground whitespace-pre-wrap">{wording}</p>
+                            <p data-previous-body class="text-xs text-muted-foreground whitespace-pre-wrap">{displayBody(wording)}</p>
                           {/each}
                         </div>
                       {/if}

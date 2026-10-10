@@ -2,7 +2,8 @@
 //!
 //! Matrix IDs (gate grep):
 //! WA426-EDIT WA426-DELETE WA426-REACT WA426-PLAIN WA426-CASCADE
-//! WA464-PREV WA464-ORDER WA464-TOMB-ROW IL464-NO-SECOND-HIT IL464-TOMBSTONE-REV
+//! WA464-PREV WA464-ORDER WA464-TOMB-ROW WA464-VISIBLE WA464-SPACE
+//! IL464-NO-SECOND-HIT IL464-TOMBSTONE-REV
 //!
 //! Placeholders Ada / Berk / Self only. Current text is "hello". Deleted text
 //! is "secret". Emoji is "👍". Rows are seeded with SQL on `init_archive`.
@@ -975,6 +976,87 @@ fn wa464_tomb_row_previous_bodies_are_empty() {
         count(&arch, "SELECT COUNT(*) FROM message_revisions"),
         2,
         "WA464-TOMB-ROW: revision COUNT(*)"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA464-VISIBLE: current body `merhaba`. Revisions in `rev_no` order are
+/// `merhaba canim`, `  merhaba  `, and `merhaba <attached: note.txt>`.
+/// `previous_bodies` is exactly `["merhaba canim"]`. The trim-only revision
+/// and the marker-only revision are absent. All three revision rows stay.
+#[test]
+fn wa464_visible_drops_trim_and_marker_only_revisions() {
+    let root = tmp_root();
+    let arch = init_archive(&root.join("arch")).unwrap();
+    let s = seed(&arch, "merhaba", "edited", 0, "wa464-visible", false);
+    insert_rev(&arch, s.message_id, 1, Some("merhaba canim"));
+    insert_rev(&arch, s.message_id, 2, Some("  merhaba  "));
+    insert_rev(&arch, s.message_id, 3, Some("merhaba <attached: note.txt>"));
+
+    let rows = timeline(&arch, s.berk_person);
+    assert_eq!(
+        rows.len(),
+        1,
+        "WA464-VISIBLE: one timeline row, got {}",
+        rows.len()
+    );
+    assert_eq!(rows[0].body_text, "merhaba", "WA464-VISIBLE: current body");
+    assert_eq!(rows[0].edit_state, "edited");
+    let n: i64 = arch
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM message_revisions WHERE message_id = ?1",
+            [s.message_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n, 3, "WA464-VISIBLE: revision COUNT(*)");
+    let v = row_value(&rows[0]);
+    let want = serde_json::json!(["merhaba canim"]);
+    assert_eq!(
+        v.get("previous_bodies"),
+        Some(&want),
+        "WA464-VISIBLE: previous_bodies missing or wrong: {v}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA464-SPACE: current body `merhaba canim yine`. Revisions are
+/// `merhaba  canim` (two spaces between the words), then
+/// `merhaba <attached: note.txt>`. `previous_bodies` is exactly those stored
+/// strings, in that order. The vec does not strip the marker.
+#[test]
+fn wa464_space_keeps_internal_space_and_stored_marker() {
+    let root = tmp_root();
+    let arch = init_archive(&root.join("arch")).unwrap();
+    let s = seed(
+        &arch,
+        "merhaba canim yine",
+        "edited",
+        0,
+        "wa464-space",
+        false,
+    );
+    insert_rev(&arch, s.message_id, 1, Some("merhaba  canim"));
+    insert_rev(&arch, s.message_id, 2, Some("merhaba <attached: note.txt>"));
+
+    let rows = timeline(&arch, s.berk_person);
+    assert_eq!(
+        rows.len(),
+        1,
+        "WA464-SPACE: one timeline row, got {}",
+        rows.len()
+    );
+    assert_eq!(
+        rows[0].body_text, "merhaba canim yine",
+        "WA464-SPACE: current body"
+    );
+    let v = row_value(&rows[0]);
+    let want = serde_json::json!(["merhaba  canim", "merhaba <attached: note.txt>"]);
+    assert_eq!(
+        v.get("previous_bodies"),
+        Some(&want),
+        "WA464-SPACE: previous_bodies missing or wrong: {v}"
     );
     let _ = std::fs::remove_dir_all(&root);
 }
