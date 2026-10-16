@@ -175,6 +175,19 @@ fn resolve_wa_near(
                     |r| r.get(0),
                 )
                 .optional()?;
+            // The lower id is the first zip. When that row is the one deleted,
+            // its wa-v1 key must move onto the survivor or a reimport inserts
+            // again. Content lookup ignores the zip being imported, so the
+            // newer hash has to sit on the first zip's source too.
+            let adopt_first: Option<(String, i64)> = if snap.drop < snap.keep {
+                Some(archive.conn.query_row(
+                    "SELECT idempotency_key, source_id FROM messages WHERE id = ?1",
+                    [snap.drop],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?)
+            } else {
+                None
+            };
             archive.conn.execute(
                 "UPDATE attachments SET message_id = ?1 WHERE message_id = ?2",
                 rusqlite::params![snap.keep, snap.drop],
@@ -202,6 +215,12 @@ fn resolve_wa_near(
             archive
                 .conn
                 .execute("DELETE FROM messages WHERE id = ?1", [snap.drop])?;
+            if let Some((key, source_id)) = adopt_first {
+                archive.conn.execute(
+                    "UPDATE messages SET idempotency_key = ?1, source_id = ?2 WHERE id = ?3",
+                    rusqlite::params![key, source_id, snap.keep],
+                )?;
+            }
             refresh_near_conversations(archive, keep_side.as_ref(), drop_side.as_ref())?;
             rebuild_near_persons(archive, keep_side.as_ref(), drop_side.as_ref())?;
             crate::search::reindex_message_search(archive, snap.keep)?;
