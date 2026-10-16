@@ -360,7 +360,14 @@
   {#if detail}
     <Separator />
     <Card data-review-card class="mt-3 space-y-3 p-3">
-      <p class="text-sm">{detail.review.reason}</p>
+      {#if detail.review.reason.includes("wa_near")}
+        <p class="text-sm text-muted-foreground">{t("reviewOlderWording")}</p>
+        <p class="whitespace-pre-wrap text-sm">{detail.older_wording}</p>
+        <p class="text-sm text-muted-foreground">{t("reviewNewerWording")}</p>
+        <p class="whitespace-pre-wrap text-sm">{detail.newer_wording}</p>
+      {:else}
+        <p class="text-sm">{detail.review.reason}</p>
+      {/if}
       <ul class="space-y-1 text-xs text-muted-foreground">
         {#each detail.evidence as e}
           <li>{e.type} · {e.score} · {e.detail}</li>

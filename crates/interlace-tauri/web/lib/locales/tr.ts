@@ -30,9 +30,11 @@ export const tr: ChromePack = {
   loadingReviewQueue: "İnceleme kuyruğu yükleniyor…",
   linkThesePeople: "Bu kişileri bağla?",
   linkThesePeopleDesc: "{n} kişiyi tek kişide birleştir. Mesajlar yerinde kalır.",
-  joinTheseMessages: "Bu mesajları birleştir?",
+  joinTheseMessages: "Tek mesaj kalsın mı?",
   joinTheseMessagesDesc:
-    "Önceki mesaj kalır, sonraki silinir. Kişiler ayrı kalır.",
+    "Yeni metin mesajda kalır. Eski metin Düzenlendi altında kalır. Kişiler ayrı kalır.",
+  reviewOlderWording: "Eski metin",
+  reviewNewerWording: "Yeni metin",
   attachNewNumber: "Bu yeni numara eklensin mi?",
   attachNewNumberDesc:
     "Yeni numara mevcut kişiye bağlanır. Bunu geri alabilirsiniz. Mesajlar taşınmaz.",

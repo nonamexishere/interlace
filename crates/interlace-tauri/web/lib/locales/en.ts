@@ -28,9 +28,11 @@ export const en = {
   loadingReviewQueue: "Loading review queue…",
   linkThesePeople: "Link these people?",
   linkThesePeopleDesc: "Merge {n} people into one. Messages stay put.",
-  joinTheseMessages: "Join these messages?",
+  joinTheseMessages: "Keep one message?",
   joinTheseMessagesDesc:
-    "Keep the earlier message and drop the later one. People stay separate.",
+    "The newer wording stays on the message. The older wording stays under Edited. People stay separate.",
+  reviewOlderWording: "Older wording",
+  reviewNewerWording: "Newer wording",
   attachNewNumber: "Attach this new number?",
   attachNewNumberDesc:
     "The new number joins the existing person. You can undo this. Messages stay where they are.",

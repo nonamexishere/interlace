@@ -5,6 +5,10 @@
 //! two_sources_stay_two chat_match_not_person_review photo-on-kept-message
 //! shared-line-one-row ambiguous-stays-two berk-stays-second-person
 //!
+//! #471 (gate grep): WA471-SHOW-ORDER WA471-SHOW-NOT-KEEP WA471-ACCEPT-BODY
+//! WA471-REJECT WA471-ONE-ZIP WA471-NO-MERGE WA471-SEARCH WA471-REIMPORT
+//! WA471-OTHER-PAIR
+//!
 //! Android zip, then an iOS zip whose stem does not fold to Ada. Placeholders
 //! Ada / Berk / Self only. `wa-v1` is not the content hash: these fixtures
 //! differ by title, minute-versus-second clock text, You versus the owner
@@ -16,7 +20,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use interlace_core::db::init_archive;
-use interlace_core::{review_list, review_resolve, ImportOpts, SourceKind};
+use interlace_core::{
+    person_list, person_show, person_timeline, person_timeline_rows, review_list, review_resolve,
+    review_show, search, ImportOpts, SearchQuery, SourceKind,
+};
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -537,6 +544,9 @@ fn import_near_pair(root: &Path) -> (interlace_core::db::Archive, i64, i64, i64)
 
 /// Same minute, same canonical sender, different stripped body: two rows.
 /// Accept joins them onto the kept id and the photo follows. People stay.
+/// WA471-ACCEPT-BODY / WA471-OTHER-PAIR: `body_text` is the later zip's
+/// sentence, the earlier sentence is the only revision, and the photo stays
+/// on today's keep id.
 #[test]
 fn wa_two_exports_near_accept_joins_messages_not_people() {
     let root = tmp_root();
@@ -544,6 +554,18 @@ fn wa_two_exports_near_accept_joins_messages_not_people() {
     let rid = near_review_id(&arch);
     let people = live_person_ids(&arch);
     let ops = link_ops(&arch);
+    let earlier = body_of(&arch, blue);
+    let later = body_of(&arch, red);
+    assert_eq!(earlier, "bring the blue cup");
+    assert!(
+        later.contains("bring the red cup"),
+        "later zip sentence, got {later:?}"
+    );
+    assert_eq!(
+        today_keep_id(&arch, blue, red),
+        blue,
+        "survivor id is today's keep id"
+    );
 
     review_resolve(&mut arch, rid, true).unwrap();
 
@@ -558,7 +580,7 @@ fn wa_two_exports_near_accept_joins_messages_not_people() {
     assert_eq!(
         photo_on(&arch, "IMG-0007.jpg"),
         blue,
-        "photo follows the kept id"
+        "WA471-OTHER-PAIR: photo follows the survivor"
     );
     assert_eq!(
         live_person_ids(&arch),
@@ -571,6 +593,19 @@ fn wa_two_exports_near_accept_joins_messages_not_people() {
         "Accept does not merge_persons or link_identity for this pair"
     );
     assert_berk_untouched(&arch, berk);
+    assert_eq!(
+        body_of(&arch, blue),
+        later,
+        "WA471-ACCEPT-BODY: body_text is the later zip's sentence, got {rows:?}"
+    );
+    assert_eq!(
+        revision_bodies(&arch, blue),
+        vec![Some(earlier)],
+        "WA471-ACCEPT-BODY: the earlier sentence is the only revision"
+    );
+    let (state, stone) = edit_state_of(&arch, blue);
+    assert_eq!(state, "edited", "WA471-ACCEPT-BODY: edit_state");
+    assert_eq!(stone, 0, "WA471-ACCEPT-BODY: the row is not a tombstone");
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -706,6 +741,8 @@ fn assert_last_message_at_matches_remaining(arch: &interlace_core::db::Archive) 
 
 /// Two different near lines from Ada in one minute are two open reviews.
 /// Accepting one joins only that pair; the other stays open and joins later.
+/// WA471-OTHER-PAIR: the second pair stays open until its own Accept.
+/// WA471-ACCEPT-BODY: each survivor's body is that pair's later sentence.
 #[test]
 fn wa_two_exports_two_near_lines_accept_one_pair_then_the_other() {
     let root = tmp_root();
@@ -751,18 +788,24 @@ fn wa_two_exports_two_near_lines_accept_one_pair_then_the_other() {
         );
     }
 
+    let linen_id = message_id_with_body(&arch, "linen note");
+    let canvas_id = message_id_with_body(&arch, "canvas note");
+    let basket_id = message_id_with_body(&arch, "basket note");
+    let cooler_id = message_id_with_body(&arch, "cooler note");
+    assert_eq!(today_keep_id(&arch, linen_id, canvas_id), linen_id);
+    assert_eq!(today_keep_id(&arch, basket_id, cooler_id), basket_id);
     let people = live_person_count(&arch);
     let ops = link_ops(&arch);
     review_resolve(&mut arch, linen, true).unwrap();
 
-    let left = user_rows(&arch);
-    assert_eq!(rows_with_body(&left, "linen note").len(), 1);
     assert!(
-        rows_with_body(&left, "canvas note").is_empty(),
-        "Accept joins only the linen/canvas pair, got {left:?}"
+        message_alive(&arch, linen_id) && !message_alive(&arch, canvas_id),
+        "WA471-OTHER-PAIR: Accept joins only the linen/canvas ids"
     );
-    assert_eq!(rows_with_body(&left, "basket note").len(), 1);
-    assert_eq!(rows_with_body(&left, "cooler note").len(), 1);
+    assert!(
+        message_alive(&arch, basket_id) && message_alive(&arch, cooler_id),
+        "WA471-OTHER-PAIR: the other pair's messages stay"
+    );
     let still = review_list(&arch).unwrap();
     let still_near: Vec<&serde_json::Value> = still
         .iter()
@@ -771,18 +814,49 @@ fn wa_two_exports_two_near_lines_accept_one_pair_then_the_other() {
     assert_eq!(
         still_near.len(),
         1,
-        "the other near row stays open, got {still:?}"
+        "WA471-OTHER-PAIR: the other near row stays open, got {still:?}"
     );
     assert_eq!(open_pair_id(&arch, "basket note", "cooler note"), basket);
+    assert_eq!(body_of(&arch, basket_id), "basket note");
+    assert_eq!(body_of(&arch, cooler_id), "cooler note");
+    assert!(
+        revision_bodies(&arch, basket_id).is_empty(),
+        "the open pair has no revision"
+    );
+    assert_eq!(
+        body_of(&arch, linen_id),
+        "canvas note",
+        "WA471-ACCEPT-BODY: body_text is the later zip's sentence"
+    );
+    assert_eq!(
+        revision_bodies(&arch, linen_id),
+        vec![Some("linen note".into())],
+        "WA471-ACCEPT-BODY: the earlier sentence is the only revision"
+    );
+    let (state, stone) = edit_state_of(&arch, linen_id);
+    assert_eq!(state, "edited");
+    assert_eq!(stone, 0);
 
     review_resolve(&mut arch, basket, true).unwrap();
-    let done = user_rows(&arch);
-    assert_eq!(rows_with_body(&done, "basket note").len(), 1);
     assert!(
-        rows_with_body(&done, "cooler note").is_empty(),
-        "the later Accept joins the basket/cooler pair, got {done:?}"
+        message_alive(&arch, basket_id) && !message_alive(&arch, cooler_id),
+        "the later Accept joins the basket/cooler ids"
     );
-    assert_eq!(rows_with_body(&done, "linen note").len(), 1);
+    assert_eq!(
+        body_of(&arch, basket_id),
+        "cooler note",
+        "WA471-ACCEPT-BODY: the second pair's body is the later sentence"
+    );
+    assert_eq!(
+        revision_bodies(&arch, basket_id),
+        vec![Some("basket note".into())],
+        "WA471-ACCEPT-BODY: the second pair's earlier sentence is the revision"
+    );
+    assert_eq!(body_of(&arch, linen_id), "canvas note");
+    assert_eq!(
+        revision_bodies(&arch, linen_id),
+        vec![Some("linen note".into())]
+    );
     assert_eq!(live_person_count(&arch), people, "people count stays put");
     assert_eq!(link_ops(&arch), ops, "Accept does not merge or link people");
     assert_berk_untouched(&arch, berk);
@@ -807,6 +881,7 @@ fn year_counts_for(arch: &interlace_core::db::Archive, name: &str) -> Vec<(i64, 
 }
 
 /// Accept drops the deleted message from every participant's year count.
+/// WA471-OTHER-PAIR: that drop is the deleted message, for every participant.
 #[test]
 fn wa_two_exports_near_accept_refreshes_other_participant_year() {
     let root = tmp_root();
@@ -850,7 +925,9 @@ fn wa_two_exports_near_accept_refreshes_other_participant_year() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// Accept of a near pair deletes the newest message. Derived rows follow.
+/// Accept of a near pair deletes the other message. Derived rows follow.
+/// WA471-OTHER-PAIR: the year count drops that deleted message.
+/// WA471-ACCEPT-BODY: body_text is the later zip's sentence.
 #[test]
 fn wa_two_exports_near_accept_refreshes_last_message_and_year_count() {
     let root = tmp_root();
@@ -881,14 +958,19 @@ fn wa_two_exports_near_accept_refreshes_last_message_and_year_count() {
         "person_year_index row for Ada must exist because the import finished"
     );
     let rid = open_pair_id(&arch, "ada blue note", "ada red note");
+    let blue_id = message_id_with_body(&arch, "ada blue note");
+    let red_id = message_id_with_body(&arch, "ada red note");
+    assert_eq!(today_keep_id(&arch, blue_id, red_id), blue_id);
     let people = live_person_count(&arch);
     review_resolve(&mut arch, rid, true).unwrap();
 
-    let rows = user_rows(&arch);
-    assert_eq!(rows_with_body(&rows, "ada blue note").len(), 1);
     assert!(
-        rows_with_body(&rows, "ada red note").is_empty(),
-        "Accept deletes the later near message, got {rows:?}"
+        message_alive(&arch, blue_id) && !message_alive(&arch, red_id),
+        "Accept deletes the later near message id"
+    );
+    assert_eq!(
+        rows_with_body(&user_rows(&arch), "ada earlier note").len(),
+        1
     );
     let after = ada_year_counts(&arch);
     assert_eq!(
@@ -906,6 +988,19 @@ fn wa_two_exports_near_accept_refreshes_last_message_and_year_count() {
     }
     assert_last_message_at_matches_remaining(&arch);
     assert_eq!(live_person_count(&arch), people);
+    assert_eq!(
+        body_of(&arch, blue_id),
+        "ada red note",
+        "WA471-ACCEPT-BODY: body_text is the later zip's sentence"
+    );
+    assert_eq!(
+        revision_bodies(&arch, blue_id),
+        vec![Some("ada blue note".into())],
+        "WA471-ACCEPT-BODY: the earlier sentence is the only revision"
+    );
+    let (state, stone) = edit_state_of(&arch, blue_id);
+    assert_eq!(state, "edited");
+    assert_eq!(stone, 0, "not a tombstone");
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -1075,6 +1170,804 @@ fn wa_two_exports_caption_and_file_phrase_are_one_message_not_near() {
     assert!(
         near.is_empty(),
         "that caption pair must not be a near review, got {listed:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+const OLDER_WORDING: &str = "merhaba";
+const NEWER_WORDING: &str = "merhaba canim";
+
+fn body_of(arch: &interlace_core::db::Archive, id: i64) -> String {
+    arch.conn
+        .query_row(
+            "SELECT COALESCE(body_text, '') FROM messages WHERE id = ?1",
+            [id],
+            |r| r.get(0),
+        )
+        .unwrap_or_else(|e| panic!("message {id}: {e}"))
+}
+
+fn revision_bodies(arch: &interlace_core::db::Archive, message_id: i64) -> Vec<Option<String>> {
+    let mut stmt = arch
+        .conn
+        .prepare(
+            "SELECT body_text FROM message_revisions
+             WHERE message_id = ?1 ORDER BY rev_no",
+        )
+        .unwrap();
+    stmt.query_map([message_id], |r| r.get(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect()
+}
+
+fn edit_state_of(arch: &interlace_core::db::Archive, id: i64) -> (String, i64) {
+    arch.conn
+        .query_row(
+            "SELECT edit_state, tombstone FROM messages WHERE id = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap_or_else(|e| panic!("message {id}: {e}"))
+}
+
+fn sent_at_of(arch: &interlace_core::db::Archive, id: i64) -> String {
+    arch.conn
+        .query_row("SELECT sent_at FROM messages WHERE id = ?1", [id], |r| {
+            r.get(0)
+        })
+        .unwrap_or_else(|e| panic!("sent_at {id}: {e}"))
+}
+
+/// Today's keep id: earlier `sent_at`, then the lower id.
+fn today_keep_id(arch: &interlace_core::db::Archive, a: i64, b: i64) -> i64 {
+    match sent_at_of(arch, a).cmp(&sent_at_of(arch, b)) {
+        std::cmp::Ordering::Less => a,
+        std::cmp::Ordering::Greater => b,
+        std::cmp::Ordering::Equal => a.min(b),
+    }
+}
+
+fn message_alive(arch: &interlace_core::db::Archive, id: i64) -> bool {
+    arch.conn
+        .query_row("SELECT COUNT(*) FROM messages WHERE id = ?1", [id], |r| {
+            r.get::<_, i64>(0)
+        })
+        .unwrap()
+        == 1
+}
+
+fn message_id_with_body(arch: &interlace_core::db::Archive, body: &str) -> i64 {
+    let mut stmt = arch
+        .conn
+        .prepare("SELECT id FROM messages WHERE body_text = ?1 ORDER BY id")
+        .unwrap();
+    let ids: Vec<i64> = stmt
+        .query_map([body], |r| r.get(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert_eq!(
+        ids.len(),
+        1,
+        "body {body:?} ids {ids:?}, rows {:?}",
+        user_rows(arch)
+    );
+    ids[0]
+}
+
+fn ids_containing(arch: &interlace_core::db::Archive, text: &str) -> Vec<i64> {
+    let mut stmt = arch
+        .conn
+        .prepare(
+            "SELECT id FROM messages
+             WHERE COALESCE(body_text, '') LIKE '%' || ?1 || '%'
+             ORDER BY id",
+        )
+        .unwrap();
+    stmt.query_map([text], |r| r.get(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect()
+}
+
+fn wa_near_ids(arch: &interlace_core::db::Archive) -> Vec<i64> {
+    review_list(arch)
+        .unwrap()
+        .into_iter()
+        .filter(|row| reason_text(row).contains("\"wa_near\":true"))
+        .map(|row| row["id"].as_i64().expect("review id"))
+        .collect()
+}
+
+fn only_wa_near_id(arch: &interlace_core::db::Archive) -> i64 {
+    let ids = wa_near_ids(arch);
+    assert_eq!(
+        ids.len(),
+        1,
+        "expected one open wa_near row, got {:?}",
+        review_list(arch).unwrap()
+    );
+    ids[0]
+}
+
+fn live_person_named(arch: &interlace_core::db::Archive, name: &str) -> i64 {
+    let mut stmt = arch
+        .conn
+        .prepare(
+            "SELECT id FROM persons
+             WHERE display_name = ?1 AND tombstoned_at IS NULL
+             ORDER BY id",
+        )
+        .unwrap();
+    let ids: Vec<i64> = stmt
+        .query_map([name], |r| r.get(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert_eq!(ids.len(), 1, "one live person {name}, got {ids:?}");
+    ids[0]
+}
+
+fn content_hash_of(arch: &interlace_core::db::Archive, id: i64) -> String {
+    arch.conn
+        .query_row(
+            "SELECT content_hash FROM wa_message_content WHERE message_id = ?1",
+            [id],
+            |r| r.get(0),
+        )
+        .unwrap_or_else(|e| panic!("content hash for {id}: {e}"))
+}
+
+fn idempotency_of(arch: &interlace_core::db::Archive, id: i64) -> String {
+    arch.conn
+        .query_row(
+            "SELECT idempotency_key FROM messages WHERE id = ?1",
+            [id],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+fn event_count(arch: &interlace_core::db::Archive) -> i64 {
+    count(arch, "SELECT COUNT(*) FROM identity_link_events")
+}
+
+fn conv_kinds(arch: &interlace_core::db::Archive) -> Vec<String> {
+    let mut stmt = arch
+        .conn
+        .prepare("SELECT kind FROM conversations ORDER BY id")
+        .unwrap();
+    stmt.query_map([], |r| r.get(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect()
+}
+
+fn archive_with_self_and_ada(root: &Path) -> (interlace_core::db::Archive, i64) {
+    let arch = init_archive(root).unwrap();
+    arch.conn
+        .execute(
+            "UPDATE archive_meta SET owner_display_name = 'Self' WHERE id = 1",
+            [],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO persons(display_name, is_self) VALUES ('Self', 1)",
+            [],
+        )
+        .unwrap();
+    arch.conn
+        .execute(
+            "INSERT INTO persons(display_name, is_self) VALUES ('Ada', 0)",
+            [],
+        )
+        .unwrap();
+    let ada: i64 = arch
+        .conn
+        .query_row(
+            "SELECT id FROM persons WHERE display_name = 'Ada' AND tombstoned_at IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    (arch, ada)
+}
+
+fn berk_android(dir: &Path, lines: &[&str]) -> PathBuf {
+    let path = dir.join("android-berk.zip");
+    let chat = android_chat(lines);
+    write_zip(&path, &[("WhatsApp Chat with Berk.txt", chat.as_bytes())]);
+    path
+}
+
+fn berk_ios(dir: &Path, lines: &[&str], files: &[(&str, &[u8])]) -> PathBuf {
+    let path = dir.join("WhatsApp Chat - Berk.zip");
+    let chat = ios_chat(lines);
+    let mut entries: Vec<(&str, &[u8])> = vec![("_chat.txt", chat.as_bytes())];
+    entries.extend_from_slice(files);
+    write_zip(&path, &entries);
+    path
+}
+
+fn import_berk_zips(
+    root: &Path,
+    first_android: bool,
+    android_lines: &[&str],
+    ios_lines: &[&str],
+) -> (interlace_core::db::Archive, i64) {
+    let android = berk_android(&root.join("a"), android_lines);
+    let ios = berk_ios(&root.join("b"), ios_lines, &[]);
+    let (mut arch, ada) = archive_with_self_and_ada(&root.join("arch"));
+    if first_android {
+        import_android(&mut arch, &android);
+        import_ios(&mut arch, &ios);
+    } else {
+        import_ios(&mut arch, &ios);
+        import_android(&mut arch, &android);
+    }
+    (arch, ada)
+}
+
+fn wording_pair_ids(arch: &interlace_core::db::Archive) -> (i64, i64) {
+    let older = message_id_with_body(arch, OLDER_WORDING);
+    let newer = message_id_with_body(arch, NEWER_WORDING);
+    assert!(
+        older < newer,
+        "the first zip is the lower id (older {older} sent {} , newer {newer} sent {})",
+        sent_at_of(arch, older),
+        sent_at_of(arch, newer)
+    );
+    (older, newer)
+}
+
+fn assert_wording_show(arch: &interlace_core::db::Archive, id_label: &str) {
+    let shown = review_show(arch, only_wa_near_id(arch)).unwrap();
+    assert!(
+        shown.get("review").is_some(),
+        "{id_label}: review object stays beside the wording keys, got {shown}"
+    );
+    assert_eq!(
+        shown.get("older_wording").and_then(|v| v.as_str()),
+        Some(OLDER_WORDING),
+        "{id_label}: older_wording, got {shown}"
+    );
+    assert_eq!(
+        shown.get("newer_wording").and_then(|v| v.as_str()),
+        Some(NEWER_WORDING),
+        "{id_label}: newer_wording, got {shown}"
+    );
+}
+
+/// WA471-SHOW-ORDER: first zip `merhaba`, later zip `merhaba canim` at the
+/// same minute. `review_show` names those wordings in that order.
+#[test]
+fn wa471_show_order_older_then_newer() {
+    let root = tmp_root();
+    let (arch, ada) = import_berk_zips(
+        &root,
+        true,
+        &["3/15/24, 10:00 AM - Berk: merhaba"],
+        &["[3/15/24, 10:00:18 AM] Berk: merhaba canim"],
+    );
+    let (older, newer) = wording_pair_ids(&arch);
+    assert_eq!(body_of(&arch, older), OLDER_WORDING);
+    assert_eq!(body_of(&arch, newer), NEWER_WORDING);
+    assert_eq!(
+        today_keep_id(&arch, older, newer),
+        older,
+        "the later clock is not the keep id (older sent {}, newer sent {})",
+        sent_at_of(&arch, older),
+        sent_at_of(&arch, newer)
+    );
+    assert_ne!(ada, live_person_named(&arch, "Berk"));
+    assert_wording_show(&arch, "WA471-SHOW-ORDER");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA471-SHOW-NOT-KEEP: the later zip's clock sorts earlier inside the minute.
+/// Older is still the first zip's `merhaba`. Newer is still `merhaba canim`.
+#[test]
+fn wa471_show_not_keep_when_later_clock_is_earlier() {
+    let root = tmp_root();
+    let (arch, _ada) = import_berk_zips(
+        &root,
+        false,
+        &["3/15/24, 10:00 AM - Berk: merhaba canim"],
+        &["[3/15/24, 10:00:40 AM] Berk: merhaba"],
+    );
+    let (older, newer) = wording_pair_ids(&arch);
+    let keep = today_keep_id(&arch, older, newer);
+    assert_eq!(
+        keep,
+        newer,
+        "WA471-SHOW-NOT-KEEP: keep follows the earlier clock, not import order \
+         (older id {older} sent {}, newer id {newer} sent {})",
+        sent_at_of(&arch, older),
+        sent_at_of(&arch, newer)
+    );
+    assert_eq!(body_of(&arch, keep), NEWER_WORDING);
+    assert_wording_show(&arch, "WA471-SHOW-NOT-KEEP");
+    let shown = review_show(&arch, only_wa_near_id(&arch)).unwrap();
+    assert_ne!(
+        shown.get("older_wording").and_then(|v| v.as_str()),
+        Some(body_of(&arch, keep).as_str()),
+        "WA471-SHOW-NOT-KEEP: older wording is not the keep body, got {shown}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+fn accept_wording_pair(root: &Path) -> (interlace_core::db::Archive, i64, i64, i64) {
+    let (mut arch, ada) = import_berk_zips(
+        &root,
+        true,
+        // After the helper's 2:00 PM encryption line, so that line is not the preview.
+        &["3/15/24, 3:00 PM - Berk: merhaba"],
+        &["[3/15/24, 3:00:18 PM] Berk: merhaba canim"],
+    );
+    let (older, newer) = wording_pair_ids(&arch);
+    let keep = today_keep_id(&arch, older, newer);
+    assert_eq!(keep, older, "today's keep id is the first zip");
+    let rid = only_wa_near_id(&arch);
+    review_resolve(&mut arch, rid, true).unwrap();
+    (arch, ada, keep, newer)
+}
+
+/// WA471-ACCEPT-BODY: one message, body `merhaba canim`, one revision
+/// `merhaba`, `edit_state` edited, timeline `previous_bodies` is that older
+/// sentence only. The other id is gone. The survivor is today's keep id.
+#[test]
+fn wa471_accept_body_newer_sentence_and_older_revision() {
+    let root = tmp_root();
+    let (arch, ada, keep, dropped) = accept_wording_pair(&root);
+    assert!(message_alive(&arch, keep), "survivor id is today's keep id");
+    assert!(
+        !message_alive(&arch, dropped),
+        "the other message id is gone"
+    );
+    assert_eq!(
+        body_of(&arch, keep),
+        NEWER_WORDING,
+        "WA471-ACCEPT-BODY: body is the newer sentence"
+    );
+    assert_eq!(
+        revision_bodies(&arch, keep),
+        vec![Some(OLDER_WORDING.into())],
+        "WA471-ACCEPT-BODY: one revision is the older sentence"
+    );
+    let (state, stone) = edit_state_of(&arch, keep);
+    assert_eq!(state, "edited", "WA471-ACCEPT-BODY: edit_state");
+    assert_eq!(stone, 0, "WA471-ACCEPT-BODY: not a tombstone");
+    let berk = live_person_named(&arch, "Berk");
+    assert_ne!(ada, berk, "WA471-NO-MERGE: Ada is not Berk");
+    let rows = person_timeline_rows(&arch, berk, false, 20, None).unwrap();
+    let row = rows
+        .iter()
+        .find(|r| r.message_id == keep)
+        .unwrap_or_else(|| {
+            panic!(
+                "WA471-ACCEPT-BODY: timeline missing survivor, kinds {:?} rows {rows:?}",
+                conv_kinds(&arch)
+            )
+        });
+    assert_eq!(row.body_text, NEWER_WORDING);
+    assert_eq!(row.edit_state, "edited");
+    assert_eq!(
+        row.previous_bodies,
+        vec![OLDER_WORDING.to_string()],
+        "WA471-ACCEPT-BODY: previous_bodies is exactly the older sentence"
+    );
+    assert!(rows.iter().all(|r| r.message_id != dropped));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA471-REJECT: Reject on a second pair leaves both messages, no revision,
+/// and `edit_state` stays `original` (no Edited chip). The other pair stays open.
+#[test]
+fn wa471_reject_second_pair_leaves_both_original() {
+    let root = tmp_root();
+    let (mut arch, ada) = import_berk_zips(
+        &root,
+        true,
+        &[
+            "3/15/24, 10:00 AM - Berk: merhaba",
+            "3/15/24, 11:00 AM - Berk: linen note",
+        ],
+        &[
+            "[3/15/24, 10:00:18 AM] Berk: merhaba canim",
+            "[3/15/24, 11:00:18 AM] Berk: canvas note",
+        ],
+    );
+    let wording = only_open_wording_id(&arch);
+    let second = open_pair_id(&arch, "linen note", "canvas note");
+    assert_ne!(wording, second, "the second pair is its own review row");
+    let linen_id = message_id_with_body(&arch, "linen note");
+    let canvas_id = message_id_with_body(&arch, "canvas note");
+    let berk = live_person_named(&arch, "Berk");
+    assert_ne!(ada, berk);
+    let people = live_person_ids(&arch);
+    let ops = link_ops(&arch);
+    let events = event_count(&arch);
+
+    review_resolve(&mut arch, second, false).unwrap();
+
+    assert!(
+        message_alive(&arch, linen_id) && message_alive(&arch, canvas_id),
+        "WA471-REJECT: both messages stay"
+    );
+    assert_eq!(body_of(&arch, linen_id), "linen note");
+    assert_eq!(body_of(&arch, canvas_id), "canvas note");
+    assert_eq!(
+        count(&arch, "SELECT COUNT(*) FROM message_revisions"),
+        0,
+        "WA471-REJECT: no revision"
+    );
+    let edited = count(
+        &arch,
+        "SELECT COUNT(*) FROM messages WHERE edit_state != 'original' OR tombstone != 0",
+    );
+    assert_eq!(edited, 0, "WA471-REJECT: edit_state stays original");
+    assert_eq!(
+        wa_near_ids(&arch),
+        vec![wording],
+        "WA471-REJECT: the other pair stays open"
+    );
+    let rows = person_timeline_rows(&arch, berk, false, 20, None).unwrap();
+    for id in [linen_id, canvas_id] {
+        let row = rows.iter().find(|r| r.message_id == id).unwrap_or_else(|| {
+            panic!(
+                "WA471-REJECT: timeline missing {id}, kinds {:?} rows {rows:?}",
+                conv_kinds(&arch)
+            )
+        });
+        assert_eq!(row.edit_state, "original");
+        assert!(
+            row.previous_bodies.is_empty(),
+            "WA471-REJECT: no chip, previous_bodies {:?}",
+            row.previous_bodies
+        );
+    }
+    assert_eq!(live_person_ids(&arch), people);
+    assert_eq!(link_ops(&arch), ops);
+    assert_eq!(event_count(&arch), events, "Reject adds no link op");
+    assert_eq!(live_person_named(&arch, "Ada"), ada);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+fn only_open_wording_id(arch: &interlace_core::db::Archive) -> i64 {
+    let ids = review_ids_for_pair(arch, OLDER_WORDING, NEWER_WORDING);
+    assert_eq!(
+        ids.len(),
+        1,
+        "one open wording pair, got {:?}",
+        review_list(arch).unwrap()
+    );
+    ids[0]
+}
+
+/// WA471-ONE-ZIP: one zip of the current sentence only. One row, no revision,
+/// no Edited chip, no `wa_near` row.
+#[test]
+fn wa471_one_zip_current_sentence_has_no_chip() {
+    let root = tmp_root();
+    let zip = berk_ios(
+        &root.join("z"),
+        &["[3/15/24, 10:00:18 AM] Berk: merhaba canim"],
+        &[],
+    );
+    let (mut arch, ada) = archive_with_self_and_ada(&root.join("arch"));
+    import_ios(&mut arch, &zip);
+
+    let rows = user_rows(&arch);
+    assert_eq!(rows.len(), 1, "WA471-ONE-ZIP: one bubble, got {rows:?}");
+    assert_eq!(rows[0].2, NEWER_WORDING);
+    assert_eq!(
+        count(&arch, "SELECT COUNT(*) FROM message_revisions"),
+        0,
+        "WA471-ONE-ZIP: no revision"
+    );
+    let (state, stone) = edit_state_of(&arch, rows[0].0);
+    assert_eq!(state, "original", "WA471-ONE-ZIP: edit_state");
+    assert_eq!(stone, 0);
+    assert!(
+        wa_near_ids(&arch).is_empty(),
+        "WA471-ONE-ZIP: no wa_near row, got {:?}",
+        review_list(&arch).unwrap()
+    );
+    let berk = live_person_named(&arch, "Berk");
+    assert_ne!(ada, berk, "Ada is not Berk");
+    let timeline = person_timeline_rows(&arch, berk, false, 20, None).unwrap();
+    let row = timeline
+        .iter()
+        .find(|r| r.message_id == rows[0].0)
+        .unwrap_or_else(|| {
+            panic!(
+                "WA471-ONE-ZIP: timeline missing the row, kinds {:?} rows {timeline:?}",
+                conv_kinds(&arch)
+            )
+        });
+    assert_eq!(row.body_text, NEWER_WORDING);
+    assert_eq!(row.edit_state, "original");
+    assert!(
+        row.previous_bodies.is_empty(),
+        "WA471-ONE-ZIP: no chip, previous_bodies {:?}",
+        row.previous_bodies
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA471-NO-MERGE: Ada's person stays distinct from Berk's. Accept does not
+/// merge people or add a link op.
+#[test]
+fn wa471_no_merge_ada_stays_distinct_from_berk() {
+    let root = tmp_root();
+    let (mut arch, ada) = import_berk_zips(
+        &root,
+        true,
+        &["3/15/24, 10:00 AM - Berk: merhaba"],
+        &["[3/15/24, 10:00:18 AM] Berk: merhaba canim"],
+    );
+    let berk = live_person_named(&arch, "Berk");
+    assert_ne!(ada, berk, "WA471-NO-MERGE: Ada is not Berk before Accept");
+    assert_eq!(live_person_named(&arch, "Ada"), ada);
+    let people = live_person_ids(&arch);
+    let ops = link_ops(&arch);
+    let events = event_count(&arch);
+    let rid = only_wa_near_id(&arch);
+    review_resolve(&mut arch, rid, true).unwrap();
+    assert_eq!(
+        live_person_named(&arch, "Ada"),
+        ada,
+        "WA471-NO-MERGE: Ada's person stays"
+    );
+    assert_eq!(
+        live_person_named(&arch, "Berk"),
+        berk,
+        "WA471-NO-MERGE: Berk's person stays"
+    );
+    assert_ne!(ada, berk);
+    assert_eq!(
+        live_person_ids(&arch),
+        people,
+        "Accept does not merge people"
+    );
+    assert_eq!(
+        link_ops(&arch),
+        ops,
+        "Accept adds no merge_persons or link op"
+    );
+    assert_eq!(event_count(&arch), events, "Accept adds no link op");
+    let ada_show = person_show(&arch, ada).unwrap();
+    let berk_show = person_show(&arch, berk).unwrap();
+    assert_eq!(ada_show.display_name, "Ada");
+    assert_eq!(berk_show.display_name, "Berk");
+    assert_eq!(ada_show.id, ada);
+    assert_eq!(berk_show.id, berk);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA471-SEARCH: after Accept, search for `canim` hits that message.
+/// The people-list preview and person show use the newer body.
+#[test]
+fn wa471_search_preview_and_person_show_use_newer_body() {
+    let root = tmp_root();
+    let (arch, _ada, keep, _dropped) = accept_wording_pair(&root);
+    let berk = live_person_named(&arch, "Berk");
+    let show = person_show(&arch, berk).unwrap();
+    assert_eq!(show.id, berk);
+    assert_eq!(show.display_name, "Berk");
+
+    let hits = search(
+        &arch,
+        &SearchQuery {
+            q: "canim".into(),
+            ..SearchQuery::default()
+        },
+    )
+    .unwrap();
+    assert!(
+        hits.iter().any(|h| h.message_id == keep),
+        "WA471-SEARCH: search for canim hits that message, got {hits:?}"
+    );
+
+    let preview = person_list(&arch)
+        .unwrap()
+        .into_iter()
+        .find(|p| p.id == berk)
+        .and_then(|p| p.preview)
+        .unwrap_or_default();
+    assert!(
+        preview.contains(NEWER_WORDING),
+        "WA471-SEARCH: people-list preview uses the newer body, got {preview:?}"
+    );
+
+    let timeline = person_timeline(&arch, berk, false, 20).unwrap();
+    let hit = timeline
+        .iter()
+        .find(|h| h.message_id == keep)
+        .unwrap_or_else(|| {
+            panic!(
+                "WA471-SEARCH: person show timeline missing {keep}, kinds {:?} hits {timeline:?}",
+                conv_kinds(&arch)
+            )
+        });
+    assert!(
+        hit.snippet.contains("canim"),
+        "WA471-SEARCH: person show uses the newer body, snippet {:?}",
+        hit.snippet
+    );
+    let rows = person_timeline_rows(&arch, berk, false, 20, None).unwrap();
+    let row = rows
+        .iter()
+        .find(|r| r.message_id == keep)
+        .expect("timeline row");
+    assert_eq!(row.body_text, NEWER_WORDING);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA471-REIMPORT: importing the later zip again after Accept does not insert
+/// a second message. The first zip's line does not insert one either.
+#[test]
+fn wa471_reimport_later_zip_does_not_insert() {
+    let root = tmp_root();
+    let android = berk_android(&root.join("a"), &["3/15/24, 10:00 AM - Berk: merhaba"]);
+    let ios = berk_ios(
+        &root.join("b"),
+        &["[3/15/24, 10:00:18 AM] Berk: merhaba canim"],
+        &[],
+    );
+    let (mut arch, _ada) = archive_with_self_and_ada(&root.join("arch"));
+    import_android(&mut arch, &android);
+    import_ios(&mut arch, &ios);
+    let (older, newer) = wording_pair_ids(&arch);
+    let keep = today_keep_id(&arch, older, newer);
+    assert_eq!(keep, older);
+    let newer_hash = content_hash_of(&arch, newer);
+    let keep_key = idempotency_of(&arch, keep);
+    assert_ne!(content_hash_of(&arch, keep), newer_hash);
+    let rid = only_wa_near_id(&arch);
+    review_resolve(&mut arch, rid, true).unwrap();
+
+    assert!(message_alive(&arch, keep) && !message_alive(&arch, newer));
+    assert_eq!(
+        body_of(&arch, keep),
+        NEWER_WORDING,
+        "WA471-REIMPORT: the survivor body is the newer sentence before reimport"
+    );
+    assert_eq!(
+        revision_bodies(&arch, keep),
+        vec![Some(OLDER_WORDING.into())]
+    );
+    assert_eq!(
+        idempotency_of(&arch, keep),
+        keep_key,
+        "WA471-REIMPORT: the survivor idempotency key stays"
+    );
+    assert_eq!(
+        content_hash_of(&arch, keep),
+        newer_hash,
+        "WA471-REIMPORT: the newer line's content hash is on the survivor"
+    );
+
+    let after_accept = user_rows(&arch).len();
+    import_ios(&mut arch, &ios);
+    assert_eq!(
+        user_rows(&arch).len(),
+        after_accept,
+        "WA471-REIMPORT: importing the later zip again inserts no second message, got {:?}",
+        user_rows(&arch)
+    );
+    assert_eq!(body_of(&arch, keep), NEWER_WORDING);
+    assert!(message_alive(&arch, keep) && !message_alive(&arch, newer));
+    assert!(
+        wa_near_ids(&arch).is_empty(),
+        "reimport must not open another wa_near row, got {:?}",
+        review_list(&arch).unwrap()
+    );
+
+    import_android(&mut arch, &android);
+    assert_eq!(
+        user_rows(&arch).len(),
+        after_accept,
+        "reimport of the first zip's line inserts no second message, got {:?}",
+        user_rows(&arch)
+    );
+    assert_eq!(body_of(&arch, keep), NEWER_WORDING);
+    assert_eq!(idempotency_of(&arch, keep), keep_key);
+    assert_eq!(
+        revision_bodies(&arch, keep),
+        vec![Some(OLDER_WORDING.into())]
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA471-OTHER-PAIR: accepting one pair leaves the other open. The year count
+/// drops the deleted message. A photo that arrived on that message follows
+/// the survivor. The survivor id is today's keep id.
+#[test]
+fn wa471_other_pair_photo_follows_and_year_drops() {
+    let root = tmp_root();
+    let jpeg = b"\xFF\xD8fakejpeg";
+    let android = android_zip(
+        &root.join("a"),
+        &[
+            "3/15/24, 2:32 PM - Ada: linen note",
+            "3/15/24, 2:32 PM - Ada: basket note",
+        ],
+    );
+    let ios = ios_zip(
+        &root.join("b"),
+        &[
+            "[3/15/24, 2:32:18 PM] Ada: canvas note <attached: IMG-0007.jpg>",
+            "[3/15/24, 2:32:18 PM] Ada: cooler note",
+        ],
+        &[("IMG-0007.jpg", jpeg)],
+    );
+    let (mut arch, berk) = archive_with_self_and_berk(&root.join("arch"));
+    import_android(&mut arch, &android);
+    import_ios(&mut arch, &ios);
+
+    let linen = open_pair_id(&arch, "linen note", "canvas note");
+    let basket = open_pair_id(&arch, "basket note", "cooler note");
+    let linen_id = message_id_with_body(&arch, "linen note");
+    let canvas_ids = ids_containing(&arch, "canvas note");
+    assert_eq!(canvas_ids.len(), 1, "canvas ids {canvas_ids:?}");
+    let canvas_id = canvas_ids[0];
+    let canvas_body = body_of(&arch, canvas_id);
+    let basket_id = message_id_with_body(&arch, "basket note");
+    let cooler_id = message_id_with_body(&arch, "cooler note");
+    assert_eq!(today_keep_id(&arch, linen_id, canvas_id), linen_id);
+    assert_eq!(
+        photo_on(&arch, "IMG-0007.jpg"),
+        canvas_id,
+        "photo starts on the later message"
+    );
+    let before = ada_year_counts(&arch);
+    assert!(!before.is_empty(), "Ada year row must exist before Accept");
+    let people = live_person_ids(&arch);
+    let ops = link_ops(&arch);
+
+    review_resolve(&mut arch, linen, true).unwrap();
+
+    assert!(
+        message_alive(&arch, linen_id) && !message_alive(&arch, canvas_id),
+        "WA471-OTHER-PAIR: survivor is today's keep id and the other id is gone"
+    );
+    assert!(message_alive(&arch, basket_id) && message_alive(&arch, cooler_id));
+    assert_eq!(
+        open_pair_id(&arch, "basket note", "cooler note"),
+        basket,
+        "WA471-OTHER-PAIR: the other pair stays open"
+    );
+    assert_eq!(wa_near_ids(&arch).len(), 1);
+    assert_eq!(
+        photo_on(&arch, "IMG-0007.jpg"),
+        linen_id,
+        "WA471-OTHER-PAIR: the photo follows the survivor"
+    );
+    let after = ada_year_counts(&arch);
+    assert_eq!(after.len(), before.len(), "year rows stay");
+    for ((flag, prev), (flag_after, next)) in before.iter().zip(after.iter()) {
+        assert_eq!(flag_after, flag);
+        assert_eq!(
+            *next,
+            prev - 1,
+            "WA471-OTHER-PAIR: year count drops the deleted message (include_groups={flag})"
+        );
+    }
+    assert_eq!(live_person_ids(&arch), people);
+    assert_eq!(link_ops(&arch), ops, "people and link ops are unchanged");
+    assert_berk_untouched(&arch, berk);
+    assert_eq!(
+        body_of(&arch, linen_id),
+        canvas_body,
+        "WA471-OTHER-PAIR: body_text is the later zip's sentence"
+    );
+    assert_eq!(
+        revision_bodies(&arch, linen_id),
+        vec![Some("linen note".into())],
+        "the earlier sentence is the only revision"
     );
     let _ = std::fs::remove_dir_all(&root);
 }
