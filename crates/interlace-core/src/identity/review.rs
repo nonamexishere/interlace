@@ -167,11 +167,11 @@ fn resolve_wa_near(
         let keep_side = near_message_side(archive, snap.keep)?;
         let drop_side = near_message_side(archive, snap.drop)?;
         with_immediate(archive, || {
-            let newer_hash: Option<String> = archive
+            let dropped_hash: Option<String> = archive
                 .conn
                 .query_row(
                     "SELECT content_hash FROM wa_message_content WHERE message_id = ?1",
-                    [snap.newer_id],
+                    [snap.drop],
                     |r| r.get(0),
                 )
                 .optional()?;
@@ -179,7 +179,7 @@ fn resolve_wa_near(
                 "UPDATE attachments SET message_id = ?1 WHERE message_id = ?2",
                 rusqlite::params![snap.keep, snap.drop],
             )?;
-            if let Some(hash) = newer_hash {
+            if let Some(hash) = dropped_hash {
                 archive.conn.execute(
                     "UPDATE wa_message_content SET content_hash = ?1 WHERE message_id = ?2",
                     rusqlite::params![hash, snap.keep],
@@ -233,7 +233,6 @@ struct NearSnapshots {
     drop: i64,
     older_body: String,
     newer_body: String,
-    newer_id: i64,
 }
 
 fn near_snapshots(v: &serde_json::Value) -> Result<NearSnapshots, CoreError> {
@@ -253,17 +252,16 @@ fn near_snapshots(v: &serde_json::Value) -> Result<NearSnapshots, CoreError> {
         .get("drop_body")
         .and_then(|x| x.as_str())
         .ok_or_else(|| CoreError::Config("wa near review missing drop_body".into()))?;
-    let (older_body, newer_body, newer_id) = if keep < drop {
-        (keep_body, drop_body, drop)
+    let (older_body, newer_body) = if keep < drop {
+        (keep_body, drop_body)
     } else {
-        (drop_body, keep_body, keep)
+        (drop_body, keep_body)
     };
     Ok(NearSnapshots {
         keep,
         drop,
         older_body: older_body.to_string(),
         newer_body: newer_body.to_string(),
-        newer_id,
     })
 }
 

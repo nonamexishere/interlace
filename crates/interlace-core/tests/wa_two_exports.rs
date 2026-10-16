@@ -8,6 +8,7 @@
 //! #471 (gate grep): WA471-SHOW-ORDER WA471-SHOW-NOT-KEEP WA471-ACCEPT-BODY
 //! WA471-REJECT WA471-ONE-ZIP WA471-NO-MERGE WA471-SEARCH WA471-REIMPORT
 //! WA471-OTHER-PAIR
+//! Matrix IDs (gate grep): WA471-REIMPORT-CLOCK-FIRST WA471-REIMPORT-CLOCK-LATER
 //!
 //! Android zip, then an iOS zip whose stem does not fold to Ada. Placeholders
 //! Ada / Berk / Self only. `wa-v1` is not the content hash: these fixtures
@@ -1879,6 +1880,131 @@ fn wa471_reimport_later_zip_does_not_insert() {
         revision_bodies(&arch, keep),
         vec![Some(OLDER_WORDING.into())]
     );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// iOS Berk `merhaba` at 10:00:40, then Android Berk `merhaba canim` at 10:00.
+/// Accept. Survivor is the higher id. Body is `merhaba canim`, one revision
+/// is `merhaba`, `edit_state` is `edited`, tombstone is 0.
+fn accept_clock_inverted_pair(
+    root: &Path,
+) -> (interlace_core::db::Archive, i64, i64, PathBuf, PathBuf) {
+    let first = berk_ios(
+        &root.join("b"),
+        &["[3/15/24, 10:00:40 AM] Berk: merhaba"],
+        &[],
+    );
+    let later = berk_android(
+        &root.join("a"),
+        &["3/15/24, 10:00 AM - Berk: merhaba canim"],
+    );
+    let (mut arch, ada) = archive_with_self_and_ada(&root.join("arch"));
+    import_ios(&mut arch, &first);
+    import_android(&mut arch, &later);
+    let (older, newer) = wording_pair_ids(&arch);
+    let keep = today_keep_id(&arch, older, newer);
+    assert_eq!(keep, newer, "survivor is the higher id, not the first zip");
+    assert!(older < keep, "the first zip stays the lower id");
+    let rid = only_wa_near_id(&arch);
+    review_resolve(&mut arch, rid, true).unwrap();
+
+    assert!(message_alive(&arch, keep), "survivor id is today's keep id");
+    assert!(
+        !message_alive(&arch, older),
+        "the first zip's message id is gone"
+    );
+    assert_eq!(body_of(&arch, keep), NEWER_WORDING);
+    assert_eq!(
+        revision_bodies(&arch, keep),
+        vec![Some(OLDER_WORDING.into())],
+        "one revision is merhaba"
+    );
+    let (state, stone) = edit_state_of(&arch, keep);
+    assert_eq!(state, "edited");
+    assert_eq!(stone, 0, "not a tombstone");
+    let rows = user_rows(&arch);
+    assert_eq!(
+        rows.len(),
+        1,
+        "clock-inverted Accept leaves one message, got {rows:?}"
+    );
+    assert_eq!(rows[0].0, keep, "the one row is the higher id");
+    assert!(
+        wa_near_ids(&arch).is_empty(),
+        "Accept closes wa_near before either reimport, got {:?}",
+        review_list(&arch).unwrap()
+    );
+    assert_ne!(
+        ada,
+        live_person_named(&arch, "Berk"),
+        "Ada stays distinct from Berk"
+    );
+    (arch, keep, older, first, later)
+}
+
+fn assert_clock_reimport_stays(
+    arch: &interlace_core::db::Archive,
+    keep: i64,
+    dropped: i64,
+    label: &str,
+) {
+    let rows = user_rows(arch);
+    let near = wa_near_ids(arch);
+    assert_eq!(
+        rows.len(),
+        1,
+        "{label}: row count stays 1, wa_near={near:?}, rows={rows:?}"
+    );
+    assert_eq!(rows[0].0, keep, "{label}: survivor id stays");
+    assert!(
+        message_alive(arch, keep) && !message_alive(arch, dropped),
+        "{label}: survivor id stays and the deleted id stays gone"
+    );
+    assert_eq!(
+        body_of(arch, keep),
+        NEWER_WORDING,
+        "{label}: body stays merhaba canim"
+    );
+    assert_eq!(
+        revision_bodies(arch, keep),
+        vec![Some(OLDER_WORDING.into())],
+        "{label}: one revision stays merhaba"
+    );
+    let (state, stone) = edit_state_of(arch, keep);
+    assert_eq!(state, "edited", "{label}: edit_state stays edited");
+    assert_eq!(stone, 0, "{label}: not a tombstone");
+    assert!(
+        near.is_empty(),
+        "{label}: no open wa_near, got {near:?}, rows={rows:?}"
+    );
+    assert_ne!(
+        live_person_named(arch, "Ada"),
+        live_person_named(arch, "Berk"),
+        "{label}: Ada stays distinct from Berk"
+    );
+}
+
+/// WA471-REIMPORT-CLOCK-FIRST: after that Accept, importing the first zip
+/// again from the same path does not insert a second `merhaba` and does not
+/// open `wa_near`. Row count, survivor id, body, and the one revision stay.
+#[test]
+fn wa471_reimport_clock_first_zip_does_not_insert() {
+    let root = tmp_root();
+    let (mut arch, keep, dropped, first, _later) = accept_clock_inverted_pair(&root);
+    import_ios(&mut arch, &first);
+    assert_clock_reimport_stays(&arch, keep, dropped, "WA471-REIMPORT-CLOCK-FIRST");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// WA471-REIMPORT-CLOCK-LATER: fresh Accept of that same pair, then the later
+/// zip only, from the same path, before any first-zip reimport. Row count
+/// stays 1. No `wa_near`. Body and the one revision stay.
+#[test]
+fn wa471_reimport_clock_later_zip_does_not_insert() {
+    let root = tmp_root();
+    let (mut arch, keep, dropped, _first, later) = accept_clock_inverted_pair(&root);
+    import_android(&mut arch, &later);
+    assert_clock_reimport_stays(&arch, keep, dropped, "WA471-REIMPORT-CLOCK-LATER");
     let _ = std::fs::remove_dir_all(&root);
 }
 
