@@ -197,10 +197,11 @@ A later export can then collapse the shared line.
   If the later conversation then has no user messages, that chat row is removed.
 - Same minute and same canonical sender, but a different stripped body: both
   rows stay. Each such pair is its own open Review item (an earlier person-merge
-  row for those identities does not hide them). Accept joins that pair onto the
-  earlier message (the photo follows) and does not merge the people. Reject
-  leaves both messages. A second pair in the same minute stays open until you
-  accept it.
+  row for those identities does not hide them). Accept keeps one message: the
+  earlier `sent_at`, otherwise the lower id. Its body becomes the later zip's
+  sentence. The first zip's sentence is the previous wording Edited can show.
+  The photo follows that kept id. People stay separate. Reject leaves both
+  messages. A second pair in the same minute stays open until you accept it.
 
 ## Limits
 

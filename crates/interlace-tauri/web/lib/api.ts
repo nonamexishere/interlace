@@ -194,6 +194,10 @@ export type ReviewShow = {
   left: ReviewPanel;
   right: ReviewPanel;
   sides?: ReviewPanel[];
+  /** Present only for a wa_near row: snapshot stored for the lower message id. */
+  older_wording?: string;
+  /** Present only for a wa_near row: snapshot stored for the higher message id. */
+  newer_wording?: string;
 };
 
 export type ImportProgress = {

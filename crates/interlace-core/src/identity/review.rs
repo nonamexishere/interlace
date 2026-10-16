@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 
+use rusqlite::OptionalExtension;
 use serde::Serialize;
 
 use crate::db::Archive;
@@ -142,8 +143,10 @@ pub fn review_resolve_selected(
     Ok(())
 }
 
-/// Message near-pair queued by a WhatsApp content import. Accept joins the
-/// later message onto the earlier id. Reject leaves both rows. Not a person merge.
+/// Message near-pair queued by a WhatsApp content import.
+/// Accept keeps today's survivor id. The body becomes the higher id's snapshot
+/// and the lower id's snapshot is one revision. Reject leaves both rows.
+/// Not a person merge.
 fn resolve_wa_near(
     archive: &mut Archive,
     review_id: i64,
@@ -160,26 +163,48 @@ fn resolve_wa_near(
         return Ok(false);
     }
     if accept {
-        let keep = v
-            .get("keep")
-            .and_then(|x| x.as_i64())
-            .ok_or_else(|| CoreError::Config("wa near review missing keep".into()))?;
-        let drop = v
-            .get("drop")
-            .and_then(|x| x.as_i64())
-            .ok_or_else(|| CoreError::Config("wa near review missing drop".into()))?;
-        let keep_side = near_message_side(archive, keep)?;
-        let drop_side = near_message_side(archive, drop)?;
+        let snap = near_snapshots(&v)?;
+        let keep_side = near_message_side(archive, snap.keep)?;
+        let drop_side = near_message_side(archive, snap.drop)?;
         with_immediate(archive, || {
+            let dropped_hash: Option<String> = archive
+                .conn
+                .query_row(
+                    "SELECT content_hash FROM wa_message_content WHERE message_id = ?1",
+                    [snap.drop],
+                    |r| r.get(0),
+                )
+                .optional()?;
             archive.conn.execute(
                 "UPDATE attachments SET message_id = ?1 WHERE message_id = ?2",
-                rusqlite::params![keep, drop],
+                rusqlite::params![snap.keep, snap.drop],
+            )?;
+            if let Some(hash) = dropped_hash {
+                archive.conn.execute(
+                    "UPDATE wa_message_content SET content_hash = ?1 WHERE message_id = ?2",
+                    rusqlite::params![hash, snap.keep],
+                )?;
+            }
+            archive.conn.execute(
+                "UPDATE messages SET body_text = ?1, edit_state = 'edited' WHERE id = ?2",
+                rusqlite::params![snap.newer_body, snap.keep],
+            )?;
+            let rev_no: i64 = archive.conn.query_row(
+                "SELECT COALESCE(MAX(rev_no), 0) + 1 FROM message_revisions WHERE message_id = ?1",
+                [snap.keep],
+                |r| r.get(0),
+            )?;
+            archive.conn.execute(
+                "INSERT INTO message_revisions(message_id, rev_no, body_text, edited_at)
+                 VALUES (?1, ?2, ?3, NULL)",
+                rusqlite::params![snap.keep, rev_no, snap.older_body],
             )?;
             archive
                 .conn
-                .execute("DELETE FROM messages WHERE id = ?1", [drop])?;
+                .execute("DELETE FROM messages WHERE id = ?1", [snap.drop])?;
             refresh_near_conversations(archive, keep_side.as_ref(), drop_side.as_ref())?;
             rebuild_near_persons(archive, keep_side.as_ref(), drop_side.as_ref())?;
+            crate::search::reindex_message_search(archive, snap.keep)?;
             archive.conn.execute(
                 "UPDATE merge_review_queue SET status = 'accepted',
                         resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
@@ -199,6 +224,59 @@ fn resolve_wa_near(
         )?;
     }
     Ok(true)
+}
+
+/// Snapshots already stored on the review reason, paired by message id.
+/// Older is the lower id. Newer is the higher id. Not keep versus drop.
+struct NearSnapshots {
+    keep: i64,
+    drop: i64,
+    older_body: String,
+    newer_body: String,
+}
+
+fn near_snapshots(v: &serde_json::Value) -> Result<NearSnapshots, CoreError> {
+    let keep = v
+        .get("keep")
+        .and_then(|x| x.as_i64())
+        .ok_or_else(|| CoreError::Config("wa near review missing keep".into()))?;
+    let drop = v
+        .get("drop")
+        .and_then(|x| x.as_i64())
+        .ok_or_else(|| CoreError::Config("wa near review missing drop".into()))?;
+    let keep_body = v
+        .get("keep_body")
+        .and_then(|x| x.as_str())
+        .ok_or_else(|| CoreError::Config("wa near review missing keep_body".into()))?;
+    let drop_body = v
+        .get("drop_body")
+        .and_then(|x| x.as_str())
+        .ok_or_else(|| CoreError::Config("wa near review missing drop_body".into()))?;
+    let (older_body, newer_body) = if keep < drop {
+        (keep_body, drop_body)
+    } else {
+        (drop_body, keep_body)
+    };
+    Ok(NearSnapshots {
+        keep,
+        drop,
+        older_body: older_body.to_string(),
+        newer_body: newer_body.to_string(),
+    })
+}
+
+/// `older_wording` / `newer_wording` for a `wa_near` reason that is not
+/// `phone_replaced`. Other reasons omit the pair.
+fn near_wording_labels(reason: &str) -> Option<(String, String)> {
+    if reason_is_phone_replaced(reason) {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_str(reason).ok()?;
+    if v.get("wa_near").and_then(|x| x.as_bool()) != Some(true) {
+        return None;
+    }
+    let snap = near_snapshots(&v).ok()?;
+    Some((snap.older_body, snap.newer_body))
 }
 
 /// New number onto the older person only. Not a name cluster and not `wa_near`.
@@ -605,13 +683,19 @@ pub fn review_show(archive: &Archive, id: i64) -> Result<serde_json::Value, Core
         review["right_identity_id"].as_i64(),
     )?;
     let sides = review_side_panels(archive, left_id, left_pid, right_pid, &left, &right)?;
-    Ok(serde_json::json!({
+    let wording = near_wording_labels(review["reason"].as_str().unwrap_or(""));
+    let mut out = serde_json::json!({
         "review": review,
         "evidence": evidence,
         "left": left,
         "right": right,
         "sides": sides,
-    }))
+    });
+    if let Some((older, newer)) = wording {
+        out["older_wording"] = serde_json::Value::String(older);
+        out["newer_wording"] = serde_json::Value::String(newer);
+    }
+    Ok(out)
 }
 
 struct OpenFoldReview {
