@@ -57,7 +57,15 @@ pub fn open_archive(root: &Path, mode: LockMode) -> Result<Archive> {
             )));
         }
     }
-    let lock = ArchiveLock::acquire(&root.join("INTERLACE.lock"), mode)?;
+    // The journal replay renames the live tree. A shared opener would
+    // interleave with another shared opener, so recovery keeps the
+    // exclusive lock for the whole session. No journal, no upgrade.
+    let lock_mode = if had_journal {
+        LockMode::Exclusive
+    } else {
+        mode
+    };
+    let lock = ArchiveLock::acquire(&root.join("INTERLACE.lock"), lock_mode)?;
     super::snapshot::replay_restore_journal(root)?;
     let marker = root.join("INTERLACE.toml");
     if !marker.is_file() {

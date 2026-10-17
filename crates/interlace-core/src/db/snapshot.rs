@@ -68,7 +68,7 @@ pub fn restore_snapshot(archive: &mut Archive, id: &str) -> Result<()> {
         std::process::id(),
         STAGE_SEQ.fetch_add(1, Ordering::Relaxed)
     ));
-    let _stage_guard = DirGuard::arm(stage.clone());
+    let mut stage_guard = DirGuard::arm(stage.clone());
     stage_from_snapshot(&snap, &stage)?;
     verify_manifest(&stage)?;
 
@@ -89,6 +89,11 @@ pub fn restore_snapshot(archive: &mut Archive, id: &str) -> Result<()> {
             if suspended {
                 // Resume must not replace the install error.
                 let _ = resume_restored(archive);
+            }
+            // Drop would delete the stage. While the journal still names it,
+            // the next open has to be able to finish from that directory.
+            if restore_journal_exists(&archive.root) {
+                stage_guard.disarm();
             }
             return Err(e);
         }
@@ -298,6 +303,15 @@ fn install_staged(root: &Path, stage: &Path) -> Result<PathBuf> {
 
 const RESTORE_JOURNAL: &str = "snap-restore-journal";
 
+const RESTORE_ROLLBACK: &[&str] = &[
+    "INTERLACE.toml",
+    "archive.sqlite",
+    "cas",
+    "archive.sqlite-journal",
+    "archive.sqlite-shm",
+    "archive.sqlite-wal",
+];
+
 fn journal_path(root: &Path) -> PathBuf {
     root.join("tmp").join(RESTORE_JOURNAL)
 }
@@ -360,6 +374,13 @@ fn rel_tmp_dir(root: &Path, path: &Path, prefix: &str) -> Result<String> {
 
 /// Finish or undo a half-moved restore before `archive.sqlite` is opened.
 /// The journal only names the stage and aside directories this restore created.
+///
+/// Toml, sqlite, and `cas/` all being present is not enough to drop the
+/// journal. That trio is also the pre-restore tree while the new database is
+/// still in the stage, or after a roll-back has put the database back and
+/// left the wal in the aside. A missing stage directory is not "the new
+/// database was published": the stage guard can remove that directory while
+/// the aside still holds the only copy.
 pub(super) fn replay_restore_journal(root: &Path) -> Result<()> {
     let journal = journal_path(root);
     if !journal.is_file() {
@@ -369,62 +390,87 @@ pub(super) fn replay_restore_journal(root: &Path) -> Result<()> {
     let Some((stage_rel, aside_rel)) = parse_restore_journal(&text) else {
         return Err(CoreError::Fatal("snapshot journal: bad record".into()));
     };
+    let stage = journal_dir(root, &stage_rel, "snap-stage-")?;
+    let aside = journal_dir(root, &aside_rel, "snap-aside-")?;
+    let stage_sqlite = stage
+        .as_ref()
+        .is_some_and(|dir| dir.join("archive.sqlite").is_file());
+    let live_sqlite = root.join("archive.sqlite").is_file();
+    let live_cas = root.join("cas").is_dir();
+
+    // The new database is already live and `cas/` is the rename that did
+    // not finish. Publish that `cas/` from the stage. Do not move the
+    // aside back over the new database.
+    if live_sqlite && !stage_sqlite && !live_cas {
+        return finish_published_cas(root, stage.as_deref());
+    }
+
+    // Publish finished: the aside still holds the previous generation, or
+    // it has nothing left that belongs on the live tree.
+    if trio_live(root) && !stage_sqlite && !unfinished_rollback(aside.as_deref()) {
+        clear_restore_journal(root);
+        return Ok(());
+    }
+
+    let Some(aside) = aside else {
+        return Err(CoreError::Fatal(
+            "snapshot journal: missing directory".into(),
+        ));
+    };
+    // The live database is the pre-restore file whenever the stage still
+    // has its own copy. Moving the live file back onto the stage would
+    // only be right when the live slot is empty.
+    if !live_sqlite {
+        if let Some(stage) = stage.as_ref() {
+            unpublish_stage(stage, root)?;
+        }
+    }
+    move_present(&aside, root, RESTORE_ROLLBACK)?;
     if trio_live(root) {
         clear_restore_journal(root);
         return Ok(());
     }
-    let stage = require_journal_dir(root, &stage_rel, "snap-stage-")?;
-    let aside = require_journal_dir(root, &aside_rel, "snap-aside-")?;
-    if !root.join("archive.sqlite").is_file() {
-        unpublish_stage(&stage, root)?;
-        let rollback = [
-            "INTERLACE.toml",
-            "archive.sqlite",
-            "cas",
-            "archive.sqlite-journal",
-            "archive.sqlite-shm",
-            "archive.sqlite-wal",
-        ];
-        move_present(&aside, root, &rollback)?;
-        if trio_live(root) {
-            clear_restore_journal(root);
-            return Ok(());
-        }
+    Err(CoreError::Fatal(
+        "snapshot journal: archive.sqlite is not a file".into(),
+    ))
+}
+
+/// `cas/` (and toml, if it is still staged) lands on the published database.
+/// A missing stage cannot be treated as success: the aside still holds the
+/// previous generation, and installing it would undo the publish.
+fn finish_published_cas(root: &Path, stage: Option<&Path>) -> Result<()> {
+    let Some(stage) = stage else {
         return Err(CoreError::Fatal(
-            "snapshot journal: archive.sqlite is not a file".into(),
+            "snapshot journal: cas is not in place".into(),
         ));
+    };
+    if !root.join("cas").exists() && is_real_dir(&stage.join("cas")) {
+        fs::rename(stage.join("cas"), root.join("cas"))?;
     }
-    if !root.join("cas").is_dir() {
-        let published = !stage.join("archive.sqlite").exists();
-        let aside_sqlite = aside.join("archive.sqlite").is_file();
-        if published && aside_sqlite {
-            if !root.join("cas").exists() && is_real_dir(&stage.join("cas")) {
-                fs::rename(stage.join("cas"), root.join("cas"))?;
-            }
-            if !root.join("INTERLACE.toml").is_file() && stage.join("INTERLACE.toml").is_file() {
-                fs::rename(stage.join("INTERLACE.toml"), root.join("INTERLACE.toml"))?;
-            }
-            if trio_live(root) {
-                clear_restore_journal(root);
-                return Ok(());
-            }
-            return Err(CoreError::Fatal(
-                "snapshot journal: cas is not in place".into(),
-            ));
-        }
-        clear_restore_journal(root);
-        return Ok(());
-    }
-    if !root.join("INTERLACE.toml").is_file() && aside.join("INTERLACE.toml").is_file() {
-        fs::rename(aside.join("INTERLACE.toml"), root.join("INTERLACE.toml"))?;
+    if !root.join("INTERLACE.toml").is_file() && stage.join("INTERLACE.toml").is_file() {
+        fs::rename(stage.join("INTERLACE.toml"), root.join("INTERLACE.toml"))?;
     }
     if trio_live(root) {
         clear_restore_journal(root);
         return Ok(());
     }
     Err(CoreError::Fatal(
-        "snapshot journal: restore is incomplete".into(),
+        "snapshot journal: cas is not in place".into(),
     ))
+}
+
+/// Aside still holds a roll-back name and no longer holds the old database.
+/// A finished publish keeps that database in the aside, so this is false then.
+fn unfinished_rollback(aside: Option<&Path>) -> bool {
+    let Some(aside) = aside else {
+        return false;
+    };
+    if aside.join("archive.sqlite").is_file() {
+        return false;
+    }
+    RESTORE_ROLLBACK
+        .iter()
+        .any(|name| *name != "archive.sqlite" && aside.join(name).exists())
 }
 
 fn parse_restore_journal(text: &str) -> Option<(String, String)> {
@@ -440,7 +486,10 @@ fn parse_restore_journal(text: &str) -> Option<(String, String)> {
     Some((stage, aside))
 }
 
-fn require_journal_dir(root: &Path, rel: &str, prefix: &str) -> Result<PathBuf> {
+/// Validated `tmp/<prefix>*` directory from a journal line.
+/// `Ok(None)` when that directory is already gone. The returned path is the
+/// journal path, not its canonical form, so later renames stay on it.
+fn journal_dir(root: &Path, rel: &str, prefix: &str) -> Result<Option<PathBuf>> {
     let mut parts = rel.split('/');
     if parts.next() != Some("tmp") {
         return Err(CoreError::Fatal("snapshot journal path".into()));
@@ -458,16 +507,14 @@ fn require_journal_dir(root: &Path, rel: &str, prefix: &str) -> Result<PathBuf> 
     }
     let path = root.join("tmp").join(name);
     if !is_real_dir(&path) {
-        return Err(CoreError::Fatal(
-            "snapshot journal: missing directory".into(),
-        ));
+        return Ok(None);
     }
     let root_canon = fs::canonicalize(root)?;
     let canon = fs::canonicalize(&path)?;
     if !canon.starts_with(root_canon.join("tmp")) {
         return Err(CoreError::Fatal("snapshot journal path".into()));
     }
-    Ok(path)
+    Ok(Some(path))
 }
 
 fn is_real_dir(path: &Path) -> bool {
