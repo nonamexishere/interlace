@@ -375,65 +375,71 @@ fn file_name_is(rel: &str, hash: &str) -> bool {
         .is_some_and(|name| name.eq_ignore_ascii_case(hash))
 }
 
-/// `None` when `rel` is not a lexical `cas/` path, or an ancestor is a symlink
-/// or canonicalizes outside `cas/`. A stat or canonicalize failure is not `None`.
-fn resolved_cas_path(root: &Path, rel: &str) -> Option<PathBuf> {
+/// `Ok(None)` when `rel` is not a lexical `cas/` path, an ancestor is a symlink,
+/// or a canonical ancestor is outside `cas/`. A failed canonicalize of the
+/// archive root, or a walk that never canonicalizes an ancestor, is `Err`.
+fn resolved_cas_path(root: &Path, rel: &str) -> Result<Option<PathBuf>, CoreError> {
     if rel.is_empty() || rel.contains('\0') || rel.contains('\\') {
-        return None;
+        return Ok(None);
     }
     let rel_path = Path::new(rel);
     if rel_path.is_absolute() {
-        return None;
+        return Ok(None);
     }
     let mut depth = 0usize;
     for comp in rel_path.components() {
         match comp {
             Component::Normal(part) => {
-                let part = part.to_str()?;
+                let Some(part) = part.to_str() else {
+                    return Ok(None);
+                };
                 if part.is_empty() || part == "." || part == ".." {
-                    return None;
+                    return Ok(None);
                 }
                 if depth == 0 && part != "cas" {
-                    return None;
+                    return Ok(None);
                 }
                 depth += 1;
             }
-            _ => return None,
+            _ => return Ok(None),
         }
     }
     if depth < 2 {
-        return None;
+        return Ok(None);
     }
     let full = root.join(rel_path);
-    if !prefix_inside_cas(root, &full) {
-        return None;
+    if !prefix_inside_cas(root, &full)? {
+        return Ok(None);
     }
-    Some(full)
+    Ok(Some(full))
 }
 
-/// True when a canonical ancestor of `full` is the archive root or under `cas/`.
-/// A symlink is rejected. Any other stat or canonicalize failure walks up, so
-/// `finish_rename` / `finish_unlink` still see the original path.
-fn prefix_inside_cas(root: &Path, full: &Path) -> bool {
-    let Ok(root_canon) = fs::canonicalize(root) else {
-        return false;
-    };
+/// `Ok(true)` when a canonical ancestor is the archive root or under `cas/`.
+/// `Ok(false)` only for a confirmed symlink, or a canonical ancestor that is
+/// outside `cas/`. Does not follow symlinks. `NotFound`, `PermissionDenied`,
+/// and `ENOTDIR` on a lower component walk up so `finish_rename` /
+/// `finish_unlink` still see the original path. A failed canonicalize of
+/// `root`, or a walk that never canonicalizes an ancestor, is `Err`.
+fn prefix_inside_cas(root: &Path, full: &Path) -> Result<bool, CoreError> {
+    let root_canon = fs::canonicalize(root)?;
     let cas_lexical = root_canon.join("cas");
     let mut cursor = full.to_path_buf();
     loop {
-        if let Ok(meta) = fs::symlink_metadata(&cursor) {
-            if meta.file_type().is_symlink() {
-                return false;
-            }
-            if let Ok(canon) = fs::canonicalize(&cursor) {
-                if canon == root_canon {
-                    return true;
+        let blocked = match fs::symlink_metadata(&cursor) {
+            Ok(meta) if meta.file_type().is_symlink() => return Ok(false),
+            Ok(_) => match fs::canonicalize(&cursor) {
+                Ok(canon) => {
+                    if canon == root_canon {
+                        return Ok(true);
+                    }
+                    return Ok(canon == cas_lexical || canon.starts_with(&cas_lexical));
                 }
-                return canon == cas_lexical || canon.starts_with(&cas_lexical);
-            }
-        }
+                Err(err) => err,
+            },
+            Err(err) => err,
+        };
         if !cursor.pop() {
-            return false;
+            return Err(blocked.into());
         }
     }
 }
@@ -570,10 +576,10 @@ pub(crate) fn replay_cas_pending(conn: &Connection, root: &Path) -> Result<(), C
                         if !hash_ok(&hash) || dest != canonical_rel(&hash) {
                             continue;
                         }
-                        let Some(source_path) = resolved_cas_path(root, &source) else {
+                        let Some(source_path) = resolved_cas_path(root, &source)? else {
                             continue;
                         };
-                        let Some(dest_path) = resolved_cas_path(root, &dest) else {
+                        let Some(dest_path) = resolved_cas_path(root, &dest)? else {
                             continue;
                         };
                         finish_rename(&hash, &source_path, &dest_path)?;
@@ -583,7 +589,7 @@ pub(crate) fn replay_cas_pending(conn: &Connection, root: &Path) -> Result<(), C
                         if !hash_ok(&hash) || !file_name_is(&path, &hash) {
                             continue;
                         }
-                        let Some(full) = resolved_cas_path(root, &path) else {
+                        let Some(full) = resolved_cas_path(root, &path)? else {
                             continue;
                         };
                         if renamed.iter().any(|dest| dest == &full) {

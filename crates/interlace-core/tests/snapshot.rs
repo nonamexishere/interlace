@@ -1,4 +1,4 @@
-//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER REST-LIVE REST-PUBLISH REST-BUSY REST-RESUME CRASH-SNAPSHOT REST-REPLAY-CAS-NOSTAGE REST-REPLAY-CAS-OVER REST-REPLAY-ASIDE-GONE REST-REPLAY-ASIDE-MISSING REST-REPLAY-HOLD
+//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER REST-LIVE REST-PUBLISH REST-BUSY REST-RESUME CRASH-SNAPSHOT REST-REPLAY-CAS-NOSTAGE REST-REPLAY-CAS-OVER REST-REPLAY-ASIDE-GONE REST-REPLAY-ASIDE-MISSING REST-REPLAY-HOLD REST-REPLAY-ROLLBACK-CAS
 //!
 //! Snapshot and restore. Placeholder Ada / Berk only. The rare token
 //! `quartzsnap91` is planted only in the Berk zip. These tests call the
@@ -1869,6 +1869,68 @@ fn rest_replay_hold() {
     assert!(
         !hold.exists(),
         "REST-REPLAY-HOLD snap-hold residue remained"
+    );
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rest_replay_rollback_cas() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("rollback-cas");
+    insert_message(&held, "ada before", "k-rollback-cas");
+    let root = held.arch.root.clone();
+    drop(held);
+    let aside = root.join("tmp").join("snap-aside-rollbackcas");
+    let stage = root.join("tmp").join("snap-stage-rollbackcas");
+    fs::create_dir_all(&aside).unwrap();
+    fs::write(root.join("cas").join("marker.txt"), b"old-cas").unwrap();
+    fs::rename(root.join("cas"), aside.join("cas")).unwrap();
+    fs::create_dir_all(stage.join("cas")).unwrap();
+    fs::write(stage.join("cas").join("marker.txt"), b"stage-cas").unwrap();
+    assert!(
+        root.join("archive.sqlite").is_file(),
+        "REST-REPLAY-ROLLBACK-CAS live sqlite moved"
+    );
+    assert!(
+        root.join("INTERLACE.toml").is_file(),
+        "REST-REPLAY-ROLLBACK-CAS live toml moved"
+    );
+    assert!(
+        !root.join("cas").exists(),
+        "REST-REPLAY-ROLLBACK-CAS live cas was not parked"
+    );
+    assert!(
+        !aside.join("archive.sqlite").exists(),
+        "REST-REPLAY-ROLLBACK-CAS aside holds archive.sqlite"
+    );
+    assert!(
+        !stage.join("archive.sqlite").exists(),
+        "REST-REPLAY-ROLLBACK-CAS stage sqlite was planted"
+    );
+    plant_restore_journal(&root, "snap-stage-rollbackcas", "snap-aside-rollbackcas");
+    let arch = open_archive(&root, LockMode::Exclusive).expect("REST-REPLAY-ROLLBACK-CAS");
+    assert!(
+        body_on(&arch, "ada before"),
+        "REST-REPLAY-ROLLBACK-CAS Ada's message missing"
+    );
+    assert_eq!(
+        fs::read(root.join("cas").join("marker.txt")).unwrap(),
+        b"old-cas",
+        "REST-REPLAY-ROLLBACK-CAS live cas marker"
+    );
+    assert_eq!(
+        fs::read(stage.join("cas").join("marker.txt")).unwrap(),
+        b"stage-cas",
+        "REST-REPLAY-ROLLBACK-CAS stage cas marker"
+    );
+    assert!(
+        !aside.join("cas").exists(),
+        "REST-REPLAY-ROLLBACK-CAS aside cas remained"
+    );
+    assert!(
+        !replay_journal(&root).exists(),
+        "REST-REPLAY-ROLLBACK-CAS journal remained"
     );
     drop(arch);
     let _ = fs::remove_dir_all(&root);

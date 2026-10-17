@@ -419,10 +419,15 @@ fn rel_tmp_dir(root: &Path, path: &Path, prefix: &str) -> Result<String> {
 /// Finish or undo a half-moved restore before `archive.sqlite` is opened.
 /// The journal only names the stage and aside directories this restore created.
 ///
-/// The kill seam is only a stage directory that is still present, whose
+/// The publish-cas seam is a stage directory that is still present, whose
 /// `archive.sqlite` is already gone, with live sqlite present and live `cas/`
-/// missing. A missing stage directory is not that seam. Do not move the aside
-/// back on that path.
+/// missing, and either the aside directory is already gone or the aside still
+/// holds `archive.sqlite`. That path moves staged `cas/` and does not move
+/// the aside back. A missing stage directory is not that seam.
+///
+/// If the aside directory exists and its `archive.sqlite` is already gone,
+/// that is a roll-back. `put_back_aside` returns aside `cas/` and sidecars.
+/// Do not rename the stage `cas/` onto the live tree.
 ///
 /// If the aside directory is already gone and the live trio is intact, drop
 /// the journal and return. Do not install the stage. If the aside is gone and
@@ -447,11 +452,14 @@ pub(super) fn replay_restore_journal(root: &Path) -> Result<()> {
     let live_sqlite = root.join("archive.sqlite").is_file();
     let live_cas = root.join("cas").is_dir();
 
-    // Kill seam only: the stage directory is still there, its sqlite is
-    // already published, and live `cas/` has not landed. A missing stage
-    // is a roll-back (the aside still holds `cas/`), not this publish.
+    // Publish-cas seam only. An aside that still exists without
+    // `archive.sqlite` is a roll-back: its `cas/` must come back, and the
+    // staged `cas/` must stay where it is.
     if let Some(stage_dir) = stage.as_ref() {
-        if live_sqlite && !stage_sqlite && !live_cas {
+        let aside_holds_sqlite = aside
+            .as_ref()
+            .is_some_and(|dir| dir.join("archive.sqlite").is_file());
+        if live_sqlite && !stage_sqlite && !live_cas && (aside.is_none() || aside_holds_sqlite) {
             return finish_published_cas(root, stage_dir);
         }
     }
