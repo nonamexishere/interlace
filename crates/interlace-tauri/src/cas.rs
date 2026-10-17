@@ -72,6 +72,10 @@ fn sniff_ftyp(bytes: &[u8]) -> &'static str {
     "video/mp4"
 }
 
+fn blob_digest_ok(path: &std::path::Path, hash: &str) -> Result<bool, String> {
+    interlace_core::cas::cas_file_digest_matches(path, hash).map_err(err)
+}
+
 fn mime_safe_ext(mime: &str) -> &'static str {
     match mime {
         "image/jpeg" => "jpg",
@@ -126,16 +130,18 @@ pub(crate) fn cas_response(
         return deny(StatusCode::FORBIDDEN, "path outside cas");
     }
     match fs::read(&canon) {
-        Ok(bytes) => tauri::http::Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, sniff_mime(&bytes))
-            .header(
-                header::CACHE_CONTROL,
-                "private, max-age=31536000, immutable",
-            )
-            .body(bytes)
-            .unwrap(),
-        Err(_) => deny(StatusCode::NOT_FOUND, "blob missing"),
+        Ok(bytes) if interlace_core::cas::cas_digest_matches(hash, &bytes) => {
+            tauri::http::Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, sniff_mime(&bytes))
+                .header(
+                    header::CACHE_CONTROL,
+                    "private, max-age=31536000, immutable",
+                )
+                .body(bytes)
+                .unwrap()
+        }
+        Ok(_) | Err(_) => deny(StatusCode::NOT_FOUND, "blob missing"),
     }
 }
 
@@ -156,6 +162,9 @@ pub(crate) fn cas_data_url(state: tauri::State<AppState>, hash: String) -> Resul
         return Err("path outside cas".into());
     }
     let bytes = fs::read(&canon).map_err(err)?;
+    if !interlace_core::cas::cas_digest_matches(&hash, &bytes) {
+        return Err(format!("fatal: cas blob missing: {hash}"));
+    }
     if bytes.len() > MAX {
         return Err("attachment too large to preview in-window".into());
     }
@@ -177,6 +186,9 @@ pub(crate) fn reveal_cas(state: tauri::State<AppState>, hash: String) -> Result<
     let canon = path.canonicalize().map_err(err)?;
     if !canon.starts_with(&cas_root) {
         return Err("path outside cas".into());
+    }
+    if !blob_digest_ok(&canon, &hash)? {
+        return Err(format!("fatal: cas blob missing: {hash}"));
     }
     let status = std::process::Command::new("/usr/bin/open")
         .arg("-R")
@@ -204,6 +216,9 @@ pub(crate) fn open_cas_eml(state: tauri::State<AppState>, hash: String) -> Resul
     if !canon.starts_with(&cas_root) {
         return Err("path outside cas".into());
     }
+    if !blob_digest_ok(&canon, &hash)? {
+        return Err(format!("fatal: cas blob missing: {hash}"));
+    }
     let tmp = std::env::temp_dir().join(format!("interlace-{hash}.eml"));
     fs::copy(&canon, &tmp).map_err(err)?;
     let status = std::process::Command::new("/usr/bin/open")
@@ -230,6 +245,9 @@ pub(crate) fn open_cas(state: tauri::State<AppState>, hash: String) -> Result<()
     let canon = path.canonicalize().map_err(err)?;
     if !canon.starts_with(&cas_root) {
         return Err("path outside cas".into());
+    }
+    if !blob_digest_ok(&canon, &hash)? {
+        return Err(format!("fatal: cas blob missing: {hash}"));
     }
     let mut head = [0u8; 32];
     let n = {

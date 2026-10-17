@@ -47,6 +47,18 @@ pub fn init_archive(root: &Path) -> Result<Archive> {
 }
 
 pub fn open_archive(root: &Path, mode: LockMode) -> Result<Archive> {
+    let had_journal = super::snapshot::restore_journal_exists(root);
+    if !had_journal {
+        let marker = root.join("INTERLACE.toml");
+        if !marker.is_file() {
+            return Err(CoreError::Config(format!(
+                "not an Interlace archive (missing INTERLACE.toml): {}",
+                root.display()
+            )));
+        }
+    }
+    let lock = ArchiveLock::acquire(&root.join("INTERLACE.lock"), mode)?;
+    super::snapshot::replay_restore_journal(root)?;
     let marker = root.join("INTERLACE.toml");
     if !marker.is_file() {
         return Err(CoreError::Config(format!(
@@ -54,12 +66,15 @@ pub fn open_archive(root: &Path, mode: LockMode) -> Result<Archive> {
             root.display()
         )));
     }
-    let lock = ArchiveLock::acquire(&root.join("INTERLACE.lock"), mode)?;
     let db_path = root.join("archive.sqlite");
+    if !db_path.is_file() && (had_journal || super::snapshot::restore_journal_exists(root)) {
+        return Err(CoreError::Fatal("archive.sqlite is not a file".into()));
+    }
     let conn = Connection::open(&db_path)?;
     apply_pragmas(&conn)?;
     migrate(&conn)?;
     ensure_fts_triggers(&conn)?;
+    crate::cas::replay_cas_pending(&conn, root)?;
     Ok(Archive {
         conn,
         root: root.to_path_buf(),
@@ -379,6 +394,7 @@ impl Archive {
     /// Reopen `archive.sqlite` on the same path. Does not take another flock.
     /// A missing file is an error and does not replace `self.conn`.
     pub(super) fn resume_conn(&mut self) -> Result<()> {
+        super::snapshot::replay_restore_journal(&self.root)?;
         let path = self.root.join("archive.sqlite");
         if !path.is_file() {
             return Err(CoreError::Fatal("archive.sqlite is not a file".into()));
@@ -392,6 +408,7 @@ impl Archive {
         apply_pragmas(&conn)?;
         migrate(&conn)?;
         ensure_fts_triggers(&conn)?;
+        crate::cas::replay_cas_pending(&conn, &self.root)?;
         self.conn = conn;
         Ok(())
     }

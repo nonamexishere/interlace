@@ -262,14 +262,6 @@ fn classify(archive: &Archive, plan: &DoctorPlan) -> Result<ApplyWork> {
     Ok(work)
 }
 
-fn unlink_blob(path: &Path) -> Result<()> {
-    match fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.into()),
-    }
-}
-
 impl Archive {
     pub fn doctor_plan(&self) -> Result<DoctorPlan> {
         let referenced = referenced_hashes(self)?;
@@ -310,12 +302,13 @@ impl Archive {
     }
 
     pub fn doctor_apply(&self, plan: &DoctorPlan) -> Result<()> {
+        crate::cas::replay_cas_pending(&self.conn, &self.root)?;
         let work = classify(self, plan)?;
         if work.is_empty() {
             return Ok(());
         }
         self.conn.execute_batch("BEGIN IMMEDIATE")?;
-        let wrote = (|| -> Result<Option<ApplyWork>> {
+        let wrote = (|| -> Result<Option<()>> {
             let work = classify(self, plan)?;
             if work.is_empty() {
                 return Ok(None);
@@ -338,10 +331,37 @@ impl Archive {
                     rusqlite::params![item.hash, item.size],
                 )?;
             }
-            Ok(Some(work))
+            let mut ops = Vec::new();
+            let mut dests = HashSet::new();
+            for item in &work.reattach {
+                let dest = cas_blob_path(&self.root, &item.hash)?;
+                dests.insert(dest.clone());
+                if item.source != dest {
+                    ops.push(crate::cas::PendingOp::Rename {
+                        hash: item.hash.clone(),
+                        source: item.source.clone(),
+                        dest,
+                    });
+                }
+            }
+            for item in &work.reclaim {
+                for path in &item.paths {
+                    if dests.contains(path) {
+                        continue;
+                    }
+                    ops.push(crate::cas::PendingOp::Unlink {
+                        hash: item.hash.clone(),
+                        path: path.clone(),
+                    });
+                }
+            }
+            if !ops.is_empty() {
+                crate::cas::store_pending(&self.conn, &self.root, &ops)?;
+            }
+            Ok(Some(()))
         })();
-        let work = match wrote {
-            Ok(Some(work)) => work,
+        match wrote {
+            Ok(Some(())) => {}
             Ok(None) => {
                 let _ = self.conn.execute_batch("ROLLBACK");
                 return Ok(());
@@ -350,30 +370,12 @@ impl Archive {
                 let _ = self.conn.execute_batch("ROLLBACK");
                 return Err(e);
             }
-        };
+        }
         if let Err(e) = self.conn.execute_batch("COMMIT") {
             let _ = self.conn.execute_batch("ROLLBACK");
             return Err(e.into());
         }
-        let mut moved = Vec::new();
-        for item in &work.reattach {
-            let dest = cas_blob_path(&self.root, &item.hash)?;
-            if let Some(parent) = dest.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            if item.source != dest {
-                fs::rename(&item.source, &dest)?;
-            }
-            moved.push(dest);
-        }
-        for item in &work.reclaim {
-            for path in &item.paths {
-                if moved.iter().any(|dest| dest == path) {
-                    continue;
-                }
-                unlink_blob(path)?;
-            }
-        }
+        crate::cas::replay_cas_pending(&self.conn, &self.root)?;
         Ok(())
     }
 }

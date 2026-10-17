@@ -1,8 +1,10 @@
-//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER REST-LIVE REST-PUBLISH REST-BUSY REST-RESUME
+//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER REST-LIVE REST-PUBLISH REST-BUSY REST-RESUME CRASH-SNAPSHOT
 //!
 //! Snapshot and restore. Placeholder Ada / Berk only. The rare token
 //! `quartzsnap91` is planted only in the Berk zip. These tests call the
 //! public snapshot API. They do not copy the live database by hand.
+
+mod crash_kill;
 
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
@@ -1110,4 +1112,171 @@ fn rest_resume() {
         garbage,
         "snapshot archive.sqlite no longer holds not-a-sqlite-database"
     );
+}
+
+fn body_exact(arch: &Archive, body: &str) -> bool {
+    arch.conn
+        .query_row(
+            "SELECT COUNT(*) FROM messages WHERE body_text = ?1",
+            [body],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap()
+        > 0
+}
+
+fn insert_berk_body(held: &Held, identity_id: i64, body: &str, key: &str) {
+    held.arch
+        .conn
+        .execute(
+            "INSERT INTO messages(conversation_id, source_id, import_run_id, sender_identity_id,
+                sent_at, sent_at_precision, kind, body_text, idempotency_key)
+             VALUES (?1, ?2, ?3, ?4, '2024-03-15T14:32:00Z', 'second', 'text', ?5, ?6)",
+            rusqlite::params![
+                held.conversation_id,
+                held.source_id,
+                held.run_id,
+                identity_id,
+                body,
+                key
+            ],
+        )
+        .unwrap();
+}
+
+fn crash_snapshot_child() {
+    let root = PathBuf::from(std::env::var("INTERLACE_CRASH_ROOT").unwrap());
+    let id = std::env::var("INTERLACE_CRASH_SNAP").unwrap();
+    let arm = std::env::var("INTERLACE_CRASH_ARM").unwrap();
+    let mut arch = open_archive(&root, LockMode::Exclusive).expect("CRASH-SNAPSHOT child open");
+    std::fs::write(&arm, b"1").unwrap();
+    let result = restore_snapshot(&mut arch, &id);
+    eprintln!("CRASH-SNAPSHOT restore returned: {result:?}");
+    std::process::exit(86);
+}
+
+fn photo_hash(arch: &Archive) -> String {
+    arch.conn
+        .query_row(
+            "SELECT photo_cas_hash FROM contacts_raw WHERE uid = 'ada-photo'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+#[test]
+fn crash_snapshot() {
+    if crash_kill::child_enter() {
+        crash_snapshot_child();
+        return;
+    }
+    let held = plant("crash-snap");
+    held.arch
+        .conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('whatsapp', 'display_name', 'Berk', 'berk', 'Berk')",
+            [],
+        )
+        .unwrap();
+    let berk = held.arch.conn.last_insert_rowid();
+    let b_snap = b"merhaba".to_vec();
+    let b_live = b"merhaba iki".to_vec();
+    insert_berk_body(&held, berk, "merhaba", "berk-m1");
+    let h_snap = held.arch.cas_put(&b_snap, Some("image/jpeg")).unwrap();
+    held.arch
+        .conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('contacts_vcf', 'ada', '/ada.vcf')",
+            [],
+        )
+        .unwrap();
+    let contact_src = held.arch.conn.last_insert_rowid();
+    held.arch
+        .conn
+        .execute(
+            "INSERT INTO contacts_raw(source_id, uid, fn, photo_cas_hash) VALUES (?1, 'ada-photo', 'Ada', ?2)",
+            rusqlite::params![contact_src, h_snap],
+        )
+        .unwrap();
+    let id = snapshot_archive(&held.arch).unwrap();
+    insert_berk_body(&held, berk, "merhaba iki", "berk-m2");
+    let h_live = held.arch.cas_put(&b_live, Some("image/jpeg")).unwrap();
+    held.arch
+        .conn
+        .execute(
+            "UPDATE contacts_raw SET photo_cas_hash = ?1 WHERE uid = 'ada-photo'",
+            [&h_live],
+        )
+        .unwrap();
+    assert!(body_exact(&held.arch, "merhaba"));
+    assert!(body_exact(&held.arch, "merhaba iki"));
+    assert_eq!(held.arch.cas_get(&h_snap).unwrap(), b_snap);
+    assert_eq!(held.arch.cas_get(&h_live).unwrap(), b_live);
+    let root = held.arch.root.clone();
+    drop(held);
+    crash_kill::kill_at_seam(crash_kill::KillSpec {
+        test_name: "crash_snapshot",
+        mode: "snapshot",
+        root: &root,
+        target: "",
+        extra: &[("INTERLACE_CRASH_SNAP", id.as_str())],
+    });
+    let arch = open_archive(&root, LockMode::Exclusive).expect("CRASH-SNAPSHOT open_archive");
+    assert_snapshot_pair(&arch, &h_snap, &b_snap, &h_live, &b_live);
+    let snap_got = arch.cas_get(&h_snap).ok();
+    let live_got = arch.cas_get(&h_live).ok();
+    let m1 = body_exact(&arch, "merhaba");
+    let m2 = body_exact(&arch, "merhaba iki");
+    drop(arch);
+    let arch = open_archive(&root, LockMode::Exclusive).expect("CRASH-SNAPSHOT second open");
+    assert_eq!(
+        arch.cas_get(&h_snap).ok(),
+        snap_got,
+        "CRASH-SNAPSHOT second open changed H snapshot bytes"
+    );
+    assert_eq!(
+        arch.cas_get(&h_live).ok(),
+        live_got,
+        "CRASH-SNAPSHOT second open changed H live bytes"
+    );
+    assert_eq!(body_exact(&arch, "merhaba"), m1);
+    assert_eq!(body_exact(&arch, "merhaba iki"), m2);
+    assert_snapshot_pair(&arch, &h_snap, &b_snap, &h_live, &b_live);
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+fn assert_snapshot_pair(arch: &Archive, h_snap: &str, b_snap: &[u8], h_live: &str, b_live: &[u8]) {
+    let m1 = body_exact(arch, "merhaba");
+    let m2 = body_exact(arch, "merhaba iki");
+    let snap_got = arch.cas_get(h_snap).ok();
+    let live_got = arch.cas_get(h_live).ok();
+    let photo = photo_hash(arch);
+    let pair_snap = m1
+        && !m2
+        && snap_got.as_deref() == Some(b_snap)
+        && live_got.as_deref() != Some(b_live)
+        && live_got.as_deref() != Some(b_snap)
+        && photo == h_snap;
+    let pair_live = m1
+        && m2
+        && snap_got.as_deref() == Some(b_snap)
+        && live_got.as_deref() == Some(b_live)
+        && photo == h_live;
+    assert!(
+        pair_snap || pair_live,
+        "CRASH-SNAPSHOT not one consistent pair (m1={m1}, m2={m2}, photo={photo}, snap_get={}, live_get={}, cas_dir={})",
+        fmt_bytes(snap_got.as_deref()),
+        fmt_bytes(live_got.as_deref()),
+        arch.root.join("cas").exists()
+    );
+}
+
+fn fmt_bytes(bytes: Option<&[u8]>) -> String {
+    match bytes {
+        Some(bytes) => format!("{bytes:?}"),
+        None => "missing".to_string(),
+    }
 }
