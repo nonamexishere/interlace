@@ -1,6 +1,6 @@
 //! CAS1–CAS3 must-pass matrix.
 //!
-//! Matrix IDs (gate grep): CAS1 CAS2 CAS3 CRASH-GC STORE-MISMATCH
+//! Matrix IDs (gate grep): CAS1 CAS2 CAS3 CRASH-GC STORE-MISMATCH RECLAIM-MISMATCH-OPEN
 
 mod crash_kill;
 
@@ -233,17 +233,22 @@ fn store_mismatch() {
             rusqlite::params![src, h2],
         )
         .unwrap();
-    let _put = arch.cas_put(&b1, None);
-    let got = arch.cas_get(&h);
+    let put = arch.cas_put(&b1, None);
+    let put_shown = match &put {
+        Ok(hash) => format!("Ok({hash})"),
+        Err(err) => err.to_string(),
+    };
     assert!(
-        got.as_deref().ok() != Some(b2.as_slice()),
-        "STORE-MISMATCH cas_get(hash(B1)) returned B2: {}",
-        match &got {
-            Ok(bytes) => format!("{bytes:?}"),
-            Err(err) => err.to_string(),
-        }
+        put_shown.contains(&format!("cas blob bytes are not {h}")),
+        "STORE-MISMATCH cas_put: {put_shown}"
     );
+    let got = arch.cas_get(&h);
+    assert_store_mismatch_get(&got, &h, &b1, &b2, "STORE-MISMATCH");
     let before = std::fs::read(&path).unwrap();
+    assert_eq!(
+        before, b2,
+        "STORE-MISMATCH file is not the different bytes before second open"
+    );
     assert_ne!(before, other, "fixture collision");
     assert_eq!(std::fs::read(&other_path).unwrap(), other);
     let root = arch.root.clone();
@@ -254,16 +259,102 @@ fn store_mismatch() {
         after, before,
         "STORE-MISMATCH second open copied or replaced bytes at hash(B1)"
     );
+    assert_eq!(
+        after, b2,
+        "STORE-MISMATCH file is not the different bytes after second open"
+    );
     assert_ne!(
         after, other,
         "STORE-MISMATCH second open put Ada's other photo on hash(B1)"
     );
-    assert!(
-        arch.cas_get(&h).as_deref().ok() != Some(b2.as_slice()),
-        "STORE-MISMATCH second open cas_get returned B2"
+    assert_store_mismatch_get(
+        &arch.cas_get(&h),
+        &h,
+        &b1,
+        &b2,
+        "STORE-MISMATCH second open",
     );
     assert_eq!(std::fs::read(&other_path).unwrap(), other);
     assert_eq!(arch.cas_get(&h2).unwrap(), other);
+    drop(arch);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+fn assert_store_mismatch_get(
+    got: &Result<Vec<u8>, CoreError>,
+    hash: &str,
+    b1: &[u8],
+    b2: &[u8],
+    label: &str,
+) {
+    let shown = match got {
+        Ok(bytes) => format!("{bytes:?}"),
+        Err(err) => err.to_string(),
+    };
+    assert!(
+        got.as_deref().ok() != Some(b1) && got.as_deref().ok() != Some(b2),
+        "{label} cas_get returned a buffer: {shown}"
+    );
+    assert!(
+        shown.contains(&format!("cas blob missing: {hash}")),
+        "{label} cas_get: {shown}"
+    );
+}
+
+#[test]
+fn reclaim_mismatch_open() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let root = tmp_root();
+    let arch = init_archive(&root).unwrap();
+    let hash = "ab".repeat(32);
+    assert_eq!(hash.len(), 64);
+    let rel = format!("cas/ab/ab/{hash}");
+    let value = format!("1\nu\t{hash}\t{rel}\n");
+    arch.conn
+        .execute(
+            "INSERT INTO settings(key, value) VALUES ('cas_pending_files', ?1)",
+            [&value],
+        )
+        .unwrap();
+    let dir = root.join("cas").join("ab").join("ab").join(&hash);
+    std::fs::create_dir_all(&dir).unwrap();
+    let keep = dir.join("keep.txt");
+    std::fs::write(&keep, b"not-the-blob").unwrap();
+    let blobs: i64 = arch
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM cas_blobs WHERE hash = ?1",
+            [&hash],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(blobs, 0, "fixture planted a cas_blobs row");
+    let root = arch.root.clone();
+    drop(arch);
+    let arch = open_archive(&root, LockMode::Exclusive).expect("RECLAIM-MISMATCH-OPEN");
+    let settings: i64 = arch
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM settings WHERE key = 'cas_pending_files'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(settings, 0, "RECLAIM-MISMATCH-OPEN settings row remained");
+    let blobs: i64 = arch
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM cas_blobs WHERE hash = ?1",
+            [&hash],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(blobs, 0, "RECLAIM-MISMATCH-OPEN cas_blobs row was put back");
+    assert_eq!(
+        std::fs::read(&keep).unwrap(),
+        b"not-the-blob",
+        "RECLAIM-MISMATCH-OPEN keep.txt changed"
+    );
     drop(arch);
     let _ = std::fs::remove_dir_all(&root);
 }

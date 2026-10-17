@@ -1,4 +1,4 @@
-//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER REST-LIVE REST-PUBLISH REST-BUSY REST-RESUME CRASH-SNAPSHOT
+//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER REST-LIVE REST-PUBLISH REST-BUSY REST-RESUME CRASH-SNAPSHOT REST-REPLAY-CAS-NOSTAGE REST-REPLAY-CAS-OVER
 //!
 //! Snapshot and restore. Placeholder Ada / Berk only. The rare token
 //! `quartzsnap91` is planted only in the Berk zip. These tests call the
@@ -1604,6 +1604,146 @@ fn rest_replay_shared_exclusive() {
     let arch = open_archive(&root, LockMode::Exclusive).expect("replay after shared holder");
     assert!(body_on(&arch, "ada before"));
     assert_finished_aside(&root, &aside);
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rest_replay_cas_nostage() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("cas-nostage");
+    insert_message(&held, "ada before", "k-cas-nostage");
+    let root = held.arch.root.clone();
+    drop(held);
+    let aside = root.join("tmp").join("snap-aside-casnostage");
+    let stage = root.join("tmp").join("snap-stage-casnostage");
+    fs::create_dir_all(&aside).unwrap();
+    fs::write(root.join("cas").join("marker.txt"), b"live-cas").unwrap();
+    fs::rename(root.join("cas"), aside.join("cas")).unwrap();
+    assert!(root.join("archive.sqlite").is_file(), "live sqlite moved");
+    assert!(root.join("INTERLACE.toml").is_file(), "live toml moved");
+    assert!(!root.join("cas").exists(), "live cas was not parked");
+    assert!(!stage.exists(), "stage directory was planted");
+    plant_restore_journal(&root, "snap-stage-casnostage", "snap-aside-casnostage");
+    let arch = open_archive(&root, LockMode::Shared).expect("REST-REPLAY-CAS-NOSTAGE");
+    assert!(
+        body_on(&arch, "ada before"),
+        "REST-REPLAY-CAS-NOSTAGE pre-restore message missing"
+    );
+    assert_eq!(
+        fs::read(root.join("cas").join("marker.txt")).unwrap(),
+        b"live-cas",
+        "REST-REPLAY-CAS-NOSTAGE cas marker"
+    );
+    assert!(
+        !aside.join("cas").exists(),
+        "REST-REPLAY-CAS-NOSTAGE aside cas remained"
+    );
+    assert!(
+        !replay_journal(&root).exists(),
+        "REST-REPLAY-CAS-NOSTAGE journal remained"
+    );
+    assert!(
+        !stage.exists(),
+        "REST-REPLAY-CAS-NOSTAGE created the stage directory"
+    );
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rest_replay_cas_over() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("cas-over");
+    insert_message(&held, "ada before", "k-cas-over");
+    let _: i64 = held
+        .arch
+        .conn
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| row.get(0))
+        .unwrap();
+    held.arch
+        .conn
+        .pragma_update(None, "wal_autocheckpoint", 0i64)
+        .unwrap();
+    held.arch
+        .conn
+        .set_db_config(
+            rusqlite::config::DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+            true,
+        )
+        .unwrap();
+    held.arch
+        .conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('whatsapp', 'display_name', 'Wal', 'wal-over-live', 'Wal')",
+            [],
+        )
+        .unwrap();
+    let root = held.arch.root.clone();
+    drop(held);
+    let wal = root.join("archive.sqlite-wal");
+    assert!(
+        wal.is_file() && fs::metadata(&wal).unwrap().len() > 0,
+        "wal was checkpointed on close; residue fixture is void"
+    );
+    let aside = root.join("tmp").join("snap-aside-casover");
+    let stage = root.join("tmp").join("snap-stage-casover");
+    fs::create_dir_all(&aside).unwrap();
+    fs::rename(&wal, aside.join("archive.sqlite-wal")).unwrap();
+    let had_shm = root.join("archive.sqlite-shm").exists();
+    move_if_present(
+        &root.join("archive.sqlite-shm"),
+        &aside.join("archive.sqlite-shm"),
+    );
+    fs::write(root.join("cas").join("marker.txt"), b"live-cas").unwrap();
+    fs::create_dir_all(aside.join("cas")).unwrap();
+    fs::write(aside.join("cas").join("marker.txt"), b"aside-cas").unwrap();
+    assert!(
+        !aside.join("archive.sqlite").exists(),
+        "aside holds archive.sqlite"
+    );
+    assert!(!stage.exists(), "stage directory was planted");
+    assert!(root.join("INTERLACE.toml").is_file());
+    assert!(root.join("archive.sqlite").is_file());
+    assert!(root.join("cas").is_dir());
+    plant_restore_journal(&root, "snap-stage-casover", "snap-aside-casover");
+    let arch = open_archive(&root, LockMode::Exclusive).expect("REST-REPLAY-CAS-OVER");
+    assert!(
+        body_on(&arch, "ada before"),
+        "REST-REPLAY-CAS-OVER checkpointed message missing"
+    );
+    assert!(
+        identity_on(&arch, "wal-over-live"),
+        "REST-REPLAY-CAS-OVER wal-over-live missing"
+    );
+    assert_eq!(
+        fs::read(root.join("cas").join("marker.txt")).unwrap(),
+        b"aside-cas",
+        "REST-REPLAY-CAS-OVER live cas was not replaced"
+    );
+    assert!(
+        !aside.join("cas").exists(),
+        "REST-REPLAY-CAS-OVER aside cas remained"
+    );
+    assert!(
+        !aside.join("archive.sqlite-wal").exists(),
+        "REST-REPLAY-CAS-OVER aside wal remained"
+    );
+    if had_shm {
+        assert!(
+            !aside.join("archive.sqlite-shm").exists(),
+            "REST-REPLAY-CAS-OVER aside shm remained"
+        );
+    }
+    assert!(
+        !replay_journal(&root).exists(),
+        "REST-REPLAY-CAS-OVER journal remained"
+    );
+    assert!(
+        !stage.exists(),
+        "REST-REPLAY-CAS-OVER created the stage directory"
+    );
     drop(arch);
     let _ = fs::remove_dir_all(&root);
 }

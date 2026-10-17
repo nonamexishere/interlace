@@ -398,11 +398,13 @@ pub(super) fn replay_restore_journal(root: &Path) -> Result<()> {
     let live_sqlite = root.join("archive.sqlite").is_file();
     let live_cas = root.join("cas").is_dir();
 
-    // The new database is already live and `cas/` is the rename that did
-    // not finish. Publish that `cas/` from the stage. Do not move the
-    // aside back over the new database.
-    if live_sqlite && !stage_sqlite && !live_cas {
-        return finish_published_cas(root, stage.as_deref());
+    // Kill seam only: the stage directory is still there, its sqlite is
+    // already published, and live `cas/` has not landed. A missing stage
+    // is a roll-back (the aside still holds `cas/`), not this publish.
+    if let Some(stage_dir) = stage.as_ref() {
+        if live_sqlite && !stage_sqlite && !live_cas {
+            return finish_published_cas(root, stage_dir);
+        }
     }
 
     // Publish finished: the aside still holds the previous generation, or
@@ -425,7 +427,7 @@ pub(super) fn replay_restore_journal(root: &Path) -> Result<()> {
             unpublish_stage(stage, root)?;
         }
     }
-    move_present(&aside, root, RESTORE_ROLLBACK)?;
+    put_back_aside(&aside, root, RESTORE_ROLLBACK)?;
     if trio_live(root) {
         clear_restore_journal(root);
         return Ok(());
@@ -436,14 +438,9 @@ pub(super) fn replay_restore_journal(root: &Path) -> Result<()> {
 }
 
 /// `cas/` (and toml, if it is still staged) lands on the published database.
-/// A missing stage cannot be treated as success: the aside still holds the
-/// previous generation, and installing it would undo the publish.
-fn finish_published_cas(root: &Path, stage: Option<&Path>) -> Result<()> {
-    let Some(stage) = stage else {
-        return Err(CoreError::Fatal(
-            "snapshot journal: cas is not in place".into(),
-        ));
-    };
+/// Caller has already required the stage directory. Do not move the aside
+/// back over the published database.
+fn finish_published_cas(root: &Path, stage: &Path) -> Result<()> {
     if !root.join("cas").exists() && is_real_dir(&stage.join("cas")) {
         fs::rename(stage.join("cas"), root.join("cas"))?;
     }
@@ -564,6 +561,60 @@ fn rollback_published(root: &Path, aside: &Path) -> Result<()> {
             "archive.sqlite-wal",
         ],
     )
+}
+
+/// Aside names go back onto the live tree. A name the aside does not have
+/// stays live, including `archive.sqlite`. A name both sides have is replaced.
+/// `cas/` is a directory: the live directory is held aside only for that
+/// rename, then the displaced copy is removed. Later sidecars still move.
+fn put_back_aside(aside: &Path, root: &Path, names: &[&str]) -> Result<()> {
+    for name in names {
+        let from = aside.join(name);
+        if !from.exists() {
+            continue;
+        }
+        let to = root.join(name);
+        if !to.exists() {
+            fs::rename(&from, &to)?;
+            continue;
+        }
+        if is_real_dir(&from) || is_real_dir(&to) {
+            displace_and_rename(&from, &to, root)?;
+            continue;
+        }
+        fs::rename(&from, &to)?;
+    }
+    Ok(())
+}
+
+/// `to` is held out of the way only so `from` can take that path.
+fn displace_and_rename(from: &Path, to: &Path, root: &Path) -> Result<()> {
+    let leaf = to
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("name");
+    let hold = root.join("tmp").join(format!(
+        "snap-hold-{leaf}-{}-{}",
+        std::process::id(),
+        STAGE_SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::create_dir_all(root.join("tmp"))?;
+    fs::rename(to, &hold)?;
+    if let Err(err) = fs::rename(from, to) {
+        let _ = fs::rename(&hold, to);
+        return Err(err.into());
+    }
+    remove_displaced(&hold)
+}
+
+fn remove_displaced(path: &Path) -> Result<()> {
+    let meta = fs::symlink_metadata(path)?;
+    if meta.is_dir() {
+        fs::remove_dir_all(path)?;
+    } else {
+        fs::remove_file(path)?;
+    }
+    Ok(())
 }
 
 fn move_present(from_dir: &Path, to_dir: &Path, names: &[&str]) -> Result<()> {

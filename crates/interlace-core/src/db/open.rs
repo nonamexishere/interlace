@@ -47,7 +47,17 @@ pub fn init_archive(root: &Path) -> Result<Archive> {
 }
 
 pub fn open_archive(root: &Path, mode: LockMode) -> Result<Archive> {
+    // Caller's flock first, then the journal stat. Sampling the journal
+    // before acquire lets a crashed restore replay under LOCK_SH.
+    let lock_path = root.join("INTERLACE.lock");
+    let mut lock = ArchiveLock::acquire(&lock_path, mode)?;
     let had_journal = super::snapshot::restore_journal_exists(root);
+    if had_journal && matches!(mode, LockMode::Shared) {
+        drop(lock);
+        // Recovery renames the live tree. Hold exclusive for this session.
+        // Do not replay while only the shared lock is held.
+        lock = acquire_replay_exclusive(&lock_path)?;
+    }
     if !had_journal {
         let marker = root.join("INTERLACE.toml");
         if !marker.is_file() {
@@ -57,15 +67,6 @@ pub fn open_archive(root: &Path, mode: LockMode) -> Result<Archive> {
             )));
         }
     }
-    // The journal replay renames the live tree. A shared opener would
-    // interleave with another shared opener, so recovery keeps the
-    // exclusive lock for the whole session. No journal, no upgrade.
-    let lock_mode = if had_journal {
-        LockMode::Exclusive
-    } else {
-        mode
-    };
-    let lock = ArchiveLock::acquire(&root.join("INTERLACE.lock"), lock_mode)?;
     super::snapshot::replay_restore_journal(root)?;
     let marker = root.join("INTERLACE.toml");
     if !marker.is_file() {
@@ -88,6 +89,26 @@ pub fn open_archive(root: &Path, mode: LockMode) -> Result<Archive> {
         root: root.to_path_buf(),
         _lock: lock,
     })
+}
+
+/// Non-blocking `LOCK_EX` after a shared hold was dropped. A shared holder
+/// that has not dropped fails each try; the last failure is that lock error.
+/// No sleep: a holder that stays up must not pause this open.
+fn acquire_replay_exclusive(lock_path: &Path) -> Result<ArchiveLock> {
+    const TRIES: u32 = 32;
+    let mut tries = 0u32;
+    loop {
+        match ArchiveLock::acquire(lock_path, LockMode::Exclusive) {
+            Ok(lock) => return Ok(lock),
+            Err(err @ CoreError::Lock { .. }) => {
+                tries += 1;
+                if tries >= TRIES {
+                    return Err(err);
+                }
+            }
+            Err(err) => return Err(err),
+        }
+    }
 }
 
 /// DESIGN `OpenOptions` wrapper: `create` → init, else exclusive open.

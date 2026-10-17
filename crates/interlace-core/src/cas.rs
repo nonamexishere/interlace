@@ -632,22 +632,33 @@ fn finish_rename(hash: &str, source: &Path, dest: &Path) -> Result<(), CoreError
 }
 
 /// `Some` only when the unlink failed and the bytes still match `hash`.
+/// A failed unlink whose digest is not `hash` — including a directory on
+/// this path — leaves the path, does not restore `cas_blobs`, and is not an
+/// error, so the pending settings row can still be dropped.
 fn finish_unlink(hash: &str, path: &Path) -> Result<Option<(String, i64)>, CoreError> {
     if !path.exists() {
         return Ok(None);
     }
-    let digest = existing_blake3(path)?;
+    let digest = digest_unless_dir(path)?;
     match fs::remove_file(path) {
         Ok(()) => Ok(None),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => {
-            if digest.as_deref() == Some(hash) {
-                let size = path.metadata()?.len() as i64;
-                Ok(Some((hash.to_string(), size)))
-            } else {
-                Err(e.into())
-            }
+        Err(_) if digest.as_deref() != Some(hash) => Ok(None),
+        Err(_) => {
+            let size = path.metadata()?.len() as i64;
+            Ok(Some((hash.to_string(), size)))
         }
+    }
+}
+
+fn digest_unless_dir(path: &Path) -> Result<Option<String>, CoreError> {
+    if fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_dir()) {
+        return Ok(None);
+    }
+    match existing_blake3(path) {
+        Ok(digest) => Ok(digest),
+        Err(CoreError::Io(err)) if err.kind() == std::io::ErrorKind::IsADirectory => Ok(None),
+        Err(err) => Err(err),
     }
 }
 
