@@ -1,4 +1,4 @@
-//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER REST-LIVE REST-PUBLISH REST-BUSY REST-RESUME CRASH-SNAPSHOT REST-REPLAY-CAS-NOSTAGE REST-REPLAY-CAS-OVER
+//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER REST-LIVE REST-PUBLISH REST-BUSY REST-RESUME CRASH-SNAPSHOT REST-REPLAY-CAS-NOSTAGE REST-REPLAY-CAS-OVER REST-REPLAY-ASIDE-GONE REST-REPLAY-ASIDE-MISSING REST-REPLAY-HOLD
 //!
 //! Snapshot and restore. Placeholder Ada / Berk only. The rare token
 //! `quartzsnap91` is planted only in the Berk zip. These tests call the
@@ -1743,6 +1743,132 @@ fn rest_replay_cas_over() {
     assert!(
         !stage.exists(),
         "REST-REPLAY-CAS-OVER created the stage directory"
+    );
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rest_replay_aside_gone() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("aside-gone");
+    insert_message(&held, "ada before", "k-aside-gone");
+    let root = held.arch.root.clone();
+    drop(held);
+    let stage = root.join("tmp").join("snap-stage-asidegone");
+    fs::create_dir_all(&stage).unwrap();
+    fs::write(stage.join("archive.sqlite"), b"stage-not-live").unwrap();
+    fs::write(root.join("cas").join("marker.txt"), b"live-cas").unwrap();
+    assert!(
+        !root.join("tmp").join("snap-aside-asidegone").exists(),
+        "aside directory was planted"
+    );
+    plant_restore_journal(&root, "snap-stage-asidegone", "snap-aside-asidegone");
+    let arch = open_archive(&root, LockMode::Shared).expect("REST-REPLAY-ASIDE-GONE");
+    assert!(
+        body_on(&arch, "ada before"),
+        "REST-REPLAY-ASIDE-GONE Ada's message missing"
+    );
+    assert!(
+        identity_on(&arch, "ada"),
+        "REST-REPLAY-ASIDE-GONE Ada is missing"
+    );
+    assert_eq!(
+        fs::read(root.join("cas").join("marker.txt")).unwrap(),
+        b"live-cas",
+        "REST-REPLAY-ASIDE-GONE cas marker"
+    );
+    assert!(
+        !replay_journal(&root).exists(),
+        "REST-REPLAY-ASIDE-GONE journal remained"
+    );
+    assert_eq!(
+        fs::read(stage.join("archive.sqlite")).unwrap(),
+        b"stage-not-live",
+        "REST-REPLAY-ASIDE-GONE stage sqlite changed"
+    );
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rest_replay_aside_missing() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("aside-missing");
+    insert_message(&held, "ada before", "k-aside-missing");
+    let root = held.arch.root.clone();
+    drop(held);
+    let stage = root.join("tmp").join("snap-stage-asidegone");
+    fs::create_dir_all(&stage).unwrap();
+    fs::write(stage.join("archive.sqlite"), b"stage-not-live").unwrap();
+    fs::remove_file(root.join("archive.sqlite")).unwrap();
+    assert!(
+        !root.join("tmp").join("snap-aside-asidegone").exists(),
+        "aside directory was planted"
+    );
+    plant_restore_journal(&root, "snap-stage-asidegone", "snap-aside-asidegone");
+    let err = match open_archive(&root, LockMode::Shared) {
+        Ok(_) => panic!("REST-REPLAY-ASIDE-MISSING opened"),
+        Err(err) => err,
+    };
+    assert!(
+        replay_journal(&root).is_file(),
+        "REST-REPLAY-ASIDE-MISSING journal was removed ({err})"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rest_replay_hold() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("hold");
+    insert_message(&held, "ada before", "k-hold");
+    let root = held.arch.root.clone();
+    drop(held);
+    fs::write(root.join("cas").join("marker.txt"), b"live-cas").unwrap();
+    let stage = root.join("tmp").join("snap-stage-hold");
+    let aside = root.join("tmp").join("snap-aside-hold");
+    fs::create_dir_all(&stage).unwrap();
+    fs::create_dir_all(&aside).unwrap();
+    for name in [
+        "INTERLACE.toml",
+        "archive.sqlite",
+        "cas",
+        "archive.sqlite-journal",
+        "archive.sqlite-shm",
+        "archive.sqlite-wal",
+    ] {
+        assert!(
+            !aside.join(name).exists(),
+            "REST-REPLAY-HOLD aside planted {name}"
+        );
+    }
+    assert!(
+        !stage.join("archive.sqlite").exists(),
+        "REST-REPLAY-HOLD stage sqlite was planted"
+    );
+    let hold = root.join("tmp").join("snap-hold-cas-residue");
+    fs::create_dir_all(&hold).unwrap();
+    fs::write(hold.join("marker.txt"), b"held").unwrap();
+    plant_restore_journal(&root, "snap-stage-hold", "snap-aside-hold");
+    let arch = open_archive(&root, LockMode::Exclusive).expect("REST-REPLAY-HOLD");
+    assert!(
+        body_on(&arch, "ada before"),
+        "REST-REPLAY-HOLD Ada's message missing"
+    );
+    assert!(identity_on(&arch, "ada"), "REST-REPLAY-HOLD Ada is missing");
+    assert_eq!(
+        fs::read(root.join("cas").join("marker.txt")).unwrap(),
+        b"live-cas",
+        "REST-REPLAY-HOLD cas marker"
+    );
+    assert!(
+        !replay_journal(&root).exists(),
+        "REST-REPLAY-HOLD journal remained"
+    );
+    assert!(
+        !hold.exists(),
+        "REST-REPLAY-HOLD snap-hold residue remained"
     );
     drop(arch);
     let _ = fs::remove_dir_all(&root);

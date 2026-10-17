@@ -81,9 +81,16 @@ pub fn cas_put(
 
 pub fn cas_get(archive: &Archive, hash: &str) -> Result<Vec<u8>, CoreError> {
     let path = blob_path(&archive.root, hash)?;
+    // A directory at the blob path is not the blob.
+    if fs::symlink_metadata(&path).is_ok_and(|meta| meta.file_type().is_dir()) {
+        return Err(CoreError::Fatal(format!("cas blob missing: {hash}")));
+    }
     let bytes = match fs::read(&path) {
         Ok(bytes) => bytes,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+        Err(e)
+            if e.kind() == std::io::ErrorKind::NotFound
+                || e.kind() == std::io::ErrorKind::IsADirectory =>
+        {
             return Err(CoreError::Fatal(format!("cas blob missing: {hash}")));
         }
         Err(e) => return Err(CoreError::Io(e)),
@@ -368,7 +375,8 @@ fn file_name_is(rel: &str, hash: &str) -> bool {
         .is_some_and(|name| name.eq_ignore_ascii_case(hash))
 }
 
-/// `None` when the path is not a real file under this archive's `cas/`.
+/// `None` when `rel` is not a lexical `cas/` path, or an ancestor is a symlink
+/// or canonicalizes outside `cas/`. A stat or canonicalize failure is not `None`.
 fn resolved_cas_path(root: &Path, rel: &str) -> Option<PathBuf> {
     if rel.is_empty() || rel.contains('\0') || rel.contains('\\') {
         return None;
@@ -403,6 +411,9 @@ fn resolved_cas_path(root: &Path, rel: &str) -> Option<PathBuf> {
     Some(full)
 }
 
+/// True when a canonical ancestor of `full` is the archive root or under `cas/`.
+/// A symlink is rejected. Any other stat or canonicalize failure walks up, so
+/// `finish_rename` / `finish_unlink` still see the original path.
 fn prefix_inside_cas(root: &Path, full: &Path) -> bool {
     let Ok(root_canon) = fs::canonicalize(root) else {
         return false;
@@ -410,25 +421,19 @@ fn prefix_inside_cas(root: &Path, full: &Path) -> bool {
     let cas_lexical = root_canon.join("cas");
     let mut cursor = full.to_path_buf();
     loop {
-        match fs::symlink_metadata(&cursor) {
-            Ok(meta) => {
-                if meta.file_type().is_symlink() {
-                    return false;
-                }
-                let Ok(canon) = fs::canonicalize(&cursor) else {
-                    return false;
-                };
+        if let Ok(meta) = fs::symlink_metadata(&cursor) {
+            if meta.file_type().is_symlink() {
+                return false;
+            }
+            if let Ok(canon) = fs::canonicalize(&cursor) {
                 if canon == root_canon {
                     return true;
                 }
                 return canon == cas_lexical || canon.starts_with(&cas_lexical);
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                if !cursor.pop() {
-                    return false;
-                }
-            }
-            Err(_) => return false,
+        }
+        if !cursor.pop() {
+            return false;
         }
     }
 }
@@ -611,6 +616,11 @@ fn finish_rename(hash: &str, source: &Path, dest: &Path) -> Result<(), CoreError
     if source == dest {
         return Ok(());
     }
+    // A directory is not the blob. Do not rename onto it or out of it.
+    // NotFound is not a directory. Any other stat error stays Err.
+    if metadata_is_dir(source)? || metadata_is_dir(dest)? {
+        return Ok(());
+    }
     let dest_digest = existing_blake3(dest)?;
     if dest_digest.as_deref().is_some_and(|digest| digest != hash) {
         return Ok(());
@@ -632,12 +642,15 @@ fn finish_rename(hash: &str, source: &Path, dest: &Path) -> Result<(), CoreError
 }
 
 /// `Some` only when the unlink failed and the bytes still match `hash`.
-/// A failed unlink whose digest is not `hash` — including a directory on
-/// this path — leaves the path, does not restore `cas_blobs`, and is not an
-/// error, so the pending settings row can still be dropped.
+/// `NotFound` and a directory leave the path, do not restore `cas_blobs`,
+/// and are not errors. Any other stat error stays `Err`, so the pending row
+/// is kept and `cas_blobs` is not restored.
 fn finish_unlink(hash: &str, path: &Path) -> Result<Option<(String, i64)>, CoreError> {
-    if !path.exists() {
-        return Ok(None);
+    match fs::symlink_metadata(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.into()),
+        Ok(meta) if meta.file_type().is_dir() => return Ok(None),
+        Ok(_) => {}
     }
     let digest = digest_unless_dir(path)?;
     match fs::remove_file(path) {
@@ -648,6 +661,16 @@ fn finish_unlink(hash: &str, path: &Path) -> Result<Option<(String, i64)>, CoreE
             let size = path.metadata()?.len() as i64;
             Ok(Some((hash.to_string(), size)))
         }
+    }
+}
+
+/// `Ok(true)` when symlink metadata says `path` is a directory.
+/// Missing is not a directory. Any other stat error stays `Err`.
+fn metadata_is_dir(path: &Path) -> Result<bool, CoreError> {
+    match fs::symlink_metadata(path) {
+        Ok(meta) => Ok(meta.file_type().is_dir()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e.into()),
     }
 }
 

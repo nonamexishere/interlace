@@ -256,7 +256,8 @@ fn install_staged(root: &Path, stage: &Path) -> Result<PathBuf> {
     }
     let names = ["INTERLACE.toml", "archive.sqlite", "cas"];
     // Sidecars are parked only when they are files. A later error moves them
-    // back with the database. A failed roll-back leaves the aside on disk.
+    // back with the database. Remove the aside only after that move puts the
+    // live trio back and the journal unlink returns Ok. Otherwise leave both.
     let rollback = [
         "INTERLACE.toml",
         "archive.sqlite",
@@ -266,38 +267,32 @@ fn install_staged(root: &Path, stage: &Path) -> Result<PathBuf> {
         "archive.sqlite-wal",
     ];
     if let Err(e) = move_present(root, &aside, &names) {
-        if move_present(&aside, root, &rollback).is_ok() {
+        if move_present(&aside, root, &rollback).is_ok() && trio_live(root) {
+            clear_restore_journal(root)?;
             let _ = fs::remove_dir_all(&aside);
-            if trio_live(root) {
-                clear_restore_journal(root);
-            }
         }
         return Err(e);
     }
     // Sidecars go away while the live database name is absent, so the
     // snapshot is never published beside the previous wal.
     if let Err(e) = delete_live_sidecars(root, &aside) {
-        if move_present(&aside, root, &rollback).is_ok() {
+        if move_present(&aside, root, &rollback).is_ok() && trio_live(root) {
+            clear_restore_journal(root)?;
             let _ = fs::remove_dir_all(&aside);
-            if trio_live(root) {
-                clear_restore_journal(root);
-            }
         }
         return Err(e);
     }
     if let Err(e) = move_required(stage, root, &names) {
         remove_names(root, &names);
-        if move_present(&aside, root, &rollback).is_ok() {
+        if move_present(&aside, root, &rollback).is_ok() && trio_live(root) {
+            clear_restore_journal(root)?;
             let _ = fs::remove_dir_all(&aside);
-            if trio_live(root) {
-                clear_restore_journal(root);
-            }
         }
         return Err(e);
     }
     // Leave snap-aside-* until resume_conn has replaced the connection.
     // A failed resume moves this directory back, including the parked wal.
-    clear_restore_journal(root);
+    clear_restore_journal(root)?;
     Ok(aside)
 }
 
@@ -320,8 +315,57 @@ pub(super) fn restore_journal_exists(root: &Path) -> bool {
     journal_path(root).is_file()
 }
 
-fn clear_restore_journal(root: &Path) {
-    let _ = fs::remove_file(journal_path(root));
+fn clear_restore_journal(root: &Path) -> Result<()> {
+    // Holds first. A failed hold removal leaves the journal.
+    remove_snap_holds(root)?;
+    match fs::remove_file(journal_path(root)) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Direct children of `tmp/` named `snap-hold-*`. No other tmp name.
+fn remove_snap_holds(root: &Path) -> Result<()> {
+    let tmp = root.join("tmp");
+    let entries = match fs::read_dir(&tmp) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e.into()),
+    };
+    let mut holds = Vec::new();
+    for entry in entries {
+        let entry = entry?;
+        let file_name = entry.file_name();
+        let Some(name) = file_name.to_str() else {
+            continue;
+        };
+        if name.starts_with("snap-hold-") {
+            holds.push(entry.path());
+        }
+    }
+    for path in holds {
+        remove_snap_hold(&path)?;
+    }
+    Ok(())
+}
+
+fn remove_snap_hold(path: &Path) -> Result<()> {
+    let meta = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e.into()),
+    };
+    let removed = if meta.is_dir() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    };
+    match removed {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.into()),
+    }
 }
 
 fn trio_live(root: &Path) -> bool {
@@ -375,12 +419,17 @@ fn rel_tmp_dir(root: &Path, path: &Path, prefix: &str) -> Result<String> {
 /// Finish or undo a half-moved restore before `archive.sqlite` is opened.
 /// The journal only names the stage and aside directories this restore created.
 ///
-/// Toml, sqlite, and `cas/` all being present is not enough to drop the
-/// journal. That trio is also the pre-restore tree while the new database is
-/// still in the stage, or after a roll-back has put the database back and
-/// left the wal in the aside. A missing stage directory is not "the new
-/// database was published": the stage guard can remove that directory while
-/// the aside still holds the only copy.
+/// The kill seam is only a stage directory that is still present, whose
+/// `archive.sqlite` is already gone, with live sqlite present and live `cas/`
+/// missing. A missing stage directory is not that seam. Do not move the aside
+/// back on that path.
+///
+/// If the aside directory is already gone and the live trio is intact, drop
+/// the journal and return. Do not install the stage. If the aside is gone and
+/// the trio is not intact, return an error and leave the journal.
+///
+/// The live trio alone is not enough while the aside still exists and the
+/// stage still has `archive.sqlite`, or the aside still holds a roll-back name.
 pub(super) fn replay_restore_journal(root: &Path) -> Result<()> {
     let journal = journal_path(root);
     if !journal.is_file() {
@@ -407,11 +456,17 @@ pub(super) fn replay_restore_journal(root: &Path) -> Result<()> {
         }
     }
 
+    // Aside directory already gone. The live trio is the archive; the stage
+    // is not installed over it.
+    if aside.is_none() && trio_live(root) {
+        return clear_restore_journal(root);
+    }
+
     // Publish finished: the aside still holds the previous generation, or
-    // it has nothing left that belongs on the live tree.
+    // it has nothing left that belongs on the live tree. Holds are swept
+    // here, not before a put-back that still has to move aside names.
     if trio_live(root) && !stage_sqlite && !unfinished_rollback(aside.as_deref()) {
-        clear_restore_journal(root);
-        return Ok(());
+        return clear_restore_journal(root);
     }
 
     let Some(aside) = aside else {
@@ -429,8 +484,7 @@ pub(super) fn replay_restore_journal(root: &Path) -> Result<()> {
     }
     put_back_aside(&aside, root, RESTORE_ROLLBACK)?;
     if trio_live(root) {
-        clear_restore_journal(root);
-        return Ok(());
+        return clear_restore_journal(root);
     }
     Err(CoreError::Fatal(
         "snapshot journal: archive.sqlite is not a file".into(),
@@ -448,8 +502,7 @@ fn finish_published_cas(root: &Path, stage: &Path) -> Result<()> {
         fs::rename(stage.join("INTERLACE.toml"), root.join("INTERLACE.toml"))?;
     }
     if trio_live(root) {
-        clear_restore_journal(root);
-        return Ok(());
+        return clear_restore_journal(root);
     }
     Err(CoreError::Fatal(
         "snapshot journal: cas is not in place".into(),
