@@ -132,6 +132,16 @@ _SUM_SIZE = re.compile(
 )
 _REFCOUNT0 = re.compile(r"\brefcount\b")
 _COUNT_SQL = re.compile(r"\bCOUNT\s*\(", re.I)
+
+
+def _with_ref_count_sql(core_cas: str, blob: str) -> str:
+    """Follow cas_reference_count into reference_count. The COUNT stays one query."""
+    sql = blob
+    if re.search(r"\bcas_reference_count\b", sql):
+        sql += "\n" + _rust_function_body(core_cas, "cas_reference_count")
+    if re.search(r"\breference_count\b", sql):
+        sql += "\n" + _rust_function_body(core_cas, "reference_count")
+    return sql
 _META = re.compile(r"(?:fs\s*::\s*)?metadata\s*\(|\.metadata\s*\(")
 _META_OK = re.compile(
     r"(?:fs\s*::\s*)?metadata\s*\([^)]*\)\s*\?"
@@ -542,9 +552,7 @@ def assert_gc_confirm_bytes(crate: Path) -> None:
         fail(
             f"{_ISSUE}: {_CORE} must use the same walk_blobs as gc_cas"
         )
-    est_sql = est_own
-    if re.search(r"\bcas_reference_count\b", est_own):
-        est_sql += "\n" + _rust_function_body(core_cas, "cas_reference_count")
+    est_sql = _with_ref_count_sql(core_cas, est_own)
     if not re.search(r"\battachments\b", est_sql) or not re.search(
         r"\bphoto_cas_hash\b", est_sql
     ):
@@ -881,10 +889,11 @@ def assert_gc_confirm_bytes(crate: Path) -> None:
             "(do not rewrite the file-count deleter)"
         )
     gc_own = _rust_function_body(core_cas, "gc_cas")
-    gc_sql = gc_own
-    if re.search(r"\bcas_reference_count\b", gc_own):
-        gc_sql += "\n" + _rust_function_body(core_cas, "cas_reference_count")
-    if not _REMOVE_FILE.search(gc_own) or not _COUNT_SQL.search(gc_sql):
+    gc_sql = _with_ref_count_sql(core_cas, gc_own)
+    gc_del = gc_own
+    if re.search(r"\b(?:replay_cas_pending|finish_unlink)\b", gc_own):
+        gc_del += "\n" + _rust_function_body(core_cas, "finish_unlink")
+    if not _REMOVE_FILE.search(gc_del) or not _COUNT_SQL.search(gc_sql):
         fail(
             f"{_ISSUE}: gc_cas must still delete unreferenced files "
             "(COUNT refs, not refcount==0 alone)"
