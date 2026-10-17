@@ -43,3 +43,44 @@ fn two_shared_locks_ok() {
     drop(s2);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn open_nonarchive() {
+    let root = tmp_root();
+    std::fs::create_dir(&root).expect("empty dir");
+    match open_archive(&root, LockMode::Exclusive) {
+        Err(CoreError::Config(msg)) => {
+            assert!(
+                msg.contains("not an Interlace archive"),
+                "OPEN-NONARCHIVE text: {msg}"
+            );
+        }
+        Err(other) => panic!("OPEN-NONARCHIVE expected Config, got {other:?}"),
+        Ok(_) => panic!("OPEN-NONARCHIVE expected Config"),
+    }
+    assert!(
+        !root.join("INTERLACE.lock").exists(),
+        "OPEN-NONARCHIVE must not create INTERLACE.lock"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn open_missing() {
+    let root = tmp_root();
+    assert!(
+        !root.exists(),
+        "OPEN-MISSING fixture path must start absent"
+    );
+    match open_archive(&root, LockMode::Exclusive) {
+        Err(CoreError::Config(msg)) => {
+            assert!(
+                msg.contains("not an Interlace archive"),
+                "OPEN-MISSING text: {msg}"
+            );
+        }
+        Err(other) => panic!("OPEN-MISSING expected Config, got {other:?}"),
+        Ok(_) => panic!("OPEN-MISSING expected Config"),
+    }
+    assert!(!root.exists(), "OPEN-MISSING must not create the path");
+}

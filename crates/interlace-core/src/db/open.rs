@@ -47,8 +47,17 @@ pub fn init_archive(root: &Path) -> Result<Archive> {
 }
 
 pub fn open_archive(root: &Path, mode: LockMode) -> Result<Archive> {
-    // Caller's flock first, then the journal stat. Sampling the journal
-    // before acquire lets a crashed restore replay under LOCK_SH.
+    // Not `had_journal`, and not a shared-versus-exclusive choice. Refuse
+    // before flock so a missing path is Config and neither the directory
+    // nor INTERLACE.lock is created.
+    if !root.join("INTERLACE.toml").is_file() && !super::snapshot::restore_journal_exists(root) {
+        return Err(CoreError::Config(format!(
+            "not an Interlace archive (missing INTERLACE.toml): {}",
+            root.display()
+        )));
+    }
+    // Caller's flock first, then a fresh journal stat. A journal absent
+    // before acquire can be present now; that stat is what upgrades shared.
     let lock_path = root.join("INTERLACE.lock");
     let mut lock = ArchiveLock::acquire(&lock_path, mode)?;
     let had_journal = super::snapshot::restore_journal_exists(root);

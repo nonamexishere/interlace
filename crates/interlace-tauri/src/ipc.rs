@@ -32,6 +32,7 @@ fn not_an_archive(p: &Path) -> String {
 }
 
 /// Distinguish sandbox EPERM from a missing marker (`Path::is_file` swallows both).
+/// A journal file with no marker still returns Ok. Replay stays in `open_archive`.
 fn ensure_archive_readable(p: &Path) -> Result<(), String> {
     if let Err(e) = fs::metadata(p) {
         if sandbox_denied_message(&e).is_some() {
@@ -40,14 +41,12 @@ fn ensure_archive_readable(p: &Path) -> Result<(), String> {
     }
     match fs::metadata(p.join("INTERLACE.toml")) {
         Ok(m) if m.is_file() => Ok(()),
-        Err(e) => {
-            if sandbox_denied_message(&e).is_some() {
-                Err(map_io(e))
-            } else {
-                Err(not_an_archive(p))
-            }
-        }
-        Ok(_) => Err(not_an_archive(p)),
+        Err(e) if sandbox_denied_message(&e).is_some() => Err(map_io(e)),
+        _ => match fs::metadata(p.join("tmp").join("snap-restore-journal")) {
+            Ok(m) if m.is_file() => Ok(()),
+            Err(e) if sandbox_denied_message(&e).is_some() => Err(map_io(e)),
+            _ => Err(not_an_archive(p)),
+        },
     }
 }
 
@@ -798,4 +797,62 @@ pub(crate) fn snapshot_restore(
         return Err(err(e));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::ensure_archive_readable;
+
+    static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
+
+    fn scratch() -> PathBuf {
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let seq = TMP_SEQ.fetch_add(1, Ordering::Relaxed);
+        let p = std::env::temp_dir().join(format!(
+            "interlace-desktop-journal-{}-{n}-{seq}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&p);
+        p
+    }
+
+    /// DESKTOP-JOURNAL-OPEN
+    #[test]
+    fn desktop_journal_open() {
+        let neither = scratch();
+        fs::create_dir(&neither).expect("neither dir");
+        let err = ensure_archive_readable(&neither)
+            .expect_err("DESKTOP-JOURNAL-OPEN neither is not an archive");
+        assert!(
+            err.contains("not an Interlace archive"),
+            "DESKTOP-JOURNAL-OPEN neither: {err}"
+        );
+
+        let marked = scratch();
+        fs::create_dir(&marked).expect("marked dir");
+        fs::write(marked.join("INTERLACE.toml"), b"format = 1\n").expect("marker");
+        ensure_archive_readable(&marked).expect("DESKTOP-JOURNAL-OPEN marker file");
+
+        let journal = scratch();
+        fs::create_dir_all(journal.join("tmp")).expect("journal tmp");
+        fs::write(
+            journal.join("tmp").join("snap-restore-journal"),
+            b"journal\n",
+        )
+        .expect("journal");
+        ensure_archive_readable(&journal)
+            .expect("DESKTOP-JOURNAL-OPEN journal without INTERLACE.toml");
+
+        let _ = fs::remove_dir_all(&neither);
+        let _ = fs::remove_dir_all(&marked);
+        let _ = fs::remove_dir_all(&journal);
+    }
 }

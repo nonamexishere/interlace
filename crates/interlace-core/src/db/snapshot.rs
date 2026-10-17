@@ -416,25 +416,7 @@ fn rel_tmp_dir(root: &Path, path: &Path, prefix: &str) -> Result<String> {
     Ok(format!("tmp/{name}"))
 }
 
-/// Finish or undo a half-moved restore before `archive.sqlite` is opened.
-/// The journal only names the stage and aside directories this restore created.
-///
-/// The publish-cas seam is a stage directory that is still present, whose
-/// `archive.sqlite` is already gone, with live sqlite present and live `cas/`
-/// missing, and either the aside directory is already gone or the aside still
-/// holds `archive.sqlite`. That path moves staged `cas/` and does not move
-/// the aside back. A missing stage directory is not that seam.
-///
-/// If the aside directory exists and its `archive.sqlite` is already gone,
-/// that is a roll-back. `put_back_aside` returns aside `cas/` and sidecars.
-/// Do not rename the stage `cas/` onto the live tree.
-///
-/// If the aside directory is already gone and the live trio is intact, drop
-/// the journal and return. Do not install the stage. If the aside is gone and
-/// the trio is not intact, return an error and leave the journal.
-///
-/// The live trio alone is not enough while the aside still exists and the
-/// stage still has `archive.sqlite`, or the aside still holds a roll-back name.
+/// Replay runs before `archive.sqlite` is opened.
 pub(super) fn replay_restore_journal(root: &Path) -> Result<()> {
     let journal = journal_path(root);
     if !journal.is_file() {
