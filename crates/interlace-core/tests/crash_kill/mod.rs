@@ -5,7 +5,7 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::OnceLock;
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -20,6 +20,18 @@ extern "C" {
 
 pub fn child_enter() -> bool {
     std::env::var_os("INTERLACE_CRASH_CHILD").is_some()
+}
+
+/// Hold for the whole `#[test]`.
+///
+/// These binaries run tests on many threads, and `kill_at_seam` forks. The
+/// child inherits every open file until exec, and `flock` stays held on that
+/// fd after the parent closes it. A sibling that then opens its archive sees
+/// `Lock { pid: <this process> }`. One guard at a time keeps a spawn from
+/// overlapping another test's lock fd.
+pub fn one_test_at_a_time() -> MutexGuard<'static, ()> {
+    static ONE: Mutex<()> = Mutex::new(());
+    ONE.lock().unwrap_or_else(|err| err.into_inner())
 }
 
 pub struct KillSpec<'a> {

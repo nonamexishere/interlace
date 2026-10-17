@@ -153,6 +153,7 @@ fn data_version(conn: &rusqlite::Connection) -> i64 {
 
 #[test]
 fn doc_dry_fts() {
+    let _guard = crash_kill::one_test_at_a_time();
     let root = tmp_root();
     let arch = init_archive(&root).unwrap();
     let message_id = plant_ada(&arch);
@@ -183,6 +184,7 @@ fn doc_dry_fts() {
 
 #[test]
 fn doc_dry_orphan() {
+    let _guard = crash_kill::one_test_at_a_time();
     let root = tmp_root();
     let arch = init_archive(&root).unwrap();
     let message_id = plant_ada(&arch);
@@ -233,6 +235,7 @@ fn doc_dry_orphan() {
 
 #[test]
 fn doc_reattach() {
+    let _guard = crash_kill::one_test_at_a_time();
     let root = tmp_root();
     let arch = init_archive(&root).unwrap();
     let message_id = plant_ada(&arch);
@@ -284,6 +287,7 @@ fn doc_reattach() {
 
 #[test]
 fn doc_apply_refuse() {
+    let _guard = crash_kill::one_test_at_a_time();
     let root = tmp_root();
     let arch = init_archive(&root).unwrap();
     let message_id = plant_ada(&arch);
@@ -331,6 +335,7 @@ fn doc_apply_refuse() {
 
 #[test]
 fn doc_second_apply() {
+    let _guard = crash_kill::one_test_at_a_time();
     let root = tmp_root();
     let arch = init_archive(&root).unwrap();
     let message_id = plant_ada(&arch);
@@ -376,6 +381,7 @@ fn doc_second_apply() {
 
 #[test]
 fn doc_plan_quiet() {
+    let _guard = crash_kill::one_test_at_a_time();
     let root = tmp_root();
     let arch = init_archive(&root).unwrap();
     arch.conn
@@ -462,6 +468,7 @@ fn doc_plan_quiet() {
 
 #[test]
 fn doc_reclaim_offshard() {
+    let _guard = crash_kill::one_test_at_a_time();
     let root = tmp_root();
     let arch = init_archive(&root).unwrap();
     let _message_id = plant_ada(&arch);
@@ -515,6 +522,7 @@ fn doc_reclaim_offshard() {
 
 #[test]
 fn doc_reattach_stale() {
+    let _guard = crash_kill::one_test_at_a_time();
     let root = tmp_root();
     let arch = init_archive(&root).unwrap();
     let message_id = plant_ada(&arch);
@@ -730,6 +738,7 @@ fn assert_b2_and_berk(arch: &Archive, fix: &ReattachFix, id: &str) {
 
 #[test]
 fn crash_reattach() {
+    let _guard = crash_kill::one_test_at_a_time();
     if crash_kill::child_enter() {
         reattach_child();
         return;
@@ -777,6 +786,7 @@ fn crash_reattach() {
 
 #[test]
 fn crash_reattach_noapply() {
+    let _guard = crash_kill::one_test_at_a_time();
     let fix = setup_reattach();
     for pass in 1..=2 {
         let arch =
@@ -903,6 +913,7 @@ fn assert_kept_not_on_orphan(fix: &ReclaimFix, id: &str) {
 
 #[test]
 fn crash_reclaim() {
+    let _guard = crash_kill::one_test_at_a_time();
     if crash_kill::child_enter() {
         reclaim_child();
         return;

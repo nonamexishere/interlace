@@ -26,6 +26,7 @@ fn tmp_root() -> std::path::PathBuf {
 
 #[test]
 fn cas1_put_get_idempotent() {
+    let _guard = crash_kill::one_test_at_a_time();
     let root = tmp_root();
     let arch = init_archive(&root).unwrap();
     let h1 = arch.cas_put(b"hello cas", Some("text/plain")).unwrap();
@@ -43,6 +44,7 @@ fn cas1_put_get_idempotent() {
 
 #[test]
 fn cas2_zip_slip_rejected() {
+    let _guard = crash_kill::one_test_at_a_time();
     assert!(matches!(
         validate_zip_entry_name("../etc/passwd"),
         Err(CoreError::ZipSlip(_))
@@ -69,6 +71,7 @@ fn cas2_zip_slip_rejected() {
 
 #[test]
 fn cas3_gc_unreferenced_only() {
+    let _guard = crash_kill::one_test_at_a_time();
     let root = tmp_root();
     let arch = init_archive(&root).unwrap();
     let orphan = arch.cas_put(b"orphan", None).unwrap();
@@ -116,6 +119,7 @@ fn gc_child() {
 
 #[test]
 fn crash_gc() {
+    let _guard = crash_kill::one_test_at_a_time();
     if crash_kill::child_enter() {
         gc_child();
         return;
@@ -205,6 +209,7 @@ fn crash_gc() {
 
 #[test]
 fn store_mismatch() {
+    let _guard = crash_kill::one_test_at_a_time();
     let root = tmp_root();
     let arch = init_archive(&root).unwrap();
     let b1 = b"merhaba".to_vec();

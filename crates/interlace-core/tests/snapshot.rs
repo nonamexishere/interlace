@@ -340,6 +340,7 @@ fn open_reader(path: &Path) -> Connection {
 
 #[test]
 fn snap_held_ex() {
+    let _guard = crash_kill::one_test_at_a_time();
     let held = plant("held");
     insert_message(&held, "ada held", "k-held");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -360,6 +361,7 @@ fn snap_held_ex() {
 
 #[test]
 fn snap_wal() {
+    let _guard = crash_kill::one_test_at_a_time();
     let held = plant("wal");
     hold_wal(&held.arch);
     held.arch.conn.execute_batch("BEGIN IMMEDIATE").unwrap();
@@ -383,6 +385,7 @@ fn snap_wal() {
 
 #[test]
 fn snap_cas_pair() {
+    let _guard = crash_kill::one_test_at_a_time();
     let held = plant("cas");
     insert_message(&held, "ada blob", "k-blob");
     let message_id = held.arch.conn.last_insert_rowid();
@@ -425,6 +428,7 @@ fn snap_cas_pair() {
 
 #[test]
 fn snap_reader() {
+    let _guard = crash_kill::one_test_at_a_time();
     let held = plant("reader");
     insert_message(&held, "ada reader", "k-reader");
     let path = held.arch.root.join("archive.sqlite");
@@ -458,6 +462,7 @@ fn snap_reader() {
 
 #[test]
 fn snap_uncommitted() {
+    let _guard = crash_kill::one_test_at_a_time();
     let held = plant("open-tx");
     insert_message(&held, "ada committed", "k-committed");
     let before = message_count(&held.arch);
@@ -476,6 +481,7 @@ fn snap_uncommitted() {
 
 #[test]
 fn snap_not_copy() {
+    let _guard = crash_kill::one_test_at_a_time();
     let held = plant("not-copy");
     insert_message(&held, "ada one", "k-one");
     let outside = tmp_root("picked");
@@ -499,6 +505,7 @@ fn snap_not_copy() {
 
 #[test]
 fn rest_count() {
+    let _guard = crash_kill::one_test_at_a_time();
     let root = tmp_root("rest-count");
     let mut arch = init_archive(&root).unwrap();
     import_chat(&mut arch, "Ada", "ada-before", "Ada");
@@ -540,6 +547,7 @@ fn rest_count() {
 
 #[test]
 fn rest_quiet() {
+    let _guard = crash_kill::one_test_at_a_time();
     let root = tmp_root("rest-quiet");
     let mut arch = init_archive(&root).unwrap();
     import_chat(&mut arch, "Ada", "ada-quiet", "Ada");
@@ -563,6 +571,7 @@ fn rest_quiet() {
 
 #[test]
 fn rest_trunc() {
+    let _guard = crash_kill::one_test_at_a_time();
     let mut held = plant("trunc");
     insert_message(&held, "ada live", "k-live");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -587,6 +596,7 @@ fn rest_trunc() {
 
 #[test]
 fn rest_lock() {
+    let _guard = crash_kill::one_test_at_a_time();
     let held = plant("lock");
     insert_message(&held, "ada lock", "k-lock");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -604,6 +614,7 @@ fn rest_lock() {
 
 #[test]
 fn rest_missing_id() {
+    let _guard = crash_kill::one_test_at_a_time();
     let mut held = plant("missing");
     insert_message(&held, "ada missing", "k-missing");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -742,6 +753,7 @@ fn call_pos(src: &str, needle: &str) -> Option<usize> {
 
 #[test]
 fn rest_sidecar() {
+    let _guard = crash_kill::one_test_at_a_time();
     let mut held = plant("side-ok");
     insert_message(&held, "ada before", "k-side-before");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -823,6 +835,7 @@ fn rest_sidecar() {
 
 #[test]
 fn rest_order() {
+    let _guard = crash_kill::one_test_at_a_time();
     let src = include_str!("../src/db/snapshot.rs");
     let slice = install_staged_slice(src);
     assert!(
@@ -839,6 +852,7 @@ fn rest_order() {
 
 #[test]
 fn rest_live() {
+    let _guard = crash_kill::one_test_at_a_time();
     let mut held = plant("live");
     insert_message(&held, "ada before", "k-live-before");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -889,6 +903,7 @@ fn rest_live() {
 
 #[test]
 fn rest_publish() {
+    let _guard = crash_kill::one_test_at_a_time();
     let src = include_str!("../src/db/snapshot.rs");
     let slice = install_staged_slice(src);
     assert!(
@@ -911,6 +926,7 @@ fn rest_publish() {
 
 #[test]
 fn rest_busy() {
+    let _guard = crash_kill::one_test_at_a_time();
     let mut held = plant("busy-sql");
     insert_message(&held, "ada before", "k-busy-sql-before");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -1041,6 +1057,7 @@ fn rest_busy() {
 
 #[test]
 fn rest_resume() {
+    let _guard = crash_kill::one_test_at_a_time();
     let mut held = plant("resume");
     insert_message(&held, "ada before", "k-resume-before");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -1167,6 +1184,7 @@ fn photo_hash(arch: &Archive) -> String {
 
 #[test]
 fn crash_snapshot() {
+    let _guard = crash_kill::one_test_at_a_time();
     if crash_kill::child_enter() {
         crash_snapshot_child();
         return;
