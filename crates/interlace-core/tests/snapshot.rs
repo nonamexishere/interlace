@@ -1,4 +1,4 @@
-//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER REST-LIVE REST-PUBLISH REST-BUSY REST-RESUME CRASH-SNAPSHOT REST-REPLAY-CAS-NOSTAGE REST-REPLAY-CAS-OVER REST-REPLAY-ASIDE-GONE REST-REPLAY-ASIDE-MISSING REST-REPLAY-HOLD REST-REPLAY-ROLLBACK-CAS
+//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER REST-LIVE REST-PUBLISH REST-BUSY REST-RESUME CRASH-SNAPSHOT REST-REPLAY-CAS-NOSTAGE REST-REPLAY-CAS-OVER REST-REPLAY-ASIDE-GONE REST-REPLAY-ASIDE-MISSING REST-REPLAY-HOLD REST-REPLAY-ROLLBACK-CAS REST-REPLAY-ASIDE-UNREADABLE
 //!
 //! Snapshot and restore. Placeholder Ada / Berk only. The rare token
 //! `quartzsnap91` is planted only in the Berk zip. These tests call the
@@ -9,6 +9,7 @@ mod crash_kill;
 
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -1497,6 +1498,147 @@ fn rest_replay_aside_wal() {
 fn rest_replay_wal_without_stage() {
     let _guard = crash_kill::one_test_at_a_time();
     replay_stranded_wal(false);
+}
+
+/// Puts the aside back to `0o755` on drop, including when an assert panics.
+struct AsideModeGuard {
+    path: PathBuf,
+}
+
+impl AsideModeGuard {
+    fn deny(path: &Path) -> Self {
+        let guard = Self {
+            path: path.to_path_buf(),
+        };
+        let mut perms = fs::metadata(&guard.path)
+            .expect("REST-REPLAY-ASIDE-UNREADABLE aside metadata")
+            .permissions();
+        perms.set_mode(0o000);
+        fs::set_permissions(&guard.path, perms).expect("REST-REPLAY-ASIDE-UNREADABLE chmod 0o000");
+        guard
+    }
+}
+
+impl Drop for AsideModeGuard {
+    fn drop(&mut self) {
+        let perms = fs::Permissions::from_mode(0o755);
+        if let Err(err) = fs::set_permissions(&self.path, perms) {
+            if !std::thread::panicking() {
+                panic!("REST-REPLAY-ASIDE-UNREADABLE mode restore failed: {err}");
+            }
+        }
+    }
+}
+
+#[test]
+fn rest_replay_aside_unreadable() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("replay-wal-unreadable");
+    insert_message(&held, "ada before", "k-replay-wal");
+    let _: i64 = held
+        .arch
+        .conn
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| row.get(0))
+        .unwrap();
+    held.arch
+        .conn
+        .pragma_update(None, "wal_autocheckpoint", 0i64)
+        .unwrap();
+    held.arch
+        .conn
+        .set_db_config(
+            rusqlite::config::DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+            true,
+        )
+        .unwrap();
+    held.arch
+        .conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('whatsapp', 'display_name', 'Wal', 'wal-residue', 'Wal')",
+            [],
+        )
+        .unwrap();
+    let root = held.arch.root.clone();
+    drop(held);
+    let wal = root.join("archive.sqlite-wal");
+    assert!(
+        wal.is_file() && fs::metadata(&wal).unwrap().len() > 0,
+        "wal was checkpointed on close; residue fixture is void"
+    );
+    let stage_name = "snap-stage-wal";
+    let aside = root.join("tmp").join("snap-aside-wal");
+    fs::create_dir_all(&aside).unwrap();
+    fs::rename(&wal, aside.join("archive.sqlite-wal")).unwrap();
+    move_if_present(
+        &root.join("archive.sqlite-shm"),
+        &aside.join("archive.sqlite-shm"),
+    );
+    fs::write(root.join("cas").join("marker.txt"), b"cas-stays").unwrap();
+    let stage = root.join("tmp").join(stage_name);
+    assert!(
+        !stage.exists(),
+        "REST-REPLAY-ASIDE-UNREADABLE stage directory was planted"
+    );
+    let wal_aside = aside.join("archive.sqlite-wal");
+    let parked = fs::read(&wal_aside).unwrap();
+    assert!(
+        !parked.is_empty(),
+        "wal was checkpointed on close; residue fixture is void"
+    );
+    plant_restore_journal(&root, stage_name, "snap-aside-wal");
+    {
+        let _mode = AsideModeGuard::deny(&aside);
+        assert_eq!(
+            fs::metadata(&aside).unwrap().permissions().mode() & 0o777,
+            0o000,
+            "REST-REPLAY-ASIDE-UNREADABLE aside mode was not 0o000"
+        );
+        let opened = open_archive(&root, LockMode::Exclusive);
+        let journal_there = replay_journal(&root).is_file();
+        let err = match opened {
+            Ok(_) => panic!(
+                "REST-REPLAY-ASIDE-UNREADABLE open_archive returned Ok while aside was mode 0o000; journal still present={journal_there}"
+            ),
+            Err(err) => err,
+        };
+        assert!(
+            journal_there,
+            "REST-REPLAY-ASIDE-UNREADABLE journal was removed ({err})"
+        );
+    }
+    assert!(
+        wal_aside.is_file() && fs::read(&wal_aside).unwrap() == parked,
+        "REST-REPLAY-ASIDE-UNREADABLE aside wal was not still non-empty after mode restore"
+    );
+    let arch = open_archive(&root, LockMode::Exclusive).expect("REST-REPLAY-ASIDE-UNREADABLE");
+    assert!(
+        body_on(&arch, "ada before"),
+        "REST-REPLAY-ASIDE-UNREADABLE checkpointed message missing"
+    );
+    assert!(
+        identity_on(&arch, "wal-residue"),
+        "REST-REPLAY-ASIDE-UNREADABLE wal-residue missing"
+    );
+    assert!(
+        !wal_aside.exists(),
+        "REST-REPLAY-ASIDE-UNREADABLE aside wal remained"
+    );
+    assert!(
+        !replay_journal(&root).exists(),
+        "REST-REPLAY-ASIDE-UNREADABLE journal remained"
+    );
+    assert_eq!(
+        fs::read(root.join("cas").join("marker.txt")).unwrap(),
+        b"cas-stays",
+        "REST-REPLAY-ASIDE-UNREADABLE cas marker"
+    );
+    assert!(
+        !stage.exists(),
+        "REST-REPLAY-ASIDE-UNREADABLE created the stage directory"
+    );
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
 }
 
 #[test]
