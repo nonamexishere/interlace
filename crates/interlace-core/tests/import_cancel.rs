@@ -5,7 +5,7 @@
 //! Expected public API (tests fail to compile until impl lands):
 //!
 //! ```ignore
-//! // `crates/interlace-core/src/model.rs`, re-exported from the crate root.
+//! // Public model type, re-exported from the crate root.
 //! #[derive(Debug, Clone)]
 //! pub struct ImportCancel { /* internally Arc<AtomicBool> */ }
 //! impl ImportCancel {

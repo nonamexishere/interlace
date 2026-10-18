@@ -68,7 +68,7 @@ pub fn restore_snapshot(archive: &mut Archive, id: &str) -> Result<()> {
         std::process::id(),
         STAGE_SEQ.fetch_add(1, Ordering::Relaxed)
     ));
-    let _stage_guard = DirGuard::arm(stage.clone());
+    let mut stage_guard = DirGuard::arm(stage.clone());
     stage_from_snapshot(&snap, &stage)?;
     verify_manifest(&stage)?;
 
@@ -89,6 +89,11 @@ pub fn restore_snapshot(archive: &mut Archive, id: &str) -> Result<()> {
             if suspended {
                 // Resume must not replace the install error.
                 let _ = resume_restored(archive);
+            }
+            // Drop would delete the stage. While the journal still names it,
+            // the next open has to be able to finish from that directory.
+            if restore_journal_exists(&archive.root) {
+                stage_guard.disarm();
             }
             return Err(e);
         }
@@ -243,9 +248,16 @@ fn install_staged(root: &Path, stage: &Path) -> Result<PathBuf> {
         STAGE_SEQ.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir_all(&aside)?;
+    // Names the stage and aside before any live rename. A later open replays
+    // only those two directories.
+    if let Err(e) = write_restore_journal(root, stage, &aside) {
+        let _ = fs::remove_dir_all(&aside);
+        return Err(e);
+    }
     let names = ["INTERLACE.toml", "archive.sqlite", "cas"];
     // Sidecars are parked only when they are files. A later error moves them
-    // back with the database. A failed roll-back leaves the aside on disk.
+    // back with the database. Remove the aside only after that move puts the
+    // live trio back and the journal unlink returns Ok. Otherwise leave both.
     let rollback = [
         "INTERLACE.toml",
         "archive.sqlite",
@@ -255,7 +267,8 @@ fn install_staged(root: &Path, stage: &Path) -> Result<PathBuf> {
         "archive.sqlite-wal",
     ];
     if let Err(e) = move_present(root, &aside, &names) {
-        if move_present(&aside, root, &rollback).is_ok() {
+        if move_present(&aside, root, &rollback).is_ok() && trio_live(root) {
+            clear_restore_journal(root)?;
             let _ = fs::remove_dir_all(&aside);
         }
         return Err(e);
@@ -263,21 +276,333 @@ fn install_staged(root: &Path, stage: &Path) -> Result<PathBuf> {
     // Sidecars go away while the live database name is absent, so the
     // snapshot is never published beside the previous wal.
     if let Err(e) = delete_live_sidecars(root, &aside) {
-        if move_present(&aside, root, &rollback).is_ok() {
+        if move_present(&aside, root, &rollback).is_ok() && trio_live(root) {
+            clear_restore_journal(root)?;
             let _ = fs::remove_dir_all(&aside);
         }
         return Err(e);
     }
     if let Err(e) = move_required(stage, root, &names) {
         remove_names(root, &names);
-        if move_present(&aside, root, &rollback).is_ok() {
+        if move_present(&aside, root, &rollback).is_ok() && trio_live(root) {
+            clear_restore_journal(root)?;
             let _ = fs::remove_dir_all(&aside);
         }
         return Err(e);
     }
     // Leave snap-aside-* until resume_conn has replaced the connection.
     // A failed resume moves this directory back, including the parked wal.
+    clear_restore_journal(root)?;
     Ok(aside)
+}
+
+const RESTORE_JOURNAL: &str = "snap-restore-journal";
+
+const RESTORE_ROLLBACK: &[&str] = &[
+    "INTERLACE.toml",
+    "archive.sqlite",
+    "cas",
+    "archive.sqlite-journal",
+    "archive.sqlite-shm",
+    "archive.sqlite-wal",
+];
+
+fn journal_path(root: &Path) -> PathBuf {
+    root.join("tmp").join(RESTORE_JOURNAL)
+}
+
+pub(super) fn restore_journal_exists(root: &Path) -> bool {
+    journal_path(root).is_file()
+}
+
+fn clear_restore_journal(root: &Path) -> Result<()> {
+    // Holds first. A failed hold removal leaves the journal.
+    remove_snap_holds(root)?;
+    match fs::remove_file(journal_path(root)) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Direct children of `tmp/` named `snap-hold-*`. No other tmp name.
+fn remove_snap_holds(root: &Path) -> Result<()> {
+    let tmp = root.join("tmp");
+    let entries = match fs::read_dir(&tmp) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e.into()),
+    };
+    let mut holds = Vec::new();
+    for entry in entries {
+        let entry = entry?;
+        let file_name = entry.file_name();
+        let Some(name) = file_name.to_str() else {
+            continue;
+        };
+        if name.starts_with("snap-hold-") {
+            holds.push(entry.path());
+        }
+    }
+    for path in holds {
+        remove_snap_hold(&path)?;
+    }
+    Ok(())
+}
+
+fn remove_snap_hold(path: &Path) -> Result<()> {
+    let meta = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e.into()),
+    };
+    let removed = if meta.is_dir() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    };
+    match removed {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn trio_live(root: &Path) -> bool {
+    root.join("INTERLACE.toml").is_file()
+        && root.join("archive.sqlite").is_file()
+        && root.join("cas").is_dir()
+}
+
+fn write_restore_journal(root: &Path, stage: &Path, aside: &Path) -> Result<()> {
+    let stage_rel = rel_tmp_dir(root, stage, "snap-stage-")?;
+    let aside_rel = rel_tmp_dir(root, aside, "snap-aside-")?;
+    let body = format!("1\nstage\t{stage_rel}\naside\t{aside_rel}\n");
+    fs::create_dir_all(root.join("tmp"))?;
+    let part = root.join("tmp").join(format!(
+        "snap-restore-journal.part-{}-{}",
+        std::process::id(),
+        STAGE_SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::write(&part, &body)?;
+    if let Err(e) = fs::rename(&part, journal_path(root)) {
+        let _ = fs::remove_file(&part);
+        return Err(e.into());
+    }
+    Ok(())
+}
+
+fn rel_tmp_dir(root: &Path, path: &Path, prefix: &str) -> Result<String> {
+    let rel = path
+        .strip_prefix(root)
+        .map_err(|_| CoreError::Fatal("snapshot journal path".into()))?;
+    let mut comps = rel.components();
+    match comps.next() {
+        Some(Component::Normal(tmp)) if tmp == "tmp" => {}
+        _ => return Err(CoreError::Fatal("snapshot journal path".into())),
+    }
+    let Some(Component::Normal(name)) = comps.next() else {
+        return Err(CoreError::Fatal("snapshot journal path".into()));
+    };
+    if comps.next().is_some() {
+        return Err(CoreError::Fatal("snapshot journal path".into()));
+    }
+    let Some(name) = name.to_str() else {
+        return Err(CoreError::Fatal("snapshot journal path".into()));
+    };
+    if !name.starts_with(prefix) || name.contains("..") || name.contains('/') {
+        return Err(CoreError::Fatal("snapshot journal path".into()));
+    }
+    Ok(format!("tmp/{name}"))
+}
+
+/// Replay runs before `archive.sqlite` is opened.
+pub(super) fn replay_restore_journal(root: &Path) -> Result<()> {
+    let journal = journal_path(root);
+    // NotFound is no journal. A directory is not the journal file. Any
+    // other stat error is Err, not a quiet skip.
+    if !is_real_file(&journal)? {
+        return Ok(());
+    }
+    let text = fs::read_to_string(&journal)?;
+    let Some((stage_rel, aside_rel)) = parse_restore_journal(&text) else {
+        return Err(CoreError::Fatal("snapshot journal: bad record".into()));
+    };
+    let stage = journal_dir(root, &stage_rel, "snap-stage-")?;
+    let aside = journal_dir(root, &aside_rel, "snap-aside-")?;
+    let stage_sqlite = match stage.as_ref() {
+        Some(dir) => is_real_file(&dir.join("archive.sqlite"))?,
+        None => false,
+    };
+    let live_sqlite = is_real_file(&root.join("archive.sqlite"))?;
+    let live_cas = is_real_dir(&root.join("cas"))?;
+
+    // Publish-cas seam only. An aside that still exists without
+    // `archive.sqlite` is a roll-back: its `cas/` must come back, and the
+    // staged `cas/` must stay where it is.
+    if let Some(stage_dir) = stage.as_ref() {
+        let aside_holds_sqlite = match aside.as_ref() {
+            Some(dir) => is_real_file(&dir.join("archive.sqlite"))?,
+            None => false,
+        };
+        if live_sqlite && !stage_sqlite && !live_cas && (aside.is_none() || aside_holds_sqlite) {
+            return finish_published_cas(root, stage_dir);
+        }
+    }
+
+    // Aside directory already gone. The live trio is the archive; the stage
+    // is not installed over it.
+    if aside.is_none() && trio_live(root) {
+        return clear_restore_journal(root);
+    }
+
+    // Publish finished: the aside still holds the previous generation, or
+    // it has nothing left that belongs on the live tree. Holds are swept
+    // here, not before a put-back that still has to move aside names.
+    if trio_live(root) && !stage_sqlite && !unfinished_rollback(aside.as_deref())? {
+        return clear_restore_journal(root);
+    }
+
+    let Some(aside) = aside else {
+        return Err(CoreError::Fatal(
+            "snapshot journal: missing directory".into(),
+        ));
+    };
+    // The live database is the pre-restore file whenever the stage still
+    // has its own copy. Moving the live file back onto the stage would
+    // only be right when the live slot is empty.
+    if !live_sqlite {
+        if let Some(stage) = stage.as_ref() {
+            unpublish_stage(stage, root)?;
+        }
+    }
+    put_back_aside(&aside, root, RESTORE_ROLLBACK)?;
+    if trio_live(root) {
+        return clear_restore_journal(root);
+    }
+    Err(CoreError::Fatal(
+        "snapshot journal: archive.sqlite is not a file".into(),
+    ))
+}
+
+/// `cas/` (and toml, if it is still staged) lands on the published database.
+/// Caller has already required the stage directory. Do not move the aside
+/// back over the published database.
+fn finish_published_cas(root: &Path, stage: &Path) -> Result<()> {
+    let live_cas = root.join("cas");
+    let stage_cas = stage.join("cas");
+    if symlink_meta(&live_cas)?.is_none() && is_real_dir(&stage_cas)? {
+        fs::rename(&stage_cas, &live_cas)?;
+    }
+    let live_toml = root.join("INTERLACE.toml");
+    let stage_toml = stage.join("INTERLACE.toml");
+    if !is_real_file(&live_toml)? && is_real_file(&stage_toml)? {
+        fs::rename(&stage_toml, &live_toml)?;
+    }
+    if trio_live(root) {
+        return clear_restore_journal(root);
+    }
+    Err(CoreError::Fatal(
+        "snapshot journal: cas is not in place".into(),
+    ))
+}
+
+/// Aside still holds a roll-back name and no longer holds the old database.
+/// A finished publish keeps that database in the aside, so this is false then.
+/// A stat error is not absence. A directory is not `archive.sqlite`.
+fn unfinished_rollback(aside: Option<&Path>) -> Result<bool> {
+    let Some(aside) = aside else {
+        return Ok(false);
+    };
+    if is_real_file(&aside.join("archive.sqlite"))? {
+        return Ok(false);
+    }
+    for name in RESTORE_ROLLBACK {
+        if *name == "archive.sqlite" {
+            continue;
+        }
+        if symlink_meta(&aside.join(name))?.is_some() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn parse_restore_journal(text: &str) -> Option<(String, String)> {
+    let mut lines = text.lines();
+    if lines.next()? != "1" {
+        return None;
+    }
+    let stage = lines.next()?.strip_prefix("stage\t")?.to_string();
+    let aside = lines.next()?.strip_prefix("aside\t")?.to_string();
+    if lines.next().is_some() || stage.is_empty() || aside.is_empty() || stage == aside {
+        return None;
+    }
+    Some((stage, aside))
+}
+
+/// Validated `tmp/<prefix>*` directory from a journal line.
+/// `Ok(None)` for `NotFound` and for a path that is not a directory,
+/// including a symlink. Any other `symlink_metadata` error is `Err`.
+/// The returned path is the journal path, not its canonical form, so later
+/// renames stay on it.
+fn journal_dir(root: &Path, rel: &str, prefix: &str) -> Result<Option<PathBuf>> {
+    let mut parts = rel.split('/');
+    if parts.next() != Some("tmp") {
+        return Err(CoreError::Fatal("snapshot journal path".into()));
+    }
+    let Some(name) = parts.next() else {
+        return Err(CoreError::Fatal("snapshot journal path".into()));
+    };
+    if parts.next().is_some()
+        || !name.starts_with(prefix)
+        || name.contains("..")
+        || name.contains('\0')
+        || name.contains('/')
+    {
+        return Err(CoreError::Fatal("snapshot journal path".into()));
+    }
+    let path = root.join("tmp").join(name);
+    if !is_real_dir(&path)? {
+        return Ok(None);
+    }
+    let root_canon = fs::canonicalize(root)?;
+    let canon = fs::canonicalize(&path)?;
+    if !canon.starts_with(root_canon.join("tmp")) {
+        return Err(CoreError::Fatal("snapshot journal path".into()));
+    }
+    Ok(Some(path))
+}
+
+/// `symlink_metadata`. `Ok(None)` is `NotFound`. Any other error stays an error.
+fn symlink_meta(path: &Path) -> Result<Option<fs::Metadata>> {
+    match fs::symlink_metadata(path) {
+        Ok(meta) => Ok(Some(meta)),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// `NotFound`, a file, and a symlink are not a directory. Other stat errors are `Err`.
+fn is_real_dir(path: &Path) -> Result<bool> {
+    Ok(symlink_meta(path)?.is_some_and(|meta| meta.is_dir()))
+}
+
+/// A directory is not a file. A symlink is not a file. `NotFound` is absent.
+fn is_real_file(path: &Path) -> Result<bool> {
+    Ok(symlink_meta(path)?.is_some_and(|meta| meta.is_file()))
+}
+
+fn unpublish_stage(stage: &Path, root: &Path) -> Result<()> {
+    for name in ["INTERLACE.toml", "archive.sqlite", "cas"] {
+        let live = root.join(name);
+        let staged = stage.join(name);
+        if symlink_meta(&live)?.is_none() || symlink_meta(&staged)?.is_some() {
+            continue;
+        }
+        fs::rename(&live, &staged)?;
+    }
+    Ok(())
 }
 
 /// Drop the published snapshot names, then move the aside back.
@@ -309,6 +634,61 @@ fn rollback_published(root: &Path, aside: &Path) -> Result<()> {
             "archive.sqlite-wal",
         ],
     )
+}
+
+/// Aside names go back onto the live tree. A name the aside does not have
+/// stays live, including `archive.sqlite`. A name both sides have is replaced.
+/// `cas/` is a directory: the live directory is held aside only for that
+/// rename, then the displaced copy is removed. Later sidecars still move.
+/// A stat error is returned instead of skipping the name. `NotFound` skips it.
+fn put_back_aside(aside: &Path, root: &Path, names: &[&str]) -> Result<()> {
+    for name in names {
+        let from = aside.join(name);
+        if symlink_meta(&from)?.is_none() {
+            continue;
+        }
+        let to = root.join(name);
+        if symlink_meta(&to)?.is_none() {
+            fs::rename(&from, &to)?;
+            continue;
+        }
+        if is_real_dir(&from)? || is_real_dir(&to)? {
+            displace_and_rename(&from, &to, root)?;
+            continue;
+        }
+        fs::rename(&from, &to)?;
+    }
+    Ok(())
+}
+
+/// `to` is held out of the way only so `from` can take that path.
+fn displace_and_rename(from: &Path, to: &Path, root: &Path) -> Result<()> {
+    let leaf = to
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("name");
+    let hold = root.join("tmp").join(format!(
+        "snap-hold-{leaf}-{}-{}",
+        std::process::id(),
+        STAGE_SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::create_dir_all(root.join("tmp"))?;
+    fs::rename(to, &hold)?;
+    if let Err(err) = fs::rename(from, to) {
+        let _ = fs::rename(&hold, to);
+        return Err(err.into());
+    }
+    remove_displaced(&hold)
+}
+
+fn remove_displaced(path: &Path) -> Result<()> {
+    let meta = fs::symlink_metadata(path)?;
+    if meta.is_dir() {
+        fs::remove_dir_all(path)?;
+    } else {
+        fs::remove_file(path)?;
+    }
+    Ok(())
 }
 
 fn move_present(from_dir: &Path, to_dir: &Path, names: &[&str]) -> Result<()> {

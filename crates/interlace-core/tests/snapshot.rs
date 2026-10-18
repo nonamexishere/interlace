@@ -1,12 +1,17 @@
-//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER REST-LIVE REST-PUBLISH REST-BUSY REST-RESUME
+//! Matrix IDs (gate grep): SNAP-HELD-EX SNAP-WAL SNAP-CAS-PAIR SNAP-READER SNAP-UNCOMMITTED SNAP-NOT-COPY REST-COUNT REST-QUIET REST-TRUNC REST-LOCK REST-SIDECAR REST-ORDER REST-LIVE REST-PUBLISH REST-BUSY REST-RESUME CRASH-SNAPSHOT REST-REPLAY-CAS-NOSTAGE REST-REPLAY-CAS-OVER REST-REPLAY-ASIDE-GONE REST-REPLAY-ASIDE-MISSING REST-REPLAY-HOLD REST-REPLAY-ROLLBACK-CAS REST-REPLAY-ASIDE-UNREADABLE
 //!
 //! Snapshot and restore. Placeholder Ada / Berk only. The rare token
 //! `quartzsnap91` is planted only in the Berk zip. These tests call the
 //! public snapshot API. They do not copy the live database by hand.
+//! Restart residues plant `tmp/snap-restore-journal`, then call `open_archive`.
+
+mod crash_kill;
 
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -338,6 +343,7 @@ fn open_reader(path: &Path) -> Connection {
 
 #[test]
 fn snap_held_ex() {
+    let _guard = crash_kill::one_test_at_a_time();
     let held = plant("held");
     insert_message(&held, "ada held", "k-held");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -358,6 +364,7 @@ fn snap_held_ex() {
 
 #[test]
 fn snap_wal() {
+    let _guard = crash_kill::one_test_at_a_time();
     let held = plant("wal");
     hold_wal(&held.arch);
     held.arch.conn.execute_batch("BEGIN IMMEDIATE").unwrap();
@@ -381,6 +388,7 @@ fn snap_wal() {
 
 #[test]
 fn snap_cas_pair() {
+    let _guard = crash_kill::one_test_at_a_time();
     let held = plant("cas");
     insert_message(&held, "ada blob", "k-blob");
     let message_id = held.arch.conn.last_insert_rowid();
@@ -423,6 +431,7 @@ fn snap_cas_pair() {
 
 #[test]
 fn snap_reader() {
+    let _guard = crash_kill::one_test_at_a_time();
     let held = plant("reader");
     insert_message(&held, "ada reader", "k-reader");
     let path = held.arch.root.join("archive.sqlite");
@@ -456,6 +465,7 @@ fn snap_reader() {
 
 #[test]
 fn snap_uncommitted() {
+    let _guard = crash_kill::one_test_at_a_time();
     let held = plant("open-tx");
     insert_message(&held, "ada committed", "k-committed");
     let before = message_count(&held.arch);
@@ -474,6 +484,7 @@ fn snap_uncommitted() {
 
 #[test]
 fn snap_not_copy() {
+    let _guard = crash_kill::one_test_at_a_time();
     let held = plant("not-copy");
     insert_message(&held, "ada one", "k-one");
     let outside = tmp_root("picked");
@@ -497,6 +508,7 @@ fn snap_not_copy() {
 
 #[test]
 fn rest_count() {
+    let _guard = crash_kill::one_test_at_a_time();
     let root = tmp_root("rest-count");
     let mut arch = init_archive(&root).unwrap();
     import_chat(&mut arch, "Ada", "ada-before", "Ada");
@@ -538,6 +550,7 @@ fn rest_count() {
 
 #[test]
 fn rest_quiet() {
+    let _guard = crash_kill::one_test_at_a_time();
     let root = tmp_root("rest-quiet");
     let mut arch = init_archive(&root).unwrap();
     import_chat(&mut arch, "Ada", "ada-quiet", "Ada");
@@ -561,6 +574,7 @@ fn rest_quiet() {
 
 #[test]
 fn rest_trunc() {
+    let _guard = crash_kill::one_test_at_a_time();
     let mut held = plant("trunc");
     insert_message(&held, "ada live", "k-live");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -585,6 +599,7 @@ fn rest_trunc() {
 
 #[test]
 fn rest_lock() {
+    let _guard = crash_kill::one_test_at_a_time();
     let held = plant("lock");
     insert_message(&held, "ada lock", "k-lock");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -602,6 +617,7 @@ fn rest_lock() {
 
 #[test]
 fn rest_missing_id() {
+    let _guard = crash_kill::one_test_at_a_time();
     let mut held = plant("missing");
     insert_message(&held, "ada missing", "k-missing");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -740,6 +756,7 @@ fn call_pos(src: &str, needle: &str) -> Option<usize> {
 
 #[test]
 fn rest_sidecar() {
+    let _guard = crash_kill::one_test_at_a_time();
     let mut held = plant("side-ok");
     insert_message(&held, "ada before", "k-side-before");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -821,6 +838,7 @@ fn rest_sidecar() {
 
 #[test]
 fn rest_order() {
+    let _guard = crash_kill::one_test_at_a_time();
     let src = include_str!("../src/db/snapshot.rs");
     let slice = install_staged_slice(src);
     assert!(
@@ -837,6 +855,7 @@ fn rest_order() {
 
 #[test]
 fn rest_live() {
+    let _guard = crash_kill::one_test_at_a_time();
     let mut held = plant("live");
     insert_message(&held, "ada before", "k-live-before");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -887,6 +906,7 @@ fn rest_live() {
 
 #[test]
 fn rest_publish() {
+    let _guard = crash_kill::one_test_at_a_time();
     let src = include_str!("../src/db/snapshot.rs");
     let slice = install_staged_slice(src);
     assert!(
@@ -909,6 +929,7 @@ fn rest_publish() {
 
 #[test]
 fn rest_busy() {
+    let _guard = crash_kill::one_test_at_a_time();
     let mut held = plant("busy-sql");
     insert_message(&held, "ada before", "k-busy-sql-before");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -1039,6 +1060,7 @@ fn rest_busy() {
 
 #[test]
 fn rest_resume() {
+    let _guard = crash_kill::one_test_at_a_time();
     let mut held = plant("resume");
     insert_message(&held, "ada before", "k-resume-before");
     let id = snapshot_archive(&held.arch).unwrap();
@@ -1110,4 +1132,948 @@ fn rest_resume() {
         garbage,
         "snapshot archive.sqlite no longer holds not-a-sqlite-database"
     );
+}
+
+fn body_exact(arch: &Archive, body: &str) -> bool {
+    arch.conn
+        .query_row(
+            "SELECT COUNT(*) FROM messages WHERE body_text = ?1",
+            [body],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap()
+        > 0
+}
+
+fn insert_berk_body(held: &Held, identity_id: i64, body: &str, key: &str) {
+    held.arch
+        .conn
+        .execute(
+            "INSERT INTO messages(conversation_id, source_id, import_run_id, sender_identity_id,
+                sent_at, sent_at_precision, kind, body_text, idempotency_key)
+             VALUES (?1, ?2, ?3, ?4, '2024-03-15T14:32:00Z', 'second', 'text', ?5, ?6)",
+            rusqlite::params![
+                held.conversation_id,
+                held.source_id,
+                held.run_id,
+                identity_id,
+                body,
+                key
+            ],
+        )
+        .unwrap();
+}
+
+fn crash_snapshot_child() {
+    let root = PathBuf::from(std::env::var("INTERLACE_CRASH_ROOT").unwrap());
+    let id = std::env::var("INTERLACE_CRASH_SNAP").unwrap();
+    let arm = std::env::var("INTERLACE_CRASH_ARM").unwrap();
+    let mut arch = open_archive(&root, LockMode::Exclusive).expect("CRASH-SNAPSHOT child open");
+    std::fs::write(&arm, b"1").unwrap();
+    let result = restore_snapshot(&mut arch, &id);
+    eprintln!("CRASH-SNAPSHOT restore returned: {result:?}");
+    std::process::exit(86);
+}
+
+fn photo_hash(arch: &Archive) -> String {
+    arch.conn
+        .query_row(
+            "SELECT photo_cas_hash FROM contacts_raw WHERE uid = 'ada-photo'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+#[test]
+fn crash_snapshot() {
+    let _guard = crash_kill::one_test_at_a_time();
+    if crash_kill::child_enter() {
+        crash_snapshot_child();
+        return;
+    }
+    let held = plant("crash-snap");
+    held.arch
+        .conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('whatsapp', 'display_name', 'Berk', 'berk', 'Berk')",
+            [],
+        )
+        .unwrap();
+    let berk = held.arch.conn.last_insert_rowid();
+    let b_snap = b"merhaba".to_vec();
+    let b_live = b"merhaba iki".to_vec();
+    insert_berk_body(&held, berk, "merhaba", "berk-m1");
+    let h_snap = held.arch.cas_put(&b_snap, Some("image/jpeg")).unwrap();
+    held.arch
+        .conn
+        .execute(
+            "INSERT INTO sources(kind, label, origin_path) VALUES ('contacts_vcf', 'ada', '/ada.vcf')",
+            [],
+        )
+        .unwrap();
+    let contact_src = held.arch.conn.last_insert_rowid();
+    held.arch
+        .conn
+        .execute(
+            "INSERT INTO contacts_raw(source_id, uid, fn, photo_cas_hash) VALUES (?1, 'ada-photo', 'Ada', ?2)",
+            rusqlite::params![contact_src, h_snap],
+        )
+        .unwrap();
+    let id = snapshot_archive(&held.arch).unwrap();
+    insert_berk_body(&held, berk, "merhaba iki", "berk-m2");
+    let h_live = held.arch.cas_put(&b_live, Some("image/jpeg")).unwrap();
+    held.arch
+        .conn
+        .execute(
+            "UPDATE contacts_raw SET photo_cas_hash = ?1 WHERE uid = 'ada-photo'",
+            [&h_live],
+        )
+        .unwrap();
+    assert!(body_exact(&held.arch, "merhaba"));
+    assert!(body_exact(&held.arch, "merhaba iki"));
+    assert_eq!(held.arch.cas_get(&h_snap).unwrap(), b_snap);
+    assert_eq!(held.arch.cas_get(&h_live).unwrap(), b_live);
+    let root = held.arch.root.clone();
+    drop(held);
+    crash_kill::kill_at_seam(crash_kill::KillSpec {
+        test_name: "crash_snapshot",
+        mode: "snapshot",
+        root: &root,
+        target: "",
+        extra: &[("INTERLACE_CRASH_SNAP", id.as_str())],
+    });
+    let arch = open_archive(&root, LockMode::Exclusive).expect("CRASH-SNAPSHOT open_archive");
+    assert_snapshot_pair(&arch, &h_snap, &b_snap, &h_live, &b_live);
+    let snap_got = arch.cas_get(&h_snap).ok();
+    let live_got = arch.cas_get(&h_live).ok();
+    let m1 = body_exact(&arch, "merhaba");
+    let m2 = body_exact(&arch, "merhaba iki");
+    drop(arch);
+    let arch = open_archive(&root, LockMode::Exclusive).expect("CRASH-SNAPSHOT second open");
+    assert_eq!(
+        arch.cas_get(&h_snap).ok(),
+        snap_got,
+        "CRASH-SNAPSHOT second open changed H snapshot bytes"
+    );
+    assert_eq!(
+        arch.cas_get(&h_live).ok(),
+        live_got,
+        "CRASH-SNAPSHOT second open changed H live bytes"
+    );
+    assert_eq!(body_exact(&arch, "merhaba"), m1);
+    assert_eq!(body_exact(&arch, "merhaba iki"), m2);
+    assert_snapshot_pair(&arch, &h_snap, &b_snap, &h_live, &b_live);
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+fn assert_snapshot_pair(arch: &Archive, h_snap: &str, b_snap: &[u8], h_live: &str, b_live: &[u8]) {
+    let m1 = body_exact(arch, "merhaba");
+    let m2 = body_exact(arch, "merhaba iki");
+    let snap_got = arch.cas_get(h_snap).ok();
+    let live_got = arch.cas_get(h_live).ok();
+    let photo = photo_hash(arch);
+    let pair_snap = m1
+        && !m2
+        && snap_got.as_deref() == Some(b_snap)
+        && live_got.as_deref() != Some(b_live)
+        && live_got.as_deref() != Some(b_snap)
+        && photo == h_snap;
+    let pair_live = m1
+        && m2
+        && snap_got.as_deref() == Some(b_snap)
+        && live_got.as_deref() == Some(b_live)
+        && photo == h_live;
+    assert!(
+        pair_snap,
+        "CRASH-SNAPSHOT expected the snapshot pair (m1={m1}, m2={m2}, photo={photo}, snap_get={}, live_get={}, cas_dir={}, pair_live={pair_live})",
+        fmt_bytes(snap_got.as_deref()),
+        fmt_bytes(live_got.as_deref()),
+        arch.root.join("cas").exists()
+    );
+}
+
+fn fmt_bytes(bytes: Option<&[u8]>) -> String {
+    match bytes {
+        Some(bytes) => format!("{bytes:?}"),
+        None => "missing".to_string(),
+    }
+}
+
+fn replay_journal(root: &Path) -> PathBuf {
+    root.join("tmp").join("snap-restore-journal")
+}
+
+fn plant_restore_journal(root: &Path, stage_name: &str, aside_name: &str) {
+    fs::create_dir_all(root.join("tmp")).unwrap();
+    let body = format!("1\nstage\ttmp/{stage_name}\naside\ttmp/{aside_name}\n");
+    fs::write(replay_journal(root), body).unwrap();
+}
+
+fn move_if_present(from: &Path, to: &Path) {
+    if from.exists() {
+        fs::rename(from, to).unwrap();
+    }
+}
+
+fn identity_on(arch: &Archive, normalized: &str) -> bool {
+    arch.conn
+        .query_row(
+            "SELECT COUNT(*) FROM identities WHERE value_normalized = ?1",
+            [normalized],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap()
+        > 0
+}
+
+/// Previous generation parked in the aside, new tree live, stage sqlite already gone.
+fn plant_finished_publish(root: &Path) -> PathBuf {
+    let stage = root.join("tmp").join("snap-stage-done");
+    let aside = root.join("tmp").join("snap-aside-done");
+    fs::create_dir_all(&stage).unwrap();
+    fs::create_dir_all(&aside).unwrap();
+    fs::write(stage.join("keep.txt"), b"keep").unwrap();
+    fs::write(aside.join("archive.sqlite"), b"previous-generation").unwrap();
+    fs::create_dir_all(aside.join("cas")).unwrap();
+    fs::write(aside.join("cas").join("marker.txt"), b"old").unwrap();
+    fs::write(aside.join("archive.sqlite-wal"), b"parked-old-wal").unwrap();
+    fs::write(root.join("cas").join("marker.txt"), b"new").unwrap();
+    plant_restore_journal(root, "snap-stage-done", "snap-aside-done");
+    aside
+}
+
+fn assert_finished_aside(root: &Path, aside: &Path) {
+    assert!(
+        !replay_journal(root).exists(),
+        "finished publish left the journal"
+    );
+    assert_eq!(
+        fs::read(root.join("cas").join("marker.txt")).unwrap(),
+        b"new"
+    );
+    assert_eq!(
+        fs::read(aside.join("archive.sqlite")).unwrap(),
+        b"previous-generation"
+    );
+    assert_eq!(
+        fs::read(aside.join("cas").join("marker.txt")).unwrap(),
+        b"old"
+    );
+    assert_eq!(
+        fs::read(aside.join("archive.sqlite-wal")).unwrap(),
+        b"parked-old-wal"
+    );
+    assert!(!root
+        .join("tmp")
+        .join("snap-stage-done")
+        .join("archive.sqlite")
+        .exists());
+}
+
+#[test]
+fn rest_replay_aside_cas() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("replay-cas");
+    insert_message(&held, "ada before", "k-replay-cas");
+    let root = held.arch.root.clone();
+    drop(held);
+    let stage = root.join("tmp").join("snap-stage-cas");
+    let aside = root.join("tmp").join("snap-aside-cas");
+    fs::create_dir_all(&stage).unwrap();
+    fs::create_dir_all(&aside).unwrap();
+    let dummy = b"stage-sqlite-not-published";
+    fs::write(stage.join("archive.sqlite"), dummy).unwrap();
+    fs::write(root.join("cas").join("marker.txt"), b"live-cas").unwrap();
+    fs::rename(root.join("cas"), aside.join("cas")).unwrap();
+    plant_restore_journal(&root, "snap-stage-cas", "snap-aside-cas");
+    let arch = open_archive(&root, LockMode::Exclusive).expect("aside cas replay");
+    assert!(body_on(&arch, "ada before"), "pre-restore message missing");
+    assert_eq!(
+        fs::read(root.join("cas").join("marker.txt")).unwrap(),
+        b"live-cas"
+    );
+    assert!(!aside.join("cas").exists(), "aside cas was not put back");
+    assert_eq!(fs::read(stage.join("archive.sqlite")).unwrap(), dummy);
+    assert_ne!(fs::read(root.join("archive.sqlite")).unwrap(), dummy);
+    assert!(!replay_journal(&root).exists(), "journal survived put-back");
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+fn replay_stranded_wal(stage_present: bool) {
+    let label = if stage_present {
+        "replay-wal"
+    } else {
+        "replay-wal-nostage"
+    };
+    let held = plant(label);
+    insert_message(&held, "ada before", "k-replay-wal");
+    let _: i64 = held
+        .arch
+        .conn
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| row.get(0))
+        .unwrap();
+    held.arch
+        .conn
+        .pragma_update(None, "wal_autocheckpoint", 0i64)
+        .unwrap();
+    held.arch
+        .conn
+        .set_db_config(
+            rusqlite::config::DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+            true,
+        )
+        .unwrap();
+    held.arch
+        .conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('whatsapp', 'display_name', 'Wal', 'wal-residue', 'Wal')",
+            [],
+        )
+        .unwrap();
+    let root = held.arch.root.clone();
+    drop(held);
+    let wal = root.join("archive.sqlite-wal");
+    assert!(
+        wal.is_file() && fs::metadata(&wal).unwrap().len() > 0,
+        "wal was checkpointed on close; residue fixture is void"
+    );
+    let stage_name = "snap-stage-wal";
+    let aside = root.join("tmp").join("snap-aside-wal");
+    fs::create_dir_all(&aside).unwrap();
+    fs::rename(&wal, aside.join("archive.sqlite-wal")).unwrap();
+    move_if_present(
+        &root.join("archive.sqlite-shm"),
+        &aside.join("archive.sqlite-shm"),
+    );
+    fs::write(root.join("cas").join("marker.txt"), b"cas-stays").unwrap();
+    if stage_present {
+        let stage = root.join("tmp").join(stage_name);
+        fs::create_dir_all(&stage).unwrap();
+        fs::write(stage.join("archive.sqlite"), b"stage-sqlite-still-here").unwrap();
+    }
+    plant_restore_journal(&root, stage_name, "snap-aside-wal");
+    let arch = open_archive(&root, LockMode::Exclusive).expect("stranded wal replay");
+    assert!(body_on(&arch, "ada before"), "checkpointed message missing");
+    assert!(
+        identity_on(&arch, "wal-residue"),
+        "wal frame was not put back"
+    );
+    assert!(
+        !aside.join("archive.sqlite-wal").exists(),
+        "wal stayed in the aside"
+    );
+    assert_eq!(
+        fs::read(root.join("cas").join("marker.txt")).unwrap(),
+        b"cas-stays"
+    );
+    assert!(
+        !replay_journal(&root).exists(),
+        "journal survived wal put-back"
+    );
+    let stage = root.join("tmp").join(stage_name);
+    if stage_present {
+        assert_eq!(
+            fs::read(stage.join("archive.sqlite")).unwrap(),
+            b"stage-sqlite-still-here"
+        );
+    } else {
+        assert!(!stage.exists(), "replay created a stage directory");
+    }
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rest_replay_aside_wal() {
+    let _guard = crash_kill::one_test_at_a_time();
+    replay_stranded_wal(true);
+}
+
+#[test]
+fn rest_replay_wal_without_stage() {
+    let _guard = crash_kill::one_test_at_a_time();
+    replay_stranded_wal(false);
+}
+
+/// Puts the aside back to `0o755` on drop, including when an assert panics.
+struct AsideModeGuard {
+    path: PathBuf,
+}
+
+impl AsideModeGuard {
+    fn deny(path: &Path) -> Self {
+        let guard = Self {
+            path: path.to_path_buf(),
+        };
+        let mut perms = fs::metadata(&guard.path)
+            .expect("REST-REPLAY-ASIDE-UNREADABLE aside metadata")
+            .permissions();
+        perms.set_mode(0o000);
+        fs::set_permissions(&guard.path, perms).expect("REST-REPLAY-ASIDE-UNREADABLE chmod 0o000");
+        guard
+    }
+}
+
+impl Drop for AsideModeGuard {
+    fn drop(&mut self) {
+        let perms = fs::Permissions::from_mode(0o755);
+        if let Err(err) = fs::set_permissions(&self.path, perms) {
+            if !std::thread::panicking() {
+                panic!("REST-REPLAY-ASIDE-UNREADABLE mode restore failed: {err}");
+            }
+        }
+    }
+}
+
+#[test]
+fn rest_replay_aside_unreadable() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("replay-wal-unreadable");
+    insert_message(&held, "ada before", "k-replay-wal");
+    let _: i64 = held
+        .arch
+        .conn
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| row.get(0))
+        .unwrap();
+    held.arch
+        .conn
+        .pragma_update(None, "wal_autocheckpoint", 0i64)
+        .unwrap();
+    held.arch
+        .conn
+        .set_db_config(
+            rusqlite::config::DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+            true,
+        )
+        .unwrap();
+    held.arch
+        .conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('whatsapp', 'display_name', 'Wal', 'wal-residue', 'Wal')",
+            [],
+        )
+        .unwrap();
+    let root = held.arch.root.clone();
+    drop(held);
+    let wal = root.join("archive.sqlite-wal");
+    assert!(
+        wal.is_file() && fs::metadata(&wal).unwrap().len() > 0,
+        "wal was checkpointed on close; residue fixture is void"
+    );
+    let stage_name = "snap-stage-wal";
+    let aside = root.join("tmp").join("snap-aside-wal");
+    fs::create_dir_all(&aside).unwrap();
+    fs::rename(&wal, aside.join("archive.sqlite-wal")).unwrap();
+    move_if_present(
+        &root.join("archive.sqlite-shm"),
+        &aside.join("archive.sqlite-shm"),
+    );
+    fs::write(root.join("cas").join("marker.txt"), b"cas-stays").unwrap();
+    let stage = root.join("tmp").join(stage_name);
+    assert!(
+        !stage.exists(),
+        "REST-REPLAY-ASIDE-UNREADABLE stage directory was planted"
+    );
+    let wal_aside = aside.join("archive.sqlite-wal");
+    let parked = fs::read(&wal_aside).unwrap();
+    assert!(
+        !parked.is_empty(),
+        "wal was checkpointed on close; residue fixture is void"
+    );
+    plant_restore_journal(&root, stage_name, "snap-aside-wal");
+    {
+        let _mode = AsideModeGuard::deny(&aside);
+        assert_eq!(
+            fs::metadata(&aside).unwrap().permissions().mode() & 0o777,
+            0o000,
+            "REST-REPLAY-ASIDE-UNREADABLE aside mode was not 0o000"
+        );
+        let opened = open_archive(&root, LockMode::Exclusive);
+        let journal_there = replay_journal(&root).is_file();
+        let err = match opened {
+            Ok(_) => panic!(
+                "REST-REPLAY-ASIDE-UNREADABLE open_archive returned Ok while aside was mode 0o000; journal still present={journal_there}"
+            ),
+            Err(err) => err,
+        };
+        assert!(
+            journal_there,
+            "REST-REPLAY-ASIDE-UNREADABLE journal was removed ({err})"
+        );
+    }
+    assert!(
+        wal_aside.is_file() && fs::read(&wal_aside).unwrap() == parked,
+        "REST-REPLAY-ASIDE-UNREADABLE aside wal was not still non-empty after mode restore"
+    );
+    let arch = open_archive(&root, LockMode::Exclusive).expect("REST-REPLAY-ASIDE-UNREADABLE");
+    assert!(
+        body_on(&arch, "ada before"),
+        "REST-REPLAY-ASIDE-UNREADABLE checkpointed message missing"
+    );
+    assert!(
+        identity_on(&arch, "wal-residue"),
+        "REST-REPLAY-ASIDE-UNREADABLE wal-residue missing"
+    );
+    assert!(
+        !wal_aside.exists(),
+        "REST-REPLAY-ASIDE-UNREADABLE aside wal remained"
+    );
+    assert!(
+        !replay_journal(&root).exists(),
+        "REST-REPLAY-ASIDE-UNREADABLE journal remained"
+    );
+    assert_eq!(
+        fs::read(root.join("cas").join("marker.txt")).unwrap(),
+        b"cas-stays",
+        "REST-REPLAY-ASIDE-UNREADABLE cas marker"
+    );
+    assert!(
+        !stage.exists(),
+        "REST-REPLAY-ASIDE-UNREADABLE created the stage directory"
+    );
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rest_replay_missing_stage() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("replay-stage");
+    insert_message(&held, "ada before", "k-replay-stage");
+    let root = held.arch.root.clone();
+    drop(held);
+    let aside = root.join("tmp").join("snap-aside-residue");
+    fs::create_dir_all(&aside).unwrap();
+    for name in [
+        "INTERLACE.toml",
+        "archive.sqlite",
+        "cas",
+        "archive.sqlite-wal",
+        "archive.sqlite-shm",
+        "archive.sqlite-journal",
+    ] {
+        move_if_present(&root.join(name), &aside.join(name));
+    }
+    assert!(aside.join("archive.sqlite").is_file());
+    assert!(!root.join("tmp").join("snap-stage-residue").exists());
+    plant_restore_journal(&root, "snap-stage-residue", "snap-aside-residue");
+    let arch = open_archive(&root, LockMode::Exclusive).expect("missing stage replay");
+    assert!(
+        body_on(&arch, "ada before"),
+        "aside database was not put back"
+    );
+    assert!(root.join("INTERLACE.toml").is_file());
+    assert!(root.join("cas").is_dir());
+    assert!(
+        !replay_journal(&root).exists(),
+        "journal survived missing-stage put-back"
+    );
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rest_replay_finished_publish() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("replay-done");
+    insert_message(&held, "ada before", "k-replay-done");
+    let root = held.arch.root.clone();
+    drop(held);
+    let aside = plant_finished_publish(&root);
+    let arch = open_archive(&root, LockMode::Exclusive).expect("finished publish replay");
+    assert!(body_on(&arch, "ada before"), "live database changed");
+    assert_finished_aside(&root, &aside);
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+fn replay_lock_child() -> ! {
+    let root = PathBuf::from(std::env::var("INTERLACE_REPLAY_LOCK_ROOT").unwrap());
+    match open_archive(&root, LockMode::Shared) {
+        Err(CoreError::Lock { .. }) => std::process::exit(0),
+        Ok(_) => std::process::exit(2),
+        Err(err) => {
+            eprintln!("replay lock child: {err}");
+            std::process::exit(3);
+        }
+    }
+}
+
+#[test]
+fn rest_replay_shared_exclusive() {
+    let _guard = crash_kill::one_test_at_a_time();
+    if std::env::var_os("INTERLACE_REPLAY_LOCK_CHILD").is_some() {
+        replay_lock_child();
+    }
+    let held = plant("replay-lock");
+    insert_message(&held, "ada before", "k-replay-lock");
+    let root = held.arch.root.clone();
+    drop(held);
+    let holder = open_archive(&root, LockMode::Shared).expect("shared holder");
+    assert!(body_on(&holder, "ada before"));
+    let aside = plant_finished_publish(&root);
+    let exe = std::env::current_exe().expect("current_exe");
+    let child = Command::new(exe)
+        .arg("rest_replay_shared_exclusive")
+        .arg("--exact")
+        .arg("--test-threads=1")
+        .env("INTERLACE_REPLAY_LOCK_CHILD", "1")
+        .env("INTERLACE_REPLAY_LOCK_ROOT", &root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn replay lock child");
+    let out = child.wait_with_output().expect("wait replay lock child");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "shared open with a journal took the lock (stdout {}, stderr {})",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        replay_journal(&root).is_file(),
+        "child replayed the journal under the shared holder"
+    );
+    drop(holder);
+    let arch = open_archive(&root, LockMode::Exclusive).expect("replay after shared holder");
+    assert!(body_on(&arch, "ada before"));
+    assert_finished_aside(&root, &aside);
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rest_replay_cas_nostage() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("cas-nostage");
+    insert_message(&held, "ada before", "k-cas-nostage");
+    let root = held.arch.root.clone();
+    drop(held);
+    let aside = root.join("tmp").join("snap-aside-casnostage");
+    let stage = root.join("tmp").join("snap-stage-casnostage");
+    fs::create_dir_all(&aside).unwrap();
+    fs::write(root.join("cas").join("marker.txt"), b"live-cas").unwrap();
+    fs::rename(root.join("cas"), aside.join("cas")).unwrap();
+    assert!(root.join("archive.sqlite").is_file(), "live sqlite moved");
+    assert!(root.join("INTERLACE.toml").is_file(), "live toml moved");
+    assert!(!root.join("cas").exists(), "live cas was not parked");
+    assert!(!stage.exists(), "stage directory was planted");
+    plant_restore_journal(&root, "snap-stage-casnostage", "snap-aside-casnostage");
+    let arch = open_archive(&root, LockMode::Shared).expect("REST-REPLAY-CAS-NOSTAGE");
+    assert!(
+        body_on(&arch, "ada before"),
+        "REST-REPLAY-CAS-NOSTAGE pre-restore message missing"
+    );
+    assert_eq!(
+        fs::read(root.join("cas").join("marker.txt")).unwrap(),
+        b"live-cas",
+        "REST-REPLAY-CAS-NOSTAGE cas marker"
+    );
+    assert!(
+        !aside.join("cas").exists(),
+        "REST-REPLAY-CAS-NOSTAGE aside cas remained"
+    );
+    assert!(
+        !replay_journal(&root).exists(),
+        "REST-REPLAY-CAS-NOSTAGE journal remained"
+    );
+    assert!(
+        !stage.exists(),
+        "REST-REPLAY-CAS-NOSTAGE created the stage directory"
+    );
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rest_replay_cas_over() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("cas-over");
+    insert_message(&held, "ada before", "k-cas-over");
+    let _: i64 = held
+        .arch
+        .conn
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| row.get(0))
+        .unwrap();
+    held.arch
+        .conn
+        .pragma_update(None, "wal_autocheckpoint", 0i64)
+        .unwrap();
+    held.arch
+        .conn
+        .set_db_config(
+            rusqlite::config::DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+            true,
+        )
+        .unwrap();
+    held.arch
+        .conn
+        .execute(
+            "INSERT INTO identities(platform, kind, value_raw, value_normalized, display_name)
+             VALUES ('whatsapp', 'display_name', 'Wal', 'wal-over-live', 'Wal')",
+            [],
+        )
+        .unwrap();
+    let root = held.arch.root.clone();
+    drop(held);
+    let wal = root.join("archive.sqlite-wal");
+    assert!(
+        wal.is_file() && fs::metadata(&wal).unwrap().len() > 0,
+        "wal was checkpointed on close; residue fixture is void"
+    );
+    let aside = root.join("tmp").join("snap-aside-casover");
+    let stage = root.join("tmp").join("snap-stage-casover");
+    fs::create_dir_all(&aside).unwrap();
+    fs::rename(&wal, aside.join("archive.sqlite-wal")).unwrap();
+    let had_shm = root.join("archive.sqlite-shm").exists();
+    move_if_present(
+        &root.join("archive.sqlite-shm"),
+        &aside.join("archive.sqlite-shm"),
+    );
+    fs::write(root.join("cas").join("marker.txt"), b"live-cas").unwrap();
+    fs::create_dir_all(aside.join("cas")).unwrap();
+    fs::write(aside.join("cas").join("marker.txt"), b"aside-cas").unwrap();
+    assert!(
+        !aside.join("archive.sqlite").exists(),
+        "aside holds archive.sqlite"
+    );
+    assert!(!stage.exists(), "stage directory was planted");
+    assert!(root.join("INTERLACE.toml").is_file());
+    assert!(root.join("archive.sqlite").is_file());
+    assert!(root.join("cas").is_dir());
+    plant_restore_journal(&root, "snap-stage-casover", "snap-aside-casover");
+    let arch = open_archive(&root, LockMode::Exclusive).expect("REST-REPLAY-CAS-OVER");
+    assert!(
+        body_on(&arch, "ada before"),
+        "REST-REPLAY-CAS-OVER checkpointed message missing"
+    );
+    assert!(
+        identity_on(&arch, "wal-over-live"),
+        "REST-REPLAY-CAS-OVER wal-over-live missing"
+    );
+    assert_eq!(
+        fs::read(root.join("cas").join("marker.txt")).unwrap(),
+        b"aside-cas",
+        "REST-REPLAY-CAS-OVER live cas was not replaced"
+    );
+    assert!(
+        !aside.join("cas").exists(),
+        "REST-REPLAY-CAS-OVER aside cas remained"
+    );
+    assert!(
+        !aside.join("archive.sqlite-wal").exists(),
+        "REST-REPLAY-CAS-OVER aside wal remained"
+    );
+    if had_shm {
+        assert!(
+            !aside.join("archive.sqlite-shm").exists(),
+            "REST-REPLAY-CAS-OVER aside shm remained"
+        );
+    }
+    assert!(
+        !replay_journal(&root).exists(),
+        "REST-REPLAY-CAS-OVER journal remained"
+    );
+    assert!(
+        !stage.exists(),
+        "REST-REPLAY-CAS-OVER created the stage directory"
+    );
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rest_replay_aside_gone() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("aside-gone");
+    insert_message(&held, "ada before", "k-aside-gone");
+    let root = held.arch.root.clone();
+    drop(held);
+    let stage = root.join("tmp").join("snap-stage-asidegone");
+    fs::create_dir_all(&stage).unwrap();
+    fs::write(stage.join("archive.sqlite"), b"stage-not-live").unwrap();
+    fs::write(root.join("cas").join("marker.txt"), b"live-cas").unwrap();
+    assert!(
+        !root.join("tmp").join("snap-aside-asidegone").exists(),
+        "aside directory was planted"
+    );
+    plant_restore_journal(&root, "snap-stage-asidegone", "snap-aside-asidegone");
+    let arch = open_archive(&root, LockMode::Shared).expect("REST-REPLAY-ASIDE-GONE");
+    assert!(
+        body_on(&arch, "ada before"),
+        "REST-REPLAY-ASIDE-GONE Ada's message missing"
+    );
+    assert!(
+        identity_on(&arch, "ada"),
+        "REST-REPLAY-ASIDE-GONE Ada is missing"
+    );
+    assert_eq!(
+        fs::read(root.join("cas").join("marker.txt")).unwrap(),
+        b"live-cas",
+        "REST-REPLAY-ASIDE-GONE cas marker"
+    );
+    assert!(
+        !replay_journal(&root).exists(),
+        "REST-REPLAY-ASIDE-GONE journal remained"
+    );
+    assert_eq!(
+        fs::read(stage.join("archive.sqlite")).unwrap(),
+        b"stage-not-live",
+        "REST-REPLAY-ASIDE-GONE stage sqlite changed"
+    );
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rest_replay_aside_missing() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("aside-missing");
+    insert_message(&held, "ada before", "k-aside-missing");
+    let root = held.arch.root.clone();
+    drop(held);
+    let stage = root.join("tmp").join("snap-stage-asidegone");
+    fs::create_dir_all(&stage).unwrap();
+    fs::write(stage.join("archive.sqlite"), b"stage-not-live").unwrap();
+    fs::remove_file(root.join("archive.sqlite")).unwrap();
+    assert!(
+        !root.join("tmp").join("snap-aside-asidegone").exists(),
+        "aside directory was planted"
+    );
+    plant_restore_journal(&root, "snap-stage-asidegone", "snap-aside-asidegone");
+    let err = match open_archive(&root, LockMode::Shared) {
+        Ok(_) => panic!("REST-REPLAY-ASIDE-MISSING opened"),
+        Err(err) => err,
+    };
+    assert!(
+        replay_journal(&root).is_file(),
+        "REST-REPLAY-ASIDE-MISSING journal was removed ({err})"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rest_replay_hold() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("hold");
+    insert_message(&held, "ada before", "k-hold");
+    let root = held.arch.root.clone();
+    drop(held);
+    fs::write(root.join("cas").join("marker.txt"), b"live-cas").unwrap();
+    let stage = root.join("tmp").join("snap-stage-hold");
+    let aside = root.join("tmp").join("snap-aside-hold");
+    fs::create_dir_all(&stage).unwrap();
+    fs::create_dir_all(&aside).unwrap();
+    for name in [
+        "INTERLACE.toml",
+        "archive.sqlite",
+        "cas",
+        "archive.sqlite-journal",
+        "archive.sqlite-shm",
+        "archive.sqlite-wal",
+    ] {
+        assert!(
+            !aside.join(name).exists(),
+            "REST-REPLAY-HOLD aside planted {name}"
+        );
+    }
+    assert!(
+        !stage.join("archive.sqlite").exists(),
+        "REST-REPLAY-HOLD stage sqlite was planted"
+    );
+    let hold = root.join("tmp").join("snap-hold-cas-residue");
+    fs::create_dir_all(&hold).unwrap();
+    fs::write(hold.join("marker.txt"), b"held").unwrap();
+    plant_restore_journal(&root, "snap-stage-hold", "snap-aside-hold");
+    let arch = open_archive(&root, LockMode::Exclusive).expect("REST-REPLAY-HOLD");
+    assert!(
+        body_on(&arch, "ada before"),
+        "REST-REPLAY-HOLD Ada's message missing"
+    );
+    assert!(identity_on(&arch, "ada"), "REST-REPLAY-HOLD Ada is missing");
+    assert_eq!(
+        fs::read(root.join("cas").join("marker.txt")).unwrap(),
+        b"live-cas",
+        "REST-REPLAY-HOLD cas marker"
+    );
+    assert!(
+        !replay_journal(&root).exists(),
+        "REST-REPLAY-HOLD journal remained"
+    );
+    assert!(
+        !hold.exists(),
+        "REST-REPLAY-HOLD snap-hold residue remained"
+    );
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rest_replay_rollback_cas() {
+    let _guard = crash_kill::one_test_at_a_time();
+    let held = plant("rollback-cas");
+    insert_message(&held, "ada before", "k-rollback-cas");
+    let root = held.arch.root.clone();
+    drop(held);
+    let aside = root.join("tmp").join("snap-aside-rollbackcas");
+    let stage = root.join("tmp").join("snap-stage-rollbackcas");
+    fs::create_dir_all(&aside).unwrap();
+    fs::write(root.join("cas").join("marker.txt"), b"old-cas").unwrap();
+    fs::rename(root.join("cas"), aside.join("cas")).unwrap();
+    fs::create_dir_all(stage.join("cas")).unwrap();
+    fs::write(stage.join("cas").join("marker.txt"), b"stage-cas").unwrap();
+    assert!(
+        root.join("archive.sqlite").is_file(),
+        "REST-REPLAY-ROLLBACK-CAS live sqlite moved"
+    );
+    assert!(
+        root.join("INTERLACE.toml").is_file(),
+        "REST-REPLAY-ROLLBACK-CAS live toml moved"
+    );
+    assert!(
+        !root.join("cas").exists(),
+        "REST-REPLAY-ROLLBACK-CAS live cas was not parked"
+    );
+    assert!(
+        !aside.join("archive.sqlite").exists(),
+        "REST-REPLAY-ROLLBACK-CAS aside holds archive.sqlite"
+    );
+    assert!(
+        !stage.join("archive.sqlite").exists(),
+        "REST-REPLAY-ROLLBACK-CAS stage sqlite was planted"
+    );
+    plant_restore_journal(&root, "snap-stage-rollbackcas", "snap-aside-rollbackcas");
+    let arch = open_archive(&root, LockMode::Exclusive).expect("REST-REPLAY-ROLLBACK-CAS");
+    assert!(
+        body_on(&arch, "ada before"),
+        "REST-REPLAY-ROLLBACK-CAS Ada's message missing"
+    );
+    assert_eq!(
+        fs::read(root.join("cas").join("marker.txt")).unwrap(),
+        b"old-cas",
+        "REST-REPLAY-ROLLBACK-CAS live cas marker"
+    );
+    assert_eq!(
+        fs::read(stage.join("cas").join("marker.txt")).unwrap(),
+        b"stage-cas",
+        "REST-REPLAY-ROLLBACK-CAS stage cas marker"
+    );
+    assert!(
+        !aside.join("cas").exists(),
+        "REST-REPLAY-ROLLBACK-CAS aside cas remained"
+    );
+    assert!(
+        !replay_journal(&root).exists(),
+        "REST-REPLAY-ROLLBACK-CAS journal remained"
+    );
+    drop(arch);
+    let _ = fs::remove_dir_all(&root);
 }

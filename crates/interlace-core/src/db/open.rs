@@ -47,6 +47,36 @@ pub fn init_archive(root: &Path) -> Result<Archive> {
 }
 
 pub fn open_archive(root: &Path, mode: LockMode) -> Result<Archive> {
+    // Not `had_journal`, and not a shared-versus-exclusive choice. Refuse
+    // before flock so a missing path is Config and neither the directory
+    // nor INTERLACE.lock is created.
+    if !root.join("INTERLACE.toml").is_file() && !super::snapshot::restore_journal_exists(root) {
+        return Err(CoreError::Config(format!(
+            "not an Interlace archive (missing INTERLACE.toml): {}",
+            root.display()
+        )));
+    }
+    // Caller's flock first, then a fresh journal stat. A journal absent
+    // before acquire can be present now; that stat is what upgrades shared.
+    let lock_path = root.join("INTERLACE.lock");
+    let mut lock = ArchiveLock::acquire(&lock_path, mode)?;
+    let had_journal = super::snapshot::restore_journal_exists(root);
+    if had_journal && matches!(mode, LockMode::Shared) {
+        drop(lock);
+        // Recovery renames the live tree. Hold exclusive for this session.
+        // Do not replay while only the shared lock is held.
+        lock = acquire_replay_exclusive(&lock_path)?;
+    }
+    if !had_journal {
+        let marker = root.join("INTERLACE.toml");
+        if !marker.is_file() {
+            return Err(CoreError::Config(format!(
+                "not an Interlace archive (missing INTERLACE.toml): {}",
+                root.display()
+            )));
+        }
+    }
+    super::snapshot::replay_restore_journal(root)?;
     let marker = root.join("INTERLACE.toml");
     if !marker.is_file() {
         return Err(CoreError::Config(format!(
@@ -54,17 +84,40 @@ pub fn open_archive(root: &Path, mode: LockMode) -> Result<Archive> {
             root.display()
         )));
     }
-    let lock = ArchiveLock::acquire(&root.join("INTERLACE.lock"), mode)?;
     let db_path = root.join("archive.sqlite");
+    if !db_path.is_file() && (had_journal || super::snapshot::restore_journal_exists(root)) {
+        return Err(CoreError::Fatal("archive.sqlite is not a file".into()));
+    }
     let conn = Connection::open(&db_path)?;
     apply_pragmas(&conn)?;
     migrate(&conn)?;
     ensure_fts_triggers(&conn)?;
+    crate::cas::replay_cas_pending(&conn, root)?;
     Ok(Archive {
         conn,
         root: root.to_path_buf(),
         _lock: lock,
     })
+}
+
+/// Non-blocking `LOCK_EX` after a shared hold was dropped. A shared holder
+/// that has not dropped fails each try; the last failure is that lock error.
+/// No sleep: a holder that stays up must not pause this open.
+fn acquire_replay_exclusive(lock_path: &Path) -> Result<ArchiveLock> {
+    const TRIES: u32 = 32;
+    let mut tries = 0u32;
+    loop {
+        match ArchiveLock::acquire(lock_path, LockMode::Exclusive) {
+            Ok(lock) => return Ok(lock),
+            Err(err @ CoreError::Lock { .. }) => {
+                tries += 1;
+                if tries >= TRIES {
+                    return Err(err);
+                }
+            }
+            Err(err) => return Err(err),
+        }
+    }
 }
 
 /// DESIGN `OpenOptions` wrapper: `create` → init, else exclusive open.
@@ -379,6 +432,7 @@ impl Archive {
     /// Reopen `archive.sqlite` on the same path. Does not take another flock.
     /// A missing file is an error and does not replace `self.conn`.
     pub(super) fn resume_conn(&mut self) -> Result<()> {
+        super::snapshot::replay_restore_journal(&self.root)?;
         let path = self.root.join("archive.sqlite");
         if !path.is_file() {
             return Err(CoreError::Fatal("archive.sqlite is not a file".into()));
@@ -392,6 +446,7 @@ impl Archive {
         apply_pragmas(&conn)?;
         migrate(&conn)?;
         ensure_fts_triggers(&conn)?;
+        crate::cas::replay_cas_pending(&conn, &self.root)?;
         self.conn = conn;
         Ok(())
     }
